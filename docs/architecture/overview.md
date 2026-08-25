@@ -6,7 +6,7 @@ bindings are a thin re-export layer.
 
 ## Layers
 
-```
+```text
 ┌─────────────────────────────────────┐
 │  Python facade (python/nucleide/)   │  <- typed stubs + re-exports
 ├─────────────────────────────────────┤

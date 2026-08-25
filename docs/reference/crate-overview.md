@@ -4,7 +4,7 @@ Nucleide is a Cargo workspace. Each crate owns one capability area and exposes a
 thin, focused API.
 
 | Crate | Path | Responsibility |
-|---|---|---|
+| --- | --- | --- |
 | `linalg` | `crates/linalg` | Isolation facade over the linear-algebra backend so numeric dependencies stay in one place |
 | `nuclei` | `crates/nuclei` | Canonical nucid representation, element tables, naming dialects (MCNP/Serpent/FLUKA/NIST/CINDER/ALARA/SZA), particles, reaction names |
 | `material` | `crates/material` | Compositions, mixing arithmetic, unit conversions, DOE/PNNL Materials Compendium loading, materials XML export |

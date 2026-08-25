@@ -106,7 +106,7 @@ and all consumers in the same PR and explain why in the commit message.
 
 Use clear, imperative commit messages:
 
-```
+```text
 Add support for custom mesh tally formats
 
 - Adds UsrbinTally parser for Cartesian and cylindrical meshes

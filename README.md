@@ -21,7 +21,7 @@ rebuilds the high-value subset in memory-safe Rust with one-command
 ## Features
 
 | Area | Capabilities |
-|---|---|
+| --- | --- |
 | Nuclide core (`nuclei`) | Canonical nucid representation, particle registry, reaction-name registry (labels, MT mapping, hashes), name-dialect conversions (ZZAAAMM, ZAID/MCNP, Serpent, FLUKA, NIST, CINDER, ALARA, SZA), AME2020 masses, natural abundances, half-lives |
 | Materials (`material`) | Compositions, mixing arithmetic, unit conversions, DOE/PNNL Materials Compendium loading, materials XML export |
 | MCNP I/O (`mcnp-io`) | xsdir, meshtal, SSW/SURFSRC, PTRAC, WWINP, MCTAL readers; material extraction from input decks; mesh-to-geometry deck generation |
@@ -39,7 +39,7 @@ meshing, and GUIs. `Nucleide` complements transport codes; it does not replace t
 
 ## Layout
 
-```
+```text
 nucleide/
 ├── crates/
 │   ├── nuclei/        # nuclide ids, naming conventions, physical data
@@ -84,7 +84,7 @@ cargo llvm-cov --workspace       # or --lcov for CI upload
 ## Tooling
 
 | Layer | Format | Lint | Types | Coverage |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | Rust | rustfmt (`cargo fmt`) | clippy `-D warnings` | — | cargo-llvm-cov (CI) |
 | Python | ruff format | ruff check | mypy `--strict` via `.pyi` stubs | pytest-cov |
 

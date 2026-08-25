@@ -22,7 +22,7 @@ license.
 ### Tutorials
 
 | Document | Purpose |
-|---|---|
+| --- | --- |
 | [Tutorials](tutorials/index.md) | Tutorial index and suggested reading order |
 | [Getting started](tutorials/getting-started.md) | Install Nucleide and run your first Rust or Python snippet |
 | [Parse MCNP output](tutorials/parse-mcnp-output.md) | Read xsdir, meshtal, MCTAL, WWINP, PTRAC, and SSW files |
@@ -33,7 +33,7 @@ license.
 ### Reference
 
 | Document | Purpose |
-|---|---|
+| --- | --- |
 | [Reference](reference/index.md) | Reference index and quick links |
 | [Crate overview](reference/crate-overview.md) | One-line responsibilities for every workspace crate |
 | [Python API](reference/python-api.md) | Python facade overview and module map |
@@ -41,21 +41,21 @@ license.
 ### Development
 
 | Document | Purpose |
-|---|---|
+| --- | --- |
 | [Local development](development/local-dev.md) | Toolchain, local build, test, and lint commands |
 | [Contributing](development/contributing.md) | Branch workflow, commit style, and PR checklist |
 
 ### Architecture
 
 | Document | Purpose |
-|---|---|
+| --- | --- |
 | [Architecture overview](architecture/overview.md) | High-level system overview and layer boundaries |
 | [Crate responsibilities](architecture/crate-responsibilities.md) | Crate-level responsibilities and dependency rules |
 
 ### Plan
 
 | Document | Purpose |
-|---|---|
+| --- | --- |
 | [Roadmap](plan/roadmap.md) | Current status and upcoming priorities |
 | [Decision log](plan/decision-log.md) | Architecture and process decisions with rationale |
 
