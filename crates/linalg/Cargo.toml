@@ -1,0 +1,14 @@
+[package]
+name = "linalg"
+description = "Isolation facade over the numeric backend (planned: faer) so the rest of the workspace never depends on it directly"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+faer = "0.20"
+num-complex = "0.4"
+roxmltree = "0.20"
+# faer is intentionally NOT enabled yet.

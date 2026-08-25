@@ -1,0 +1,23 @@
+[package]
+name = "nucleide-bindings"
+description = "PyO3 bindings exposing Nucleide to Python as nucleide._internal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "nucleide_bindings"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3.workspace = true
+nuclei.workspace = true
+material.workspace = true
+mcnp-io = { path = "../../crates/mcnp-io" }
+depletion = { path = "../../crates/depletion" }
+serpent-io = { path = "../../crates/serpent-io" }
+fluka-io = { path = "../../crates/fluka-io" }
+vr-tools = { path = "../../crates/vr-tools" }
+enrichment = { path = "../../crates/enrichment" }

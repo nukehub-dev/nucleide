@@ -1,0 +1,11 @@
+[package]
+name = "enrichment"
+description = "Multicomponent enrichment cascades and SWU analytics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nuclei = { version = "0.1.0", path = "../nuclei" }

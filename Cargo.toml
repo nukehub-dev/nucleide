@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/nuclei",
+    "crates/linalg",
+    "crates/material",
+    "crates/mcnp-io",
+    "crates/serpent-io",
+    "crates/fluka-io",
+    "crates/vr-tools",
+    "crates/enrichment",
+    "crates/depletion",
+    "bindings/python",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "BSD-2-Clause"
+repository = "https://github.com/nukehub-dev/nucleide"
+rust-version = "1.83"
+
+[workspace.dependencies]
+# --- internal crates ---
+nuclei = { path = "crates/nuclei" }
+material = { path = "crates/material" }
+linalg = { path = "crates/linalg" }
+
+# --- planned stack (enabled per-crate as features land) ---
+# abi3-py310: one wheel per platform serves all Python >= 3.10
+pyo3 = { version = "0.28", features = ["extension-module", "abi3-py310"] }
+# numpy       = "0.28"        # rust-numpy, enable with pyo3 in bindings
+# binrw       = "0.14"        # declarative binary readers (mcnp-io)
+# winnow      = "0.7"         # text/combinatorial parsing (xsdir, meshtal)
+# faer        = "0.21"        # sparse/dense LA, complex, symbolic LU reuse (depletion)
+# ndarray     = "0.16"        # N-dim containers / NumPy-shaped glue
+# num-complex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+quick-xml = "0.37"
+thiserror = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,11 @@
+[package]
+name = "fluka-io"
+description = "FLUKA Monte Carlo interface: USRBIN tally reading and MATERIAL/COMPOUND card generation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nuclei.workspace = true

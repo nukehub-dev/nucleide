@@ -1,0 +1,13 @@
+[package]
+name = "mcnp-io"
+description = "MCNP-family file I/O: xsdir, meshtal, SSW, PTRAC readers/writers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+binrw = "0.14"
+winnow = "0.7"
+nuclei.workspace = true

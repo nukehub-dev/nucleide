@@ -1,0 +1,10 @@
+[package]
+name = "serpent-io"
+description = "Parsers for Serpent Monte Carlo MATLAB-style output files (_res.m, _dep.m, _det.m)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]

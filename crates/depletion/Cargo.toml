@@ -1,0 +1,15 @@
+[package]
+name = "depletion"
+description = "placeholder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+linalg = { version = "0.1.0", path = "../linalg" }
+nuclei = { version = "0.1.0", path = "../nuclei" }
+num-complex = "0.4"
+roxmltree = "0.20"
+serde_json.workspace = true

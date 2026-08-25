@@ -1,0 +1,63 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "Nucleide"
+dynamic = ["version"]
+description = "Modern Rust toolkit for nuclear-engineering workflow glue: legacy transport-code I/O, materials, depletion, enrichment analytics"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Nucleide developers" }]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[tool.maturin]
+python-source = "python"
+module-name = "nucleide._internal"
+manifest-path = "bindings/python/Cargo.toml"
+bindings = "pyo3"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=nucleide --cov=tests --cov-report=term-missing --cov-report=xml"
+
+# --- ruff: formatter + linter for python/ and tests/ ---
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["python", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # bugbear (likely bugs)
+    "SIM", # simplification
+    "C4",  # comprehensions
+]
+
+[tool.mypy]
+files = ["python/nucleide", "tests"]
+python_version = "3.10"
+strict = true
+# The compiled _internal module is checked via its .pyi stub.
+disallow_untyped_calls = true
+
+[tool.coverage.run]
+source = ["nucleide", "tests"]
+
+[tool.coverage.report]
+show_missing = true

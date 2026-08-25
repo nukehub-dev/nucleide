@@ -1,0 +1,12 @@
+[package]
+name = "vr-tools"
+description = "placeholder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+mcnp-io = { version = "0.1.0", path = "../mcnp-io" }
+nuclei = { version = "0.1.0", path = "../nuclei" }
