@@ -39,6 +39,5 @@ bindings are a thin re-export layer.
 
 ## See also
 
-- [crate-responsibilities.md](crate-responsibilities.md) for crate-level details.
-- [../reference/crate-overview.md](../reference/crate-overview.md) for a
-  one-line summary of every crate.
+- [Crate responsibilities](crate-responsibilities.md) for crate-level details.
+- [Crate overview](../reference/crate-overview.md) for a one-line summary of every crate.
