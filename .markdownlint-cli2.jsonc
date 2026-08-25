@@ -1,0 +1,14 @@
+{
+  // Nucleide markdown lint configuration.
+  "config": {
+    "default": true,
+    "line-length": {
+      "line_length": 120,
+      "code_blocks": false,
+      "tables": false
+    },
+    "no-inline-html": false,
+    "no-bare-urls": false
+  },
+  "gitignore": true
+}

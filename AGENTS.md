@@ -165,6 +165,33 @@ High-level layout; see the Child NAD Index below for domain-specific details.
 - `.research/` — local-only working notes; git-ignored, never referenced by
   committed docs or code.
 
+## Documentation
+
+The `docs/` tree owns durable user and contributor documentation.
+
+- Audience-based layout: `tutorials/`, `reference/`, `development/`,
+  `architecture/`, `plan/`.
+- Index and maintenance rules live in `docs/README.md`.
+- Internal links must be relative and must not duplicate details already in
+  `README.md`, `AGENTS.md`, generated API stubs, or fixture READMEs.
+- Docs changes trigger `.github/workflows/docs.yml` for markdown lint and link
+  checking.
+
+## Release workflow
+
+Git tags of the form `vX.Y.Z` trigger `.github/workflows/release.yml`, which:
+
+1. Runs the canonical verify checks.
+2. Builds and publishes Python wheels for Linux, macOS, and Windows via
+   `maturin publish` (requires `PYPI_API_TOKEN`).
+3. Optionally publishes workspace crates to crates.io in dependency order
+   (requires `CARGO_REGISTRY_TOKEN`; enabled via a `workflow_dispatch` input).
+4. Drafts a GitHub release with the wheels and the matching `CHANGELOG.md`
+   section.
+
+Use `scripts/bump-version.sh X.Y.Z` to bump the workspace version and stamp
+`CHANGELOG.md` before tagging.
+
 ## Common pitfalls
 
 - **Never edit generated/build artifacts**: `target/`, `*.so`, `__pycache__/`,
@@ -179,7 +206,9 @@ High-level layout; see the Child NAD Index below for domain-specific details.
   "fix" it without updating fixtures and their consumers together.
 - **Commit `Cargo.lock`** (binary workspace); do not hand-edit it.
 - **Version bumps** happen in `[workspace.package] version` in the root
-  `Cargo.toml`; crates inherit via `version.workspace = true`.
+  `Cargo.toml`; crates inherit via `version.workspace = true`. Run
+  `scripts/bump-version.sh X.Y.Z` to update the workspace version and stamp
+  `CHANGELOG.md`; then commit, tag `vX.Y.Z`, and push.
 
 ## Child NAD Index
 

@@ -104,6 +104,11 @@ Python >= 3.10 via abi3 — the same stack used by pydantic-core, polars, and ru
 
 Pre-alpha. APIs may change without notice.
 
+## Documentation
+
+Additional tutorials, reference pages, and developer guides live in the
+[`docs/`](docs/README.md) tree.
+
 ## Acknowledgments
 
 Nucleide is a fresh Rust implementation of workflow-glue capabilities pioneered

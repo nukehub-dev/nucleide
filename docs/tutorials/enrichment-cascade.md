@@ -1,0 +1,25 @@
+# Enrichment Cascade
+
+Nucleide solves multicomponent enrichment cascades with a numeric solver and
+closed-form SWU helpers. The implementation lives in `crates/enrichment`.
+
+## Default uranium cascade
+
+```python
+from nucleide import Cascade
+
+c = Cascade.default_uranium()
+c.solve()
+print(c.swu_per_feed, c.swu_per_prod)
+```
+
+## Custom cascade
+
+Custom cascades are configured on the Rust side by specifying component
+molecular weights, assays, and separation factors; the Python API exposes the
+result objects.
+
+## See also
+
+- `crates/enrichment/src/lib.rs` for cascade construction details.
+- `tests/test_data_inp_enrichment.py` for integration examples.
