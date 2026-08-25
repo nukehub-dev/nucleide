@@ -62,7 +62,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - uses: dtolnay/rust-toolchain@stable
       - run: pip install maturin pytest pytest-cov ruff mypy
-      - run: maturin develop
+      - run: maturin build
+      - run: pip install --no-index --find-links target/wheels nucleide
       - run: ruff format --check python tests && ruff check python tests
       - run: mypy
       - run: pytest tests/ -v
