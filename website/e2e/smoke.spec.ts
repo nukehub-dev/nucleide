@@ -29,6 +29,9 @@ const INTERACTIVE_PAGES = [
     path: "tutorials/interactive/materials",
     button: "Compute fractions",
     output: "text=Atom fractions",
+    // A known data cell: guards against map-shaped WASM values rendering as
+    // empty tables (Object.entries on a JS Map yields no rows).
+    cell: "H1",
   },
   {
     path: "tutorials/interactive/enrichment",
@@ -52,7 +55,7 @@ const INTERACTIVE_PAGES = [
   },
 ];
 
-for (const { path, button, output } of INTERACTIVE_PAGES) {
+for (const { path, button, output, cell } of INTERACTIVE_PAGES) {
   test(`interactive demo: ${path}`, async ({ page }) => {
     await page.goto(path);
     await waitForWasmReady(page);
@@ -62,6 +65,11 @@ for (const { path, button, output } of INTERACTIVE_PAGES) {
 
     await assertNoWasmError(page);
     await expect(page.locator(output).first()).toBeVisible();
+    if (cell) {
+      await expect(
+        page.locator("tbody td", { hasText: cell }).first(),
+      ).toBeVisible();
+    }
   });
 }
 

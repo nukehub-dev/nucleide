@@ -46,6 +46,9 @@ publishes Python wheels (and optionally Rust crates) from tags.
   probe solves; `recompute_nm` reset path no longer uses stale right-hand sides.
 - `vr-tools`: `magic` no longer panics on tallies with empty energy bounds and
   validates array lengths and finiteness.
+- `bindings/wasm`: fraction and result maps are now serialized as plain JS
+  objects instead of JS `Map`s, fixing empty tables in all interactive
+  tutorials.
 
 ### Removed
 

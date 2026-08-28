@@ -20,7 +20,11 @@ fn js_err(e: impl std::fmt::Display) -> JsValue {
 }
 
 fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(value).map_err(js_err)
+    // json_compatible serializes Rust maps as plain JS objects; the default
+    // serializer emits JS `Map`s, which `Object.entries` in the UI cannot read.
+    value
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(js_err)
 }
 
 // ---------------------------------------------------------------------------
