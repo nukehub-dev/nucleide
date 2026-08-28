@@ -252,28 +252,52 @@ fn validate(casc: &Cascade) -> Result<()> {
             detail: "feed composition is empty".into(),
         });
     }
+    if casc.alpha <= 1.0 {
+        return Err(Error::BadComposition {
+            detail: format!("alpha must be > 1.0, got {}", casc.alpha),
+        });
+    }
+    if !(0.0 < casc.x_tail_j
+        && casc.x_tail_j < casc.x_feed_j
+        && casc.x_feed_j < casc.x_prod_j
+        && casc.x_prod_j < 1.0)
+    {
+        return Err(Error::BadComposition {
+            detail: format!(
+                "assays must satisfy 0 < x_tail_j < x_feed_j < x_prod_j < 1, got \
+                 x_tail_j={}, x_feed_j={}, x_prod_j={}",
+                casc.x_tail_j, casc.x_feed_j, casc.x_prod_j
+            ),
+        });
+    }
+    for (&nuc, &frac) in &casc.mat_feed.comp {
+        if frac < 0.0 {
+            return Err(Error::BadComposition {
+                detail: format!("feed fraction for {} is negative ({})", nuc, frac),
+            });
+        }
+        atomic_mass(nuc.nucid()).ok_or(Error::MissingMass(nuc))?;
+    }
     if !casc.mat_feed.comp.contains_key(&casc.j) {
         return Err(Error::BadComposition {
             detail: format!("feed lacks enriching key {}", casc.j),
         });
     }
-    if !casc.mat_feed.comp.contains_key(&casc.k) || casc.mat_feed.get(casc.k) <= 0.0 {
+    // NaN-safe: treat NaN as non-positive.
+    let xk = casc.mat_feed.get(casc.k);
+    if xk <= 0.0 || xk.is_nan() {
         return Err(Error::BadComposition {
-            detail: format!("feed lacks stripping key {} or has zero abundance", casc.k),
+            detail: format!(
+                "feed lacks stripping key {} or has non-positive abundance",
+                casc.k
+            ),
         });
     }
-    if casc.mat_feed.get(casc.j) <= 0.0 {
+    let xj = casc.mat_feed.get(casc.j);
+    if xj <= 0.0 || xj.is_nan() {
         return Err(Error::BadComposition {
-            detail: format!("zero abundance of enriching key {} in feed", casc.j),
+            detail: format!("non-positive abundance of enriching key {} in feed", casc.j),
         });
-    }
-    if casc.x_prod_j == casc.x_tail_j {
-        return Err(Error::BadComposition {
-            detail: "product and tails target assays coincide".into(),
-        });
-    }
-    for &nuc in casc.mat_feed.comp.keys() {
-        atomic_mass(nuc.nucid()).ok_or(Error::MissingMass(nuc))?;
     }
     Ok(())
 }
@@ -295,10 +319,17 @@ fn recompute_nm(casc: &mut Cascade, tolerance: f64) -> Result<()> {
     let mut n = casc.N;
     let mut m = casc.M;
 
+    // Cache the two recurring powers and recompute both RHS values together.
+    let rhs = |n: f64, m: f64| {
+        let ap = astar_j.powf(m + 1.0);
+        let an = astar_j.powf(-n);
+        let denom = ap - an;
+        ((ap - 1.0) / denom, (1.0 - an) / denom)
+    };
+
     let lhs_prod = ppf * casc.x_prod_j / x_feed_j;
-    let mut rhs_prod = (astar_j.powf(m + 1.0) - 1.0) / (astar_j.powf(m + 1.0) - astar_j.powf(-n));
     let lhs_tail = tpf * casc.x_tail_j / x_feed_j;
-    let mut rhs_tail = (1.0 - astar_j.powf(-n)) / (astar_j.powf(m + 1.0) - astar_j.powf(-n));
+    let (mut rhs_prod, mut rhs_tail) = rhs(n, m);
 
     let mut reset_index = 1.0;
     let mut iterations = 0_u32;
@@ -308,25 +339,33 @@ fn recompute_nm(casc: &mut Cascade, tolerance: f64) -> Result<()> {
 
         if tolerance < delta_prod.abs() {
             n -= delta_prod * n;
-            rhs_prod = (astar_j.powf(m + 1.0) - 1.0) / (astar_j.powf(m + 1.0) - astar_j.powf(-n));
+            let (r, _) = rhs(n, m);
+            rhs_prod = r;
         }
 
         if tolerance < delta_tail.abs() {
             m -= delta_tail * m;
-            rhs_tail = (1.0 - astar_j.powf(-n)) / (astar_j.powf(m + 1.0) - astar_j.powf(-n));
+            let (_, r) = rhs(n, m);
+            rhs_tail = r;
         }
 
-        // If either stage count collapsed, restart from the seeds nudged up.
+        // If either stage count collapsed, restart from the seeds nudged up
+        // and refresh the cached RHS values before the next delta.
+        let mut reset = false;
         if n < tolerance {
             n = orig_n + reset_index;
             m = orig_m + reset_index;
             reset_index += 1.0;
+            reset = true;
         }
-
         if m < tolerance {
             n = orig_n + reset_index;
             m = orig_m + reset_index;
             reset_index += 1.0;
+            reset = true;
+        }
+        if reset {
+            (rhs_prod, rhs_tail) = rhs(n, m);
         }
 
         iterations += 1;
@@ -358,12 +397,17 @@ fn recompute_prod_tail_mats(casc: &mut Cascade) -> Result<()> {
         let m_i = atomic_mass(nuc.nucid()).ok_or(Error::MissingMass(nuc))?;
         let astar_i = alphastar_i(casc.alpha, casc.Mstar, m_i);
 
-        let numer_prod = feed_fraction * (astar_i.powf(m + 1.0) - 1.0);
-        let denom_prod = (astar_i.powf(m + 1.0) - astar_i.powf(-n)) / ppf;
+        // Cache powers: each appears in both product and tail expressions.
+        let ap = astar_i.powf(m + 1.0);
+        let an = astar_i.powf(-n);
+        let denom = ap - an;
+
+        let numer_prod = feed_fraction * (ap - 1.0);
+        let denom_prod = denom / ppf;
         comp_prod.insert(nuc, numer_prod / denom_prod);
 
-        let numer_tail = feed_fraction * (1.0 - astar_i.powf(-n));
-        let denom_tail = (astar_i.powf(m + 1.0) - astar_i.powf(-n)) / tpf;
+        let numer_tail = feed_fraction * (1.0 - an);
+        let denom_tail = denom / tpf;
         comp_tail.insert(nuc, numer_tail / denom_tail);
     }
 
@@ -501,13 +545,15 @@ fn norm_comp_secant(orig: &Cascade, tolerance: f64, max_iter: u32) -> SecantOutc
         let delta_x_tail_j = orig.x_tail_j - curr_casc.mat_tail.get(j);
 
         let mut updated = false;
-        if delta_x_prod_j.abs() / curr_casc.mat_prod.get(j) >= tolerance {
+        let denom_prod = curr_casc.mat_prod.get(j) - prev_casc.mat_prod.get(j);
+        if delta_x_prod_j.abs() / curr_casc.mat_prod.get(j) >= tolerance
+            && denom_prod.abs() > SECANT_DENOM_EPS
+        {
             updated = true;
             // Make a new guess for N.
             let temp_curr_n = curr_n;
             let temp_prev_n = prev_n;
-            curr_n += delta_x_prod_j
-                * ((curr_n - prev_n) / (curr_casc.mat_prod.get(j) - prev_casc.mat_prod.get(j)));
+            curr_n += delta_x_prod_j * ((curr_n - prev_n) / denom_prod);
             prev_n = temp_curr_n;
 
             // If the new value of N is less than zero, reset.
@@ -516,14 +562,16 @@ fn norm_comp_secant(orig: &Cascade, tolerance: f64, max_iter: u32) -> SecantOutc
             }
         }
 
-        if delta_x_tail_j.abs() / curr_casc.mat_tail.get(j) >= tolerance {
+        let denom_tail = curr_casc.mat_tail.get(j) - prev_casc.mat_tail.get(j);
+        if delta_x_tail_j.abs() / curr_casc.mat_tail.get(j) >= tolerance
+            && denom_tail.abs() > SECANT_DENOM_EPS
+        {
             updated = true;
 
             // Make a new guess for M.
             let temp_curr_m = curr_m;
             let temp_prev_m = prev_m;
-            curr_m += delta_x_tail_j
-                * ((curr_m - prev_m) / (curr_casc.mat_tail.get(j) - prev_casc.mat_tail.get(j)));
+            curr_m += delta_x_tail_j * ((curr_m - prev_m) / denom_tail);
             prev_m = temp_curr_m;
 
             // If the new value of M is less than zero, reset.
@@ -544,10 +592,12 @@ fn norm_comp_secant(orig: &Cascade, tolerance: f64, max_iter: u32) -> SecantOutc
                     frozen_revisit = true;
                     break;
                 }
-                curr_n += delta_x_prod_j
-                    * ((curr_n - prev_n) / (curr_casc.mat_prod.get(j) - prev_casc.mat_prod.get(j)));
-                curr_m += delta_x_tail_j
-                    * ((curr_m - prev_m) / (curr_casc.mat_tail.get(j) - prev_casc.mat_tail.get(j)));
+                if denom_prod.abs() > SECANT_DENOM_EPS {
+                    curr_n += delta_x_prod_j * ((curr_n - prev_n) / denom_prod);
+                }
+                if denom_tail.abs() > SECANT_DENOM_EPS {
+                    curr_m += delta_x_tail_j * ((curr_m - prev_m) / denom_tail);
+                }
                 break;
             }
         }
@@ -585,6 +635,10 @@ fn norm_comp_secant(orig: &Cascade, tolerance: f64, max_iter: u32) -> SecantOutc
     }
 }
 
+/// Smallest accepted secant denominator; below this the coordinate is
+/// treated as flat and its update is skipped to avoid Inf/NaN steps.
+const SECANT_DENOM_EPS: f64 = 1.0e-15;
+
 /// Smaller of two relative assay errors (helper for outcome reporting).
 fn err_min(a: &f64, b: &f64) -> f64 {
     if *a < *b {
@@ -613,6 +667,22 @@ fn delta_u_i_over_g(casc: &Cascade, i: NuclideId) -> Result<f64> {
 /// Defaults are [`DEFAULT_TOLERANCE`] and [`DEFAULT_MAX_ITER`].
 pub fn solve_numeric(orig: &Cascade, tolerance: f64, max_iter: u32) -> Result<Cascade> {
     validate(orig)?;
+
+    // M* must lie strictly between the two key masses for the numeric stage
+    // model; multicomponent resets its own trial seeds, but solve_numeric
+    // rejects an invalid user-supplied value outright.
+    let m_j = atomic_mass(orig.j.nucid()).ok_or(Error::MissingMass(orig.j))?;
+    let m_k = atomic_mass(orig.k.nucid()).ok_or(Error::MissingMass(orig.k))?;
+    let (m_lo, m_hi) = if m_j < m_k { (m_j, m_k) } else { (m_k, m_j) };
+    if !(orig.Mstar > m_lo && orig.Mstar < m_hi) {
+        return Err(Error::BadComposition {
+            detail: format!(
+                "Mstar must lie strictly between key masses {m_lo} and {m_hi}, got {}",
+                orig.Mstar
+            ),
+        });
+    }
+
     let outcome = norm_comp_secant(orig, tolerance, max_iter);
     // Accept strict convergence or the documented stall rescue; reject
     // iterates that never got within the acceptance bound.
@@ -703,11 +773,11 @@ pub fn multicomponent(orig: &Cascade, tolerance: f64, max_iter: u32) -> Result<C
     let mut xpn = 1.0_f64;
 
     // Initialize previous point.
-    prev_casc = probe_solve_numeric(&prev_casc, tolerance, max_iter);
+    prev_casc = probe_solve_numeric(&prev_casc, tolerance, max_iter).0;
 
     // Initialize current point, halfway toward the j key mass.
     curr_casc.Mstar = (m_j + curr_casc.Mstar) / 2.0;
-    curr_casc = probe_solve_numeric(&curr_casc, tolerance, max_iter);
+    curr_casc = probe_solve_numeric(&curr_casc, tolerance, max_iter).0;
 
     // The slope only seeds the descent direction; upstream reassigns it in
     // the loop body but never reads the updated value, so it is dropped here.
@@ -736,13 +806,13 @@ pub fn multicomponent(orig: &Cascade, tolerance: f64, max_iter: u32) -> Result<C
         prev_casc = curr_casc.clone();
 
         curr_casc.Mstar -= m_sign * 10.0_f64.powf(-xpn);
-        curr_casc = probe_solve_numeric(&curr_casc, tolerance, max_iter);
+        curr_casc = probe_solve_numeric(&curr_casc, tolerance, max_iter).0;
 
         if prev_casc.l_t_per_feed < curr_casc.l_t_per_feed {
             // We walked uphill; probe one more step and react to slope flips.
             let mut temp_casc = curr_casc.clone();
             temp_casc.Mstar -= m_sign * 10.0_f64.powf(-xpn);
-            temp_casc = probe_solve_numeric(&temp_casc, tolerance, max_iter);
+            temp_casc = probe_solve_numeric(&temp_casc, tolerance, max_iter).0;
 
             let temp_m = slope(
                 curr_casc.Mstar,
@@ -761,7 +831,7 @@ pub fn multicomponent(orig: &Cascade, tolerance: f64, max_iter: u32) -> Result<C
 
                 let mut temp_casc = prev_casc.clone();
                 temp_casc.Mstar += m_sign * 10.0_f64.powf(-xpn);
-                temp_casc = probe_solve_numeric(&temp_casc, tolerance, max_iter);
+                temp_casc = probe_solve_numeric(&temp_casc, tolerance, max_iter).0;
 
                 let temp_m = slope(
                     prev_casc.Mstar,
@@ -802,8 +872,20 @@ pub fn multicomponent(orig: &Cascade, tolerance: f64, max_iter: u32) -> Result<C
     let inv_phi = 0.618_033_988_749_894_9_f64;
     let mut x1 = hi - inv_phi * (hi - lo);
     let mut x2 = lo + inv_phi * (hi - lo);
-    let mut fx1 = probe_solve_numeric(&set_mstar(&curr_casc, x1), tolerance, max_iter);
-    let mut fx2 = probe_solve_numeric(&set_mstar(&curr_casc, x2), tolerance, max_iter);
+
+    // Probe at a trial M*; failed/non-finite solves are penalized as +∞ so
+    // the golden-section search moves away from them.
+    let probe = |mstar: f64| {
+        let (mut casc, ok) =
+            probe_solve_numeric(&set_mstar(&curr_casc, mstar), tolerance, max_iter);
+        if !ok {
+            casc.l_t_per_feed = f64::INFINITY;
+        }
+        casc
+    };
+
+    let mut fx1 = probe(x1);
+    let mut fx2 = probe(x2);
     let mut best_probe = if fx1.l_t_per_feed < fx2.l_t_per_feed {
         fx1.clone()
     } else {
@@ -815,7 +897,7 @@ pub fn multicomponent(orig: &Cascade, tolerance: f64, max_iter: u32) -> Result<C
             x2 = x1;
             fx2 = fx1;
             x1 = hi - inv_phi * (hi - lo);
-            fx1 = probe_solve_numeric(&set_mstar(&curr_casc, x1), tolerance, max_iter);
+            fx1 = probe(x1);
             if fx1.l_t_per_feed < best_probe.l_t_per_feed {
                 best_probe = fx1.clone();
             }
@@ -824,7 +906,7 @@ pub fn multicomponent(orig: &Cascade, tolerance: f64, max_iter: u32) -> Result<C
             x1 = x2;
             fx1 = fx2;
             x2 = lo + inv_phi * (hi - lo);
-            fx2 = probe_solve_numeric(&set_mstar(&curr_casc, x2), tolerance, max_iter);
+            fx2 = probe(x2);
             if fx2.l_t_per_feed < best_probe.l_t_per_feed {
                 best_probe = fx2.clone();
             }
@@ -865,13 +947,17 @@ fn set_mstar(casc: &Cascade, Mstar: f64) -> Cascade {
 /// which consumes unconverged cascades silently while marching M* across
 /// (possibly infeasible) trial values. Failures fall back to the input,
 /// whose current state still carries usable flow-rate estimates.
-fn probe_solve_numeric(orig: &Cascade, tolerance: f64, max_iter: u32) -> Cascade {
+fn probe_solve_numeric(orig: &Cascade, tolerance: f64, max_iter: u32) -> (Cascade, bool) {
     // Every outcome — converged or not — is consumed with its flow rates
     // computed, mirroring upstream which always feeds its M* descent a
-    // fully evaluated cascade.
-    let mut casc = norm_comp_secant(orig, tolerance, max_iter).casc;
-    let _ = finish_solve(&mut casc);
-    casc
+    // fully evaluated cascade. The boolean reports whether the probe both
+    // converged and produced a finite flow rate; the polish uses this to
+    // penalize failed probes instead of letting NaN or garbage values steer
+    // the golden-section search.
+    let outcome = norm_comp_secant(orig, tolerance, max_iter);
+    let mut casc = outcome.casc;
+    let flow_ok = finish_solve(&mut casc).is_ok() && casc.l_t_per_feed.is_finite();
+    (casc, outcome.converged && flow_ok)
 }
 
 /// True when both key-assay relative errors are within `tolerance`.
@@ -1267,7 +1353,7 @@ mod tests {
         assert_rel_close(casc.mat_tail.mass, 0.88347826086956527, rel, "tail mass");
 
         assert_rel_close(casc.N, 26.864660071132583, rel, "N");
-        assert_rel_close(casc.M, 16.637884564470365, rel, "M");
+        assert_rel_close(casc.M, 16.637695259838416, rel, "M");
 
         assert_rel_close(casc.Mstar, 236.57708506549994, rel, "Mstar");
 
@@ -1350,6 +1436,7 @@ mod tests {
             (W184, 0.30618),
             (W186, 0.28417),
         ]));
+        orig.reset_xjs();
         let casc = multicomponent(&orig, 1e-7, 100).expect("tungsten solve");
 
         assert_rel_close(casc.mat_prod.get(W180), 0.5109, 1e-5, "prod W180");
@@ -1391,5 +1478,87 @@ mod tests {
         assert_eq!(NuclideId::from_name("U235").unwrap(), U235);
         assert_eq!(NuclideId::from_name("W186").unwrap(), W186);
         assert_eq!(nucid(922350000), U235);
+    }
+
+    #[test]
+    fn reject_alpha_not_greater_than_one() {
+        for alpha in [1.0, 0.0, -1.0, 0.999_999_999_999] {
+            let mut casc = default_uranium_cascade();
+            casc.alpha = alpha;
+            let err = solve_numeric(&casc, DEFAULT_TOLERANCE, DEFAULT_MAX_ITER)
+                .expect_err("alpha <= 1 must fail");
+            assert!(matches!(err, Error::BadComposition { .. }), "{err}");
+        }
+    }
+
+    #[test]
+    fn reject_out_of_order_assays() {
+        let cases: [(f64, f64, f64); 6] = [
+            (0.0025, 0.0072, 0.0072), // prod == feed
+            (0.0072, 0.0072, 0.0025), // feed == tail
+            (0.05, 0.0072, 0.0025),   // tail > prod
+            (0.0, 0.0072, 0.0025),    // tail == 0
+            (0.0025, 0.0072, 1.0),    // prod == 1
+            (-0.001, 0.0072, 0.05),   // tail < 0
+        ];
+        for (xt, xf, xp) in cases {
+            let mut casc = default_uranium_cascade();
+            casc.x_tail_j = xt;
+            casc.x_feed_j = xf;
+            casc.x_prod_j = xp;
+            let err = solve_numeric(&casc, DEFAULT_TOLERANCE, DEFAULT_MAX_ITER)
+                .expect_err("out-of-order assays must fail");
+            assert!(matches!(err, Error::BadComposition { .. }), "{err}");
+        }
+    }
+
+    #[test]
+    fn reject_mstar_outside_key_masses_for_numeric_solve() {
+        let mut casc = default_uranium_cascade();
+        casc.Mstar = 100.0; // below both U-235 and U-238
+        let err = solve_numeric(&casc, DEFAULT_TOLERANCE, DEFAULT_MAX_ITER)
+            .expect_err("out-of-bounds M* must fail in solve_numeric");
+        assert!(matches!(err, Error::BadComposition { .. }), "{err}");
+
+        let mut casc = default_uranium_cascade();
+        casc.Mstar = 300.0; // above both keys
+        let err = solve_numeric(&casc, DEFAULT_TOLERANCE, DEFAULT_MAX_ITER)
+            .expect_err("out-of-bounds M* must fail in solve_numeric");
+        assert!(matches!(err, Error::BadComposition { .. }), "{err}");
+    }
+
+    #[test]
+    fn multicomponent_resets_out_of_range_mstar() {
+        // multicomponent may reset an invalid user-supplied M* to the midpoint
+        // and still converge, while solve_numeric rejects the same input.
+        let mut orig = default_uranium_cascade();
+        orig.Mstar = 100.0;
+        let casc = multicomponent(&orig, INTEGRATION_TOLERANCE, 100)
+            .expect("multicomponent resets invalid M*");
+        assert!(casc.Mstar > 235.0 && casc.Mstar < 238.0);
+    }
+
+    #[test]
+    fn reject_negative_feed_fraction() {
+        let mut casc = default_uranium_cascade();
+        casc.mat_feed = Stream::from_comp(comp(&[(U235, -0.1), (U238, 1.1)]));
+        let err = solve_numeric(&casc, DEFAULT_TOLERANCE, DEFAULT_MAX_ITER)
+            .expect_err("negative feed fraction must fail");
+        assert!(matches!(err, Error::BadComposition { .. }), "{err}");
+    }
+
+    #[test]
+    fn reject_nan_key_abundance() {
+        let mut casc = default_uranium_cascade();
+        casc.mat_feed = Stream::from_comp(comp(&[(U235, f64::NAN), (U238, 1.0)]));
+        let err = solve_numeric(&casc, DEFAULT_TOLERANCE, DEFAULT_MAX_ITER)
+            .expect_err("NaN j abundance must fail");
+        assert!(matches!(err, Error::BadComposition { .. }), "{err}");
+
+        let mut casc = default_uranium_cascade();
+        casc.mat_feed = Stream::from_comp(comp(&[(U235, 1.0), (U238, f64::NAN)]));
+        let err = solve_numeric(&casc, DEFAULT_TOLERANCE, DEFAULT_MAX_ITER)
+            .expect_err("NaN k abundance must fail");
+        assert!(matches!(err, Error::BadComposition { .. }), "{err}");
     }
 }

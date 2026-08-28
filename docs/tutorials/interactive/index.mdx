@@ -1,0 +1,30 @@
+---
+title: Interactive tutorials
+description: Learn Nucleide feature by feature with live browser demos powered by WASM.
+sidebar:
+  order: 0
+---
+
+These pages run Nucleide directly in your browser through the WASM build. No
+Python or Rust installation is required—every example is live.
+
+<Callout type="info" title="How it works">
+  The WASM module is produced by `wasm-pack` from `bindings/wasm`. It exposes
+  the same Rust code that powers the Python package through a small JavaScript
+  API.
+</Callout>
+
+## Available interactive tutorials
+
+- [Nuclides & nuclear data](nuclides.mdx) — name conversions, masses, abundances, half-lives.
+- [Materials](materials.mdx) — formula expansion, atom/weight fractions, mixing, XML export.
+- [Enrichment cascades](enrichment.mdx) — solve matched-abundance-ratio cascades.
+- [Depletion](depletion.mdx) — load a chain and run one CRAM step.
+- [MCNP I/O](mcnp-io.mdx) — parse material cards, xsdir, meshtal, and WWINP files.
+- [Variance reduction](variance-reduction.mdx) — MAGIC bounds and alias-table source sampling.
+
+## When WASM is not enough
+
+The WASM build is a teaching and exploration tool. For production work—large
+chain files, full transport decks, batch processing—use the Rust crate API or
+the Python package.

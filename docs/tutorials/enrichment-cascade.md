@@ -1,7 +1,9 @@
 # Enrichment Cascade
 
 Nucleide solves multicomponent enrichment cascades with a numeric solver and
-closed-form SWU helpers. The implementation lives in `crates/enrichment`.
+closed-form SWU helpers. The implementation lives in `crates/enrichment`. For
+the MARC model and SWU derivation, see the
+[Enrichment cascades theory](../../theory/enrichment.mdx) page.
 
 ## Default uranium cascade
 

@@ -39,6 +39,8 @@ pub enum Error {
     BadZ(u32),
     /// Mass number smaller than the atomic number.
     BadA { z: u32, a: u32 },
+    /// Mass number above the 3-digit AAA limit (> 999).
+    MassNumberTooLarge(u32),
     /// Metastable state index above the supported range (> 9).
     BadState(u32),
     /// Name contained no digits (no mass number).
@@ -54,6 +56,7 @@ impl fmt::Display for Error {
         match self {
             Error::BadZ(z) => write!(f, "atomic number {z} out of range 1..=118"),
             Error::BadA { z, a } => write!(f, "mass number {a} < atomic number {z}"),
+            Error::MassNumberTooLarge(a) => write!(f, "mass number {a} > 999 unsupported"),
             Error::BadState(s) => write!(f, "metastable state {s} > 9 unsupported"),
             Error::MissingMassNumber(s) => write!(f, "no mass number in name `{s}`"),
             Error::BadNumber(s) => write!(f, "invalid numeric component `{s}`"),
@@ -75,12 +78,19 @@ pub struct NuclideId(u32);
 
 impl NuclideId {
     /// Construct and validate a [`NuclideId`] from components.
+    ///
+    /// Enforces `1 <= Z <= 118`, `Z <= A <= 999`, and `S <= 9`. The
+    /// `A <= 999` bound keeps the packed value within `u32` and preserves
+    /// the 3-digit AAA invariant used by the zzaaam/zzllaaam dialects.
     pub const fn new(z: u32, a: u32, state: u32) -> Result<Self, Error> {
         if z == 0 || z > 118 {
             return Err(Error::BadZ(z));
         }
         if a < z {
             return Err(Error::BadA { z, a });
+        }
+        if a > 999 {
+            return Err(Error::MassNumberTooLarge(a));
         }
         if state > 9 {
             return Err(Error::BadState(state));
@@ -89,6 +99,10 @@ impl NuclideId {
     }
 
     /// Reconstruct from an existing nucid integer without validation.
+    ///
+    /// This is a raw bit-cast: invalid bit patterns yield meaningless
+    /// components from [`z`](Self::z), [`a`](Self::a), and [`state`](Self::state).
+    /// Use [`new`](Self::new) for validated construction.
     pub const fn from_nucid(nucid: u32) -> Self {
         Self(nucid)
     }
@@ -127,25 +141,32 @@ impl NuclideId {
         Self::new(z, a, state)
     }
 
-    /// Parse a name such as `"U235"`, `"Am242_m1"`, or `"Ba137m"`.
+    /// Parse a name such as `"U235"`, `"U-235"`, `"u235"`, `"Am242_m1"`,
+    /// `"Am-242m"`, `"Am242M"`, or `"Ba137m"`.
+    ///
+    /// Dashes are ignored and metastable markers are case-insensitive, so
+    /// this matches PyNE's `name_to_id` normalization for the common forms.
     pub fn from_name(name: &str) -> Result<Self, Error> {
-        let s = name.trim();
-        let digit_start = s
+        let trimmed = name.trim();
+        let cleaned: String = trimmed.chars().filter(|&c| c != '-').collect();
+        let upper = cleaned.to_ascii_uppercase();
+        let digit_start = upper
             .find(|c: char| c.is_ascii_digit())
-            .ok_or_else(|| Error::MissingMassNumber(s.to_string()))?;
-        let sym = &s[..digit_start];
-        let rest = &s[digit_start..];
+            .ok_or_else(|| Error::MissingMassNumber(trimmed.to_string()))?;
+        let sym_upper = &upper[..digit_start];
+        let rest = &upper[digit_start..];
 
-        let z = element_z(sym).ok_or_else(|| Error::UnknownElement(sym.to_string()))?;
+        let sym = canonicalize_symbol(sym_upper);
+        let z = element_z(&sym).ok_or_else(|| Error::UnknownElement(sym_upper.to_string()))?;
 
         // Split mass number from an optional state suffix:
-        // "235" | "242_m1" | "242m1" | "137m"
+        // "235" | "242_M1" | "242M" | "137M"
         let (a_str, state_str) = if let Some((head, tail)) = rest.split_once('_') {
-            // underscore form; tail may start with 'm'
-            let tail = tail.strip_prefix('m').unwrap_or(tail);
+            // underscore form; tail may start with 'M'
+            let tail = tail.strip_prefix('M').unwrap_or(tail);
             (head, Some(tail))
-        } else if let Some((head, tail)) = rest.split_once('m') {
-            // bare trailing-m form ("137m"); tail may hold the state index
+        } else if let Some((head, tail)) = rest.split_once('M') {
+            // bare trailing-M form ("137M"); tail may hold the state index
             (head, Some(tail))
         } else {
             (rest, None)
@@ -157,7 +178,7 @@ impl NuclideId {
         let state = match state_str {
             None => 0,
             Some("") => 1,
-            Some(n) => n.parse().map_err(|_| Error::BadNumber(format!("m{n}")))?,
+            Some(n) => n.parse().map_err(|_| Error::BadNumber(format!("M{n}")))?,
         };
 
         Self::new(z, a, state)
@@ -196,6 +217,17 @@ pub fn element_symbol(z: u32) -> Option<&'static str> {
 /// Atomic number for an element symbol (case-sensitive), or `None`.
 pub fn element_z(symbol: &str) -> Option<u32> {
     ELEMENTS.iter().position(|s| *s == symbol).map(|z| z as u32)
+}
+
+/// Convert a free-form element symbol to canonical case for lookup.
+fn canonicalize_symbol(sym: &str) -> String {
+    let mut chars = sym.chars();
+    let mut out = String::with_capacity(sym.len());
+    if let Some(first) = chars.next() {
+        out.extend(first.to_uppercase());
+    }
+    out.push_str(&chars.as_str().to_lowercase());
+    out
 }
 
 #[cfg(test)]
@@ -259,5 +291,28 @@ mod tests {
         assert_eq!(element_z("U"), Some(92));
         assert_eq!(element_symbol(92), Some("U"));
         assert_eq!(element_z("Xx"), None);
+    }
+
+    #[test]
+    fn rejects_mass_number_overflow() {
+        assert!(matches!(
+            NuclideId::new(92, 999_999, 0),
+            Err(Error::MassNumberTooLarge(999_999))
+        ));
+        assert!(matches!(
+            NuclideId::from_name("U999999"),
+            Err(Error::MassNumberTooLarge(999_999))
+        ));
+    }
+
+    #[test]
+    fn parses_pyne_normalized_forms() {
+        assert_eq!(NuclideId::from_name("U-235").unwrap().nucid(), 922_350_000);
+        assert_eq!(NuclideId::from_name("u235").unwrap().nucid(), 922_350_000);
+        assert_eq!(NuclideId::from_name("Am242M").unwrap().nucid(), 952_420_001);
+        assert_eq!(
+            NuclideId::from_name("Am-242M").unwrap().nucid(),
+            952_420_001
+        );
     }
 }

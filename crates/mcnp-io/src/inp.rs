@@ -259,6 +259,12 @@ pub fn materials_from_inp(text: &str) -> Result<Vec<McnpMaterial>, Error> {
     Ok(materials)
 }
 
+/// Alias for [`materials_from_inp`] for callers that think in terms of a
+/// generic string parser rather than "inp" input decks.
+pub fn materials_from_str(text: &str) -> Result<Vec<McnpMaterial>, Error> {
+    materials_from_inp(text)
+}
+
 /// Read an MCNP input file and parse every material card.
 pub fn materials_from_file(path: impl AsRef<Path>) -> Result<Vec<McnpMaterial>, Error> {
     let text = std::fs::read_to_string(path.as_ref()).map_err(|e| Error::Io(e.to_string()))?;

@@ -12,9 +12,10 @@ license.
 
 - **New users** → start with [Getting started](tutorials/getting-started.md)
 - **Analysts parsing legacy code output** → see the [tutorials](tutorials/index.md)
+- **Readers who want the physics/math** → see the [Theory](theory/index.mdx) pages
 - **Developers contributing code** → read [Local development](development/local-dev.md),
   then [Contributing](development/contributing.md)
-- **Architects reviewing boundaries** → start with [Architecture overview](architecture/overview.md)
+- **Architects reviewing boundaries** → start with [Architecture overview](architecture/overview.mdx)
 - **Release managers** → see [Roadmap](plan/roadmap.md) and the [changelog](../CHANGELOG.md)
 
 ## Documentation structure
@@ -29,6 +30,23 @@ license.
 | [Build materials](tutorials/build-materials.md) | Build materials from formulae, mix compositions, and export XML |
 | [Run depletion](tutorials/run-depletion.md) | Load a depletion chain and run a short CRAM solve |
 | [Enrichment cascade](tutorials/enrichment-cascade.md) | Set up and solve a multicomponent enrichment cascade |
+| [Interactive tutorials](tutorials/interactive/index.mdx) | Run Nucleide in the browser through the WASM build |
+| [Interactive — nuclides](tutorials/interactive/nuclides.mdx) | Nuclide identifiers and nuclear data |
+| [Interactive — materials](tutorials/interactive/materials.mdx) | Formulas, fractions, mixing, and XML export |
+| [Interactive — enrichment](tutorials/interactive/enrichment.mdx) | Solve MARC cascades live |
+| [Interactive — depletion](tutorials/interactive/depletion.mdx) | One-step CRAM depletion |
+| [Interactive — MCNP I/O](tutorials/interactive/mcnp-io.mdx) | Parse MCNP file snippets |
+| [Interactive — variance reduction](tutorials/interactive/variance-reduction.mdx) | MAGIC bounds and alias-table sampling |
+
+### Theory
+
+| Document | Purpose |
+| --- | --- |
+| [Theory](theory/index.mdx) | Theory index and suggested reading order |
+| [Depletion](theory/depletion.mdx) | Burnup matrices, the Bateman equation, and CRAM |
+| [Enrichment cascades](theory/enrichment.mdx) | MARC cascades, separation factors, and SWU |
+| [Variance reduction](theory/variance-reduction.mdx) | MAGIC weight windows and alias-table source sampling |
+| [Nuclear data](theory/nuclear-data.mdx) | Nuclide IDs, name dialects, masses, and half-lives |
 
 ### Reference
 
@@ -49,7 +67,7 @@ license.
 
 | Document | Purpose |
 | --- | --- |
-| [Architecture overview](architecture/overview.md) | High-level system overview and layer boundaries |
+| [Architecture overview](architecture/overview.mdx) | High-level system overview and layer boundaries |
 | [Crate responsibilities](architecture/crate-responsibilities.md) | Crate-level responsibilities and dependency rules |
 
 ### Plan
@@ -71,5 +89,8 @@ license.
    copying them.
 4. **Use relative links.** Internal links must be relative so documentation
    stays usable offline and in branches.
+5. **Use `.mdx` for component-heavy pages.** Pages that use `@nukehub/docs-kit`
+   shortcodes such as `<Mermaid>`, `<Callout>`, or `<DataTable>` must have an
+   `.mdx` extension. Plain `.md` is fine for prose-only pages.
 
 See the project [AGENTS.md](../AGENTS.md) for ownership and contract details.

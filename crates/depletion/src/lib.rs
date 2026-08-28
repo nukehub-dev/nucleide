@@ -86,6 +86,7 @@ mod tests {
                 kind: "(n,gamma)".into(),
                 target: Some("C".into()),
                 q: 0.0,
+                branching_ratio: 1.0,
             }],
             ..Default::default()
         };
@@ -152,7 +153,10 @@ mod tests {
     fn reaction_channel_and_capture_loss() {
         let mut rates = ReactionRates::new();
         // sigma*phi for B capture = 1e-5 (comparable to its decay rate)
-        rates.insert((1usize, "(n,gamma)".to_string()), 1e-5);
+        rates
+            .entry(1usize)
+            .or_default()
+            .insert("(n,gamma)".to_string(), 1e-5);
         let chain = Chain::from_xml(&xml_of(simple_chain())).unwrap();
         let sys = DepletionSystem::build(chain, &rates).unwrap();
         let n0 = vec![0.0, 1.0e15, 0.0];
@@ -218,6 +222,223 @@ mod tests {
         assert!(res.atoms["Xe135"] > 1e13);
     }
 
+    #[test]
+    fn reaction_branching_ratio_scales_gain() {
+        // Parent A captures with branching ratio 0.3 to B; loss uses full rate.
+        let a = ChainNuclide {
+            name: "A".into(),
+            reactions: vec![Reaction {
+                kind: "(n,gamma)".into(),
+                target: Some("B".into()),
+                q: 0.0,
+                branching_ratio: 0.3,
+            }],
+            ..Default::default()
+        };
+        let b = ChainNuclide {
+            name: "B".into(),
+            ..Default::default()
+        };
+        let chain = Chain::from_nuclides(vec![a, b]).unwrap();
+        let mut rates = ReactionRates::new();
+        rates
+            .entry(0usize)
+            .or_default()
+            .insert("(n,gamma)".to_string(), 1e-5);
+
+        let sys = DepletionSystem::build(chain, &rates).unwrap();
+        let dense = sys.matrix_for_dt(1.0).unwrap().to_dense();
+        assert!((dense[0][0].re + 1e-5).abs() < 1e-18);
+        assert!((dense[1][0].re - 3e-6).abs() < 1e-18);
+    }
+
+    #[test]
+    fn duplicate_reaction_entries_share_loss() {
+        // Two (n,gamma) entries: 0.4 to B and 0.6 to C. Loss is subtracted once.
+        let a = ChainNuclide {
+            name: "A".into(),
+            reactions: vec![
+                Reaction {
+                    kind: "(n,gamma)".into(),
+                    target: Some("B".into()),
+                    q: 0.0,
+                    branching_ratio: 0.4,
+                },
+                Reaction {
+                    kind: "(n,gamma)".into(),
+                    target: Some("C".into()),
+                    q: 0.0,
+                    branching_ratio: 0.6,
+                },
+            ],
+            ..Default::default()
+        };
+        let b = ChainNuclide {
+            name: "B".into(),
+            ..Default::default()
+        };
+        let c = ChainNuclide {
+            name: "C".into(),
+            ..Default::default()
+        };
+        let chain = Chain::from_nuclides(vec![a, b, c]).unwrap();
+        let mut rates = ReactionRates::new();
+        rates
+            .entry(0usize)
+            .or_default()
+            .insert("(n,gamma)".to_string(), 1e-5);
+
+        let sys = DepletionSystem::build(chain, &rates).unwrap();
+        let dense = sys.matrix_for_dt(1.0).unwrap().to_dense();
+        assert!((dense[0][0].re + 1e-5).abs() < 1e-18);
+        assert!((dense[1][0].re - 4e-6).abs() < 1e-18);
+        assert!((dense[2][0].re - 6e-6).abs() < 1e-18);
+    }
+
+    #[test]
+    fn alpha_decay_produces_he4_and_proton_decay_h1() {
+        let a = ChainNuclide {
+            name: "A".into(),
+            half_life: Some(std::f64::consts::LN_2 / 1e-6),
+            decay_modes: vec![
+                DecayMode {
+                    kind: "alpha".into(),
+                    target: "B".into(),
+                    branching_ratio: 0.5,
+                },
+                DecayMode {
+                    kind: "p".into(),
+                    target: "C".into(),
+                    branching_ratio: 0.5,
+                },
+            ],
+            ..Default::default()
+        };
+        let b = ChainNuclide {
+            name: "B".into(),
+            ..Default::default()
+        };
+        let c = ChainNuclide {
+            name: "C".into(),
+            ..Default::default()
+        };
+        let he4 = ChainNuclide {
+            name: "He4".into(),
+            ..Default::default()
+        };
+        let h1 = ChainNuclide {
+            name: "H1".into(),
+            ..Default::default()
+        };
+        let chain = Chain::from_nuclides(vec![a, b, c, he4, h1]).unwrap();
+        let sys = DepletionSystem::build(chain, &ReactionRates::new()).unwrap();
+        let dense = sys.matrix_for_dt(1.0).unwrap().to_dense();
+        let i_a = 0usize;
+        let i_b = 1;
+        let i_c = 2;
+        let i_he4 = 3;
+        let i_h1 = 4;
+        let lam = 1e-6;
+        // Daughter gains
+        assert!((dense[i_b][i_a].re - 0.5 * lam).abs() < 1e-18);
+        assert!((dense[i_c][i_a].re - 0.5 * lam).abs() < 1e-18);
+        // Light-particle gains
+        assert!((dense[i_he4][i_a].re - 0.5 * lam).abs() < 1e-18);
+        assert!((dense[i_h1][i_a].re - 0.5 * lam).abs() < 1e-18);
+    }
+
+    #[test]
+    fn reaction_secondaries_produce_light_nuclides() {
+        let a = ChainNuclide {
+            name: "A".into(),
+            reactions: vec![Reaction {
+                kind: "(n,a)".into(),
+                target: Some("B".into()),
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let b = ChainNuclide {
+            name: "B".into(),
+            ..Default::default()
+        };
+        let he4 = ChainNuclide {
+            name: "He4".into(),
+            ..Default::default()
+        };
+        let chain = Chain::from_nuclides(vec![a, b, he4]).unwrap();
+        let mut rates = ReactionRates::new();
+        rates
+            .entry(0usize)
+            .or_default()
+            .insert("(n,a)".to_string(), 2e-5);
+
+        let sys = DepletionSystem::build(chain, &rates).unwrap();
+        let dense = sys.matrix_for_dt(1.0).unwrap().to_dense();
+        assert!((dense[0][0].re + 2e-5).abs() < 1e-18);
+        assert!((dense[1][0].re - 2e-5).abs() < 1e-18);
+        assert!((dense[2][0].re - 2e-5).abs() < 1e-18);
+    }
+
+    #[test]
+    fn invalid_half_life_rejected() {
+        let bad = ChainNuclide {
+            name: "A".into(),
+            half_life: Some(0.0),
+            ..Default::default()
+        };
+        let chain = Chain::from_nuclides(vec![bad]).unwrap();
+        assert!(matches!(
+            DepletionSystem::build(chain, &ReactionRates::new()),
+            Err(Error::InvalidHalfLife { name, value }) if name == "A" && value == 0.0
+        ));
+
+        let bad = ChainNuclide {
+            name: "A".into(),
+            half_life: Some(-1.0),
+            ..Default::default()
+        };
+        let chain = Chain::from_nuclides(vec![bad]).unwrap();
+        assert!(DepletionSystem::build(chain, &ReactionRates::new()).is_err());
+    }
+
+    #[test]
+    fn decay_branching_ratios_renormalized() {
+        // Sum is 0.6; the largest branch is adjusted to make the total 1.0.
+        let a = ChainNuclide {
+            name: "A".into(),
+            half_life: Some(std::f64::consts::LN_2 / 1e-6),
+            decay_modes: vec![
+                DecayMode {
+                    kind: "beta".into(),
+                    target: "B".into(),
+                    branching_ratio: 0.3,
+                },
+                DecayMode {
+                    kind: "beta".into(),
+                    target: "C".into(),
+                    branching_ratio: 0.3,
+                },
+            ],
+            ..Default::default()
+        };
+        let chain = Chain::from_nuclides(vec![a]).unwrap();
+        assert!((chain.nuclides[0].decay_modes[0].branching_ratio - 0.7).abs() < 1e-12);
+        assert!((chain.nuclides[0].decay_modes[1].branching_ratio - 0.3).abs() < 1e-12);
+    }
+
+    #[test]
+    fn invalid_dt_rejected() {
+        let chain = Chain::from_xml(&xml_of(simple_chain())).unwrap();
+        let sys = DepletionSystem::build(chain, &ReactionRates::new()).unwrap();
+        let n0 = vec![1.0e12, 0.0, 0.0];
+        assert!(crate::cram(&sys, Order::Order16, &n0, 0.0).is_err());
+        assert!(crate::cram(&sys, Order::Order16, &n0, -1.0).is_err());
+        assert!(crate::cram(&sys, Order::Order16, &n0, f64::NAN).is_err());
+        assert!(crate::cram(&sys, Order::Order16, &n0, f64::INFINITY).is_err());
+    }
+
     // helper: serialize Chain back to minimal XML so build() gets owned data
     fn xml_of(chain: Chain) -> String {
         let mut s = String::from("<depletion_chain>\n");
@@ -236,9 +457,17 @@ mod tests {
             for r in &n.reactions {
                 match &r.target {
                     Some(t) => {
-                        s += &format!("    <reaction type=\"{}\" target=\"{t}\"/>\n", r.kind)
+                        s += &format!(
+                            "    <reaction type=\"{}\" target=\"{t}\" branching_ratio=\"{}\"/>\n",
+                            r.kind, r.branching_ratio
+                        )
                     }
-                    None => s += &format!("    <reaction type=\"{}\"/>\n", r.kind),
+                    None => {
+                        s += &format!(
+                            "    <reaction type=\"{}\" branching_ratio=\"{}\"/>\n",
+                            r.kind, r.branching_ratio
+                        )
+                    }
                 }
             }
             s += "  </nuclide>\n";

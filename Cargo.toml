@@ -11,6 +11,7 @@ members = [
     "crates/enrichment",
     "crates/depletion",
     "bindings/python",
+    "bindings/wasm",
 ]
 
 [workspace.package]

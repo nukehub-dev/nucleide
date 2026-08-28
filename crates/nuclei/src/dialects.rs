@@ -13,6 +13,9 @@
 //!   metastable states while `A/Z > 3.0` (95942 → Am-242 state 4).
 //! - Isomer designator letters use the legacy sequence
 //!   `"mnopqrstuvxyz"` (note: no `w`); state `S` maps to letter `S-1`.
+//!   PyNE emits `m` for every metastable state (lossy for state ≥ 2);
+//!   Nucleide preserves the state index (`m`, `n`, `o`, ...). Parsing
+//!   accepts lowercase `m-z` and uppercase `M` (state 1) for PyNE-style input.
 //! - zzllaaam: `"ZZ-LL-AAAM"` + lowercase isomer letter
 //!   (`"94-Pu-239"`, `"95-Am-242m"`, `"73-Ta-182n"`).
 //! - Serpent: `"Ll-AAAM"` + lowercase isomer letter
@@ -37,9 +40,11 @@
 //! - Elemental group sets (LAN/ACT/TRU/MA/FP), `abun` tables, `zzzaaa`,
 //!   GND, ENSDF, and the ENSDF state-id maps are out of scope.
 
+use std::collections::HashMap;
 use std::fmt;
+use std::sync::OnceLock;
 
-use crate::{element_symbol, element_z, Error, NuclideId};
+use crate::{element_symbol, Error, NuclideId, ELEMENTS};
 
 /// Errors raised by the dialect converters in this module.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,7 +109,7 @@ impl From<Error> for DialectError {
 /// Metastable-state designators (`"mnopqrstuvxyz"`).
 /// State `S` (1-based) maps to the letter at index `S - 1`; `w` is absent
 /// upstream as well.
-const ISOMER_LETTERS: &str = "mnopqrstuvxyz";
+const ISOMER_LETTERS: &[u8] = b"mnopqrstuvxyz";
 
 /// FLUKA name table (names truncated to FLUKA's 8-character limit; values
 /// are canonical nucids).
@@ -254,18 +259,30 @@ const FLUKA_NAMES: &[(&str, u32)] = &[
     ("238-U", 922_380_000),
 ];
 
+static FLUKA_BY_ID: OnceLock<HashMap<u32, &'static str>> = OnceLock::new();
+static FLUKA_BY_NAME: OnceLock<HashMap<&'static str, u32>> = OnceLock::new();
+
+fn fluka_by_id() -> &'static HashMap<u32, &'static str> {
+    FLUKA_BY_ID.get_or_init(|| FLUKA_NAMES.iter().map(|&(name, id)| (id, name)).collect())
+}
+
+fn fluka_by_name() -> &'static HashMap<&'static str, u32> {
+    FLUKA_BY_NAME.get_or_init(|| FLUKA_NAMES.iter().copied().collect())
+}
+
 /// Lowercase isomer designator letter for state `s` (`1 → 'm'`), or `None`.
 fn isomer_letter(state: u32) -> Option<char> {
-    let idx = state.checked_sub(1)?;
-    ISOMER_LETTERS.chars().nth(idx as usize)
+    let idx = state.checked_sub(1)? as usize;
+    ISOMER_LETTERS.get(idx).map(|&b| b as char)
 }
 
 /// State index for an isomer designator letter (`'m' → 1`), or `None`.
+/// Accepts lowercase `m-z` and uppercase `M-Z` (case-normalized).
 fn isomer_state(letter: char) -> Option<u32> {
+    let needle = letter.to_ascii_lowercase() as u8;
     ISOMER_LETTERS
-        .to_ascii_lowercase()
-        .chars()
-        .position(|c| c == letter.to_ascii_lowercase())
+        .iter()
+        .position(|&b| b == needle)
         .map(|p| p as u32 + 1)
 }
 
@@ -280,12 +297,19 @@ fn z_of_canonical_symbol(sym: &str) -> Option<u32> {
         return None;
     }
     let mut chars = sym.chars();
-    let mut canon = String::with_capacity(sym.len());
-    if let Some(first) = chars.next() {
-        canon.extend(first.to_uppercase());
-    }
-    canon.push_str(&chars.as_str().to_lowercase());
-    element_z(&canon)
+    let first = chars.next()?;
+    let rest = chars.as_str();
+    ELEMENTS
+        .iter()
+        .position(|&s| {
+            if s.is_empty() {
+                return false;
+            }
+            let mut el_chars = s.chars();
+            let el_first = el_chars.next().unwrap();
+            first.eq_ignore_ascii_case(&el_first) && rest.eq_ignore_ascii_case(el_chars.as_str())
+        })
+        .map(|z| z as u32)
 }
 
 /// Split `s` into its digit and alphabetic runs.
@@ -465,10 +489,9 @@ pub fn from_serpent(name: &str) -> Result<NuclideId, DialectError> {
 /// Only nuclides with an explicit entry in the vendored table resolve;
 /// the natural-element rows can never match a [`NuclideId`].
 pub fn id_to_fluka(nuc: NuclideId) -> Result<&'static str, DialectError> {
-    FLUKA_NAMES
-        .iter()
-        .find(|(_, nucid)| *nucid == nuc.nucid())
-        .map(|(name, _)| *name)
+    fluka_by_id()
+        .get(&nuc.nucid())
+        .copied()
         .ok_or_else(|| DialectError::UnknownFlukaName(nuc.to_name()))
 }
 
@@ -478,9 +501,8 @@ pub fn id_to_fluka(nuc: NuclideId) -> Result<&'static str, DialectError> {
 /// Rows denoting natural elements (A = 0) yield
 /// [`DialectError::NaturalElement`] rather than an id.
 pub fn fluka_to_id(name: &str) -> Result<NuclideId, DialectError> {
-    let &(_, nucid) = FLUKA_NAMES
-        .iter()
-        .find(|(known, _)| *known == name)
+    let &nucid = fluka_by_name()
+        .get(name)
         .ok_or_else(|| DialectError::UnknownFlukaName(name.to_string()))?;
     let z = nucid / 10_000_000;
     let a = (nucid / 10_000) % 1_000;
@@ -639,6 +661,8 @@ mod tests {
         assert_eq!(from_zzllaaam("95-Am-242m").unwrap(), nid(95, 242, 1));
         assert_eq!(from_zzllaaam("73-Ta-182n").unwrap(), nid(73, 182, 2));
         assert_eq!(from_zzllaaam("95-am-242m").unwrap(), nid(95, 242, 1));
+        assert_eq!(from_zzllaaam("95-Am-242M").unwrap(), nid(95, 242, 1));
+        assert_eq!(from_zzllaaam("73-Ta-182N").unwrap(), nid(73, 182, 2));
     }
 
     #[test]
@@ -681,6 +705,8 @@ mod tests {
         assert_eq!(from_serpent("U-236m").unwrap(), nid(92, 236, 1));
         assert_eq!(from_serpent("Cm-244m").unwrap(), nid(96, 244, 1));
         assert_eq!(from_serpent("Ta-182n").unwrap(), nid(73, 182, 2));
+        assert_eq!(from_serpent("Am-242M").unwrap(), nid(95, 242, 1));
+        assert_eq!(from_serpent("Ta-182N").unwrap(), nid(73, 182, 2));
     }
 
     #[test]

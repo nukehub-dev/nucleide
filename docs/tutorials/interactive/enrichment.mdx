@@ -1,0 +1,52 @@
+---
+title: Enrichment cascades
+description: Solve matched-abundance-ratio cascades interactively.
+sidebar:
+  order: 3
+---
+
+Nucleide solves **matched-abundance-ratio cascades (MARCs)** for
+multicomponent isotope mixtures. The cascade separates a feed stream into an
+enriched product stream and a depleted tails stream.
+
+## Cascade specification
+
+A cascade is defined by:
+
+- Overall stage separation factor $\alpha > 1$.
+- Mass separation factor $M^*$ between the enriching key $j$ and stripping key
+  $k$.
+- Target assays of the key nuclide in the feed ($x_F$), product ($x_P$), and
+  tails ($x_T$).
+- Initial guesses for the number of enriching stages $N$ and stripping stages
+  $M$.
+
+For a nuclide of mass $M_i$, the per-stage separation factor is
+
+$$
+\alpha^*_i = \alpha^{\,M^* - M_i}.
+$$
+
+## Stream mass ratios
+
+From assay conservation the product-to-feed and tails-to-feed ratios are
+
+$$
+\frac{P}{F} = \frac{x_F - x_T}{x_P - x_T},
+\qquad
+\frac{T}{F} = \frac{x_F - x_P}{x_T - x_P}.
+$$
+
+## Interactive solver
+
+Adjust the assays and separation parameters, then click **Solve cascade**. The
+**Optimize M\*** button runs the multicomponent solver that chooses $M^*$ to
+minimize total inter-stage flow.
+
+<InteractiveDemo kind="enrichment" />
+
+## See also
+
+- Tutorial: [Enrichment cascade](../../enrichment-cascade.md)
+- Theory: [Enrichment cascades](../../../theory/enrichment.mdx)
+- Crate docs: `crates/enrichment/src/cascade.rs`

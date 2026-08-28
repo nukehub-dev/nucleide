@@ -1,0 +1,11 @@
+---
+import { WasmPlayground as WasmPlaygroundClient } from "./WasmPlayground";
+
+interface Props {
+  kind: "material" | "cascade";
+}
+
+const { kind } = Astro.props;
+---
+
+<WasmPlaygroundClient kind={kind} client:visible />

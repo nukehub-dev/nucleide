@@ -1,0 +1,200 @@
+---
+title: Nuclear data
+description: Nuclide identifiers, name dialects, and data sources in Nucleide.
+sidebar:
+  order: 4
+---
+
+Nucleide carries a small, self-contained set of nuclear reference data and a
+canonical nuclide identifier that can be translated into the naming dialects
+used by MCNP, Serpent, FLUKA, and other codes.
+
+## Canonical nuclide identifier
+
+Every nuclide is stored as a single `u32` called the **nucid**:
+
+$$
+\text{nucid} = (Z \times 1000 + A) \times 10000 + S,
+$$
+
+where:
+
+- $Z$ is the atomic number,
+- $A$ is the mass number,
+- $S$ is the metastable state index ($0$ = ground state).
+
+<DataTable
+  caption="Examples of the nucid layout."
+  columns={[
+    { key: "nuclide", header: "Nuclide" },
+    { key: "z", header: "Z", align: "right" },
+    { key: "a", header: "A", align: "right" },
+    { key: "s", header: "S", align: "right" },
+    { key: "nucid", header: "nucid", align: "right" },
+    { key: "zzaaam", header: "zzaaam", align: "right" },
+  ]}
+  data={[
+    { nuclide: "H-1", z: 1, a: 1, s: 0, nucid: 10010000, zzaaam: 10010 },
+    { nuclide: "U-235", z: 92, a: 235, s: 0, nucid: 922350000, zzaaam: 922350 },
+    { nuclide: "Am-242m", z: 95, a: 242, s: 1, nucid: 952420001, zzaaam: 952421 },
+    { nuclide: "Ba-137m", z: 56, a: 137, s: 1, nucid: 561370001, zzaaam: 561371 },
+  ]}
+/>
+
+<Callout type="info" title="Where this lives in the code">
+  The identifier and dialect converters are in `crates/nuclei/src/lib.rs` and
+  `crates/nuclei/src/dialects.rs`. Data tables live in
+  `crates/nuclei/src/data/`.
+</Callout>
+
+## Name dialects
+
+Nucleide converts between several legacy code conventions.
+
+<DataTable
+  caption="Examples of name dialect conversions for U-235 and Am-242m."
+  columns={[
+    { key: "dialect", header: "Dialect" },
+    { key: "u235", header: "U-235" },
+    { key: "am242m", header: "Am-242m" },
+  ]}
+  data={[
+    { dialect: "GNDS / canonical", u235: "U235", am242m: "Am242_m1" },
+    { dialect: "MCNP ZAID", u235: "92235", am242m: "95242" },
+    { dialect: "zzllaaam", u235: "92-U-235", am242m: "95-Am-242m" },
+    { dialect: "Serpent", u235: "U-235", am242m: "Am-242m" },
+    { dialect: "FLUKA", u235: "235-U", am242m: "— (no entry)" },
+    { dialect: "NIST", u235: "235U", am242m: "242Am" },
+    { dialect: "Cinder", u235: "2350920", am242m: "2420951" },
+    { dialect: "ALARA", u235: "u:235", am242m: "am:242" },
+    { dialect: "SZA", u235: "92235", am242m: "1095242" },
+  ]}
+/>
+
+<Callout type="note" title="Metastable quirks">
+  MCNP swaps the meanings of Am-242 and Am-242m: `95242` maps to the metastable
+  state and `95642` maps to the ground state. FLUKA names are looked up in a
+  vendored table and only a subset of isotopes has an explicit entry; Am-242m
+  is not representable.
+
+  Serpent and zzllaaam emission use `m` for state 1 (PyNE-compatible) and
+  extended letters (`n`, `o`, ...) for higher states; parsing accepts both
+  cases.
+</Callout>
+
+## Data sources
+
+Nucleide embeds three reference tables at compile time and parses them lazily on
+first access.
+
+### Atomic masses
+
+- **Source**: AME2020 atomic mass evaluation (Huang et al., *Chinese Physics C*
+  45, 030002/030003, 2021).
+- **Coverage**: 3,557 ground-state nuclides with $Z \geq 1$.
+- **File**: `crates/nuclei/src/data/ame2020.tsv`.
+- **Units**: unified atomic mass units (u).
+
+### Natural abundances
+
+- **Source**: IUPAC isotopic compositions of the elements 2013 (Meija et al.,
+  *Pure and Applied Chemistry* **88**(3), 293–306, 2016) — the same set used
+  for the ENDF/B-VIII.0 standard compositions and embedded by OpenMC.
+- **Coverage**: 289 naturally occurring nuclides, including the isomer
+  Ta-180m.
+- **File**: `crates/nuclei/src/data/natural_abundance.tsv`.
+- **Units**: fraction in $[0, 1]$.
+
+### Half-lives
+
+- **Source**: ENDF/B-VIII.0 decay evaluations (IAEA / BNL-NNDC).
+- **Coverage**: 3,561 radionuclides; stable nuclides are absent.
+- **File**: `crates/nuclei/src/data/half_life.tsv`.
+- **Units**: seconds.
+
+## Derived quantities
+
+### Decay constant
+
+From the half-life $t_{1/2}$:
+
+$$
+\lambda = \frac{\ln 2}{t_{1/2}}.
+$$
+
+### Q-values from atomic masses
+
+Nucleide computes Q-values using AME2020 atomic masses and the neutron mass
+constant:
+
+<Callout type="tip" title="Constants">
+  $1\,\mathrm{u}\,c^2 = 931.49410242\,\mathrm{MeV}$ and
+  $m_n = 1.00866491595\,\mathrm{u}$.
+</Callout>
+
+#### Neutron radiative capture
+
+$$
+Q_{n,\gamma} = \big[m(Z,A) + m_n - m(Z, A+1)\big] \, c^2.
+$$
+
+Example: H-1$(n,\gamma)$ gives $Q \approx 2.2246\,\mathrm{MeV}$.
+
+#### Alpha decay
+
+$$
+Q_\alpha = \big[m(Z,A) - m(Z-2, A-4) - m(^4\mathrm{He})\big] \, c^2,
+$$
+
+with $m(^4\mathrm{He}) = 4.00260325413\,\mathrm{u}$.
+
+## Assumptions and limitations
+
+- **Ground-state masses only**: metastable-state ids have no separate mass
+  entry; query the ground-state id.
+- **Natural elements are unrepresentable**: a bare symbol such as `"U"` cannot
+  be stored as a `NuclideId` because $A \geq Z$ is required.
+- **Electron binding neglected**: capture Q-values use neutral atomic masses but
+  do not correct for electron binding differences.
+- **No ENSDF decay data**: detailed decay schemes beyond half-life and branching
+  ratios are out of scope.
+
+## Related work beyond Nucleide
+
+Adjacent data capabilities found in PyNE and OpenMC that Nucleide does not
+embed:
+
+- **Decay schemes**: PyNE derives decay modes, branching ratios, state
+  energies, and radiation spectra from ENSDF; OpenMC parses full decay modes
+  from ENDF files. Nucleide carries only half-lives.
+- **Fission product yields**: PyNE exposes WIMSD and NDS yield tables; OpenMC
+  reads yields into depletion chains.
+- **Q-values and energy release**: PyNE's `q_val` and OpenMC's
+  `FissionEnergyRelease` go beyond the capture/alpha formulas here.
+- **Reaction and scattering data**: cross sections, thermal S(α,β), and
+  scattering lengths are available in both codes but are outside Nucleide's
+  scope.
+- **Natural elements**: PyNE and OpenMC accept bare element symbols and
+  compute atomic weights from abundances; Nucleide requires a mass number.
+- **Living references**: [NuDat 3](https://www.nndc.bnl.gov/nudat3/) and the
+  IAEA LiveChart track structure and decay data between ENDF releases.
+
+## References
+
+1. W. J. Huang *et al.*, "The AME2020 atomic mass evaluation (I). Evaluation
+   of input data, and adjustment procedures," *Chinese Physics C*, **45**,
+   030002 (2021). DOI:
+   [10.1088/1674-1137/abddb0](https://doi.org/10.1088/1674-1137/abddb0).
+   Tables: M. Wang *et al.*, "The AME2020 atomic mass evaluation (II). Tables,
+   graphs and references," *Chinese Physics C*, **45**, 030003 (2021). DOI:
+   [10.1088/1674-1137/abddaf](https://doi.org/10.1088/1674-1137/abddaf).
+2. D. A. Brown *et al.*, "ENDF/B-VIII.0: The 8th major release of the nuclear
+   reaction data library with CIELO-project cross sections, new standards and
+   thermal scattering data," *Nuclear Data Sheets*, **148**, 1–142 (2018).
+   DOI: [10.1016/j.nds.2018.02.001](https://doi.org/10.1016/j.nds.2018.02.001).
+3. G. P. A. Nobre *et al.*, "ENDF/B-VIII.1: Updated nuclear reaction data
+   library for science and applications," *Nuclear Data Sheets* (2026),
+   [arXiv:2511.03564](https://arxiv.org/abs/2511.03564). Successor release;
+   Nucleide's embedded tables are still built from VIII.0.
+4. Nucleide implementation: `crates/nuclei/src/lib.rs`,
+   `crates/nuclei/src/dialects.rs`, `crates/nuclei/src/data.rs`.

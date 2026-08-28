@@ -40,5 +40,5 @@ print("version:", nuc.__version__)
 
 ## Next steps
 
-- Read the [crate overview](../reference/crate-overview.md).
-- Try [parsing an MCNP output file](parse-mcnp-output.md).
+- Read the [crate overview](../../reference/crate-overview.md).
+- Try [parsing an MCNP output file](../parse-mcnp-output.md).

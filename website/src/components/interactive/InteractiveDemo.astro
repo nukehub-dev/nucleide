@@ -1,0 +1,17 @@
+---
+import { InteractiveDemo as InteractiveDemoClient } from "./InteractiveDemo";
+
+interface Props {
+  kind:
+    | "nuclides"
+    | "materials"
+    | "enrichment"
+    | "depletion"
+    | "mcnp-io"
+    | "variance-reduction";
+}
+
+const { kind } = Astro.props;
+---
+
+<InteractiveDemoClient kind={kind} client:visible />

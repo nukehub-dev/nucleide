@@ -7,8 +7,12 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["rayon"]
+rayon = ["faer/rayon"]
+
 [dependencies]
-faer = "0.20"
+faer = { version = "0.20", default-features = false, features = ["std", "linalg"] }
 num-complex = "0.4"
 roxmltree = "0.20"
 # faer is intentionally NOT enabled yet.

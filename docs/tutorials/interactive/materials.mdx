@@ -1,0 +1,46 @@
+---
+title: Materials
+description: Build materials from chemical formulas, inspect fractions, mix, and export XML.
+sidebar:
+  order: 2
+---
+
+Nucleide models a material as a map from canonical nuclide identifiers to
+masses. From that compact representation it can derive atom fractions, weight
+fractions, and serializations used by transport codes.
+
+## From a chemical formula
+
+The formula parser understands element symbols, parentheses, and hydrates. For
+example, `H2O` expands to natural hydrogen and natural oxygen using AME2020
+masses and natural abundances.
+
+<InteractiveDemo kind="materials" />
+
+## Atom vs. weight fractions
+
+For a material with stored masses $m_i$:
+
+$$
+w_i = \frac{m_i}{\sum_j m_j}
+\qquad
+a_i = \frac{m_i / M_i}{\sum_j m_j / M_j}
+$$
+
+where $M_i$ is the atomic mass of nuclide $i$. The demo above computes both.
+
+## Mixing materials
+
+`Material::mix_by_mass` combines materials using relative mass weights. The
+fractions do not need to sum to one; they are normalized internally.
+
+## XML export
+
+The `to_xml(name, density)` method produces an OpenMC-style material XML
+fragment, including the canonical nuclide list, densities, and mass fractions.
+
+## See also
+
+- Tutorial: [Build materials](../../build-materials.md)
+- Theory: [Nuclear data](../../../theory/nuclear-data.mdx)
+- Crate docs: `crates/material/src/lib.rs`

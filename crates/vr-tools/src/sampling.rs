@@ -108,9 +108,12 @@ impl AliasTable {
     /// Draw one index using two uniforms in `[0, 1)`.
     ///
     /// Mirrors `sample_pdf(rand1, rand2)`: pick column `n * rand1`, return it
-    /// when `rand2 < prob[column]`, else the column's alias. Values outside
-    /// `[0, 1)` saturate instead of reading out of bounds (the C++ relies on
-    /// caller discipline here).
+    /// when `rand2 < prob[column]`, else the column's alias.
+    ///
+    /// `r1` is saturated to `[0, n)` before indexing: negative values map to
+    /// column `0` and values `>= 1.0` map to column `n - 1`. This is
+    /// intentional defensive behavior; callers should still pass uniforms in
+    /// `[0, 1)`.
     pub fn sample(&self, r1: f64, r2: f64) -> usize {
         let mut i = (self.n as f64 * r1) as usize;
         if i >= self.n {
@@ -208,14 +211,35 @@ impl MeshSourceSampler {
         if num_ves == 0 {
             return Err(Error::EmptyTally);
         }
+        if tally.total_result.len() != num_ves {
+            return Err(Error::LengthMismatch {
+                expected: num_ves,
+                got: tally.total_result.len(),
+            });
+        }
 
         let volumes = cell_volumes(tally);
         let analog_pdf: Vec<f64> = tally
             .total_result
             .iter()
             .zip(volumes.iter())
-            .map(|(q, v)| q.abs() * v)
-            .collect();
+            .enumerate()
+            .map(|(i, (q, v))| {
+                if !q.is_finite() {
+                    return Err(Error::NonFiniteTally {
+                        field: "total_result",
+                        index: i,
+                    });
+                }
+                if *q < 0.0 {
+                    return Err(Error::NegativeTally {
+                        index: i,
+                        value: *q,
+                    });
+                }
+                Ok(q * v)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         if analog_pdf.iter().all(|&x| x == 0.0) {
             return Err(Error::ZeroSumPdf);
         }
@@ -233,20 +257,37 @@ impl MeshSourceSampler {
                 }
                 user.iter()
                     .zip(volumes.iter())
-                    .map(|(q, v)| q.abs() * v)
-                    .collect()
+                    .enumerate()
+                    .map(|(i, (q, v))| {
+                        if !q.is_finite() {
+                            return Err(Error::NonFiniteTally {
+                                field: "user_pdf",
+                                index: i,
+                            });
+                        }
+                        if *q < 0.0 {
+                            return Err(Error::NegativeTally {
+                                index: i,
+                                value: *q,
+                            });
+                        }
+                        Ok(q * v)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
             }
         };
 
-        let normalized_analog = normalized(&analog_pdf).ok_or(Error::ZeroSumPdf)?;
         let normalized_bias = normalized(&bias_pdf).ok_or(Error::ZeroSumPdf)?;
         let biased_weights: Vec<f64> = match mode {
             Mode::Analog => vec![1.0; num_ves],
-            _ => normalized_analog
-                .iter()
-                .zip(normalized_bias.iter())
-                .map(|(&a, &b)| if b > 0.0 { a / b } else { 1.0 })
-                .collect(),
+            _ => {
+                let normalized_analog = normalized(&analog_pdf).ok_or(Error::ZeroSumPdf)?;
+                normalized_analog
+                    .iter()
+                    .zip(normalized_bias.iter())
+                    .map(|(&a, &b)| if b > 0.0 { a / b } else { 1.0 })
+                    .collect()
+            }
         };
 
         Ok(Self {
@@ -629,5 +670,93 @@ mod tests {
             MeshSourceSampler::new(&t, Mode::Analog, None),
             Err(Error::ZeroSumPdf)
         );
+    }
+
+    #[test]
+    fn negative_total_result_rejected() {
+        let mut t = fixture_tally("mcnp_meshtal_single_meshtal.txt", 4);
+        t.total_result[3] = -1.0;
+        assert_eq!(
+            MeshSourceSampler::new(&t, Mode::Analog, None),
+            Err(Error::NegativeTally {
+                index: 3,
+                value: -1.0
+            })
+        );
+    }
+
+    #[test]
+    fn negative_user_pdf_rejected() {
+        let t = fixture_tally("mcnp_meshtal_single_meshtal.txt", 4);
+        let mut user = vec![1.0; t.num_ves()];
+        user[7] = -0.5;
+        assert_eq!(
+            MeshSourceSampler::new(&t, Mode::User, Some(&user)),
+            Err(Error::NegativeTally {
+                index: 7,
+                value: -0.5
+            })
+        );
+    }
+
+    #[test]
+    fn non_finite_total_result_rejected() {
+        let mut t = fixture_tally("mcnp_meshtal_single_meshtal.txt", 4);
+        t.total_result[5] = f64::NAN;
+        assert!(matches!(
+            MeshSourceSampler::new(&t, Mode::Analog, None),
+            Err(Error::NonFiniteTally {
+                field: "total_result",
+                index: 5
+            })
+        ));
+
+        t.total_result[5] = f64::INFINITY;
+        assert!(matches!(
+            MeshSourceSampler::new(&t, Mode::Analog, None),
+            Err(Error::NonFiniteTally {
+                field: "total_result",
+                index: 5
+            })
+        ));
+    }
+
+    #[test]
+    fn total_result_length_mismatch_rejected() {
+        let mut t = fixture_tally("mcnp_meshtal_single_meshtal.txt", 4);
+        t.total_result.truncate(10);
+        assert_eq!(
+            MeshSourceSampler::new(&t, Mode::Analog, None),
+            Err(Error::LengthMismatch {
+                expected: 45,
+                got: 10
+            })
+        );
+    }
+
+    #[test]
+    fn analog_mode_results_unchanged_for_positive_tally() {
+        // Removing the silent abs() should not alter behavior when all values
+        // are already non-negative. Equal volumes keep the PDF proportional
+        // to the raw totals.
+        let t = MeshTallyData {
+            tally_number: 1,
+            particle: mcnp_io::meshtal::ParticleKind::Neutron,
+            dose_response: false,
+            x_bounds: vec![0.0, 1.0, 2.0],
+            y_bounds: vec![0.0, 1.0],
+            z_bounds: vec![0.0, 1.0],
+            e_bounds: vec![0.0, 1.0],
+            column_idx: Default::default(),
+            result: vec![vec![10.0], vec![1.0]],
+            rel_error: vec![vec![0.0], vec![0.0]],
+            total_result: vec![10.0, 1.0],
+            total_rel_error: vec![0.0, 0.0],
+        };
+        let s = MeshSourceSampler::new(&t, Mode::Analog, None).unwrap();
+        assert_eq!(s.mode(), Mode::Analog);
+        approx(s.table().pdf()[0], 10.0 / 11.0, 1e-12);
+        approx(s.table().pdf()[1], 1.0 / 11.0, 1e-12);
+        assert!(s.biased_weights.iter().all(|&w| (w - 1.0).abs() < 1e-15));
     }
 }

@@ -145,6 +145,7 @@ impl ComplexCsc {
 #[derive(Clone)]
 pub struct SymbolicLu {
     inner: faer::sparse::linalg::solvers::SymbolicLu<usize>,
+    n: usize,
 }
 
 impl SymbolicLu {
@@ -152,6 +153,7 @@ impl SymbolicLu {
         Ok(Self {
             inner: faer::sparse::linalg::solvers::SymbolicLu::try_new((*pattern.symbolic).as_ref())
                 .map_err(|e| Error::Backend(e.to_string()))?,
+            n: pattern.n,
         })
     }
 }
@@ -159,26 +161,58 @@ impl SymbolicLu {
 /// Numeric LU factors bound to a [`SymbolicLu`].
 pub struct ComplexLu {
     inner: faer::sparse::linalg::solvers::Lu<usize, C64>,
+    n: usize,
 }
 
 impl ComplexLu {
     /// Numeric factorization reusing the symbolic analysis of the pattern.
+    ///
+    /// Errors if the matrix dimension does not match the symbolic analysis.
     pub fn try_new_with_symbolic(sym: &SymbolicLu, mat: &ComplexCsc) -> Result<Self, Error> {
+        if mat.nrows() != sym.n {
+            return Err(Error::Shape {
+                expected: sym.n,
+                got: mat.nrows(),
+            });
+        }
         Ok(Self {
             inner: faer::sparse::linalg::solvers::Lu::<usize, C64>::try_new_with_symbolic(
                 sym.inner.clone(),
                 mat.as_faer_ref(),
             )
             .map_err(|e| Error::Backend(e.to_string()))?,
+            n: sym.n,
         })
     }
 
-    /// Solve `A x = rhs`.
-    pub fn solve(&self, rhs: &[C64]) -> Vec<C64> {
+    /// Solve `A x = rhs`, returning a new vector.
+    pub fn solve(&self, rhs: &[C64]) -> Result<Vec<C64>, Error> {
+        if rhs.len() != self.n {
+            return Err(Error::Shape {
+                expected: self.n,
+                got: rhs.len(),
+            });
+        }
+        let mut x = rhs.to_vec();
+        self.solve_in_place(&mut x)?;
+        Ok(x)
+    }
+
+    /// Solve `A x = x` in place, overwriting `x` with the solution.
+    pub fn solve_in_place(&self, x: &mut [C64]) -> Result<(), Error> {
+        if x.len() != self.n {
+            return Err(Error::Shape {
+                expected: self.n,
+                got: x.len(),
+            });
+        }
         use faer::linalg::solvers::SpSolver as _;
-        let mut rhs_mat = faer::mat::Mat::<C64>::from_fn(rhs.len(), 1, |i, _| rhs[i]);
+        let mut rhs_mat = faer::mat::Mat::<C64>::from_fn(x.len(), 1, |i, _| x[i]);
         self.inner.solve_in_place(&mut rhs_mat);
-        (0..rhs.len()).map(|i| rhs_mat[(i, 0)]).collect()
+        for (i, xi) in x.iter_mut().enumerate() {
+            *xi = rhs_mat[(i, 0)];
+        }
+        Ok(())
     }
 }
 
@@ -200,7 +234,9 @@ mod tests {
         let sym = SymbolicLu::try_new(&pattern).unwrap();
         let lu = ComplexLu::try_new_with_symbolic(&sym, &a).unwrap();
 
-        let x = lu.solve(&[C64 { re: 4.0, im: 0.0 }, C64 { re: 6.0, im: 0.0 }]);
+        let x = lu
+            .solve(&[C64 { re: 4.0, im: 0.0 }, C64 { re: 6.0, im: 0.0 }])
+            .unwrap();
         assert!((x[0].re - 1.0).abs() < 1e-12);
         assert!((x[1].re - 2.0).abs() < 1e-12);
     }
@@ -219,7 +255,9 @@ mod tests {
         let sym = SymbolicLu::try_new(&pattern).unwrap();
         let lu = ComplexLu::try_new_with_symbolic(&sym, &a).unwrap();
 
-        let x = lu.solve(&[C64 { re: 1.0, im: 0.0 }, C64 { re: 1.0, im: 0.0 }]);
+        let x = lu
+            .solve(&[C64 { re: 1.0, im: 0.0 }, C64 { re: 1.0, im: 0.0 }])
+            .unwrap();
         // Verify by residual: A' x == b
         let ap = [
             (C64 { re: 1.0, im: 0.0 } - theta),
@@ -243,5 +281,57 @@ mod tests {
         assert_eq!(d[0][1], C64 { re: 5.0, im: 1.0 });
         assert_eq!(d[1][0], C64 { re: -2.0, im: 0.0 });
         assert_eq!(d[0][0], C64_ZERO);
+    }
+
+    #[test]
+    fn unsorted_nonsymmetric_solve() {
+        // Non-symmetric 3x3 with off-diagonals in both directions:
+        // [[ 2,  1,  0],
+        //  [-1,  3,  1],
+        //  [ 0, -1,  2]]  x = [1, 2, 3]
+        // Entries supplied out of order to exercise the permutation path.
+        let entries = [
+            (2usize, 2usize),
+            (0, 1),
+            (1, 0),
+            (1, 1),
+            (0, 0),
+            (1, 2),
+            (2, 1),
+        ];
+        let vals = [
+            C64 { re: 2.0, im: 0.0 },
+            C64 { re: 1.0, im: 0.0 },
+            C64 { re: -1.0, im: 0.0 },
+            C64 { re: 3.0, im: 0.0 },
+            C64 { re: 2.0, im: 0.0 },
+            C64 { re: 1.0, im: 0.0 },
+            C64 { re: -1.0, im: 0.0 },
+        ];
+        let pattern = Pattern::from_entries(3, &entries).unwrap();
+        let a = ComplexCsc::from_entries(&pattern, &vals).unwrap();
+        let sym = SymbolicLu::try_new(&pattern).unwrap();
+        let lu = ComplexLu::try_new_with_symbolic(&sym, &a).unwrap();
+
+        let b = [
+            C64 { re: 1.0, im: 0.0 },
+            C64 { re: 2.0, im: 0.0 },
+            C64 { re: 3.0, im: 0.0 },
+        ];
+        let x = lu.solve(&b).unwrap();
+        assert!((x[0].re - 0.375).abs() < 1e-12);
+        assert!((x[1].re - 0.25).abs() < 1e-12);
+        assert!((x[2].re - 1.625).abs() < 1e-12);
+
+        // In-place variant gives the same answer.
+        let mut y = b;
+        lu.solve_in_place(&mut y).unwrap();
+        assert!((y[0].re - 0.375).abs() < 1e-12);
+        assert!((y[1].re - 0.25).abs() < 1e-12);
+        assert!((y[2].re - 1.625).abs() < 1e-12);
+
+        // Wrong RHS length is rejected.
+        assert!(lu.solve(&[C64_ZERO; 2]).is_err());
+        assert!(lu.solve(&[C64_ZERO; 4]).is_err());
     }
 }

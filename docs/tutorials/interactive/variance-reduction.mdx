@@ -1,0 +1,38 @@
+---
+title: Variance reduction
+description: Generate MAGIC weight windows and sample source voxels with alias tables.
+sidebar:
+  order: 6
+---
+
+The `vr-tools` crate provides two variance-reduction primitives used with MCNP
+mesh tallies: MAGIC weight-window generation and Walker/Vose alias-table source
+sampling.
+
+## MAGIC weight windows
+
+Given a mesh tally, MAGIC produces lower weight-window bounds:
+
+$$
+\text{ww}[ve][g] =
+\begin{cases}
+\text{null\_value} & \text{if rel\_error}[ve][g] > \text{tolerance} \\
+\dfrac{\phi[ve][g]}{2 \, \max_{ve'} \phi[ve'][g]} & \text{otherwise}
+\end{cases}
+$$
+
+You can run it on energy-integrated totals or per energy group.
+
+## Alias-table sampling
+
+`AliasTable` implements Walker's method with Vose's construction. Given a
+non-negative PDF and two uniform random numbers in $[0, 1)$, it returns a bin
+index in $O(1)$ time. `MeshSourceSampler` applies this to a mesh tally,
+supporting analog, uniform, and user-biased modes.
+
+<InteractiveDemo kind="variance-reduction" />
+
+## See also
+
+- Theory: [Variance reduction](../../../theory/variance-reduction.mdx)
+- Crate docs: `crates/vr-tools/src/lib.rs`

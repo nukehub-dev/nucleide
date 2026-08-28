@@ -31,11 +31,15 @@ Python facade exposes equivalent helpers through the `_internal` module.
 
 ## Export materials XML
 
-The `material` crate can serialize a library to the materials XML format used by
-several transport codes. From Python:
+A composition dictionary can be serialized to an OpenMC-style `<material>` XML
+fragment. `to_xml` takes a name, density, and optional density units:
 
 ```python
-# see nucleide._internal for the current XML export helpers
+from nucleide import from_formula, to_xml
+
+comp = from_formula("UO2")
+xml = to_xml(comp, "fuel", 10.0, "g/cm3")
+print(xml)
 ```
 
 ## See also

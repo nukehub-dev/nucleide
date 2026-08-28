@@ -30,6 +30,10 @@ pub enum Error {
     NonFinitePdf { index: usize },
     /// PDF sums to zero (or negatively); cannot normalize.
     ZeroSumPdf,
+    /// Tally or user density contains a negative value.
+    NegativeTally { index: usize, value: f64 },
+    /// Tally array contains a non-finite (NaN/infinite) value.
+    NonFiniteTally { field: &'static str, index: usize },
 }
 
 impl std::fmt::Display for Error {
@@ -50,6 +54,13 @@ impl std::fmt::Display for Error {
             }
             Error::NonFinitePdf { index } => write!(f, "pdf[{index}] is not finite"),
             Error::ZeroSumPdf => write!(f, "pdf sums to zero; cannot normalize"),
+            Error::NegativeTally { index, value } => write!(
+                f,
+                "tally/density value at index {index} = {value} is negative"
+            ),
+            Error::NonFiniteTally { field, index } => {
+                write!(f, "{field}[{index}] is not finite")
+            }
         }
     }
 }

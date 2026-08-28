@@ -1,0 +1,41 @@
+---
+title: Depletion
+description: Load a depletion chain and run one CRAM burnup step in the browser.
+sidebar:
+  order: 4
+---
+
+Depletion solves the Bateman equation for atom densities $\vec{n}(t)$:
+
+$$
+\frac{d\vec{n}}{dt} = A \vec{n},
+\qquad
+\vec{n}(t) = e^{A t} \vec{n}_0
+$$
+
+where $A$ is the transmutation matrix built from decay, capture, and fission
+reaction rates. Nucleide uses the Chebyshev Rational Approximation Method
+(CRAM) with published 16- and 48-order coefficients.
+
+## Depletion chain
+
+A chain XML lists nuclides, half-lives, decay branches, reaction targets, and
+fission yields. The demo below uses a tiny three-nuclide chain:
+
+$$
+\text{I-135} \xrightarrow{\beta} \text{Xe-135} \xrightarrow{\beta} \text{Cs-135}
+$$
+
+## One-step solve
+
+`deplete(chain, n0, dt, rates, order)` integrates over one time step `dt`. In
+production you would loop this call, update reaction rates from a transport
+solve, and accumulate burnup.
+
+<InteractiveDemo kind="depletion" />
+
+## See also
+
+- Tutorial: [Run depletion](../../run-depletion.md)
+- Theory: [Depletion](../../../theory/depletion.mdx)
+- Crate docs: `crates/depletion/src/lib.rs`

@@ -7,8 +7,12 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["rayon"]
+rayon = ["linalg/rayon"]
+
 [dependencies]
-linalg = { version = "0.1.0", path = "../linalg" }
+linalg = { version = "0.1.0", path = "../linalg", default-features = false }
 nuclei = { version = "0.1.0", path = "../nuclei" }
 num-complex = "0.4"
 roxmltree = "0.20"

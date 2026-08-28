@@ -556,6 +556,19 @@ mod tests {
     }
 
     #[test]
+    fn from_formula_h2so4() {
+        let mat = Material::from_formula("H2SO4", &Ame2020, &NaturalAbundances, None).unwrap();
+        let af = mat.atom_fractions(&Ame2020).unwrap();
+        assert!(!af.is_empty(), "H2SO4 atom fractions should not be empty");
+        for nuc in ["H1", "H2", "O16", "O17", "O18", "S32", "S33", "S34", "S36"] {
+            assert!(
+                af.contains_key(&NuclideId::from_name(nuc).unwrap()),
+                "missing {nuc}"
+            );
+        }
+    }
+
+    #[test]
     fn from_formula_rejects_bad_input_and_missing_data() {
         match Material::from_formula("Xx", &Ame2020, &NaturalAbundances, None).unwrap_err() {
             FormulaError::UnknownElement(s) => assert_eq!(s, "Xx"),

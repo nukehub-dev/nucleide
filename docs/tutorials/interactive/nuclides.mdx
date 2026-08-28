@@ -1,0 +1,53 @@
+---
+title: Nuclides & nuclear data
+description: Explore nuclide identifiers, name dialects, and built-in nuclear data.
+sidebar:
+  order: 1
+---
+
+Nucleide identifies nuclides by a canonical `(Z, A, state)` tuple and maps it to
+and from the many naming conventions used by transport, activation, and decay
+codes.
+
+## Nuclide identifiers
+
+A nuclide is fully described by:
+
+- **Z** — proton number.
+- **A** — mass number (total protons + neutrons).
+- **state** — isomeric state (0 = ground, 1 = first metastable, ...).
+
+The canonical integer forms include:
+
+| Form | Example for U-235 |
+| --- | --- |
+| Name | `U235` |
+| ZAID | `92235` |
+| NUCID | `922350` |
+| ZZAAAM | `922350` |
+| SZA | `1092235` |
+| zzllaaam | `92-u-235` |
+
+## Nuclear data lookups
+
+The `nuclei` crate bundles atomic masses from AME2020, natural abundances, and
+decay data. Enter a nuclide below to see every identifier and data value.
+
+<InteractiveDemo kind="nuclides" />
+
+## Common naming dialects
+
+Different codes expect different strings. Nucleide can convert a single
+identifier into:
+
+- **Serpent**: `U-235`
+- **MCNP ZAID**: `92235`
+- **NIST**: `235U`
+- **ALARA**: `u:235`
+- **FLUKA**: `URANIUM2` (via `fluka()`)
+- **CINDER**: numeric Cinder ID
+
+## See also
+
+- Theory: [Nuclear data](../../../theory/nuclear-data.mdx)
+- Crate docs: `crates/nuclei/src/lib.rs`

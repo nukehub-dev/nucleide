@@ -246,14 +246,21 @@ pub fn cram_with_symbolic(
             sys.pattern.nrows()
         )));
     }
+    if dt <= 0.0 || !dt.is_finite() {
+        return Err(Error::Linalg(format!("invalid timestep dt: {dt}")));
+    }
 
     let (alphas, thetas, alpha0) = coefficients(order);
+
+    // Reusable scratch buffers for pole values and in-place solves.
+    let mut shifted = vec![linalg::C64_ZERO; sys.entries.len()];
+    let mut x = vec![linalg::C64_ZERO; n0.len()];
 
     // Build and factorize A*dt - theta*I for every pole.
     let mut factors: Vec<ComplexLu> = Vec::with_capacity(thetas.len());
     for theta in thetas.iter().copied() {
-        let values = sys.shifted_values(dt, theta);
-        let mat = ComplexCsc::from_entries(&sys.pattern, &values)
+        sys.shifted_values_into(dt, theta, &mut shifted);
+        let mat = ComplexCsc::from_entries(&sys.pattern, &shifted)
             .map_err(|e| Error::Linalg(e.to_string()))?;
         factors.push(
             ComplexLu::try_new_with_symbolic(sym, &mat)
@@ -266,15 +273,17 @@ pub fn cram_with_symbolic(
     // is intrinsic to Pusa's incomplete partial factorization scheme.
     let mut y: Vec<C64> = n0.iter().map(|v| C64 { re: *v, im: 0.0 }).collect();
     for (alpha, lu) in alphas.iter().zip(&factors) {
-        let x = lu.solve(&y);
-        for (yi, xi) in y.iter_mut().zip(x) {
+        x.copy_from_slice(&y);
+        lu.solve_in_place(&mut x)
+            .map_err(|e| Error::Linalg(e.to_string()))?;
+        for (yi, xi) in y.iter_mut().zip(&x) {
             yi.re += 2.0 * (alpha.re * xi.re - alpha.im * xi.im);
         }
     }
     for yi in &mut y {
         *yi = C64 {
             re: yi.re * alpha0,
-            im: yi.im,
+            im: 0.0,
         };
     }
 

@@ -10,8 +10,9 @@
 #   scripts/bump-version.sh 0.2.0
 #
 # Updates:
-#   Cargo.toml    - [workspace.package] version
-#   CHANGELOG.md  - stamps [Unreleased] with the new version + date
+#   Cargo.toml           - [workspace.package] version
+#   website/package.json - website package version
+#   CHANGELOG.md         - stamps [Unreleased] with the new version + date
 #
 # The script never commits or tags; it prints the follow-up git commands.
 # Re-running with the same version is a no-op.
@@ -41,6 +42,16 @@ else
     echo "  Cargo.toml -> $_version"
 fi
 
+# website/package.json: update version only if it differs.
+_website_pkg="$DIR/website/package.json"
+_current_website_version="$(sed -n 's/^[[:space:]]*"version": "\([^"]*\)".*/\1/p' "$_website_pkg" | head -n1)"
+if [[ "$_current_website_version" == "$_version" ]]; then
+    echo "note: website/package.json already at $_version; left unchanged"
+else
+    sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$_version\"/" "$_website_pkg"
+    echo "  website/package.json -> $_version"
+fi
+
 # CHANGELOG: stamp [Unreleased] with the new version and date (skip when the
 # version heading already exists, so re-runs stay idempotent).
 _changelog="$DIR/CHANGELOG.md"
@@ -58,8 +69,8 @@ echo
 echo "Bumped to $_version."
 echo
 echo "Next steps:"
-echo "  git diff Cargo.toml CHANGELOG.md"
-echo "  git add Cargo.toml CHANGELOG.md"
+echo "  git diff Cargo.toml website/package.json CHANGELOG.md"
+echo "  git add Cargo.toml website/package.json CHANGELOG.md"
 echo "  git commit -m \"chore: bump version to $_version\""
 echo "  git tag v$_version"
 echo "  git push origin main --tags   # CI publishes wheels from the tag"

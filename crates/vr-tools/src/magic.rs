@@ -96,7 +96,7 @@ pub fn magic_with(
     selection: MagicSelection,
     params: MagicParams,
 ) -> Result<MagicOutput, Error> {
-    if tally.num_ves() == 0 || tally.num_e_groups() == 0 {
+    if tally.num_ves() == 0 || tally.e_bounds.len() < 2 {
         return Err(Error::EmptyTally);
     }
     let groups_per_ve = match selection {
@@ -124,6 +124,22 @@ pub fn magic_with(
             expected,
             got: vals.len().max(errs.len()),
         });
+    }
+    for (i, &v) in vals.iter().enumerate() {
+        if !v.is_finite() {
+            return Err(Error::NonFiniteTally {
+                field: "flux",
+                index: i,
+            });
+        }
+    }
+    for (i, &e) in errs.iter().enumerate() {
+        if !e.is_finite() {
+            return Err(Error::NonFiniteTally {
+                field: "error",
+                index: i,
+            });
+        }
     }
 
     // max_val[i] = np.max over all ves for each energy bin.
@@ -428,6 +444,70 @@ mod tests {
         );
         t.total_rel_error = vec![0.0, 0.0];
         assert!(matches!(magic(&t), Err(Error::LengthMismatch { .. })));
+    }
+
+    #[test]
+    fn empty_e_bounds_with_volume_elements_does_not_panic() {
+        // num_ves() > 0 but e_bounds is empty used to underflow in
+        // num_e_groups(). The guard must check e_bounds.len() < 2 directly.
+        let t = MeshTallyData {
+            tally_number: 1,
+            particle: ParticleKind::Neutron,
+            dose_response: false,
+            x_bounds: vec![0.0, 1.0],
+            y_bounds: vec![0.0, 1.0],
+            z_bounds: vec![0.0, 1.0],
+            e_bounds: vec![],
+            column_idx: Default::default(),
+            result: vec![vec![1.0]],
+            rel_error: vec![vec![0.0]],
+            total_result: vec![1.0],
+            total_rel_error: vec![0.0],
+        };
+        assert_eq!(magic(&t), Err(Error::EmptyTally));
+    }
+
+    #[test]
+    fn non_finite_flux_rejected() {
+        let mut t = sample_tally(
+            vec![vec![0.0]; 4],
+            vec![vec![0.0]; 4],
+            vec![1.0, f64::NAN, 1.0, 1.0],
+            vec![0.0; 4],
+        );
+        assert!(matches!(
+            magic(&t),
+            Err(Error::NonFiniteTally {
+                field: "flux",
+                index: 1
+            })
+        ));
+
+        t.total_result[1] = f64::INFINITY;
+        assert!(matches!(
+            magic(&t),
+            Err(Error::NonFiniteTally {
+                field: "flux",
+                index: 1
+            })
+        ));
+    }
+
+    #[test]
+    fn non_finite_error_rejected() {
+        let t = sample_tally(
+            vec![vec![0.0]; 4],
+            vec![vec![0.0]; 4],
+            vec![1.0; 4],
+            vec![0.0, f64::NAN, 0.0, 0.0],
+        );
+        assert!(matches!(
+            magic(&t),
+            Err(Error::NonFiniteTally {
+                field: "error",
+                index: 1
+            })
+        ));
     }
 
     fn fixture(name: &str) -> String {

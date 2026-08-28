@@ -82,3 +82,12 @@ def test_rxname() -> None:
     assert aid == nucleide.rxname_id("27")
     assert nucleide.rxname_mt(fid) == 18
     assert nucleide.rxname_name(fid) == "fission"
+
+
+def test_to_xml() -> None:
+    comp = nucleide.from_formula("H2O")
+    xml = nucleide.to_xml(comp, "water", 1.0, "g/cm3")
+    assert '<material name="water"' in xml
+    assert 'density value="1.0" units="g/cm3"' in xml
+    assert "H1" in xml
+    assert "O16" in xml

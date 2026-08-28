@@ -1,0 +1,365 @@
+---
+title: Depletion
+description: Burnup matrices, the Bateman equation, and the CRAM solver used by Nucleide.
+sidebar:
+  order: 1
+---
+
+Nucleide solves nuclide transmutation over a single time step using a **burnup
+matrix** formulation and the **Chebyshev Rational Approximation Method (CRAM)**
+for the matrix exponential.
+
+## Overview
+
+For a vector of nuclide atom densities $\mathbf{n}(t)$, the linearized depletion
+equation is
+
+$$
+\frac{d\mathbf{n}}{dt} = \mathbf{A}\,\mathbf{n},
+\qquad
+\mathbf{n}(t) = e^{\mathbf{A}t}\,\mathbf{n}(0),
+$$
+
+where $\mathbf{A}$ is the **burnup matrix**. Each column of $\mathbf{A}$
+describes how a parent nuclide is lost and what it produces; each row describes
+how a daughter nuclide is gained.
+
+<Callout type="info" title="Where this lives in the code">
+  Matrix construction is in `crates/depletion/src/matrix.rs` and the CRAM solver
+  is in `crates/depletion/src/cram.rs`. The public driver is `deplete` in
+  `crates/depletion/src/lib.rs`.
+</Callout>
+
+## Building the burnup matrix
+
+Nucleide builds $\mathbf{A}$ from a [`Chain`](../nuclear-data/) and a set of
+one-group reaction rates.
+
+### Decay
+
+For nuclide $i$ with half-life $t_{1/2,i}$, the decay constant is
+
+$$
+\lambda_i = \frac{\ln 2}{t_{1/2,i}}.
+$$
+
+The diagonal entry loses atoms at rate $\lambda_i$:
+
+$$
+A_{ii} \;\mathrel{-}=\; \lambda_i.
+$$
+
+Each decay mode with branching ratio $b_{i \to j}$ adds production to the
+off-diagonal:
+
+$$
+A_{ji} \;\mathrel{+}=\; \lambda_i \, b_{i \to j}.
+$$
+
+### Reactions
+
+For a one-group reaction rate $\sigma\phi$ of type $r$ on nuclide $i$:
+
+- **Loss**: $A_{ii} \mathrel{-}= \sigma\phi$ once per reaction *type*, even if
+  the chain lists multiple branched entries for that type.
+- **Production**: each reaction entry with branching ratio $b$ and target $j$
+  contributes
+  $$
+  A_{ji} \;\mathrel{+}=\; \sigma\phi \, b.
+  $$
+- **Light-particle secondaries**: reactions such as $(n,\alpha)$, $(n,p)$, and
+  $(n,d)$ emit light nuclides that are tracked when they appear in the chain
+  (e.g. $(n,\alpha) \to \mathrm{He\text{-}4}$).
+- **Fission**: if fission yields $y_{i \to k}$ are present, production is
+  distributed over all fission products:
+  $$
+  A_{ki} \;\mathrel{+}=\; \sigma\phi \, y_{i \to k}.
+  $$
+
+The final matrix $\mathbf{A}$ has units of $\mathrm{s}^{-1}$ and is sparse, with
+one diagonal entry per chain nuclide even if it is stable.
+
+## CRAM: matrix exponential by partial fractions
+
+CRAM evaluates the action of the matrix exponential $e^{\mathbf{A}t}$ on
+$\mathbf{n}_0$ in **incomplete partial fraction (IPF)** product form:
+
+$$
+\mathbf{n}_k \;=\; \mathbf{n}_{k-1} \;+\;
+2 \, \mathrm{Re}\!\left[
+\alpha_k \, (\mathbf{A}t - \theta_k \mathbf{I})^{-1} \mathbf{n}_{k-1}
+\right],
+\qquad
+\mathbf{n}(t) = \alpha_0 \, \mathbf{n}_m,
+$$
+
+where $m = 8$ for order-16 and $m = 24$ for order-48. The coefficients
+$\alpha_0$, $\alpha_k$, and $\theta_k$ are pre-computed complex numbers
+published by Pusa. Each pole is applied sequentially to the running solution
+vector; these IPF coefficients are not interchangeable with the residues of
+the classic partial-fraction sum form.
+
+<Callout type="tip" title="Why the IPF product form?">
+  Each step $(\mathbf{A}t - \theta_k \mathbf{I})^{-1}\mathbf{n}_{k-1}$ is a
+  sparse linear solve rather than a full matrix exponential. Nucleide uses a
+  sparse LU factorization from the `linalg` facade, and the symbolic pattern is
+  reused across all poles.
+</Callout>
+
+### Coefficients
+
+Nucleide ships the CRAM-16 and CRAM-48 coefficient sets verbatim. CRAM-16 is
+cheaper; CRAM-48 is the production default.
+
+<DataTable
+  caption="CRAM-16 poles and residues (real and imaginary parts)."
+  columns={[
+    { key: "k", header: "k", align: "right" },
+    { key: "theta_re", header: "Re(θ)", align: "right" },
+    { key: "theta_im", header: "Im(θ)", align: "right" },
+    { key: "alpha_re", header: "Re(α)", align: "right" },
+    { key: "alpha_im", header: "Im(α)", align: "right" },
+  ]}
+  data={[
+    {
+      k: 1,
+      theta_re: 3.509103608414918,
+      theta_im: 8.436198985884374,
+      alpha_re: 5.464930576870210e3,
+      alpha_im: -3.797983575308356e4,
+    },
+    {
+      k: 2,
+      theta_re: 5.948152268951177,
+      theta_im: 3.587457362018322,
+      alpha_re: 9.045112476907548e1,
+      alpha_im: -1.115537522430261e3,
+    },
+    {
+      k: 3,
+      theta_re: -5.264971343442647,
+      theta_im: 16.22022147316793,
+      alpha_re: 2.344818070467641e2,
+      alpha_im: -4.228020157070496e2,
+    },
+    {
+      k: 4,
+      theta_re: 1.419375897185666,
+      theta_im: 10.92536348449672,
+      alpha_re: 9.453304067358312e1,
+      alpha_im: -2.951294291446048e2,
+    },
+    {
+      k: 5,
+      theta_re: 6.416177699099435,
+      theta_im: 1.194122393370139,
+      alpha_re: 7.283792954673409e2,
+      alpha_im: -1.205646080220011e5,
+    },
+    {
+      k: 6,
+      theta_re: 4.993174737717997,
+      theta_im: 5.996881713603942,
+      alpha_re: 3.648229059594851e1,
+      alpha_im: -1.155509621409682e2,
+    },
+    {
+      k: 7,
+      theta_re: -1.413928462488886,
+      theta_im: 13.49772569889275,
+      alpha_re: 2.547321630156819e1,
+      alpha_im: -2.639500283021502e1,
+    },
+    {
+      k: 8,
+      theta_re: -10.84391707869699,
+      theta_im: 19.27744616718165,
+      alpha_re: 2.394538338734709e1,
+      alpha_im: -5.650522971778156e0,
+    },
+  ]}
+/>
+
+The CRAM-16 scaling constant is
+$\alpha_0 = 2.124853710495224 \times 10^{-16}$.
+
+## Algorithm flow
+
+<Mermaid
+  chart={`
+flowchart TD
+    A["Load Chain XML"] --> B["Build sparse A matrix"]
+    B --> C["Scale by dt and shift by -θ_k I"]
+    C --> D["Sparse LU factorization"]
+    D --> E["Solve each pole"]
+    E --> F["Accumulate real parts"]
+    F --> G["Scale by α0"]
+    G --> H["Return n(dt)"]
+  `.trim()}
+/>
+
+## Worked example: sequential decay chain
+
+Consider a three-nuclide chain:
+
+$$
+A \xrightarrow{\lambda_A} B \xrightarrow{\lambda_B} C,
+$$
+
+with $\lambda_A = 10^{-6}\,\mathrm{s}^{-1}$,
+$\lambda_B = 10^{-5}\,\mathrm{s}^{-1}$, and $C$ stable. The burnup matrix is
+
+$$
+\mathbf{A} = \begin{bmatrix}
+-\lambda_A & 0 & 0 \\
+\lambda_A & -\lambda_B & 0 \\
+0 & \lambda_B & 0
+\end{bmatrix}.
+$$
+
+Starting from $n_A(0) = 10^{15}$ atoms and $n_B(0) = n_C(0) = 0$, the analytic
+solution after $t = 10^5\,\mathrm{s}$ is
+
+<Steps>
+  <Step>
+    $n_A(t) = n_A(0)\,e^{-\lambda_A t} = 10^{15}\,e^{-0.1} \approx 9.0484 \times 10^{14}$.
+  </Step>
+  <Step>
+    $n_B(t) = n_A(0)\,\frac{\lambda_A}{\lambda_B - \lambda_A}\,
+    (e^{-\lambda_A t} - e^{-\lambda_B t}) \approx 5.9662 \times 10^{13}$.
+  </Step>
+  <Step>
+    $n_C(t) = n_A(0) - n_A(t) - n_B(t) \approx 3.5501 \times 10^{13}$.
+  </Step>
+</Steps>
+
+Nucleide's CRAM-48 result matches this analytic solution to better than one part
+in $10^7$ for $n_B$ and one part in $10^9$ for $n_C$. This exact chain is
+exercised in `crates/depletion/src/lib.rs` as `analytic_two_step_decay_cram48`.
+
+<Plotly
+  data={[
+    {
+      x: [
+        0, 4000, 8000, 12000, 16000, 20000, 24000, 28000, 32000, 36000, 40000, 44000,
+        48000, 52000, 56000, 60000, 64000, 68000, 72000, 76000, 80000, 84000, 88000,
+        92000, 96000, 100000, 104000, 108000, 112000, 116000, 120000, 124000, 128000,
+        132000, 136000, 140000, 144000, 148000, 152000, 156000, 160000, 164000, 168000,
+        172000, 176000, 180000, 184000, 188000, 192000, 196000, 200000,
+      ],
+      y: [
+        1, 0.996008, 0.992032, 0.988072, 0.984127, 0.980199, 0.976286, 0.972388,
+        0.968507, 0.96464, 0.960789, 0.956954, 0.953134, 0.949329, 0.945539, 0.941765,
+        0.938005, 0.93426, 0.930531, 0.926816, 0.923116, 0.919431, 0.915761, 0.912105,
+        0.908464, 0.904837, 0.901225, 0.897628, 0.894044, 0.890475, 0.88692, 0.88338,
+        0.879853, 0.876341, 0.872843, 0.869358, 0.865888, 0.862431, 0.858988, 0.855559,
+        0.852144, 0.848742, 0.845354, 0.841979, 0.838618, 0.83527, 0.831936, 0.828615,
+        0.825307, 0.822012, 0.818731,
+      ],
+      mode: "lines",
+      name: "n_A",
+    },
+    {
+      x: [
+        0, 4000, 8000, 12000, 16000, 20000, 24000, 28000, 32000, 36000, 40000, 44000,
+        48000, 52000, 56000, 60000, 64000, 68000, 72000, 76000, 80000, 84000, 88000,
+        92000, 96000, 100000, 104000, 108000, 112000, 116000, 120000, 124000, 128000,
+        132000, 136000, 140000, 144000, 148000, 152000, 156000, 160000, 164000, 168000,
+        172000, 176000, 180000, 184000, 188000, 192000, 196000, 200000,
+      ],
+      y: [
+        0, 0.003913, 0.007657, 0.011239, 0.014665, 0.017941, 0.021073, 0.024067,
+        0.026929, 0.029663, 0.032274, 0.034769, 0.03715, 0.039423, 0.041592, 0.043661,
+        0.045635, 0.047516, 0.049309, 0.051017, 0.052643, 0.054191, 0.055664, 0.057065,
+        0.058397, 0.059662, 0.060863, 0.062004, 0.063085, 0.06411, 0.065081, 0.066,
+        0.066868, 0.06769, 0.068465, 0.069196, 0.069884, 0.070533, 0.071142, 0.071714,
+        0.07225, 0.072751, 0.07322, 0.073657, 0.074064, 0.074441, 0.074791, 0.075114,
+        0.075411, 0.075684, 0.075933,
+      ],
+      mode: "lines",
+      name: "n_B",
+    },
+    {
+      x: [
+        0, 4000, 8000, 12000, 16000, 20000, 24000, 28000, 32000, 36000, 40000, 44000,
+        48000, 52000, 56000, 60000, 64000, 68000, 72000, 76000, 80000, 84000, 88000,
+        92000, 96000, 100000, 104000, 108000, 112000, 116000, 120000, 124000, 128000,
+        132000, 136000, 140000, 144000, 148000, 152000, 156000, 160000, 164000, 168000,
+        172000, 176000, 180000, 184000, 188000, 192000, 196000, 200000,
+      ],
+      y: [
+        0, 7.9e-05, 0.000311, 0.000689, 0.001208, 0.00186, 0.002641, 0.003544, 0.004565,
+        0.005697, 0.006936, 0.008277, 0.009716, 0.011248, 0.012869, 0.014574, 0.01636,
+        0.018224, 0.02016, 0.022167, 0.024241, 0.026378, 0.028575, 0.03083, 0.033139,
+        0.035501, 0.037911, 0.040369, 0.042871, 0.045415, 0.047999, 0.050621, 0.053278,
+        0.055969, 0.058693, 0.061446, 0.064228, 0.067036, 0.06987, 0.072727, 0.075607,
+        0.078507, 0.081426, 0.084364, 0.087318, 0.090289, 0.093273, 0.096271, 0.099282,
+        0.102304, 0.105336,
+      ],
+      mode: "lines",
+      name: "n_C",
+    },
+  ]}
+  layout={{
+    title: "Two-step decay chain (analytic)",
+    xaxis: { title: "Time (s)" },
+    yaxis: { title: "Atom fraction" },
+  }}
+/>
+
+## Assumptions and limitations
+
+- **One-group reaction rates**: CRAM in Nucleide uses a single scalar rate per
+  reaction channel. Multigroup fluxes must be collapsed externally.
+- **Fixed cross sections over the step**: $\mathbf{A}$ is treated as constant
+  during $t$.
+- **Fission yields are single-energy**: the first yield set attached to a
+  fissionable nuclide is used.
+- **Decay branching ratios are renormalized**: if the modes for a nuclide do
+  not sum to 1.0, the largest branch is adjusted so the total is exactly 1.0.
+- **Stable nuclides have zero diagonal**: they act as sinks in the chain.
+- **CRAM order**: order-16 is adequate for short, simple chains; order-48 is
+  recommended for production burnup matrices.
+
+## Related work beyond Nucleide
+
+Adjacent capabilities found in PyNE, OpenMC, and the literature that Nucleide
+does not implement:
+
+- **Multi-step time integration**: OpenMC ships predictor-corrector
+  integrators (CECM, CELI, CF4, EPCRK4, and their SI variants) that recompute
+  reaction rates between steps; Nucleide exposes a single constant-rate step.
+- **Substepping**: OpenMC's CRAM solver can subdivide a step while reusing the
+  LU factorizations; Nucleide has no substep parameter.
+- **Transport-coupled depletion**: OpenMC normalizes tally reaction rates to
+  absolute rates from a power or source normalization; Nucleide assumes rates
+  are already given in $\mathrm{s}^{-1}$.
+- **Energy-dependent fission yields**: OpenMC selects between constant,
+  thermal, and thermal+fast yield modes; Nucleide uses the first yield set.
+- **Feed and removal terms**: OpenMC adds transfer rates and external source
+  vectors to the burnup matrix for MSR-style continuous processing.
+- **Chain truncation**: PyNE's transmutagen-generated solver truncates the
+  transmutation tree by density tolerance; Nucleide uses a fixed chain.
+- **Krylov subspace methods**: an alternative to CRAM for the Bateman
+  equations; see Josey et al. (2017) in the references.
+
+## References
+
+1. M. Pusa and J. Leppänen, "Computing the matrix exponential in burnup
+   calculations," *Nuclear Science and Engineering*, **164**, 140–150 (2010).
+2. M. Pusa, "Higher-order Chebyshev rational approximation method and
+   application to burnup equations," *Nuclear Science and Engineering*,
+   **182**(3), 297–318 (2016). DOI:
+   [10.13182/NSE15-26](https://doi.org/10.13182/NSE15-26). Source of the
+   CRAM-16 and CRAM-48 coefficient sets shipped by Nucleide.
+3. C. Josey, B. Forget, and K. Smith, "High order methods for the integration
+   of the Bateman equations and other problems of the form
+   $y' = F(y,t)\,y$," *Journal of Computational Physics*, **350**, 296–313
+   (2017). DOI:
+   [10.1016/j.jcp.2017.08.025](https://doi.org/10.1016/j.jcp.2017.08.025).
+4. P. K. Romano, C. J. Josey, A. E. Johnson, and J. Liang, "Depletion
+   capabilities in the OpenMC Monte Carlo particle transport code," *Annals of
+   Nuclear Energy*, **152**, 107989 (2021). DOI:
+   [10.1016/j.anucene.2020.107989](https://doi.org/10.1016/j.anucene.2020.107989).
+5. Nucleide implementation: `crates/depletion/src/cram.rs`,
+   `crates/depletion/src/matrix.rs`.

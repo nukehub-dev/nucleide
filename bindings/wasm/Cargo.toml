@@ -1,0 +1,39 @@
+[package]
+name = "nucleide-wasm"
+description = "wasm-bindgen facade exposing Nucleide core capabilities to the browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "nucleide_wasm"
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Workspace crates — keep Rayon disabled so this builds for wasm32-unknown-unknown.
+nuclei.workspace = true
+material = { path = "../../crates/material" }
+enrichment = { path = "../../crates/enrichment" }
+depletion = { path = "../../crates/depletion", default-features = false }
+mcnp-io = { path = "../../crates/mcnp-io" }
+vr-tools = { path = "../../crates/vr-tools" }
+linalg = { path = "../../crates/linalg", default-features = false }
+
+[features]
+default = []
+
+[package.metadata.wasm-pack.profile.release]
+# The bundled wasm-opt does not enable bulk-memory by default, but recent Rust
+# can emit bulk-memory ops. Disable optimization for now; the module still runs.
+wasm-opt = false
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false

@@ -23,6 +23,10 @@ pub struct Reaction {
     pub target: Option<String>,
     /// Q value [eV].
     pub q: f64,
+    /// Branching ratio for this reaction entry. Multiple <reaction> entries
+    /// with the same `kind` share a single loss term; each entry adds its own
+    /// gain term scaled by this ratio (OpenMC chain.py:714-729).
+    pub branching_ratio: f64,
 }
 
 /// Fission product yields at one incident energy.
@@ -48,10 +52,18 @@ pub struct ChainNuclide {
 
 impl ChainNuclide {
     /// Decay constant λ = ln(2)/T½ [1/s]; stable nuclides give 0.
-    pub fn decay_constant(&self) -> f64 {
-        self.half_life
-            .map(|t| std::f64::consts::LN_2 / t)
-            .unwrap_or(0.0)
+    ///
+    /// Errors if a half-life is zero, negative, or non-finite, which would
+    /// otherwise produce an infinite or NaN decay constant.
+    pub fn decay_constant(&self) -> Result<f64, Error> {
+        match self.half_life {
+            None => Ok(0.0),
+            Some(t) if t > 0.0 && t.is_finite() => Ok(std::f64::consts::LN_2 / t),
+            Some(t) => Err(Error::InvalidHalfLife {
+                name: self.name.clone(),
+                value: t,
+            }),
+        }
     }
 }
 
@@ -66,6 +78,11 @@ pub enum Error {
         context: &'static str,
     },
     BadStructure(String),
+    /// Half-life is zero, negative, or non-finite.
+    InvalidHalfLife {
+        name: String,
+        value: f64,
+    },
 }
 
 impl fmt::Display for Error {
@@ -77,6 +94,9 @@ impl fmt::Display for Error {
                 write!(f, "unknown nuclide `{name}` ({context})")
             }
             Error::BadStructure(m) => write!(f, "malformed chain: {m}"),
+            Error::InvalidHalfLife { name, value } => {
+                write!(f, "invalid half-life for `{name}`: {value}")
+            }
         }
     }
 }
@@ -148,6 +168,10 @@ impl Chain {
                             kind: attr(child, "type")?.to_string(),
                             target,
                             q: parse_f64("Q", opt_attr(child, "Q").unwrap_or("0.0"))?,
+                            branching_ratio: parse_f64(
+                                "branching_ratio",
+                                opt_attr(child, "branching_ratio").unwrap_or("1.0"),
+                            )?,
                         });
                     }
                     "neutron_fission_yields" => {
@@ -167,7 +191,14 @@ impl Chain {
     }
 
     /// Build a chain directly from nuclides (index computed here).
-    pub fn from_nuclides(nuclides: Vec<ChainNuclide>) -> Result<Self, Error> {
+    ///
+    /// Decay branching ratios are renormalized to sum to 1.0 if needed, by
+    /// adjusting the largest branch (matching OpenMC chain.py:426-433).
+    pub fn from_nuclides(mut nuclides: Vec<ChainNuclide>) -> Result<Self, Error> {
+        for nuc in &mut nuclides {
+            normalize_decay_branching_ratios(&mut nuc.decay_modes);
+        }
+
         let mut chain = Chain {
             nuclides,
             index: BTreeMap::new(),
@@ -265,4 +296,24 @@ fn parse_f64(context: &'static str, text: &str) -> Result<f64, Error> {
     text.trim()
         .parse::<f64>()
         .map_err(|_| Error::Xml(format!("bad float for {context}: `{text}`")))
+}
+
+/// Renormalize decay branching ratios to sum to 1.0 by adjusting the largest
+/// branch, mirroring OpenMC chain.py:426-433. Empty mode lists are left alone.
+fn normalize_decay_branching_ratios(modes: &mut [DecayMode]) {
+    if modes.is_empty() {
+        return;
+    }
+    let sum: f64 = modes.iter().map(|m| m.branching_ratio).sum();
+    if (sum - 1.0).abs() <= 1e-9 {
+        return;
+    }
+    let max_idx = modes.iter().enumerate().fold(0, |best, (i, m)| {
+        if m.branching_ratio > modes[best].branching_ratio {
+            i
+        } else {
+            best
+        }
+    });
+    modes[max_idx].branching_ratio -= sum - 1.0;
 }

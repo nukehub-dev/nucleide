@@ -8,10 +8,12 @@ assumes you have already installed the project (see
 
 1. [Getting started](getting-started.md) — install Nucleide and verify the
    Rust and Python surfaces.
-2. [Parse MCNP output](parse-mcnp-output.md) — read common MCNP output files.
-3. [Build materials](build-materials.md) — build, mix, and serialize materials.
-4. [Run depletion](run-depletion.md) — run a CRAM depletion solve.
-5. [Enrichment cascade](enrichment-cascade.md) — solve a multicomponent
+2. [Interactive tutorials](interactive/index.mdx) — run Nucleide in your browser,
+   no installation required.
+3. [Parse MCNP output](parse-mcnp-output.md) — read common MCNP output files.
+4. [Build materials](build-materials.md) — build, mix, and serialize materials.
+5. [Run depletion](run-depletion.md) — run a CRAM depletion solve.
+6. [Enrichment cascade](enrichment-cascade.md) — solve a multicomponent
    enrichment cascade.
 
 ## Finding more examples

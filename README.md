@@ -119,5 +119,4 @@ DOE/PNNL Materials Compendium — are vendored directly from PyNE; see
 
 ## License
 
-BSD-2-Clause — chosen for friction-free adoption alongside permissively
-licensed ecosystem tools.
+[BSD-2-Clause](LICENSE).

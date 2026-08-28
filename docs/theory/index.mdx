@@ -1,0 +1,53 @@
+---
+title: Theory
+description: Physics, mathematics, and algorithms behind Nucleide's core capabilities.
+sidebar:
+  order: 0
+---
+
+These pages explain the physics, mathematics, and algorithms that Nucleide
+implements. They are written for analysts and contributors who want to
+understand *why* the code behaves the way it does, not just *how* to call it.
+
+## When to read each page
+
+| Page | Read if you are... |
+| --- | --- |
+| [Depletion](depletion/) | Solving burnup chains and want to understand the Bateman equation, transmutation matrices, and CRAM. |
+| [Enrichment cascades](enrichment/) | Configuring multicomponent enrichment cascades and need the MARC/SWU derivation. |
+| [Variance reduction](variance-reduction/) | Generating MAGIC weight windows or sampling mesh-based sources. |
+| [Nuclear data](nuclear-data/) | Looking up nuclide IDs, masses, half-lives, or converting between code-name dialects. |
+
+<Mermaid
+  chart={`
+flowchart LR
+    A[Depletion] --> B[Bateman equation]
+    A --> C[CRAM]
+    D[Enrichment] --> E[MARC cascades]
+    D --> F[SWU]
+    G[Variance reduction] --> H[MAGIC weight windows]
+    G --> I[Alias-table sampling]
+    J[Nuclear data] --> K[NuclideId layout]
+    J --> L["AME2020 / ENDF/B-VIII.0"]
+  `.trim()}
+/>
+
+<Callout type="note" title="Relationship to tutorials">
+  The theory pages are companions to the [tutorials](../tutorials/). A tutorial
+  shows you how to run a calculation; the matching theory page explains the
+  equations and assumptions behind it.
+</Callout>
+
+## Structure of a theory page
+
+Each page follows the same pattern:
+
+1. **Overview** — what problem the method solves.
+2. **Mathematical details** — the governing equations and symbols.
+3. **Algorithm** — how Nucleide turns the math into code.
+4. **Worked example** — a small hand-verified calculation.
+5. **Assumptions and limitations** — explicit list of what is and is not
+   handled.
+6. **Related work beyond Nucleide** — adjacent methods in PyNE, OpenMC, and
+   the literature that Nucleide does not (yet) implement.
+7. **References** — papers and data sources.

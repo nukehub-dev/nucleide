@@ -1,0 +1,36 @@
+---
+import { getCollection, render } from "astro:content";
+import type { GetStaticPaths, InferGetStaticPropsType } from "astro";
+import DocLayout from "../components/DocLayout.astro";
+import "katex/dist/katex.min.css";
+import { SITE } from "../data/site";
+import { navItems } from "../data/nav";
+import { footerColumns, footerLegal } from "../data/footer";
+
+export const getStaticPaths = (async () => {
+  const docs = await getCollection("docs", (entry) => !entry.data.draft);
+
+  return docs.map((doc) => {
+    const slug = doc.id.replace(/\.mdx?$/i, "");
+    return {
+      params: { slug: slug === "index" ? undefined : slug },
+      props: { doc, allDocs: docs },
+    };
+  });
+}) satisfies GetStaticPaths;
+
+type Props = InferGetStaticPropsType<typeof getStaticPaths>;
+
+const { doc, allDocs } = Astro.props;
+const { headings } = await render(doc);
+---
+
+<DocLayout
+  doc={doc}
+  headings={headings}
+  allDocs={allDocs}
+  site={SITE}
+  navItems={navItems}
+  footerColumns={footerColumns}
+  footerLegal={footerLegal}
+/>

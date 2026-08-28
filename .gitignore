@@ -1,3 +1,12 @@
+# Website
+/website/node_modules/
+/website/.astro/
+/website/dist/
+/website/src/content/docs/
+/website/public/wasm/
+/website/playwright-report/
+/website/test-results/
+
 # Local research notes (never committed, never referenced by committed files)
 .research/
 

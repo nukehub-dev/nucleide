@@ -79,41 +79,37 @@ fn parse_masses(tsv: &str) -> BTreeMap<u32, f64> {
 }
 
 /// Parse `GNDS name \t fraction` rows into nucid-keyed fractions.
+///
+/// Malformed rows are skipped silently, matching [`parse_masses`]; the
+/// embedded files are compile-time constants and a corrupt row should not
+/// panic library consumers.
 fn parse_abundances(tsv: &str) -> BTreeMap<u32, f64> {
     tsv.lines()
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(|line| {
+        .filter_map(|line| {
             let mut cols = line.split('\t');
-            let name = cols.next().expect("non-empty line");
-            let fraction: f64 = cols
-                .next()
-                .expect("fraction column")
-                .parse()
-                .expect("valid fraction");
-            let nucid = NuclideId::from_name(name).unwrap_or_else(|e| {
-                panic!("invalid nuclide name `{name}` in abundance table: {e}")
-            });
-            (nucid.nucid(), fraction)
+            let name = cols.next()?;
+            let fraction: f64 = cols.next()?.parse().ok()?;
+            let nucid = NuclideId::from_name(name).ok()?;
+            Some((nucid.nucid(), fraction))
         })
         .collect()
 }
 
 /// Parse `GNDS name \t half_life_seconds` rows into nucid-keyed seconds.
+///
+/// Malformed rows are skipped silently, matching [`parse_masses`]; the
+/// embedded files are compile-time constants and a corrupt row should not
+/// panic library consumers.
 fn parse_half_lives(tsv: &str) -> BTreeMap<u32, f64> {
     tsv.lines()
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(|line| {
+        .filter_map(|line| {
             let mut cols = line.split('\t');
-            let name = cols.next().expect("non-empty line");
-            let seconds: f64 = cols
-                .next()
-                .expect("half-life column")
-                .parse()
-                .expect("valid half-life");
-            let nucid = NuclideId::from_name(name).unwrap_or_else(|e| {
-                panic!("invalid nuclide name `{name}` in half-life table: {e}")
-            });
-            (nucid.nucid(), seconds)
+            let name = cols.next()?;
+            let seconds: f64 = cols.next()?.parse().ok()?;
+            let nucid = NuclideId::from_name(name).ok()?;
+            Some((nucid.nucid(), seconds))
         })
         .collect()
 }

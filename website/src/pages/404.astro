@@ -1,0 +1,10 @@
+---
+import BaseLayout from "@nukehub/docs-kit/components/layout/BaseLayout.astro";
+import NotFound from "@nukehub/docs-kit/components/docs/NotFound.astro";
+import { SITE } from "../data/site";
+import { navItems } from "../data/nav";
+---
+
+<BaseLayout site={SITE} navItems={navItems} title={`404 — Page not found | ${SITE.name}`}>
+  <NotFound base={SITE.base} />
+</BaseLayout>

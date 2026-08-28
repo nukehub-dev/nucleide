@@ -1,0 +1,71 @@
+---
+title: Architecture overview
+description: High-level system overview and layer boundaries for the Nucleide workspace.
+sidebar:
+  order: 1
+---
+
+Nucleide is a Rust workspace with Python and browser facades. The architecture is
+intentionally simple: each crate owns one capability area, and the bindings are
+thin re-export layers.
+
+<Mermaid
+  chart={`
+flowchart TB
+    subgraph Users
+        Py[Python notebooks & scripts]
+        Web[Browser tutorials]
+    end
+
+    Py --> Pkg[nucleide python package]
+    Web --> WASM[bindings/wasm]
+
+    Pkg --> PyO3[bindings/python]
+    PyO3 --> Crates[Workspace crates crates/*]
+    WASM --> Crates
+
+    Crates --> Linalg[linalg]
+
+    style Crates fill:#f9f,stroke:#333
+    style PyO3 fill:#bbf,stroke:#333
+    style WASM fill:#bfb,stroke:#333
+  `}
+/>
+
+## Layers
+
+- **User interfaces** — `python/nucleide/` typed stubs and the Astro + WASM
+  website in `website/`.
+- **Bindings** — `bindings/python` (PyO3 → `nucleide._internal`) and
+  `bindings/wasm` (wasm-bindgen for browser tutorials).
+- **Capability crates** — `crates/*` parsers, materials, depletion, enrichment,
+  variance reduction, etc.
+- **Linear-algebra facade** — `linalg` isolates the numeric backend choice so
+  other crates do not depend on it directly.
+
+## Design principles
+
+- **Memory safety first.** Core logic is Rust; Python and the browser stay the
+  user-facing APIs.
+- **One crate per concern.** Parsers, materials, depletion, enrichment, and
+  variance reduction each have their own crate and test suite.
+- **Layering is enforced.** `bindings/python` and `bindings/wasm` depend on
+  workspace crates; workspace crates never depend on bindings, Python, or the
+  browser.
+- **Parser parity.** Where a reader reproduces legacy output byte-for-byte,
+  that behavior is intentional and protected by golden-byte fixtures.
+- `enrichment` stays independent of `material` by design.
+
+## Request/data flow
+
+1. User calls `nucleide.read_*`, `nucleide.to_xml`, or constructs a `Nuclide`
+   from Python; or clicks a button in an interactive tutorial.
+2. The facade forwards to `nucleide._internal` or the WASM module.
+3. The Rust binding calls into the relevant workspace crate.
+4. The crate parses, computes, and returns a Rust value that the binding
+   converts back to Python or JavaScript.
+
+## See also
+
+- [Crate responsibilities](../crate-responsibilities.md) for crate-level details.
+- [Crate overview](../../reference/crate-overview.md) for a one-line summary of every crate.

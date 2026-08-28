@@ -804,7 +804,7 @@ fn split_rates(rates: &RateMap, chain: &depletion::Chain) -> PyResult<depletion:
         let idx = chain
             .index_of(nuc)
             .ok_or_else(|| PyValueError::new_err(format!("rate for unknown nuclide `{nuc}`")))?;
-        out.insert((idx, rx.to_string()), *v);
+        out.entry(idx).or_default().insert(rx.to_string(), *v);
     }
     Ok(out)
 }
@@ -1285,6 +1285,14 @@ fn activity(comp: BTreeMap<String, f64>) -> PyResult<BTreeMap<String, f64>> {
     Ok(out)
 }
 
+/// Serialize a composition dictionary to a `<material>` XML fragment.
+#[pyfunction]
+fn to_xml(comp: BTreeMap<String, f64>, name: &str, density: f64, units: &str) -> PyResult<String> {
+    let mat = comp_to_material(comp)?;
+    mat.to_xml(name, density, units)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
 /// Enrichment cascade with numeric multicomponent solving.
 #[pyclass(name = "Cascade")]
 struct PyCascade {
@@ -1465,6 +1473,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(read_inp, m)?)?;
     m.add_function(wrap_pyfunction!(from_formula, m)?)?;
     m.add_function(wrap_pyfunction!(activity, m)?)?;
+    m.add_function(wrap_pyfunction!(to_xml, m)?)?;
     m.add_class::<PyNuclide>()?;
     m.add_class::<PyParticle>()?;
     m.add_class::<PyXsdir>()?;

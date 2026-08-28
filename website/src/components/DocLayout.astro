@@ -1,0 +1,118 @@
+---
+import type { MarkdownHeading } from "astro";
+import type { CollectionEntry } from "astro:content";
+import { render } from "astro:content";
+import type { SiteConfig } from "@nukehub/docs-kit/lib/site";
+import type { NavItem } from "@nukehub/docs-kit/lib/nav";
+import type { FooterColumn, FooterLink } from "@nukehub/docs-kit/lib/footer";
+import BaseLayout from "@nukehub/docs-kit/components/layout/BaseLayout.astro";
+import Header from "@nukehub/docs-kit/components/layout/Header.astro";
+import { Footer } from "@nukehub/docs-kit/components/layout/Footer";
+import { Sidebar } from "@nukehub/docs-kit/components/layout/Sidebar";
+import { CommandPaletteManager } from "@nukehub/docs-kit/components/shared/CommandPaletteManager";
+import { ScrollProgress } from "@nukehub/docs-kit/components/shared/ScrollProgress";
+import { TableOfContents } from "@nukehub/docs-kit/components/docs/TableOfContents";
+import Pagination from "@nukehub/docs-kit/components/docs/Pagination.astro";
+import EditLink from "@nukehub/docs-kit/components/docs/EditLink.astro";
+import Callout from "@nukehub/docs-kit/components/mdx/shortcodes/Callout.astro";
+import Tabs from "@nukehub/docs-kit/components/mdx/Tabs.astro";
+import TabItem from "@nukehub/docs-kit/components/mdx/TabItem.astro";
+import FileTree from "@nukehub/docs-kit/components/mdx/shortcodes/FileTree.astro";
+import Mermaid from "@nukehub/docs-kit/components/mdx/shortcodes/Mermaid.astro";
+import Steps from "@nukehub/docs-kit/components/mdx/shortcodes/Steps.astro";
+import Step from "@nukehub/docs-kit/components/mdx/shortcodes/Step.astro";
+import YouTube from "@nukehub/docs-kit/components/mdx/shortcodes/YouTube.astro";
+import Odysee from "@nukehub/docs-kit/components/mdx/shortcodes/Odysee.astro";
+import ImageFigure from "@nukehub/docs-kit/components/mdx/shortcodes/ImageFigure.astro";
+import DataTable from "@nukehub/docs-kit/components/mdx/shortcodes/DataTable.astro";
+import Plotly from "@nukehub/docs-kit/components/mdx/shortcodes/Plotly.astro";
+import WasmPlayground from "./WasmPlayground.astro";
+import InteractiveDemo from "./interactive/InteractiveDemo.astro";
+import { buildSidebar, getFlatPages, getPrevNext } from "../lib/docs";
+
+export interface Props {
+  doc: CollectionEntry<"docs">;
+  headings: MarkdownHeading[];
+  allDocs: CollectionEntry<"docs">[];
+  site: SiteConfig;
+  navItems: NavItem[];
+  footerColumns: FooterColumn[];
+  footerLegal: FooterLink[];
+}
+
+const { doc, headings, allDocs, site, navItems, footerColumns, footerLegal } = Astro.props;
+const { Content } = await render(doc);
+
+const sections = buildSidebar(allDocs);
+const pages = getFlatPages(allDocs, navItems);
+const { prev, next } = getPrevNext(allDocs, doc.id.replace(/\.mdx?$/i, ""));
+const currentSlug = doc.id.replace(/\.mdx?$/i, "");
+const tocHeadings = headings.filter((h) => h.depth === 2 || h.depth === 3);
+
+const title = `${doc.data.title} | ${site.name}`;
+const description = doc.data.description;
+---
+
+<BaseLayout site={site} navItems={navItems} title={title} description={description}>
+  <Header base={site.base} site={site} navItems={navItems} />
+  <ScrollProgress client:load />
+  <CommandPaletteManager pages={pages} base={site.base} client:load />
+
+  <div class="mx-auto flex w-full max-w-[90rem] flex-1 px-4 sm:px-6 lg:px-8">
+    <div class="hidden lg:block lg:w-80 lg:flex-shrink-0">
+      <Sidebar sections={sections} currentSlug={currentSlug} base={site.base} client:load />
+    </div>
+
+    <main class="min-w-0 flex-1 px-0 py-8 lg:px-10">
+      <article class="prose prose-sm sm:prose-base dark:prose-invert max-w-none">
+        <h1 id="_top">{doc.data.title}</h1>
+        {
+          doc.data.description && (
+            <p class="lead text-lg text-muted-foreground">{doc.data.description}</p>
+          )
+        }
+        <Content
+          components={{
+            Callout,
+            Tabs,
+            TabItem,
+            FileTree,
+            Mermaid,
+            Steps,
+            Step,
+            YouTube,
+            Odysee,
+            ImageFigure,
+            DataTable,
+            Plotly,
+            WasmPlayground,
+            InteractiveDemo,
+          }}
+        />
+      </article>
+
+      <div class="mt-16 border-t border-border/50 pt-8">
+        <div class="mb-8">
+          <EditLink doc={doc} site={site} />
+        </div>
+        <Pagination prev={prev} next={next} base={site.base} />
+      </div>
+    </main>
+
+    {
+      tocHeadings.length > 0 && (
+        <aside class="hidden w-56 flex-shrink-0 pl-4 xl:block">
+          <div class="sticky top-24 max-h-[calc(100dvh-8rem)] overflow-y-auto">
+            <TableOfContents headings={tocHeadings} client:load />
+          </div>
+        </aside>
+      )
+    }
+  </div>
+
+  <div class="lg:hidden">
+    <Sidebar sections={sections} currentSlug={currentSlug} base={site.base} client:load />
+  </div>
+
+  <Footer base={site.base} site={site} footerColumns={footerColumns} footerLegal={footerLegal} />
+</BaseLayout>

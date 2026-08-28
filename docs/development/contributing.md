@@ -10,7 +10,7 @@ conventions, and checks expected for code changes.
 2. Open an issue or discussion if your change is large, architectural, or
    introduces new dependencies.
 3. Make sure you can run the local development stack:
-   [Local development](local-dev.md).
+   [Local development](../local-dev.md).
 
 ## Development workflow
 

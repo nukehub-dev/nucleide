@@ -1,0 +1,275 @@
+---
+title: Variance reduction
+description: MAGIC weight windows and alias-table source sampling in Nucleide.
+sidebar:
+  order: 3
+---
+
+Nucleide provides two variance-reduction utilities built on MCNP mesh tallies:
+**MAGIC weight-window generation** and **mesh-based source sampling** with alias
+tables.
+
+## MAGIC weight windows
+
+MAGIC converts a forward mesh tally into weight-window lower bounds. The
+algorithm is simple and deterministic:
+
+For each energy group $g$, find the maximum flux over all volume elements:
+
+$$
+\Phi_g^{\max} = \max_{v} \Phi_{v,g}.
+$$
+
+Then the weight-window lower bound for volume element $v$ and group $g$ is
+
+$$
+\text{ww}_{v,g} =
+\begin{cases}
+\text{null\_value} & \text{if } \varepsilon_{v,g} > \tau, \\[6pt]
+\dfrac{\Phi_{v,g}}{2\,\Phi_g^{\max}} & \text{otherwise},
+\end{cases}
+$$
+
+where $\varepsilon_{v,g}$ is the relative error of the tally and $\tau$ is the
+error tolerance. The factor of $2$ normalizes the peak-flux voxel to a lower
+bound of $0.5$; MAGIC is intended to be iterated so the weight windows refine
+over successive forward runs (Cooper & Larsen 2001).
+
+<Callout type="info" title="Where this lives in the code">
+  MAGIC is implemented in `crates/vr-tools/src/magic.rs`. The public functions
+  are `magic()` for energy-integrated totals and `magic_with()` for explicit
+  array selection and parameters.
+</Callout>
+
+### Total vs. per-group mode
+
+<DataTable
+  caption="Comparison of MAGIC operating modes."
+  columns={[
+    { key: "aspect", header: "Aspect" },
+    { key: "total", header: "Total" },
+    { key: "per_group", header: "Per-group" },
+  ]}
+  data={[
+    {
+      aspect: "Source arrays",
+      total: "`total_result`, `total_rel_error`",
+      per_group: "`result`, `rel_error`",
+    },
+    {
+      aspect: "Lower bounds per voxel",
+      total: "1",
+      per_group: "1 per energy group",
+    },
+    {
+      aspect: "Output tag",
+      total: "`ww_n` / `ww_p`",
+      per_group: "`ww_n` / `ww_p`",
+    },
+    {
+      aspect: "Energy bounds tag",
+      total: "`n_e_upper_bounds` / `p_e_upper_bounds` (single upper bound)",
+      per_group: "`n_e_upper_bounds` / `p_e_upper_bounds` (`e_bounds[1:]`)",
+    },
+  ]}
+/>
+
+### Parameters
+
+<DataTable
+  caption="MAGIC tuning parameters and their defaults."
+  columns={[
+    { key: "param", header: "Parameter" },
+    { key: "default", header: "Default" },
+    { key: "meaning", header: "Meaning" },
+  ]}
+  data={[
+    {
+      param: "tolerance τ",
+      default: "0.5",
+      meaning: "Relative error above which a bound is nulled.",
+    },
+    {
+      param: "null_value",
+      default: "0.0",
+      meaning: "Value assigned to nulled elements.",
+    },
+  ]}
+/>
+
+### Worked example
+
+Consider a tally with four volume elements and total fluxes
+$\Phi = [1.2,\, 3.3,\, 1.6,\, 1.7]$ and relative errors all below the default
+tolerance of $0.5$.
+
+<Steps>
+  <Step>
+    Find the group maximum: $\Phi^{\max} = 3.3$.
+  </Step>
+  <Step>
+    Compute the scale factor: $1 / (2 \times 3.3) = 1 / 6.6$.
+  </Step>
+  <Step>
+    The lower bounds are
+    $\text{ww} = [1.2/6.6,\, 3.3/6.6,\, 1.6/6.6,\, 1.7/6.6] =
+    [0.182,\, 0.5,\, 0.242,\, 0.258]$.
+  </Step>
+</Steps>
+
+If the tolerance were tightened to $0.15$, the element with error $0.19$ would
+be nulled to `null_value` instead.
+
+<Plotly
+  data={[
+    {
+      x: ["Voxel 1", "Voxel 2", "Voxel 3", "Voxel 4"],
+      y: [1.2, 3.3, 1.6, 1.7],
+      type: "bar",
+      name: "Flux Φ",
+    },
+    {
+      x: ["Voxel 1", "Voxel 2", "Voxel 3", "Voxel 4"],
+      y: [0.182, 0.5, 0.242, 0.258],
+      type: "bar",
+      name: "MAGIC lower bound",
+    },
+  ]}
+  layout={{
+    title: "MAGIC worked example: fluxes and lower bounds",
+    xaxis: { title: "Volume element" },
+    yaxis: { title: "Value" },
+    barmode: "group",
+  }}
+/>
+
+<Mermaid
+  chart={`
+flowchart LR
+    A["MCNP meshtal"] --> B["Read flux and rel_error"]
+    B --> C{"error exceeds tolerance?"}
+    C -->|Yes| D["Assign null_value"]
+    C -->|No| E["flux / (2 * max_flux)"]
+    D --> F["Write ww_n tag"]
+    E --> F
+  `.trim()}
+/>
+
+## Alias-table source sampling
+
+The `MeshSourceSampler` uses a **Walker/Vose alias table** to draw particle
+birth voxels in $O(1)$ time per sample after an $O(n)$ construction step.
+
+### Alias-table construction
+
+Given a discrete probability mass function $p_i$ over $n$ bins:
+
+1. Normalize so that $\sum_i p_i = 1$.
+2. Scale each probability by $n$, giving $n \bar{p}_i$.
+3. Partition bins into "small" ($n\bar{p}_i < 1$) and "large"
+   ($n\bar{p}_i \geq 1$).
+4. Pair a small bin $a$ with a large bin $g$:
+   - Set $\text{prob}[a] = n\bar{p}_a$.
+   - Set $\text{alias}[a] = g$.
+   - Reduce the large bin's surplus:
+     $n\bar{p}_g \leftarrow n\bar{p}_g + n\bar{p}_a - 1$.
+5. Drain any remaining bins with $\text{prob} = 1$.
+
+### Sampling
+
+To draw one index:
+
+<Steps>
+  <Step>
+    Generate $r_1, r_2 \in [0, 1)$.
+  </Step>
+  <Step>
+    Pick column $i = \lfloor n \, r_1 \rfloor$.
+  </Step>
+  <Step>
+    Return $i$ if $r_2 < \text{prob}[i]$; otherwise return $\text{alias}[i]$.
+  </Step>
+</Steps>
+
+### Mesh source sampling modes
+
+<DataTable
+  caption="MeshSourceSampler bias modes."
+  columns={[
+    { key: "mode", header: "Mode" },
+    { key: "pdf", header: "Sampling PDF" },
+    { key: "weight", header: "Birth weight" },
+  ]}
+  data={[
+    { mode: "Analog", pdf: "∝ flux × volume", weight: "1.0" },
+    { mode: "Uniform", pdf: "∝ volume", weight: "analog_pdf / uniform_pdf" },
+    { mode: "User", pdf: "∝ user_density × volume", weight: "analog_pdf / user_pdf" },
+  ]}
+/>
+
+<Callout type="warning" title="Voxel-level only">
+  `MeshSourceSampler` selects a voxel uniformly within the chosen cell. Sub-voxel
+  or fractional-cell sampling modes are not implemented.
+</Callout>
+
+## Assumptions and limitations
+
+- **MAGIC requires positive flux somewhere**: if every value in an energy group
+  is $\leq 0$, the normalization divides by zero and `Error::ZeroMaxFlux` is
+  returned.
+- **MAGIC rejects non-finite flux or error values**: `NaN` or infinite entries
+  in the input arrays produce `Error::NonFiniteTally` rather than poisoned
+  lower bounds.
+- **Mesh source sampling rejects negative values**: negative `total_result` or
+  `user_pdf` entries produce `Error::NegativeTally`; zero values remain valid
+  zero-probability bins.
+- **Error comparison is strict**: a relative error exactly equal to the
+  tolerance keeps its scaled value; only errors *greater* than $\tau$ are
+  nulled.
+- **Alias tables are exact for the given PDF**: the construction reproduces the
+  input probabilities to machine precision.
+- **Voxel resolution**: birth coordinates are returned as integer voxel indices;
+  users must sample a uniform point inside the voxel themselves if sub-voxel
+  positions are needed.
+
+## Related work beyond Nucleide
+
+Adjacent capabilities found in PyNE, OpenMC, and the literature that Nucleide
+does not implement:
+
+- **MAGIC iteration**: the published method iterates — each forward run
+  refines the windows for the next — and derives upper bounds from a fixed
+  ratio to the lower bounds; Nucleide performs a single lower-bound pass.
+- **FW-CADIS and adjoint-based global variance reduction**: hybrid
+  deterministic/Monte Carlo methods that build weight windows from an adjoint
+  importance solve; see Wagner et al. (2014) in the references.
+- **Built-in generators in OpenMC**: `WeightWindows` and
+  `WeightWindowGenerator` (MAGIC-like and FW-CADIS modes, updated on the fly
+  during transport), including an internal random-ray adjoint solver.
+- **Source biasing**: OpenMC supports energy/space/angle biasing of
+  independent sources; PyNE's mesh sampler additionally supports sub-voxel
+  sampling modes. Nucleide's `MeshSourceSampler` is voxel-level and
+  energy-integrated.
+
+## References
+
+1. M. A. Cooper and E. W. Larsen, "Automated weight windows for global Monte
+   Carlo particle transport calculations," *Nuclear Science and Engineering*,
+   **137**(1), 1–13 (2001). DOI:
+   [10.13182/NSE00-34](https://doi.org/10.13182/NSE00-34).
+2. A. Davis and A. Turner, "Comparison of global variance reduction techniques
+   for Monte Carlo radiation transport simulations of ITER," *Fusion
+   Engineering and Design*, **86**, 2698–2700 (2011). DOI:
+   [10.1016/j.fusengdes.2011.01.059](https://doi.org/10.1016/j.fusengdes.2011.01.059).
+3. J. C. Wagner, D. E. Peplow, and S. W. Mosher, "FW-CADIS method for global
+   and regional variance reduction of Monte Carlo radiation transport
+   calculations," *Nuclear Science and Engineering*, **176**(1), 37–57 (2014).
+   DOI: [10.13182/NSE12-33](https://doi.org/10.13182/NSE12-33).
+4. A. J. Walker, "An efficient method for generating discrete random variables
+   with general distributions," *ACM Transactions on Mathematical Software*,
+   **3**(3), 253–256 (1977).
+5. M. D. Vose, "A linear algorithm for generating random numbers with a given
+   distribution," *IEEE Transactions on Software Engineering*, **17**(9),
+   972–975 (1991).
+6. Nucleide implementation: `crates/vr-tools/src/magic.rs`,
+   `crates/vr-tools/src/sampling.rs`.

@@ -46,6 +46,7 @@ from nucleide._internal import (
     rxname_id,
     rxname_mt,
     rxname_name,
+    to_xml,
     version,
     write_ssw,
 )
@@ -96,5 +97,6 @@ __all__ = [
     "rxname_id",
     "rxname_mt",
     "rxname_name",
+    "to_xml",
     "version",
 ]

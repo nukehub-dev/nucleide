@@ -293,6 +293,7 @@ impl TrackData {
 pub struct SurfSrc {
     pub path: Option<String>,
     pub header: SurfSrcHeader,
+    data: Vec<u8>,
 }
 
 impl SurfSrc {
@@ -301,26 +302,31 @@ impl SurfSrc {
         let path = path.as_ref();
         let data =
             std::fs::read(path).map_err(|e| Error::Io(format!("{}: {}", path.display(), e)))?;
-        let mut cursor = std::io::Cursor::new(data);
+        Self::from_bytes(data).map(|mut s| {
+            s.path = Some(path.display().to_string());
+            s
+        })
+    }
+
+    /// Parse a surface-source file from its raw bytes.
+    pub fn from_bytes(data: Vec<u8>) -> Result<Self, Error> {
+        let mut cursor = std::io::Cursor::new(&data);
         let header = read_header(&mut cursor)?;
         Ok(SurfSrc {
-            path: Some(path.display().to_string()),
+            path: None,
             header,
+            data,
         })
     }
 
     /// Read all track records following the header.
     pub fn read_tracklist(&self) -> Result<Vec<TrackData>, Error> {
-        let path = self
-            .path
-            .as_deref()
-            .ok_or_else(|| Error::Io("no path".into()))?;
-        let mut f = std::fs::File::open(path).map_err(|e| Error::Io(e.to_string()))?;
-        skip_header_records(&mut f, &self.header)?;
+        let mut cursor = std::io::Cursor::new(&self.data);
+        skip_header_records(&mut cursor, &self.header)?;
         let ncrd_abs = self.header.ncrd.unsigned_abs() as usize;
         let mut tracks = Vec::with_capacity(self.header.nrss.max(0) as usize);
         for _ in 0..self.header.nrss {
-            let mut rec = read_record(&mut f)?;
+            let mut rec = read_record(&mut cursor)?;
             let record = rec.get_f64_n(ncrd_abs)?;
             tracks.push(build_track(record));
         }

@@ -119,6 +119,10 @@ Install once before making changes:
   `pip install maturin pytest pytest-cov ruff mypy`
 - The compiled extension must be rebuilt (`maturin develop`) after any Rust
   change before running Python tests.
+- **WASM** (only for interactive tutorials):
+  `rustup target add wasm32-unknown-unknown` and `cargo install wasm-pack`.
+- **Website E2E tests** (only when touching interactive demos):
+  `cd website && npx playwright install chromium` after `npm install`.
 
 ## Before committing
 
@@ -133,6 +137,7 @@ maturin develop                              # rebuild Python extension
 pytest tests/
 ruff format --check python tests && ruff check python tests
 mypy                                         # strict; stubs in *.pyi
+cd website && npm run build:wasm && npm run check && npm run build && npm run test:e2e:ci
 ```
 
 Notes:
@@ -158,6 +163,8 @@ High-level layout; see the Child NAD Index below for domain-specific details.
   `enrichment`, `depletion`, `linalg`.
 - `bindings/python/` — PyO3 crate exposing `nucleide._internal`; thin facade,
   no business logic.
+- `bindings/wasm/` — `wasm-bindgen` crate that lets tutorials run Nucleide in
+  the browser without Python.
 - `python/nucleide/` — typed pure-Python package surface (`.pyi` stubs +
   `py.typed`); re-exports only.
 - `fixtures/` — golden-byte test data (see `fixtures/README.md`).
@@ -169,13 +176,22 @@ High-level layout; see the Child NAD Index below for domain-specific details.
 
 The `docs/` tree owns durable user and contributor documentation.
 
-- Audience-based layout: `tutorials/`, `reference/`, `development/`,
-  `architecture/`, `plan/`.
+- Audience-based layout: `tutorials/`, `reference/`, `development/`, `architecture/`, `plan/`.
 - Index and maintenance rules live in `docs/README.md`.
 - Internal links must be relative and must not duplicate details already in
   `README.md`, `AGENTS.md`, generated API stubs, or fixture READMEs.
 - Docs changes trigger `.github/workflows/docs.yml` for markdown lint and link
   checking.
+
+The `website/` directory is the Astro-based documentation website. It consumes
+`@nukehub/docs-kit`, pulls content from `../docs/`, and deploys to GitHub Pages via
+`.github/workflows/docs-deploy.yml`. Keep site branding and routing in
+`website/src/data/` and `website/src/pages/`; shared UI lives in the kit.
+
+Interactive tutorials use the WASM build. Run `npm run build:wasm` from
+`website/` to regenerate `website/public/wasm/` (git-ignored) after any Rust
+change that affects `bindings/wasm`. Changes that affect interactive demos
+must pass the E2E smoke tests (`npm run test:e2e:ci` from `website/`).
 
 ## Release workflow
 
@@ -212,6 +228,8 @@ Use `scripts/bump-version.sh X.Y.Z` to bump the workspace version and stamp
 
 ## Child NAD Index
 
-No children yet. Create a child `AGENTS.md` under `crates/<name>/` or another
-folder once it grows its own durable contracts (e.g. fixture policy details,
-parser-parity rules), and list it here.
+- `website/AGENTS.md` — website build, preview, sync, and E2E test workflow.
+
+Create additional child `AGENTS.md` files under `crates/<name>/` or other
+folders once they grow their own durable contracts (e.g. fixture policy
+details, parser-parity rules), and list them here.

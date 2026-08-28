@@ -1,0 +1,13 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "baseUrl": ".",
+    "paths": {
+      "@nukehub/docs-kit": ["node_modules/@nukehub/docs-kit/src/index.ts"],
+      "@nukehub/docs-kit/*": ["node_modules/@nukehub/docs-kit/src/*"]
+    }
+  },
+  "include": ["src/**/*", "*.mjs"]
+}
