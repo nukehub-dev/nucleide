@@ -1,4 +1,8 @@
-# Parse MCNP Output
+---
+title: Parse MCNP Output
+sidebar:
+  order: 3
+---
 
 Nucleide reads several common MCNP-family files without running MCNP itself.
 This tutorial shows the Python API; equivalent Rust types live in the `mcnp-io`

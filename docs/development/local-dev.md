@@ -1,4 +1,8 @@
-# Local Development
+---
+title: Local Development
+sidebar:
+  order: 0
+---
 
 Set up a Nucleide development environment and run the canonical checks.
 

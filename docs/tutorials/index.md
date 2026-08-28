@@ -1,4 +1,8 @@
-# Tutorials
+---
+title: Tutorials
+sidebar:
+  order: 0
+---
 
 Hands-on guides for Nucleide. Each tutorial is short, self-contained, and
 assumes you have already installed the project (see

@@ -1,4 +1,8 @@
-# Crate Responsibilities
+---
+title: Crate Responsibilities
+sidebar:
+  order: 2
+---
 
 Each Nucleide crate has a single responsibility and a well-defined place in the
 workspace dependency graph.

@@ -1,4 +1,8 @@
-# Crate Overview
+---
+title: Crate Overview
+sidebar:
+  order: 1
+---
 
 Nucleide is a Cargo workspace. Each crate owns one capability area and exposes a
 thin, focused API.

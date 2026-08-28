@@ -1,4 +1,8 @@
-# Reference
+---
+title: Reference
+sidebar:
+  order: 0
+---
 
 Quick-reference pages for the Nucleide workspace.
 

@@ -1,4 +1,8 @@
-# Enrichment Cascade
+---
+title: Enrichment Cascade
+sidebar:
+  order: 6
+---
 
 Nucleide solves multicomponent enrichment cascades with a numeric solver and
 closed-form SWU helpers. The implementation lives in `crates/enrichment`. For

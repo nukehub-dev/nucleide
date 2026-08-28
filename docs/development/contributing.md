@@ -1,4 +1,8 @@
-# Contributing to Nucleide
+---
+title: Contributing to Nucleide
+sidebar:
+  order: 1
+---
 
 Thank you for contributing to Nucleide. This document describes the workflow,
 conventions, and checks expected for code changes.

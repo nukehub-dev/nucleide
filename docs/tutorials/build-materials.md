@@ -1,4 +1,8 @@
-# Build Materials
+---
+title: Build Materials
+sidebar:
+  order: 4
+---
 
 Nucleide models materials as maps from canonical nuclide identifiers to masses,
 with optional density and metadata. Materials live in the `material` crate and

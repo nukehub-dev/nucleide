@@ -92,5 +92,10 @@ license.
 5. **Use `.mdx` for component-heavy pages.** Pages that use `@nukehub/docs-kit`
    shortcodes such as `<Mermaid>`, `<Callout>`, or `<DataTable>` must have an
    `.mdx` extension. Plain `.md` is fine for prose-only pages.
+6. **Every page sets `title` and `sidebar.order` in frontmatter.** Without an
+   explicit order the site sidebar falls back to alphabetical sorting. Keep the
+   order values aligned with the reading order in the section index tables, and
+   do not repeat the title as an in-body `#` heading (the site renders the
+   frontmatter title as the page heading).
 
 See the project [AGENTS.md](../AGENTS.md) for ownership and contract details.

@@ -2,6 +2,9 @@
   // Nucleide markdown lint configuration.
   "config": {
     "default": true,
+    "first-line-heading": {
+      "front_matter_title": "^\\s*title\\s*:"
+    },
     "line-length": {
       "line_length": 120,
       "code_blocks": false,

@@ -1,4 +1,8 @@
-# Python API
+---
+title: Python API
+sidebar:
+  order: 2
+---
 
 Nucleide exposes a typed pure-Python package at `python/nucleide/` that re-exports
 a compiled PyO3 extension built from `bindings/python/`. The extension module is

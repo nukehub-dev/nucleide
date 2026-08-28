@@ -1,4 +1,8 @@
-# Roadmap
+---
+title: Roadmap
+sidebar:
+  order: 0
+---
 
 Nucleide is pre-alpha. APIs may change without notice.
 

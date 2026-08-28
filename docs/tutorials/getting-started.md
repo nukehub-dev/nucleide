@@ -1,4 +1,8 @@
-# Getting Started
+---
+title: Getting Started
+sidebar:
+  order: 1
+---
 
 Install Nucleide, build the Rust workspace, and exercise the Python bindings.
 

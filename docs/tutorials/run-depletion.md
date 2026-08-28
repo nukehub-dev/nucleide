@@ -1,4 +1,8 @@
-# Run Depletion
+---
+title: Run Depletion
+sidebar:
+  order: 5
+---
 
 Nucleide depletion uses CRAM (Chebyshev Rational Approximation Method) to solve
 the burnup matrix exponential. This tutorial covers the Python API; the

@@ -1,4 +1,8 @@
-# Decision Log
+---
+title: Decision Log
+sidebar:
+  order: 1
+---
 
 Architecture and process decisions for Nucleide, recorded with enough rationale
 that future contributors can understand the constraints.
