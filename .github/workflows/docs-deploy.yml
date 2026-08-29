@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         working-directory: website
         run: npm ci
+      - name: Check formatting
+        working-directory: website
+        run: npm run format:check
       - name: Sync docs
         working-directory: website
         run: npm run sync-docs

@@ -198,9 +198,7 @@ export function VrDemo() {
               className="font-mono"
             />
             <Button onClick={runAlias}>Sample index</Button>
-            {aliasResult !== null && (
-              <p className="font-mono">Sampled index: {aliasResult}</p>
-            )}
+            {aliasResult !== null && <p className="font-mono">Sampled index: {aliasResult}</p>}
           </div>
 
           <div className="space-y-2 border-t border-border/50 pt-4">
@@ -219,7 +217,8 @@ export function VrDemo() {
             </div>
             {sample && (
               <p className="font-mono">
-                index={sample.index} i={sample.i} j={sample.j} k={sample.k} weight={sample.weight.toFixed(4)}
+                index={sample.index} i={sample.i} j={sample.j} k={sample.k} weight=
+                {sample.weight.toFixed(4)}
               </p>
             )}
           </div>

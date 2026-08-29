@@ -163,13 +163,7 @@ export function MaterialBuilder() {
   );
 }
 
-function FractionTable({
-  title,
-  data,
-}: {
-  title: string;
-  data: Record<string, number> | null;
-}) {
+function FractionTable({ title, data }: { title: string; data: Record<string, number> | null }) {
   if (!data) return null;
   return (
     <div>

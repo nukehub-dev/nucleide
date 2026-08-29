@@ -45,7 +45,7 @@ export function CascadeSolver() {
     }
   }
 
-  function update<K extends keyof typeof config>(key: K, value: typeof config[K]) {
+  function update<K extends keyof typeof config>(key: K, value: (typeof config)[K]) {
     setConfig((prev) => ({ ...prev, [key]: value }));
     setLocalError(null);
   }
@@ -71,11 +71,27 @@ export function CascadeSolver() {
       {ready && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <NumberField label="Stage factor α" value={config.alpha} onChange={(v) => update("alpha", v)} />
+            <NumberField
+              label="Stage factor α"
+              value={config.alpha}
+              onChange={(v) => update("alpha", v)}
+            />
             <NumberField label="M*" value={config.Mstar} onChange={(v) => update("Mstar", v)} />
-            <NumberField label="Feed assay" value={config.feedAssay} onChange={(v) => update("feedAssay", v)} />
-            <NumberField label="Product assay" value={config.productAssay} onChange={(v) => update("productAssay", v)} />
-            <NumberField label="Tails assay" value={config.tailsAssay} onChange={(v) => update("tailsAssay", v)} />
+            <NumberField
+              label="Feed assay"
+              value={config.feedAssay}
+              onChange={(v) => update("feedAssay", v)}
+            />
+            <NumberField
+              label="Product assay"
+              value={config.productAssay}
+              onChange={(v) => update("productAssay", v)}
+            />
+            <NumberField
+              label="Tails assay"
+              value={config.tailsAssay}
+              onChange={(v) => update("tailsAssay", v)}
+            />
             <NumberField label="N (guess)" value={config.N} onChange={(v) => update("N", v)} />
             <NumberField label="M (guess)" value={config.M} onChange={(v) => update("M", v)} />
           </div>

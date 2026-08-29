@@ -14,6 +14,8 @@
     "build:wasm": "cd ../bindings/wasm && wasm-pack build --target web --out-dir ../../website/public/wasm",
     "preview": "astro preview --host",
     "check": "astro check",
+    "format": "prettier --write \"src/**/*.{ts,tsx,astro,css,scss,json,md}\" \"e2e/**/*.ts\" \"scripts/**/*.{mjs,ts}\" \"*.{json,md,mjs,cjs}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,astro,css,scss,json,md}\" \"e2e/**/*.ts\" \"scripts/**/*.{mjs,ts}\" \"*.{json,md,mjs,cjs}\"",
     "test:e2e": "playwright test",
     "test:e2e:ci": "playwright test --project=chromium"
   },
@@ -45,6 +47,8 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/turndown": "^5.0.6",
+    "prettier": "^3.9.5",
+    "prettier-plugin-astro": "^0.14.1",
     "typescript": "^6.0.3"
   }
 }

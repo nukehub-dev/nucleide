@@ -67,7 +67,7 @@ export function NuclideExplorer() {
                   <tr key={key} className="border-b border-border/50">
                     <td className="py-1 font-medium">{key}</td>
                     <td className="py-1 text-right font-mono">
-                      {typeof value === "number" ? value.toString() : value ?? "—"}
+                      {typeof value === "number" ? value.toString() : (value ?? "—")}
                     </td>
                   </tr>
                 ))}

@@ -1,0 +1,7 @@
+dist/
+public/
+src/content/docs/
+.astro/
+playwright-report/
+test-results/
+package-lock.json

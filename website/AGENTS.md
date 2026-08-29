@@ -34,16 +34,19 @@ Parent-level Rust/Python/verification rules remain in the root `AGENTS.md`.
 After changing docs, components, or the WASM bindings:
 
 1. `cd website`
-2. `npm run build:wasm` — rebuild the WASM package if `bindings/wasm` changed.
-3. `npm run check` — run Astro type checks.
-4. `npm run build` — build the static site.
-5. `npm run test:e2e:ci` — run the Playwright smoke tests.
+2. `npm run format` — apply Prettier formatting (config mirrors
+   `@nukehub/docs-kit`, including `prettier-plugin-astro`).
+3. `npm run build:wasm` — rebuild the WASM package if `bindings/wasm` changed.
+4. `npm run check` — run Astro type checks.
+5. `npm run build` — build the static site.
+6. `npm run test:e2e:ci` — run the Playwright smoke tests.
 
 ## Verification
 
 Run these in order from `website/`:
 
 ```bash
+npm run format:check
 npm run build:wasm
 npm run check
 npm run build

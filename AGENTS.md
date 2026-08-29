@@ -146,15 +146,16 @@ maturin develop                              # rebuild Python extension
 pytest tests/
 ruff format --check python tests && ruff check python tests
 mypy                                         # strict; stubs in *.pyi
-cd website && npm run build:wasm && npm run check && npm run build && npm run test:e2e:ci
+cd website && npm run format:check && npm run build:wasm && npm run check && npm run build && npm run test:e2e:ci
 ```
 
 Notes:
 
 - Formatter/linter configs live in `pyproject.toml` (ruff line-length 100,
   mypy strict). Rust formatting is rustfmt defaults.
-- CI (`.github/workflows/ci.yml`) runs exactly these checks plus coverage;
-  keep it green.
+- CI (`.github/workflows/ci.yml`) runs the Rust and Python checks plus
+  coverage; website format/build checks run in
+  `.github/workflows/docs-deploy.yml`. Keep both green.
 
 ## Coverage
 

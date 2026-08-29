@@ -71,9 +71,7 @@ for (const { path, button, output, cell } of INTERACTIVE_PAGES) {
     await assertNoWasmError(page);
     await expect(page.locator(output).first()).toBeVisible();
     if (cell) {
-      await expect(
-        page.locator("tbody td", { hasText: cell }).first(),
-      ).toBeVisible();
+      await expect(page.locator("tbody td", { hasText: cell }).first()).toBeVisible();
     }
     if (path === "tutorials/interactive/materials") {
       // The compendium browser hydrates on visibility (client:visible), then
