@@ -12,7 +12,15 @@ RESULTS_DIR = SCRIPT_DIR / "results"
 RESULTS_MD = SCRIPT_DIR / "results.md"
 ENVIRONMENT_JSON = SCRIPT_DIR / "environment.json"
 
-SECTION_ORDER = ["depletion", "enrichment", "magic", "nuclear_data", "timings"]
+SECTION_ORDER = [
+    "depletion",
+    "depletion_casl",
+    "enrichment",
+    "magic",
+    "nuclear_data",
+    "parsers",
+    "timings",
+]
 
 
 def _pyne_metadata_version() -> str:

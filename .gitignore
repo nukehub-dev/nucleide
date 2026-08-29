@@ -7,6 +7,9 @@
 /website/playwright-report/
 /website/test-results/
 
+# Validation download cache (CASL depletion chain etc.; never commit)
+/validation/.cache/
+
 # Local research notes (never committed, never referenced by committed files)
 .research/
 

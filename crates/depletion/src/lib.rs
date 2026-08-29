@@ -439,6 +439,102 @@ mod tests {
         assert!(crate::cram(&sys, Order::Order16, &n0, f64::INFINITY).is_err());
     }
 
+    #[test]
+    fn fission_yield_parent_reference_resolves() {
+        // CASL/VERA chain style: a nuclide borrows another nuclide's yields
+        // via <neutron_fission_yields parent="U235"/>.
+        let xml = r#"<depletion_chain>
+  <nuclide name="U235" reactions="1">
+    <reaction type="fission" Q="2.0e8"/>
+    <neutron_fission_yields>
+      <energies>0.0253 1.4e7</energies>
+      <fission_yields energy="0.0253">
+        <products>I135 Xe135</products>
+        <data>0.03 0.06</data>
+      </fission_yields>
+      <fission_yields energy="1.4e7">
+        <products>I135 Xe135</products>
+        <data>0.04 0.05</data>
+      </fission_yields>
+    </neutron_fission_yields>
+  </nuclide>
+  <nuclide name="Cm247" reactions="1">
+    <reaction type="fission" Q="2.0e8"/>
+    <neutron_fission_yields parent="U235"/>
+  </nuclide>
+  <nuclide name="I135" reactions="0"/>
+  <nuclide name="Xe135" reactions="0"/>
+</depletion_chain>"#;
+        let chain = Chain::from_xml(xml).unwrap();
+        let cm = &chain.nuclides[chain.index_of("Cm247").unwrap()];
+        assert_eq!(cm.neutron_fission_yields.len(), 2);
+        assert_eq!(cm.neutron_fission_yields[0].products["I135"], 0.03);
+        assert_eq!(cm.neutron_fission_yields[1].products["Xe135"], 0.05);
+    }
+
+    #[test]
+    fn fission_yield_missing_parent_errors() {
+        let xml = r#"<depletion_chain>
+  <nuclide name="Cm247" reactions="1">
+    <reaction type="fission" Q="2.0e8"/>
+    <neutron_fission_yields parent="U235"/>
+  </nuclide>
+</depletion_chain>"#;
+        match Chain::from_xml(xml) {
+            Err(Error::BadStructure(m)) => assert!(m.contains("U235")),
+            other => panic!("expected BadStructure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn from_xml_keeps_branching_ratios_verbatim() {
+        // OpenMC renormalizes decay branching ratios only when *generating*
+        // a chain from ENDF; `Chain.from_xml` uses the written values
+        // verbatim. The CASL/VERA chain relies on this (e.g. I128 beta- to
+        // Xe128 with branching ratio 0.931, the remainder leaving the chain).
+        let xml = r#"<depletion_chain>
+  <nuclide name="I128" half_life="1499.4" reactions="0">
+    <decay type="beta-" target="Xe128" branching_ratio="0.931"/>
+  </nuclide>
+  <nuclide name="Xe128" reactions="0"/>
+</depletion_chain>"#;
+        let chain = Chain::from_xml(xml).unwrap();
+        let i128 = &chain.nuclides[chain.index_of("I128").unwrap()];
+        assert_eq!(i128.decay_modes[0].branching_ratio, 0.931);
+    }
+
+    #[test]
+    fn fission_uses_lowest_energy_yields() {
+        // Yield blocks deliberately listed high-energy first: the matrix must
+        // still use the lowest-energy set (OpenMC get_default_fission_yields).
+        let xml = r#"<depletion_chain>
+  <nuclide name="U235" reactions="1">
+    <reaction type="fission" Q="2.0e8"/>
+    <neutron_fission_yields>
+      <energies>0.0253 1.4e7</energies>
+      <fission_yields energy="1.4e7">
+        <products>I135</products>
+        <data>0.04</data>
+      </fission_yields>
+      <fission_yields energy="0.0253">
+        <products>I135</products>
+        <data>0.03</data>
+      </fission_yields>
+    </neutron_fission_yields>
+  </nuclide>
+  <nuclide name="I135" reactions="0"/>
+</depletion_chain>"#;
+        let chain = Chain::from_xml(xml).unwrap();
+        let mut rates = ReactionRates::new();
+        rates
+            .entry(0usize)
+            .or_default()
+            .insert("fission".to_string(), 1e-5);
+        let sys = DepletionSystem::build(chain, &rates).unwrap();
+        let dense = sys.matrix_for_dt(1.0).unwrap().to_dense();
+        assert!((dense[1][0].re - 3e-7).abs() < 1e-18);
+    }
+
     // helper: serialize Chain back to minimal XML so build() gets owned data
     fn xml_of(chain: Chain) -> String {
         let mut s = String::from("<depletion_chain>\n");

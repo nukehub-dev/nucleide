@@ -91,7 +91,10 @@ for the exercised modules) and OpenMC 0.16.0:
 
 - **Depletion**: CRAM-48 on a realistic nickel activation chain agrees with
   OpenMC's CRAM-48 solver to a maximum relative difference of $8.3\times10^{-15}$;
-  a three-nuclide chain matches the closed-form Bateman solution to
+  on the full 228-nuclide CASL/VERA simplified depletion chain (fission product
+  yields, decay branching, fresh-UO$_2$ inventory) the final density vectors
+  agree to a maximum relative difference of $8.9\times10^{-15}$; a
+  three-nuclide chain matches the closed-form Bateman solution to
   $\sim10^{-15}$.
 - **Enrichment**: the $M^*$-optimizing multicomponent solver agrees with PyNE's
   `multicomponent()` to $\sim10^{-4}$ or better in stage counts, $M^*$, and
@@ -106,11 +109,15 @@ for the exercised modules) and OpenMC 0.16.0:
   @wang2021ame2020] tables exactly and PyNE's AME2016 tables to
   $4\times10^{-6}$ u; all name-dialect conversions match `pyne.nucname`
   exactly.
-- **Performance**: single-step CRAM-48 solves run in $\sim$147 µs from Python
-  ($\sim$76 µs native) versus $\sim$3.0 ms for OpenMC's Python path; the
-  default uranium enrichment solve runs in $\sim$109 µs versus $\sim$5.5 ms
-  for PyNE; MAGIC weight-window generation runs in $\sim$0.8 µs versus
-  $\sim$4.5 µs for an equivalent pure-Python implementation.
+- **Performance**: single-step CRAM-48 solves run in $\sim$137 µs from Python
+  ($\sim$77 µs native) versus $\sim$2.9 ms for OpenMC's Python path; the
+  default uranium enrichment solve runs in $\sim$106 µs versus $\sim$5.6 ms
+  for PyNE; MAGIC weight-window generation runs in $\sim$0.6 µs versus
+  $\sim$3.8 µs for an equivalent pure-Python implementation.
+
+![Per-nuclide final densities after one 30-day CRAM-48 step, Nucleide vs OpenMC, for the nickel activation chain (left) and the full CASL/VERA chain (right). Points lie on the identity line; the lower strips show the per-nuclide relative differences, all at the $10^{-15}$ level (maximum $8.3\times10^{-15}$ and $8.9\times10^{-15}$, respectively).](validation/figures/depletion_agreement.png)
+
+![Mean wall times (log scale) for the CRAM-48 depletion solve, the multicomponent uranium enrichment solve, and MAGIC weight-window generation: Nucleide from Python, Nucleide native Rust (Criterion), and the reference codes.](validation/figures/timings.png)
 
 # Documentation
 

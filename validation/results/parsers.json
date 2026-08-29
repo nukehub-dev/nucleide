@@ -1,0 +1,306 @@
+{
+  "schema": 1,
+  "name": "parsers",
+  "title": "Parser cross-validation (`parsers_vs_refs.py`)",
+  "environment": {
+    "date": "2026-08-29",
+    "python": "3.12.14",
+    "platform": "Linux-7.1.9-arch1-2-x86_64-with-glibc2.39",
+    "nucleide": "0.1.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "text": "Nucleide's readers are cross-checked against independent oracle readers on the\nsame committed fixture files. Skipped comparisons (missing or incapable oracle)\nare listed explicitly below; none are silent."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Serpent vs serpentTools"
+    },
+    {
+      "kind": "prose",
+      "text": "serpentTools 0.11.0 readers run on `fixtures/serpent/*.m`.\nCompared fields \u2014 dep: `ZAI`, `DAYS`, `BU`/`burnup`, `NAMES`, per-material `ADENS`,\n`MDENS`, `VOLUME`; det: per-detector tally and relative-error columns plus shared\nbin grids (`E`, `T`, `X`, `Y`)."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "File",
+        "Field",
+        "Values compared",
+        "Max rel diff"
+      ],
+      "rows": [
+        [
+          "sample2_dep.m",
+          "ZAI",
+          "29",
+          "0.000000e+00"
+        ],
+        [
+          "sample2_dep.m",
+          "DAYS",
+          "3",
+          "0.000000e+00"
+        ],
+        [
+          "sample2_dep.m",
+          "BU (burnup)",
+          "3",
+          "0.000000e+00"
+        ],
+        [
+          "sample2_dep.m",
+          "NAMES",
+          "29",
+          "0 mismatches"
+        ],
+        [
+          "sample2_dep.m",
+          "MAT_fuel_ADENS",
+          "87",
+          "0.000000e+00"
+        ],
+        [
+          "sample2_dep.m",
+          "MAT_fuel_MDENS",
+          "87",
+          "0.000000e+00"
+        ],
+        [
+          "sample2_dep.m",
+          "MAT_fuel_VOLUME",
+          "3",
+          "0.000000e+00"
+        ],
+        [
+          "sample2_dep.m",
+          "TOT_ADENS",
+          "87",
+          "0.000000e+00"
+        ],
+        [
+          "sample2_dep.m",
+          "TOT_VOLUME",
+          "3",
+          "0.000000e+00"
+        ],
+        [
+          "serp2_det.m",
+          "DET1 tallies",
+          "15",
+          "0.000000e+00"
+        ],
+        [
+          "serp2_det.m",
+          "DET1 rel errors",
+          "15",
+          "0.000000e+00"
+        ],
+        [
+          "serp2_det.m",
+          "DET1E grid",
+          "15",
+          "0.000000e+00"
+        ],
+        [
+          "serp2_det.m",
+          "DET1T grid",
+          "9",
+          "0.000000e+00"
+        ],
+        [
+          "serp2_det.m",
+          "DET2 tallies",
+          "240",
+          "0.000000e+00"
+        ],
+        [
+          "serp2_det.m",
+          "DET2 rel errors",
+          "240",
+          "0.000000e+00"
+        ],
+        [
+          "serp2_det.m",
+          "DET2E grid",
+          "15",
+          "0.000000e+00"
+        ],
+        [
+          "serp2_det.m",
+          "DET2T grid",
+          "9",
+          "0.000000e+00"
+        ],
+        [
+          "serp2_det.m",
+          "DET2X grid",
+          "12",
+          "0.000000e+00"
+        ],
+        [
+          "serp2_det.m",
+          "DET2Y grid",
+          "12",
+          "0.000000e+00"
+        ],
+        [
+          "serp2_det.m",
+          "DET3 tallies",
+          "3",
+          "0.000000e+00"
+        ],
+        [
+          "serp2_det.m",
+          "DET3 rel errors",
+          "3",
+          "0.000000e+00"
+        ],
+        [
+          "serp2_det.m",
+          "DET3T grid",
+          "9",
+          "0.000000e+00"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED sample1_dep.m: serpentTools 0.11.0 cannot read it (ValueError: substring not found)"
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED sample_det.m: serpentTools 0.11.0 cannot read it (IndexError: list index out of range)"
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED sample_res.m: serpentTools 0.11.0 cannot read it (TypeError: only 0-dimensional arrays can\nbe converted to Python scalars)"
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED serp2_res.m: serpentTools 0.11.0 cannot read it (TypeError: only 0-dimensional arrays can be\nconverted to Python scalars)"
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "MCNP vs PyNE"
+    },
+    {
+      "kind": "prose",
+      "text": "PyNE 0.7.5 (`nomoab` build) `pyne.mcnp` readers run on the committed\n`fixtures/mcnp/` files. Compared fields \u2014 xsdir: per-table `name`, `awr`,\n`filename`, `filetype`, `address`, `tablelength`, `temperature`, `ptable`;\nssw: header (`kod`, `ver`, `np1`, `nrss`, `ncrd`, `njsw`, `niss`) and per-track\n`nps`, `wgt`, `erg`, `tme`, `x`, `y`, `z`, `u`, `v`, `w`, `cs` payloads;\nptrac: problem title and per-record variable counts (PyNE has no `PtracFile`\nclass; its low-level `PtracReader` exposes only headers)."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Format",
+        "Item",
+        "Values compared",
+        "Max rel diff / status"
+      ],
+      "rows": [
+        [
+          "xsdir",
+          "table count",
+          "3",
+          "0.000000e+00"
+        ],
+        [
+          "xsdir",
+          "1001.44c (awr, temperature, name/dir/ints)",
+          "2 + 5",
+          "0.000000e+00"
+        ],
+        [
+          "xsdir",
+          "1001.66c (awr, temperature, name/dir/ints)",
+          "2 + 5",
+          "0.000000e+00"
+        ],
+        [
+          "xsdir",
+          "1001.70c (awr, temperature, name/dir/ints)",
+          "2 + 5",
+          "0.000000e+00"
+        ],
+        [
+          "ssw",
+          "mcnp5_surfsrc.w (173 tracks)",
+          "1903",
+          "0.000000e+00"
+        ],
+        [
+          "ssw",
+          "mcnp6_surfsrc.w (1710 tracks)",
+          "18810",
+          "0.000000e+00"
+        ],
+        [
+          "ssw",
+          "mcnp_surfsrc_onetrack.w (1 tracks)",
+          "11",
+          "0.000000e+00"
+        ],
+        [
+          "ssw",
+          "mcnpx_surfsrc.w (1658 tracks)",
+          "18238",
+          "0.000000e+00"
+        ],
+        [
+          "ptrac",
+          "mcnp6_ptrac_i4_little.ptrac",
+          "problem_title + variable_nums",
+          "OK"
+        ],
+        [
+          "ptrac",
+          "mcnp_ptrac_i4_little.ptrac",
+          "problem_title + variable_nums",
+          "OK"
+        ],
+        [
+          "ptrac",
+          "mcnp_ptrac_i8_little.ptrac",
+          "problem_title + variable_nums",
+          "OK"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED mcnp6_serial_ptrac_i4_little.ptrac: PyNE PtracReader failed (AssertionError: )"
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED mcnp_wwinp_wwinp_n.txt: `pyne.mcnp.Wwinp` requires PyMOAB to build its mesh (nomoab build)"
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED mcnp_wwinp_wwinp_np.txt: `pyne.mcnp.Wwinp` requires PyMOAB to build its mesh (nomoab build)"
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED mcnp_wwinp_wwinp_p.txt: `pyne.mcnp.Wwinp` requires PyMOAB to build its mesh (nomoab build)"
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED mcnp_meshtal_multiple_meshtal.txt: `pyne.mcnp.Meshtal` requires PyMOAB (nomoab build)"
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED mcnp_meshtal_single_meshtal.txt: `pyne.mcnp.Meshtal` requires PyMOAB (nomoab build)"
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "FLUKA vs PyNE"
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED: no working FLUKA oracle exists in this environment. `pyne.fluka.Usrbin` requires PyMOAB\n(absent in the nomoab build) and reads only binary USRBIN output, while Nucleide's committed\nfixtures are ASCII `.lis` files (fluka_usrbin_degenerate.lis, fluka_usrbin_multiple.lis,\nfluka_usrbin_single.lis)."
+    }
+  ]
+}

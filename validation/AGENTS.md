@@ -17,6 +17,14 @@ reference tally (`magic_tally.txt`), and the committed results document.
   never hand-edit them. Regenerate by running `run_all.sh` (or
   `run_container.sh`). Cosmetic fixes that do not alter numbers belong in
   `render_results.py` or `common.py`.
+- `validation/figures/*.png` are **generated artifacts** (from
+  `make_figures.py`): never hand-edit them. Unlike `results.md` they are
+  committed so `paper.md` can reference them; regenerate and recommit whenever
+  the harness reruns.
+- `validation/.cache/` is the **git-ignored download cache** for third-party
+  inputs fetched at run time (currently the CASL/VERA depletion chain). Never
+  commit its contents; document provenance in `validation/README.md` when
+  adding a new download.
 - `validation/environment.json` is the **only hand-maintained input** for the
   environment table; keep it up to date when the container or dependency
   channels change.
@@ -25,16 +33,18 @@ reference tally (`magic_tally.txt`), and the committed results document.
   `pyproject.toml` settings, line-length 100).
 - Do not add fixtures here that duplicate `fixtures/` policy; the harness reads
   from `fixtures/` and patches only at runtime, in memory.
+- Oracle comparisons (`parsers_vs_refs.py`) must never skip silently: every
+  skip is printed and recorded in the report prose with its reason.
 
 ## Work Guidance
 
 - Canonical environment is the container built from `Containerfile`
   (`./validation/run_container.sh`, requires podman): Python 3.12,
-  PyNE 0.7.5 from conda-forge, OpenMC 0.16.0 built from the upstream tag, and
-  the Nucleide abi3 release wheel built by the `ghcr.io/pyo3/maturin`
-  container. Version-pin rationale is documented in the `Containerfile`
-  header; update it when conda-forge catches up (PyNE > 0.7.5 or
-  OpenMC >= 0.16.0).
+  PyNE 0.7.5 from conda-forge, OpenMC 0.16.0 built from the upstream tag,
+  serpentTools 0.11.0 from PyPI, and the Nucleide abi3 release wheel built by
+  the `ghcr.io/pyo3/maturin` container. Version-pin rationale is documented in
+  the `Containerfile` header; update it when conda-forge catches up (PyNE >
+  0.7.5 or OpenMC >= 0.16.0).
 - A conda env fallback also works:
   (`mamba create -p ~/.conda/envs/nuke-validation -c conda-forge pyne openmc`)
   with the Nucleide release wheel installed into that env

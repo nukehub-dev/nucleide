@@ -175,7 +175,8 @@ impl Chain {
                         });
                     }
                     "neutron_fission_yields" => {
-                        nuc.neutron_fission_yields = parse_fission_yields(child)?;
+                        let el = resolve_fission_yield_parent(child, root)?;
+                        nuc.neutron_fission_yields = parse_fission_yields(el)?;
                     }
                     _ => {} // source / other metadata ignored
                 }
@@ -187,18 +188,26 @@ impl Chain {
             return Err(Error::BadStructure("chain has no nuclides".into()));
         }
 
-        Self::from_nuclides(nuclides)
+        // Decay branching ratios are used verbatim from the file, mirroring
+        // OpenMC's `Chain.from_xml` (renormalization happens only when OpenMC
+        // *generates* a chain from ENDF, not when it reads one).
+        Self::indexed(nuclides)
     }
 
     /// Build a chain directly from nuclides (index computed here).
     ///
     /// Decay branching ratios are renormalized to sum to 1.0 if needed, by
-    /// adjusting the largest branch (matching OpenMC chain.py:426-433).
+    /// adjusting the largest branch (matching OpenMC chain.py:426-433, which
+    /// applies at chain generation time).
     pub fn from_nuclides(mut nuclides: Vec<ChainNuclide>) -> Result<Self, Error> {
         for nuc in &mut nuclides {
             normalize_decay_branching_ratios(&mut nuc.decay_modes);
         }
+        Self::indexed(nuclides)
+    }
 
+    /// Index nuclides by name, rejecting duplicates.
+    fn indexed(nuclides: Vec<ChainNuclide>) -> Result<Self, Error> {
         let mut chain = Chain {
             nuclides,
             index: BTreeMap::new(),
@@ -227,6 +236,39 @@ impl Chain {
     pub fn is_empty(&self) -> bool {
         self.nuclides.is_empty()
     }
+}
+
+/// Resolve `<neutron_fission_yields parent="X"/>` yield borrowing (used by the
+/// CASL/VERA chain) to the referenced nuclide's yield element, mirroring
+/// OpenMC `nuclide.py` `from_xml`. Parent links are followed transitively with
+/// a hop cap so reference cycles error out instead of looping.
+fn resolve_fission_yield_parent<'a>(
+    mut el: roxmltree::Node<'a, 'a>,
+    root: roxmltree::Node<'a, 'a>,
+) -> Result<roxmltree::Node<'a, 'a>, Error> {
+    const MAX_HOPS: usize = 16;
+    for _ in 0..MAX_HOPS {
+        let Some(parent) = el.attribute("parent") else {
+            return Ok(el);
+        };
+        el = root
+            .children()
+            .filter(|c| c.is_element() && c.tag_name().name() == "nuclide")
+            .find(|c| c.attribute("name") == Some(parent))
+            .and_then(|c| {
+                c.children()
+                    .find(|g| g.is_element() && g.tag_name().name() == "neutron_fission_yields")
+            })
+            .ok_or_else(|| {
+                Error::BadStructure(format!(
+                    "fission yields borrow from `{parent}`, but `{parent}` is absent \
+                     from the chain or has no yields"
+                ))
+            })?;
+    }
+    Err(Error::BadStructure(
+        "fission yield `parent` chain too long (reference cycle?)".into(),
+    ))
 }
 
 fn parse_fission_yields(el: roxmltree::Node) -> Result<Vec<FissionYields>, Error> {

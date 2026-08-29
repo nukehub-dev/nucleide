@@ -20,7 +20,11 @@ publishes Python wheels (and optionally Rust crates) from tags.
   alpha/proton decays and from reaction secondaries such as (n,α) and (n,p),
   when the product nuclide is in the chain.
 - `depletion`: decay branching ratios are renormalized to sum to 1 (largest
-  branch adjusted), matching OpenMC.
+  branch adjusted) for programmatically built chains, matching OpenMC's
+  chain-generation behavior.
+- `depletion`: CASL-style fission-yield borrowing in chain XML
+  (`<neutron_fission_yields parent="X"/>` resolves X's yields, transitively),
+  matching OpenMC.
 - `nuclei`: `NuclideId::from_name` now accepts PyNE-normalized forms such as
   `"U-235"`, `"u235"`, and uppercase-`M` metastable markers.
 - Python API: `Cascade.solve_multicomponent()` (M\*-optimizing solve),
@@ -31,6 +35,11 @@ publishes Python wheels (and optionally Rust crates) from tags.
   OpenMC 0.16.0 (containerized via `validation/Containerfile` +
   `validation/run_container.sh`) with committed results
   (`validation/results.md`).
+- `validation/`: full-chain depletion validation on the CASL/VERA simplified
+  chain (downloaded to the git-ignored `validation/.cache/`), parser
+  cross-validation against PyNE and serpentTools oracles
+  (`parsers_vs_refs.py`), and generated paper figures
+  (`validation/figures/`, via `make_figures.py`).
 - JOSS submission materials: `paper.md`, `paper.bib`, `CITATION.cff`,
   `CONTRIBUTING.md`, and a draft-PDF workflow.
 
@@ -49,6 +58,13 @@ publishes Python wheels (and optionally Rust crates) from tags.
 - `nuclei`: FLUKA name lookups use lazily-built maps instead of linear scans.
 
 ### Fixed
+
+- `depletion`: `Chain::from_xml` no longer renormalizes decay branching
+  ratios — file values are used verbatim, matching OpenMC's `Chain.from_xml`
+  (renormalization only happens at chain *generation*). Found by the CASL
+  full-chain validation (e.g. I-128 β⁻ branching ratio 0.931).
+- `depletion`: fission production now uses the yield set at the lowest
+  incident neutron energy, matching OpenMC's `get_default_fission_yields`.
 
 - `nuclei`: `NuclideId::new` rejects mass numbers above 999, fixing a debug
   overflow panic from inputs like `"U999999"`.

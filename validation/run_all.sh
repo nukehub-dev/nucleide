@@ -6,8 +6,9 @@
 #
 # The optional PYTHON argument defaults to the conda env used for JOSS
 # validation. Every validation/*_vs_*.py comparison script is auto-discovered
-# and run in sorted order, followed by timings.py and render_results.py.
-# All scripts are run with -e so the first failure stops the suite.
+# and run in sorted order, followed by timings.py, render_results.py, and
+# make_figures.py. All scripts are run with -e so the first failure stops the
+# suite.
 
 set -euo pipefail
 
@@ -23,7 +24,7 @@ for script in "$SCRIPT_DIR"/*_vs_*.py; do
     $PYTHON "$script"
 done
 
-for script in timings.py render_results.py; do
+for script in timings.py render_results.py make_figures.py; do
     echo ""
     echo "===== $script ====="
     $PYTHON "$SCRIPT_DIR/$script"

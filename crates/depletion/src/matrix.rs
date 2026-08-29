@@ -38,9 +38,9 @@ pub struct Entry {
 }
 
 impl DepletionSystem {
-    /// Build `A` from the chain. Fission production uses single-energy
-    /// yields when present: for nuclide `i` with fission rate `F`,
-    /// `A[product][i] += F * y_product`.
+    /// Build `A` from the chain. Fission production uses the yield set at the
+    /// lowest incident neutron energy when present: for nuclide `i` with
+    /// fission rate `F`, `A[product][i] += F * y_product`.
     ///
     /// Rates for plain reactions are looked up as `rates[nuclide_idx][kind]` in
     /// `rates`; missing entries contribute zero (pure-loss-only channels).
@@ -111,8 +111,14 @@ impl DepletionSystem {
 
                 match reaction.kind.as_str() {
                     "fission" => {
-                        // Single-energy yield set drives production.
-                        if let Some(fy) = nuc.neutron_fission_yields.first() {
+                        // Single-energy yield set drives production. Like
+                        // OpenMC's `get_default_fission_yields`, use the set
+                        // at the lowest incident neutron energy.
+                        if let Some(fy) = nuc
+                            .neutron_fission_yields
+                            .iter()
+                            .min_by(|a, b| a.energy.total_cmp(&b.energy))
+                        {
                             for (product, y) in &fy.products {
                                 if *y == 0.0 {
                                     continue;

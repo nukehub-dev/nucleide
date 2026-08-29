@@ -96,8 +96,8 @@ def openmc_rates(chain: openmc.deplete.Chain) -> openmc.deplete.ReactionRates:
     return rates
 
 
-def run_chain_ni_comparison() -> dict[str, float]:
-    """Deplete chain_ni.xml with Nucleide and OpenMC and return difference stats."""
+def run_chain_ni_vectors() -> tuple[dict[str, float], dict[str, float]]:
+    """Deplete chain_ni.xml with Nucleide and OpenMC; return final density dicts."""
     chain_path = patched_chain_ni_path()
     nuc_chain = nucleide.depletion.read_chain(chain_path)
     om_chain = openmc.deplete.Chain.from_xml(chain_path)
@@ -113,6 +113,12 @@ def run_chain_ni_comparison() -> dict[str, float]:
     n0_vec = np.array([n0.get(nuc.name, 0.0) for nuc in om_chain.nuclides])
     om_out_vec = openmc.deplete.cram.CRAM48(A, n0_vec, dt)
     om_out = {nuc.name: float(om_out_vec[i]) for i, nuc in enumerate(om_chain.nuclides)}
+    return dict(nuc_out), om_out
+
+
+def run_chain_ni_comparison() -> dict[str, float]:
+    """Deplete chain_ni.xml with Nucleide and OpenMC and return difference stats."""
+    nuc_out, om_out = run_chain_ni_vectors()
 
     max_dens = max(max(abs(v) for v in nuc_out.values()), max(abs(v) for v in om_out.values()))
     tiny = 1.0e-12 * max_dens

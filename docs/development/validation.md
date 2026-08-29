@@ -12,14 +12,26 @@ Comparisons cover:
 
 - **Depletion** — CRAM-48 solve on `fixtures/depletion/chain_ni.xml` and a
   3-nuclide analytic Bateman check, vs OpenMC 0.16.0.
+- **Depletion (CASL chain)** — full 228-nuclide CASL/VERA simplified chain
+  (fission yields, decay branching) on a fresh-UO2 inventory, vs OpenMC
+  0.16.0. The chain file is downloaded once to the git-ignored
+  `validation/.cache/` (see `validation/README.md` for provenance).
 - **Enrichment cascades** — default uranium and von-Halle tungsten feeds, vs
   PyNE 0.7.5 `multicomponent` (numeric and symbolic solvers).
 - **MAGIC weight windows** — total-mode and per-group MAGIC on a synthetic MCNP
   meshtal, vs PyNE's documented formula.
 - **Nuclear data** — atomic masses, natural abundances, half-lives, and
   name-dialect conversions, vs PyNE and OpenMC.
+- **Parsers** — Serpent `res`/`dep`/`det` readers vs serpentTools, and MCNP
+  `xsdir`/surface-source/PTRAC readers vs PyNE, on the committed fixtures
+  (PyMOAB-dependent oracles skip with an explicit note).
 - **Timings** — mean wall-time over 20 repeats for the depletion, enrichment,
   and MAGIC solves, plus native Rust Criterion figures.
+
+`validation/make_figures.py` also renders the paper figures
+(`validation/figures/timings.png` and `depletion_agreement.png`) from the
+machine-readable results; the figures are committed but generated — never
+hand-edit them.
 
 The canonical environment is the container built from
 `validation/Containerfile` (Python 3.12, PyNE 0.7.5 from conda-forge, OpenMC

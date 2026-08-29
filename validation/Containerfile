@@ -45,3 +45,9 @@ RUN git clone --depth 1 -b ${OPENMC_VERSION} https://github.com/openmc-dev/openm
  && rm -rf /opt/openmc/build /opt/openmc/.git \
  && python -c "import openmc, openmc.deplete, openmc.data, pyne, pyne.enrichment, pyne.data, pyne.nucname; \
                print('openmc', openmc.__version__, '| pyne', pyne.__version__)"
+
+# serpentTools: independent oracle reader for the Serpent parser comparison
+# (validation/parsers_vs_refs.py). conda-forge's serpent-tools build lags;
+# pip has the current 0.11.0. Pinned for reproducibility.
+RUN pip install --no-cache-dir serpenttools==0.11.0 \
+ && python -c "import serpentTools; print('serpentTools', serpentTools.__version__)"

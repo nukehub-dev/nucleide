@@ -45,7 +45,39 @@ Relative difference vs. analytic solution:
 | Xe-135  | 2.058751e-16         | 2.058751e-16       |
 | Cs-135  | 9.946437e-16         | 2.841839e-16       |
 
-## 2. Enrichment (`enrichment_vs_pyne.py`)
+## 2. Depletion on the CASL chain (`depletion_casl_vs_openmc.py`)
+
+CASL simplified depletion chain (VERA Depletion Benchmark, CASL-U-2015-1014-000;
+228 nuclides, thermal-spectrum branching, fission product yields), downloaded
+from the OpenMC pregenerated-chain archive and cached at `.cache/chain_casl_thermal.xml`.
+Fresh-UO2-style initial inventory (U-235/U-238/O-16); identical uniform one-group
+fission and capture rates on both sides; single 30-day CRAM-48 step. This compares
+the two solvers on identical matrices, not physics.
+
+### Full density vector after one 30-day CRAM-48 step
+
+| Metric                   | Value        |
+|--------------------------|--------------|
+| Max relative difference  | 8.860859e-15 |
+| Mean relative difference | 5.653070e-16 |
+
+Relative differences are computed per nuclide where the larger of the two
+densities exceeds 1e-12 x the maximum density; smaller densities are scaled by
+the maximum density instead.
+
+### Notable nuclides
+
+| Nuclide | Nucleide     | OpenMC       | Rel diff     |
+|---------|--------------|--------------|--------------|
+| U235    | 3.852941e+22 | 3.852941e+22 | 8.708784e-16 |
+| U238    | 6.935669e+23 | 6.935669e+23 | 5.805542e-16 |
+| Pu239   | 1.595895e+23 | 1.595895e+23 | 1.471783e-15 |
+| Xe135   | 4.210577e+19 | 4.210577e+19 | 0.000000e+00 |
+| I135    | 2.260137e+19 | 2.260137e+19 | 5.436839e-16 |
+| Cs137   | 1.557179e+21 | 1.557179e+21 | 1.178418e-15 |
+| Sm149   | 3.541980e+20 | 3.541980e+20 | 7.401058e-16 |
+
+## 3. Enrichment (`enrichment_vs_pyne.py`)
 
 ### Default uranium cascade — fixed-M* Nucleide vs optimizing PyNE
 
@@ -117,7 +149,7 @@ PyNE optimizes `M*`.
 With `M*` optimization enabled on both sides, the tungsten scalar quantities
 agree to better than **1e-3** and product compositions to a few × 1e-3.
 
-## 3. MAGIC weight windows (`magic_vs_pyne.py`)
+## 4. MAGIC weight windows (`magic_vs_pyne.py`)
 
 PyNE in this environment is built without PyMOAB, so `pyne.variancereduction.magic`
 cannot be called directly. The comparison below uses a pure-Python reimplementation
@@ -131,7 +163,7 @@ of PyNE's documented MAGIC formula.
 Nucleide's MAGIC output matched the reference formula exactly for the synthetic
 test tally.
 
-## 4. Nuclear data (`nuclear_data_vs_refs.py`)
+## 5. Nuclear data (`nuclear_data_vs_refs.py`)
 
 ### Atomic masses
 
@@ -159,16 +191,107 @@ test tally.
 All conversions (alara, cinder, nist, nucid, serpent, sza, zaid, zzaaam) had a
 maximum relative/absolute difference of **0.000000e+00**.
 
-## 5. Timings (`timings.py`)
+## 6. Parser cross-validation (`parsers_vs_refs.py`)
+
+Nucleide's readers are cross-checked against independent oracle readers on the
+same committed fixture files. Skipped comparisons (missing or incapable oracle)
+are listed explicitly below; none are silent.
+
+### Serpent vs serpentTools
+
+serpentTools 0.11.0 readers run on `fixtures/serpent/*.m`.
+Compared fields — dep: `ZAI`, `DAYS`, `BU`/`burnup`, `NAMES`, per-material `ADENS`,
+`MDENS`, `VOLUME`; det: per-detector tally and relative-error columns plus shared
+bin grids (`E`, `T`, `X`, `Y`).
+
+| File          | Field           | Values compared | Max rel diff |
+|---------------|-----------------|-----------------|--------------|
+| sample2_dep.m | ZAI             | 29              | 0.000000e+00 |
+| sample2_dep.m | DAYS            | 3               | 0.000000e+00 |
+| sample2_dep.m | BU (burnup)     | 3               | 0.000000e+00 |
+| sample2_dep.m | NAMES           | 29              | 0 mismatches |
+| sample2_dep.m | MAT_fuel_ADENS  | 87              | 0.000000e+00 |
+| sample2_dep.m | MAT_fuel_MDENS  | 87              | 0.000000e+00 |
+| sample2_dep.m | MAT_fuel_VOLUME | 3               | 0.000000e+00 |
+| sample2_dep.m | TOT_ADENS       | 87              | 0.000000e+00 |
+| sample2_dep.m | TOT_VOLUME      | 3               | 0.000000e+00 |
+| serp2_det.m   | DET1 tallies    | 15              | 0.000000e+00 |
+| serp2_det.m   | DET1 rel errors | 15              | 0.000000e+00 |
+| serp2_det.m   | DET1E grid      | 15              | 0.000000e+00 |
+| serp2_det.m   | DET1T grid      | 9               | 0.000000e+00 |
+| serp2_det.m   | DET2 tallies    | 240             | 0.000000e+00 |
+| serp2_det.m   | DET2 rel errors | 240             | 0.000000e+00 |
+| serp2_det.m   | DET2E grid      | 15              | 0.000000e+00 |
+| serp2_det.m   | DET2T grid      | 9               | 0.000000e+00 |
+| serp2_det.m   | DET2X grid      | 12              | 0.000000e+00 |
+| serp2_det.m   | DET2Y grid      | 12              | 0.000000e+00 |
+| serp2_det.m   | DET3 tallies    | 3               | 0.000000e+00 |
+| serp2_det.m   | DET3 rel errors | 3               | 0.000000e+00 |
+| serp2_det.m   | DET3T grid      | 9               | 0.000000e+00 |
+
+SKIPPED sample1_dep.m: serpentTools 0.11.0 cannot read it (ValueError: substring not found)
+
+SKIPPED sample_det.m: serpentTools 0.11.0 cannot read it (IndexError: list index out of range)
+
+SKIPPED sample_res.m: serpentTools 0.11.0 cannot read it (TypeError: only 0-dimensional arrays can
+be converted to Python scalars)
+
+SKIPPED serp2_res.m: serpentTools 0.11.0 cannot read it (TypeError: only 0-dimensional arrays can be
+converted to Python scalars)
+
+### MCNP vs PyNE
+
+PyNE 0.7.5 (`nomoab` build) `pyne.mcnp` readers run on the committed
+`fixtures/mcnp/` files. Compared fields — xsdir: per-table `name`, `awr`,
+`filename`, `filetype`, `address`, `tablelength`, `temperature`, `ptable`;
+ssw: header (`kod`, `ver`, `np1`, `nrss`, `ncrd`, `njsw`, `niss`) and per-track
+`nps`, `wgt`, `erg`, `tme`, `x`, `y`, `z`, `u`, `v`, `w`, `cs` payloads;
+ptrac: problem title and per-record variable counts (PyNE has no `PtracFile`
+class; its low-level `PtracReader` exposes only headers).
+
+| Format | Item                                       | Values compared               | Max rel diff / status |
+|--------|--------------------------------------------|-------------------------------|-----------------------|
+| xsdir  | table count                                | 3                             | 0.000000e+00          |
+| xsdir  | 1001.44c (awr, temperature, name/dir/ints) | 2 + 5                         | 0.000000e+00          |
+| xsdir  | 1001.66c (awr, temperature, name/dir/ints) | 2 + 5                         | 0.000000e+00          |
+| xsdir  | 1001.70c (awr, temperature, name/dir/ints) | 2 + 5                         | 0.000000e+00          |
+| ssw    | mcnp5_surfsrc.w (173 tracks)               | 1903                          | 0.000000e+00          |
+| ssw    | mcnp6_surfsrc.w (1710 tracks)              | 18810                         | 0.000000e+00          |
+| ssw    | mcnp_surfsrc_onetrack.w (1 tracks)         | 11                            | 0.000000e+00          |
+| ssw    | mcnpx_surfsrc.w (1658 tracks)              | 18238                         | 0.000000e+00          |
+| ptrac  | mcnp6_ptrac_i4_little.ptrac                | problem_title + variable_nums | OK                    |
+| ptrac  | mcnp_ptrac_i4_little.ptrac                 | problem_title + variable_nums | OK                    |
+| ptrac  | mcnp_ptrac_i8_little.ptrac                 | problem_title + variable_nums | OK                    |
+
+SKIPPED mcnp6_serial_ptrac_i4_little.ptrac: PyNE PtracReader failed (AssertionError: )
+
+SKIPPED mcnp_wwinp_wwinp_n.txt: `pyne.mcnp.Wwinp` requires PyMOAB to build its mesh (nomoab build)
+
+SKIPPED mcnp_wwinp_wwinp_np.txt: `pyne.mcnp.Wwinp` requires PyMOAB to build its mesh (nomoab build)
+
+SKIPPED mcnp_wwinp_wwinp_p.txt: `pyne.mcnp.Wwinp` requires PyMOAB to build its mesh (nomoab build)
+
+SKIPPED mcnp_meshtal_multiple_meshtal.txt: `pyne.mcnp.Meshtal` requires PyMOAB (nomoab build)
+
+SKIPPED mcnp_meshtal_single_meshtal.txt: `pyne.mcnp.Meshtal` requires PyMOAB (nomoab build)
+
+### FLUKA vs PyNE
+
+SKIPPED: no working FLUKA oracle exists in this environment. `pyne.fluka.Usrbin` requires PyMOAB
+(absent in the nomoab build) and reads only binary USRBIN output, while Nucleide's committed
+fixtures are ASCII `.lis` files (fluka_usrbin_degenerate.lis, fluka_usrbin_multiple.lis,
+fluka_usrbin_single.lis).
+
+## 7. Timings (`timings.py`)
 
 Mean wall time over 20 repeats. The CRAM comparison now times **only the solve
 step** on pre-built systems/matrices.
 
 | Operation                                             | Nucleide       | Reference code                              |
 |-------------------------------------------------------|----------------|---------------------------------------------|
-| CRAM-48 solve (`chain_ni.xml`)                        | 1.417332e-04 s | OpenMC CRAM48: 2.959537e-03 s               |
-| Default uranium enrichment solve                      | 1.092027e-04 s | PyNE multicomponent: 5.486073e-03 s         |
-| MAGIC total-mode solve (synthetic tally)              | 6.160500e-07 s | PyNE-equivalent pure Python: 4.064450e-06 s |
+| CRAM-48 solve (`chain_ni.xml`)                        | 1.365349e-04 s | OpenMC CRAM48: 2.940086e-03 s               |
+| Default uranium enrichment solve                      | 1.062760e-04 s | PyNE multicomponent: 5.615577e-03 s         |
+| MAGIC total-mode solve (synthetic tally)              | 5.707503e-07 s | PyNE-equivalent pure Python: 3.780500e-06 s |
 | Native Rust CRAM-48 solve (Criterion, no Python)      | 7.675881e-05 s | —                                           |
 | Native Rust deplete end-to-end (Criterion, no Python) | 7.858313e-05 s | —                                           |
 

@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "name": "depletion_casl",
+  "title": "Depletion on the CASL chain (`depletion_casl_vs_openmc.py`)",
+  "environment": {
+    "date": "2026-08-29",
+    "python": "3.12.14",
+    "platform": "Linux-7.1.9-arch1-2-x86_64-with-glibc2.39",
+    "nucleide": "0.1.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "text": "CASL simplified depletion chain (VERA Depletion Benchmark, CASL-U-2015-1014-000;\n228 nuclides, thermal-spectrum branching, fission product yields), downloaded\nfrom the OpenMC pregenerated-chain archive and cached at `.cache/chain_casl_thermal.xml`.\nFresh-UO2-style initial inventory (U-235/U-238/O-16); identical uniform one-group\nfission and capture rates on both sides; single 30-day CRAM-48 step. This compares\nthe two solvers on identical matrices, not physics."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Full density vector after one 30-day CRAM-48 step"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Metric",
+        "Value"
+      ],
+      "rows": [
+        [
+          "Max relative difference",
+          "8.860859e-15"
+        ],
+        [
+          "Mean relative difference",
+          "5.653070e-16"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Relative differences are computed per nuclide where the larger of the two\ndensities exceeds 1e-12 x the maximum density; smaller densities are scaled by\nthe maximum density instead."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Notable nuclides"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Nuclide",
+        "Nucleide",
+        "OpenMC",
+        "Rel diff"
+      ],
+      "rows": [
+        [
+          "U235",
+          "3.852941e+22",
+          "3.852941e+22",
+          "8.708784e-16"
+        ],
+        [
+          "U238",
+          "6.935669e+23",
+          "6.935669e+23",
+          "5.805542e-16"
+        ],
+        [
+          "Pu239",
+          "1.595895e+23",
+          "1.595895e+23",
+          "1.471783e-15"
+        ],
+        [
+          "Xe135",
+          "4.210577e+19",
+          "4.210577e+19",
+          "0.000000e+00"
+        ],
+        [
+          "I135",
+          "2.260137e+19",
+          "2.260137e+19",
+          "5.436839e-16"
+        ],
+        [
+          "Cs137",
+          "1.557179e+21",
+          "1.557179e+21",
+          "1.178418e-15"
+        ],
+        [
+          "Sm149",
+          "3.541980e+20",
+          "3.541980e+20",
+          "7.401058e-16"
+        ]
+      ]
+    }
+  ]
+}

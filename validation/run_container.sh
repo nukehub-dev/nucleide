@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build (once) and run the full cross-code validation harness in a container.
+# Build (layer-cached) and run the full cross-code validation harness in a
+# container.
 #
 # Usage:
 #   ./validation/run_container.sh
@@ -16,10 +17,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 IMAGE="${VALIDATION_IMAGE:-localhost/nucleide-validation:latest}"
 
-if ! podman image exists "$IMAGE"; then
-    echo "Building validation image $IMAGE (one-time, ~20 min)..."
-    podman build -t "$IMAGE" -f "$SCRIPT_DIR/Containerfile" "$REPO_ROOT"
-fi
+# Always rebuild: the layer cache makes unchanged rebuilds near-instant, and
+# Containerfile edits (e.g. new oracle packages) take effect without having to
+# delete the image by hand.
+echo "Building validation image $IMAGE (layer-cached)..."
+podman build -t "$IMAGE" -f "$SCRIPT_DIR/Containerfile" "$REPO_ROOT"
 
 echo "Building Nucleide release wheel (maturin container, cargo-cached)..."
 mkdir -p "$REPO_ROOT/target/container-wheels"
