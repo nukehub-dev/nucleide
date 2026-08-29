@@ -27,4 +27,4 @@ thin, focused API.
 - Workspace crates must never depend on `bindings/python` or on Python.
 - `enrichment` stays independent of `material` by design.
 
-See [Crate responsibilities](../../architecture/crate-responsibilities.md) for the dependency rationale and layering rules.
+See [Crate responsibilities](../architecture/crate-responsibilities.md) for the dependency rationale and layering rules.

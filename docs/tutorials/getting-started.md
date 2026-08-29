@@ -41,9 +41,9 @@ maturin develop          # build + install the Python package
 ```
 
 The full contributor toolchain (pytest, ruff, mypy, WASM, website) is covered
-in [Local development](../../development/local-dev.md).
+in [Local development](../development/local-dev.md).
 
 ## Next steps
 
-- Read the [crate overview](../../reference/crate-overview.md).
-- Try [parsing an MCNP output file](../parse-mcnp-output.md).
+- Read the [crate overview](../reference/crate-overview.md).
+- Try [parsing an MCNP output file](parse-mcnp-output.md).

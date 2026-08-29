@@ -11,8 +11,8 @@ Thanks for your interest in contributing!
 - **Bug reports and feature requests**: open an issue at
   <https://github.com/nukehub-dev/nucleide/issues>. Include a minimal reproducer
   and the Nucleide version (`python -c "import nucleide; print(nucleide.__version__)"`).
-- **Questions and support**: open a discussion at
-  <https://github.com/nukehub-dev/nucleide/discussions>.
+- **Questions and support**: open an issue at
+  <https://github.com/nukehub-dev/nucleide/issues> with the `question` label.
 
 By participating, you agree to treat others with respect and to keep discussion
 technical and constructive.

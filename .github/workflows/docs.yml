@@ -51,11 +51,12 @@ jobs:
           args: >-
             --no-progress
             --exclude-loopback
+            --accept '200..=299,403,429'
             --exclude-path 'target'
             --exclude-path '.mypy_cache'
             --exclude-path '.pytest_cache'
             --exclude-path '.ruff_cache'
             --exclude-path '__pycache__'
             --exclude-path 'node_modules'
-            -- '*.md' 'docs/**/*.md'
+            -- '*.md' 'docs/**/*.md' 'docs/**/*.mdx'
           fail: true

@@ -7,7 +7,7 @@ sidebar:
 Nucleide depletion uses CRAM (Chebyshev Rational Approximation Method) to solve
 the burnup matrix exponential. This tutorial covers the Python API; the
 implementation lives in `crates/depletion`. For the physics and math, see the
-[Depletion theory](../../theory/depletion.mdx) page.
+[Depletion theory](../theory/depletion.mdx) page.
 
 ## Load a depletion chain
 
