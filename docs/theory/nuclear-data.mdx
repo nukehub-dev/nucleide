@@ -3,6 +3,55 @@ title: Nuclear data
 description: Nuclide identifiers, name dialects, and data sources in Nucleide.
 sidebar:
   order: 4
+references:
+  - id: huang-2021
+    title: "The AME2020 atomic mass evaluation (I). Evaluation of input data, and adjustment procedures"
+    url: https://doi.org/10.1088/1674-1137/abddb0
+    authors: ["W. J. Huang", "M. Wang", "F. G. Kondev", "G. Audi", "S. Naimi"]
+    source: Chinese Physics C
+    journal: Chinese Physics C
+    volume: "45"
+    pages: "030002"
+    date: "2021"
+    type: article
+    doi: "10.1088/1674-1137/abddb0"
+  - id: wang-2021
+    title: "The AME2020 atomic mass evaluation (II). Tables, graphs and references"
+    url: https://doi.org/10.1088/1674-1137/abddaf
+    authors: ["M. Wang", "W. J. Huang", "F. G. Kondev", "G. Audi", "S. Naimi"]
+    source: Chinese Physics C
+    journal: Chinese Physics C
+    volume: "45"
+    pages: "030003"
+    date: "2021"
+    type: article
+    doi: "10.1088/1674-1137/abddaf"
+  - id: brown-2018
+    title: "ENDF/B-VIII.0: The 8th major release of the nuclear reaction data library with CIELO-project cross sections, new standards and thermal scattering data"
+    url: https://doi.org/10.1016/j.nds.2018.02.001
+    authors: ["D. A. Brown", "M. B. Chadwick", "R. Capote", "A. C. Kahler", "A. Trkov", "M. W. Herman", "A. A. Sonzogni", "Y. Danon", "A. D. Carlson", "M. Dunn", "D. L. Smith", "G. M. Hale", "G. Arbanas", "R. Arcilla", "C. R. Bates", "B. Beck", "B. Becker", "F. Brown", "R. J. Casperson", "J. Conlin", "D. E. Cullen", "M. A. Descalle", "R. Elson", "J. L. Fricke", "T. Goorley", "R. C. Little", "A. C. Kahler", "A. D. Hawari", "J. H. Holmes", "T. D. Johnson", "T. Kawano", "B. C. Kiedrowski", "A. J. Koning", "S. Kopecky", "C. M. Lubitz", "J. I. Márquez Damian", "C. M. Mattoon", "E. A. McCutchan", "S. Mughabghab", "P. Navratil", "D. Neudecker", "M. Paris", "M. T. Pigni", "A. J. Plompen", "B. Pritychenko", "A. D. Roubtsov", "D. Rochman", "P. Romano", "P. Schillebeeckx", "Y. Song", "A. Soukhovitskii", "E. A. Sprint", "I. Sirakov", "B. Talou", "P. Talou", "A. Thompson", "S. van der Marck", "L. Welser-Sherrill", "D. Wiarda", "M. White", "M. C. White", "R. D. WORTh"]
+    source: Nuclear Data Sheets
+    journal: Nuclear Data Sheets
+    volume: "148"
+    pages: "1–142"
+    date: "2018"
+    type: article
+    doi: "10.1016/j.nds.2018.02.001"
+  - id: nobre-2026
+    title: "ENDF/B-VIII.1: Updated nuclear reaction data library for science and applications"
+    url: https://arxiv.org/abs/2511.03564
+    authors: ["G. P. A. Nobre", "D. A. Brown", "M. W. Herman", "A. Trkov", "M. B. Chadwick", "A. J. Plompen", "A. D. Carlson", "M. Dunn", "Y. Danon", "S. M. Grimes", "H. I. Kim", "S. Kunieda", "A. J. Koning", "D. Lopez Aldama", "D. Neudecker", "P. Schillebeeckx", "P. Talou", "A. Thompson", "S. van der Marck", "J. L. Weil", "C. Yan", "M. A. Yandow", "D. Wiarda", "B. R. Beck", "B. Pritychenko", "M. T. Pigni"]
+    source: Nuclear Data Sheets
+    journal: Nuclear Data Sheets
+    date: "2026"
+    type: article
+    arxiv: "2511.03564"
+  - id: nucleide-nuclei
+    title: Nucleide nuclei implementation
+    url: https://github.com/nukehub-dev/nucleide/tree/main/crates/nuclei
+    source: Nucleide implementation
+    date: "2026"
+    type: misc
 ---
 
 Nucleide carries a small, self-contained set of nuclear reference data and a
@@ -90,7 +139,7 @@ first access.
 ### Atomic masses
 
 - **Source**: AME2020 atomic mass evaluation (Huang et al., *Chinese Physics C*
-  45, 030002/030003, 2021).
+  45, 030002/030003, 2021)<Citation id="huang-2021" /><Citation id="wang-2021" />.
 - **Coverage**: 3,557 ground-state nuclides with $Z \geq 1$.
 - **File**: `crates/nuclei/src/data/ame2020.tsv`.
 - **Units**: unified atomic mass units (u).
@@ -179,22 +228,4 @@ embed:
 - **Living references**: [NuDat 3](https://www.nndc.bnl.gov/nudat3/) and the
   IAEA LiveChart track structure and decay data between ENDF releases.
 
-## References
 
-1. W. J. Huang *et al.*, "The AME2020 atomic mass evaluation (I). Evaluation
-   of input data, and adjustment procedures," *Chinese Physics C*, **45**,
-   030002 (2021). DOI:
-   [10.1088/1674-1137/abddb0](https://doi.org/10.1088/1674-1137/abddb0).
-   Tables: M. Wang *et al.*, "The AME2020 atomic mass evaluation (II). Tables,
-   graphs and references," *Chinese Physics C*, **45**, 030003 (2021). DOI:
-   [10.1088/1674-1137/abddaf](https://doi.org/10.1088/1674-1137/abddaf).
-2. D. A. Brown *et al.*, "ENDF/B-VIII.0: The 8th major release of the nuclear
-   reaction data library with CIELO-project cross sections, new standards and
-   thermal scattering data," *Nuclear Data Sheets*, **148**, 1–142 (2018).
-   DOI: [10.1016/j.nds.2018.02.001](https://doi.org/10.1016/j.nds.2018.02.001).
-3. G. P. A. Nobre *et al.*, "ENDF/B-VIII.1: Updated nuclear reaction data
-   library for science and applications," *Nuclear Data Sheets* (2026),
-   [arXiv:2511.03564](https://arxiv.org/abs/2511.03564). Successor release;
-   Nucleide's embedded tables are still built from VIII.0.
-4. Nucleide implementation: `crates/nuclei/src/lib.rs`,
-   `crates/nuclei/src/dialects.rs`, `crates/nuclei/src/data.rs`.

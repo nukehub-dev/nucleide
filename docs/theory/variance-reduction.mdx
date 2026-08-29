@@ -3,6 +3,72 @@ title: Variance reduction
 description: MAGIC weight windows and alias-table source sampling in Nucleide.
 sidebar:
   order: 3
+references:
+  - id: cooper-2001
+    title: Automated weight windows for global Monte Carlo particle transport calculations
+    url: https://doi.org/10.13182/NSE00-34
+    authors: ["M. A. Cooper", "E. W. Larsen"]
+    source: Nuclear Science and Engineering
+    journal: Nuclear Science and Engineering
+    volume: "137"
+    issue: "1"
+    pages: "1–13"
+    date: "2001"
+    type: article
+    doi: "10.13182/NSE00-34"
+  - id: davis-2011
+    title: Comparison of global variance reduction techniques for Monte Carlo radiation transport simulations of ITER
+    url: https://doi.org/10.1016/j.fusengdes.2011.01.059
+    authors: ["A. Davis", "A. Turner"]
+    source: Fusion Engineering and Design
+    journal: Fusion Engineering and Design
+    volume: "86"
+    pages: "2698–2700"
+    date: "2011"
+    type: article
+    doi: "10.1016/j.fusengdes.2011.01.059"
+  - id: wagner-2014
+    title: FW-CADIS method for global and regional variance reduction of Monte Carlo radiation transport calculations
+    url: https://doi.org/10.13182/NSE12-33
+    authors: ["J. C. Wagner", "D. E. Peplow", "S. W. Mosher"]
+    source: Nuclear Science and Engineering
+    journal: Nuclear Science and Engineering
+    volume: "176"
+    issue: "1"
+    pages: "37–57"
+    date: "2014"
+    type: article
+    doi: "10.13182/NSE12-33"
+  - id: walker-1977
+    title: An efficient method for generating discrete random variables with general distributions
+    url: https://doi.org/10.1145/355744.355749
+    authors: ["A. J. Walker"]
+    source: ACM Transactions on Mathematical Software
+    journal: ACM Transactions on Mathematical Software
+    volume: "3"
+    issue: "3"
+    pages: "253–256"
+    date: "1977"
+    type: article
+    doi: "10.1145/355744.355749"
+  - id: vose-1991
+    title: A linear algorithm for generating random numbers with a given distribution
+    url: https://doi.org/10.1109/32.92917
+    authors: ["M. D. Vose"]
+    source: IEEE Transactions on Software Engineering
+    journal: IEEE Transactions on Software Engineering
+    volume: "17"
+    issue: "9"
+    pages: "972–975"
+    date: "1991"
+    type: article
+    doi: "10.1109/32.92917"
+  - id: nucleide-vr-tools
+    title: Nucleide variance-reduction implementation
+    url: https://github.com/nukehub-dev/nucleide/tree/main/crates/vr-tools
+    source: Nucleide implementation
+    date: "2026"
+    type: misc
 ---
 
 Nucleide provides two variance-reduction utilities built on MCNP mesh tallies:
@@ -33,7 +99,7 @@ $$
 where $\varepsilon_{v,g}$ is the relative error of the tally and $\tau$ is the
 error tolerance. The factor of $2$ normalizes the peak-flux voxel to a lower
 bound of $0.5$; MAGIC is intended to be iterated so the weight windows refine
-over successive forward runs (Cooper & Larsen 2001).
+over successive forward runs (Cooper & Larsen 2001)<Citation id="cooper-2001" />.
 
 <Callout type="info" title="Where this lives in the code">
   MAGIC is implemented in `crates/vr-tools/src/magic.rs`. The public functions
@@ -242,7 +308,7 @@ does not implement:
   ratio to the lower bounds; Nucleide performs a single lower-bound pass.
 - **FW-CADIS and adjoint-based global variance reduction**: hybrid
   deterministic/Monte Carlo methods that build weight windows from an adjoint
-  importance solve; see Wagner et al. (2014) in the references.
+  importance solve; see Wagner et al. (2014)<Citation id="wagner-2014" />.
 - **Built-in generators in OpenMC**: `WeightWindows` and
   `WeightWindowGenerator` (MAGIC-like and FW-CADIS modes, updated on the fly
   during transport), including an internal random-ray adjoint solver.
@@ -250,26 +316,3 @@ does not implement:
   independent sources; PyNE's mesh sampler additionally supports sub-voxel
   sampling modes. Nucleide's `MeshSourceSampler` is voxel-level and
   energy-integrated.
-
-## References
-
-1. M. A. Cooper and E. W. Larsen, "Automated weight windows for global Monte
-   Carlo particle transport calculations," *Nuclear Science and Engineering*,
-   **137**(1), 1–13 (2001). DOI:
-   [10.13182/NSE00-34](https://doi.org/10.13182/NSE00-34).
-2. A. Davis and A. Turner, "Comparison of global variance reduction techniques
-   for Monte Carlo radiation transport simulations of ITER," *Fusion
-   Engineering and Design*, **86**, 2698–2700 (2011). DOI:
-   [10.1016/j.fusengdes.2011.01.059](https://doi.org/10.1016/j.fusengdes.2011.01.059).
-3. J. C. Wagner, D. E. Peplow, and S. W. Mosher, "FW-CADIS method for global
-   and regional variance reduction of Monte Carlo radiation transport
-   calculations," *Nuclear Science and Engineering*, **176**(1), 37–57 (2014).
-   DOI: [10.13182/NSE12-33](https://doi.org/10.13182/NSE12-33).
-4. A. J. Walker, "An efficient method for generating discrete random variables
-   with general distributions," *ACM Transactions on Mathematical Software*,
-   **3**(3), 253–256 (1977).
-5. M. D. Vose, "A linear algorithm for generating random numbers with a given
-   distribution," *IEEE Transactions on Software Engineering*, **17**(9),
-   972–975 (1991).
-6. Nucleide implementation: `crates/vr-tools/src/magic.rs`,
-   `crates/vr-tools/src/sampling.rs`.

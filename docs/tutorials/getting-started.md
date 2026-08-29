@@ -4,32 +4,16 @@ sidebar:
   order: 1
 ---
 
-Install Nucleide, build the Rust workspace, and exercise the Python bindings.
+Install Nucleide and run your first Python snippet.
 
-## What you need
-
-- Rust stable via `rustup` (workspace pins `rust-version = "1.83"`).
-- Python >= 3.10.
-- `pip install maturin pytest pytest-cov ruff mypy`.
-
-## Clone and build
+## Install from PyPI
 
 ```bash
-git clone https://github.com/nukehub-dev/nucleide.git
-cd nucleide
-
-cargo build --workspace
-cargo test --workspace
+pip install nucleide
 ```
 
-## Install the Python package locally
-
-```bash
-maturin develop
-```
-
-This compiles the PyO3 extension and installs the `nucleide` package into your
-current virtual environment.
+Prebuilt wheels cover Linux, macOS, and Windows for Python >= 3.10 (abi3: one
+wheel per platform serves every supported Python version).
 
 ## Verify the Python surface
 
@@ -41,6 +25,23 @@ print(u.nucid, u.zaid, u.serpent)
 
 print("version:", nuc.__version__)
 ```
+
+## Build from source
+
+Use this path to try unreleased changes or to contribute. You need Rust stable
+via `rustup` (workspace pins `rust-version = "1.83"`) and Python >= 3.10.
+
+```bash
+git clone https://github.com/nukehub-dev/nucleide.git
+cd nucleide
+
+cargo test --workspace   # Rust workspace
+pip install maturin
+maturin develop          # build + install the Python package
+```
+
+The full contributor toolchain (pytest, ruff, mypy, WASM, website) is covered
+in [Local development](../../development/local-dev.md).
 
 ## Next steps
 

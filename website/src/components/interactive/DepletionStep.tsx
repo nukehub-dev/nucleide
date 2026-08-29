@@ -124,6 +124,7 @@ export function DepletionStep() {
                   clearError();
                 }}
                 options={ORDER_OPTIONS}
+                className="min-w-[100px]"
               />
             </div>
           </div>

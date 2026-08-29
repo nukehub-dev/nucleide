@@ -148,6 +148,7 @@ export function VrDemo() {
                   clearError();
                 }}
                 options={SELECTION_OPTIONS}
+                className="min-w-[140px]"
               />
             </div>
             <div className="space-y-1">
@@ -214,6 +215,7 @@ export function VrDemo() {
                   clearError();
                 }}
                 options={SAMPLE_MODE_OPTIONS}
+                className="min-w-[140px]"
               />
               <Button onClick={runSample}>Sample voxel</Button>
             </div>

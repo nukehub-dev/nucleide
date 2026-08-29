@@ -26,6 +26,8 @@ import Odysee from "@nukehub/docs-kit/components/mdx/shortcodes/Odysee.astro";
 import ImageFigure from "@nukehub/docs-kit/components/mdx/shortcodes/ImageFigure.astro";
 import DataTable from "@nukehub/docs-kit/components/mdx/shortcodes/DataTable.astro";
 import Plotly from "@nukehub/docs-kit/components/mdx/shortcodes/Plotly.astro";
+import { Citation } from "@nukehub/docs-kit/components/mdx/shortcodes/Citation";
+import { References } from "@nukehub/docs-kit/components/mdx/shortcodes/References";
 import WasmPlayground from "./WasmPlayground.astro";
 import InteractiveDemo from "./interactive/InteractiveDemo.astro";
 import { buildSidebar, getFlatPages, getPrevNext } from "../lib/docs";
@@ -42,6 +44,7 @@ export interface Props {
 
 const { doc, headings, allDocs, site, navItems, footerColumns, footerLegal } = Astro.props;
 const { Content } = await render(doc);
+const references = doc.data.references ?? [];
 
 const sections = buildSidebar(allDocs);
 const pages = getFlatPages(allDocs, navItems);
@@ -85,11 +88,20 @@ const description = doc.data.description;
             ImageFigure,
             DataTable,
             Plotly,
+            Citation,
             WasmPlayground,
             InteractiveDemo,
           }}
         />
       </article>
+
+      {
+        references.length > 0 && (
+          <div class="not-prose">
+            <References references={references} client:visible />
+          </div>
+        )
+      }
 
       <div class="mt-16 border-t border-border/50 pt-8">
         <div class="mb-8">

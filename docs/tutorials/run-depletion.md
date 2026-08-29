@@ -32,5 +32,5 @@ result = deplete(chain, n0, dt=1e6, rates=rates, order=48)
 
 ## See also
 
-- `crates/depletion/src/lib.rs` for the Rust API.
+- [`crates/depletion/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/depletion/src/lib.rs) for the Rust API.
 - `tests/test_depletion.py` for worked examples.

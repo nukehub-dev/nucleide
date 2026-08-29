@@ -25,7 +25,7 @@ license.
 | Document | Purpose |
 | --- | --- |
 | [Tutorials](tutorials/index.md) | Tutorial index and suggested reading order |
-| [Getting started](tutorials/getting-started.md) | Install Nucleide and run your first Rust or Python snippet |
+| [Getting started](tutorials/getting-started.md) | Install Nucleide from PyPI and run your first Python snippet |
 | [Parse MCNP output](tutorials/parse-mcnp-output.md) | Read xsdir, meshtal, MCTAL, WWINP, PTRAC, and SSW files |
 | [Build materials](tutorials/build-materials.md) | Build materials from formulae, mix compositions, and export XML |
 | [Run depletion](tutorials/run-depletion.md) | Load a depletion chain and run a short CRAM solve |

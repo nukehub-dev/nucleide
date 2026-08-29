@@ -9,6 +9,15 @@ The project is a fresh Rust implementation of capabilities pioneered by
 and `pip install`-able wheels. Scope is intentionally narrow today and will
 expand as more parsers and workflow pieces land.
 
+## Installation
+
+```bash
+pip install nucleide
+```
+
+Prebuilt wheels cover Linux, macOS, and Windows for Python >= 3.10 (abi3). To
+build from source instead, see the Development section below.
+
 ## Why
 
 Nuclear-engineering workflows spend most of their time moving data between

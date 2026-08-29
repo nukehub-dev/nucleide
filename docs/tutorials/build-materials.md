@@ -48,5 +48,5 @@ print(xml)
 
 ## See also
 
-- Crate docs in `crates/material/src/lib.rs`.
+- Crate docs in [`crates/material/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/material/src/lib.rs).
 - Fixture license in `fixtures/data/MaterialsCompendium.LICENSE`.

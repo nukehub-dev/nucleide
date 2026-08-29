@@ -3,6 +3,58 @@ title: Depletion
 description: Burnup matrices, the Bateman equation, and the CRAM solver used by Nucleide.
 sidebar:
   order: 1
+references:
+  - id: pusa-2010
+    title: Computing the matrix exponential in burnup calculations
+    url: https://doi.org/10.13182/NSE09-81
+    authors: ["M. Pusa", "J. Leppänen"]
+    source: Nuclear Science and Engineering
+    journal: Nuclear Science and Engineering
+    volume: "164"
+    pages: "140–150"
+    date: "2010"
+    type: article
+    doi: "10.13182/NSE09-81"
+  - id: pusa-2016
+    title: Higher-order Chebyshev rational approximation method and application to burnup equations
+    url: https://doi.org/10.13182/NSE15-26
+    authors: ["M. Pusa"]
+    source: Nuclear Science and Engineering
+    journal: Nuclear Science and Engineering
+    volume: "182"
+    issue: "3"
+    pages: "297–318"
+    date: "2016"
+    type: article
+    doi: "10.13182/NSE15-26"
+  - id: josey-2017
+    title: High order methods for the integration of the Bateman equations and other problems of the form y' = F(y,t) y
+    url: https://doi.org/10.1016/j.jcp.2017.08.025
+    authors: ["C. Josey", "B. Forget", "K. Smith"]
+    source: Journal of Computational Physics
+    journal: Journal of Computational Physics
+    volume: "350"
+    pages: "296–313"
+    date: "2017"
+    type: article
+    doi: "10.1016/j.jcp.2017.08.025"
+  - id: romano-2021
+    title: Depletion capabilities in the OpenMC Monte Carlo particle transport code
+    url: https://doi.org/10.1016/j.anucene.2020.107989
+    authors: ["P. K. Romano", "C. J. Josey", "A. E. Johnson", "J. Liang"]
+    source: Annals of Nuclear Energy
+    journal: Annals of Nuclear Energy
+    volume: "152"
+    pages: "107989"
+    date: "2021"
+    type: article
+    doi: "10.1016/j.anucene.2020.107989"
+  - id: nucleide-depletion
+    title: Nucleide depletion implementation
+    url: https://github.com/nukehub-dev/nucleide/tree/main/crates/depletion
+    source: Nucleide implementation
+    date: "2026"
+    type: misc
 ---
 
 Nucleide solves nuclide transmutation over a single time step using a **burnup
@@ -341,25 +393,4 @@ does not implement:
 - **Chain truncation**: PyNE's transmutagen-generated solver truncates the
   transmutation tree by density tolerance; Nucleide uses a fixed chain.
 - **Krylov subspace methods**: an alternative to CRAM for the Bateman
-  equations; see Josey et al. (2017) in the references.
-
-## References
-
-1. M. Pusa and J. Leppänen, "Computing the matrix exponential in burnup
-   calculations," *Nuclear Science and Engineering*, **164**, 140–150 (2010).
-2. M. Pusa, "Higher-order Chebyshev rational approximation method and
-   application to burnup equations," *Nuclear Science and Engineering*,
-   **182**(3), 297–318 (2016). DOI:
-   [10.13182/NSE15-26](https://doi.org/10.13182/NSE15-26). Source of the
-   CRAM-16 and CRAM-48 coefficient sets shipped by Nucleide.
-3. C. Josey, B. Forget, and K. Smith, "High order methods for the integration
-   of the Bateman equations and other problems of the form
-   $y' = F(y,t)\,y$," *Journal of Computational Physics*, **350**, 296–313
-   (2017). DOI:
-   [10.1016/j.jcp.2017.08.025](https://doi.org/10.1016/j.jcp.2017.08.025).
-4. P. K. Romano, C. J. Josey, A. E. Johnson, and J. Liang, "Depletion
-   capabilities in the OpenMC Monte Carlo particle transport code," *Annals of
-   Nuclear Energy*, **152**, 107989 (2021). DOI:
-   [10.1016/j.anucene.2020.107989](https://doi.org/10.1016/j.anucene.2020.107989).
-5. Nucleide implementation: `crates/depletion/src/cram.rs`,
-   `crates/depletion/src/matrix.rs`.
+  equations; see Josey et al. (2017)<Citation id="josey-2017" />.

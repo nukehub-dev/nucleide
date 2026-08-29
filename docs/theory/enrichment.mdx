@@ -3,6 +3,49 @@ title: Enrichment cascades
 description: Matched-abundance-ratio cascade model, separation factors, and SWU used by Nucleide.
 sidebar:
   order: 2
+references:
+  - id: wood-1999
+    title: On a Criterion Efficiency for Multi-Isotope Mixtures Separation
+    url: https://doi.org/10.1081/SS-100100654
+    authors: ["H. G. Wood", "V. D. Borisevich", "G. A. Sulaberidze"]
+    source: Separation Science and Technology
+    journal: Separation Science and Technology
+    volume: "34"
+    issue: "3"
+    pages: "343–357"
+    date: "1999"
+    type: article
+    doi: "10.1081/SS-100100654"
+  - id: zeng-2014
+    title: A numerical method of cascade analysis and design for multi-component isotope separation
+    url: https://doi.org/10.1016/j.cherd.2013.12.016
+    authors: ["S. Zeng", "L. Cheng", "D. Jiang", "V. Borisevich"]
+    source: Chemical Engineering Research and Design
+    journal: Chemical Engineering Research and Design
+    volume: "92"
+    issue: "11"
+    pages: "2649–2658"
+    date: "2014"
+    type: article
+    doi: "10.1016/j.cherd.2013.12.016"
+  - id: zeng-2018
+    title: Maximizing separation performance of q-cascades for multicomponent isotope separation
+    url: https://doi.org/10.1080/01496395.2017.1378680
+    authors: ["S. Zeng", "Y. Zhang", "D. Jiang", "V. Borisevich", "G. Sulaberidze", "A. Smirnov"]
+    source: Separation Science and Technology
+    journal: Separation Science and Technology
+    volume: "53"
+    issue: "1"
+    pages: "97–109"
+    date: "2018"
+    type: article
+    doi: "10.1080/01496395.2017.1378680"
+  - id: nucleide-enrichment
+    title: Nucleide enrichment implementation
+    url: https://github.com/nukehub-dev/nucleide/tree/main/crates/enrichment
+    source: Nucleide implementation
+    date: "2026"
+    type: misc
 ---
 
 Nucleide solves **matched-abundance-ratio cascades (MARCs)** for
@@ -285,24 +328,9 @@ implement:
   flow per unit feed originates with A. de la Garza, AECOP-330 (1969), cited
   in PyNE's documentation.
 - **Q-cascade optimization**: recent work generalizes MARC analysis and
-  optimizes cascade tapering; see the Zeng et al. references below.
+  optimizes cascade tapering; see Zeng et al.
+  (<Citation id="zeng-2014" />, <Citation id="zeng-2018" />).
 - **Non-uranium isotopes**: the same mathematics applies to stable-isotope
   cascades (e.g. isotopically modified molybdenum, Borisevich et al. 2017,
   *Chemical Engineering Research and Design* **128**, 257–264), though
   Nucleide's defaults target uranium.
-
-## References
-
-1. H. G. Wood, V. D. Borisevich, and G. A. Sulaberidze,
-   "On a Criterion Efficiency for Multi-Isotope Mixtures Separation,"
-   *Separation Science and Technology*, **34**(3), 343–357 (1999).
-   DOI: [10.1081/SS-100100654](https://doi.org/10.1081/SS-100100654).
-2. S. Zeng, L. Cheng, D. Jiang, and V. Borisevich, "A numerical method of
-   cascade analysis and design for multi-component isotope separation,"
-   *Chemical Engineering Research and Design*, **92**(11), 2649–2658 (2014).
-   DOI: [10.1016/j.cherd.2013.12.016](https://doi.org/10.1016/j.cherd.2013.12.016).
-3. S. Zeng, Y. Zhang, D. Jiang, V. Borisevich, G. Sulaberidze, and A. Smirnov,
-   "Maximizing separation performance of q-cascades for multicomponent isotope
-   separation," *Separation Science and Technology*, **53**(1), 97–109 (2018).
-   DOI: [10.1080/01496395.2017.1378680](https://doi.org/10.1080/01496395.2017.1378680).
-4. Nucleide implementation: `crates/enrichment/src/cascade.rs`.

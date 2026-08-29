@@ -15,5 +15,5 @@ For methodology and derivations of the algorithms implemented in these crates,
 see the [Theory](../theory/index.mdx) section.
 
 For the project manifest, build settings, and lint configuration, see
-[`../../Cargo.toml`](../../Cargo.toml) and
-[`../../pyproject.toml`](../../pyproject.toml).
+[`Cargo.toml`](https://github.com/nukehub-dev/nucleide/blob/main/Cargo.toml) and
+[`pyproject.toml`](https://github.com/nukehub-dev/nucleide/blob/main/pyproject.toml) on GitHub.

@@ -8,6 +8,7 @@ import type {
 } from "../../types/nucleide-wasm";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Textarea } from "@nukehub/docs-kit/components/ui/Textarea";
+import { DataTable } from "@nukehub/docs-kit/components/mdx/DataTable";
 
 type ParserMode = "materials" | "xsdir" | "meshtal" | "wwinp";
 
@@ -152,77 +153,88 @@ export function McnpParser() {
           <Button onClick={run}>Parse</Button>
 
           {materials && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {materials.map((m) => (
-                <div key={m.number} className="rounded-md border border-border/50 p-3">
-                  <p className="text-sm font-medium">Material {m.number}</p>
-                  {m.density && <p className="text-xs text-muted-foreground">Density: {m.density} g/cm³</p>}
-                  <p className="text-xs text-muted-foreground">Type: {m.fractionType}</p>
-                  <table className="w-full text-sm">
-                    <tbody>
-                      {Object.entries(m.fractions).map(([nuc, frac]) => (
-                        <tr key={nuc} className="border-b border-border/50">
-                          <td className="py-1 font-mono">{nuc}</td>
-                          <td className="py-1 text-right font-mono">{frac.toExponential(4)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div key={m.number} className="space-y-2">
+                  <div className="flex flex-wrap items-baseline gap-2 text-sm">
+                    <span className="font-medium">Material {m.number}</span>
+                    {m.density && (
+                      <span className="text-xs text-muted-foreground">
+                        Density: {m.density} g/cm³
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">Type: {m.fractionType}</span>
+                  </div>
+                  <DataTable
+                    data={Object.entries(m.fractions).map(([nuclide, fraction]) => ({
+                      nuclide,
+                      fraction: fraction.toExponential(4),
+                    }))}
+                    columns={[
+                      { key: "nuclide", header: "Nuclide" },
+                      { key: "fraction", header: "Fraction", align: "right" },
+                    ]}
+                  />
                 </div>
               ))}
             </div>
           )}
 
           {xsdir && (
-            <div className="space-y-2 text-sm">
-              <p>Datapath: {xsdir.datapath ?? "none"}</p>
-              <p>AWR entries: {xsdir.awrCount}</p>
-              <p>Table count: {xsdir.tableCount}</p>
-              <div className="max-h-64 overflow-auto rounded-md border border-border">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted">
-                    <tr>
-                      <th className="px-2 py-1 text-left">Name</th>
-                      <th className="px-2 py-1 text-left">ZAID</th>
-                      <th className="px-2 py-1 text-right">AWR</th>
-                      <th className="px-2 py-1 text-left">File</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {xsdir.tables.slice(0, 50).map((t) => (
-                      <tr key={t.name} className="border-b border-border/50">
-                        <td className="px-2 py-1 font-mono">{t.name}</td>
-                        <td className="px-2 py-1 font-mono">{t.zaid}</td>
-                        <td className="px-2 py-1 text-right">{t.awr.toFixed(4)}</td>
-                        <td className="px-2 py-1">{t.filename}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div className="space-y-3">
+              <div className="grid gap-2 text-sm sm:grid-cols-3">
+                <p>Datapath: {xsdir.datapath ?? "none"}</p>
+                <p>AWR entries: {xsdir.awrCount}</p>
+                <p>Table count: {xsdir.tableCount}</p>
               </div>
+              <DataTable
+                data={xsdir.tables.map((t) => ({
+                  name: <span className="font-mono">{t.name}</span>,
+                  zaid: <span className="font-mono">{t.zaid}</span>,
+                  awr: t.awr.toFixed(4),
+                  filename: <span className="font-mono">{t.filename}</span>,
+                }))}
+                columns={[
+                  { key: "name", header: "Name" },
+                  { key: "zaid", header: "ZAID" },
+                  { key: "awr", header: "AWR", align: "right" },
+                  { key: "filename", header: "File" },
+                ]}
+                pagination
+                pageSize={10}
+              />
             </div>
           )}
 
           {meshtal && (
-            <div className="space-y-2 text-sm">
-              <p>Version: {meshtal.version}</p>
-              <p>Title: {meshtal.title}</p>
-              <p>Histories: {meshtal.histories.toExponential(4)}</p>
-              <p>Tallies: {meshtal.tallyCount}</p>
-              {Object.entries(meshtal.tallies).map(([num, t]) => (
-                <div key={num} className="rounded-md border border-border/50 p-3">
-                  <p className="font-medium">Tally {num}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Particle: {t.particle}, dims: {t.dims.join("×")}, energy groups: {t.numEGroups}
-                  </p>
-                </div>
-              ))}
+            <div className="space-y-3">
+              <div className="grid gap-2 text-sm sm:grid-cols-3">
+                <p>Version: {meshtal.version}</p>
+                <p>Title: {meshtal.title}</p>
+                <p>Histories: {meshtal.histories.toExponential(4)}</p>
+              </div>
+              <DataTable
+                data={Object.entries(meshtal.tallies).map(([num, t]) => ({
+                  number: num,
+                  particle: t.particle,
+                  dims: t.dims.join("×"),
+                  energyGroups: t.numEGroups,
+                }))}
+                columns={[
+                  { key: "number", header: "Tally" },
+                  { key: "particle", header: "Particle" },
+                  { key: "dims", header: "Dimensions" },
+                  { key: "energyGroups", header: "Energy groups", align: "right" },
+                ]}
+              />
             </div>
           )}
 
           {wwinp && (
             <div className="space-y-2 text-sm">
-              <p>ni: {wwinp.ni}, nr: {wwinp.nr}</p>
+              <p>
+                ni: {wwinp.ni}, nr: {wwinp.nr}
+              </p>
               <p>nf: [{wwinp.nf.join(", ")}]</p>
               <p>nc: [{wwinp.nc.join(", ")}]</p>
               <p>origin: [{wwinp.origin.join(", ")}]</p>

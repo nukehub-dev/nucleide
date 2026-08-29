@@ -12,6 +12,10 @@ publishes Python wheels (and optionally Rust crates) from tags.
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation theory pages (`depletion`, `enrichment`, `nuclear-data`, `variance-reduction`) now use the citation support from `@nukehub/docs-kit`: references are declared in frontmatter, cited inline with `<Citation />`, and rendered as a linked bibliography with copy-to-clipboard export.
+
 ### Added
 
 - `depletion`: reaction `branching_ratio` support in chain XML (default 1.0),

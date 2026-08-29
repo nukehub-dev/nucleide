@@ -20,7 +20,8 @@ verification rules remain in the root `AGENTS.md`.
 - **WASM source of truth**: `bindings/wasm/`. Rebuild with `npm run build:wasm`
   after any Rust change that affects the WASM bindings.
 - **Shared UI**: `@nukehub/docs-kit` provides layout, navigation, and
-  markdown-negotiation integration.
+  markdown-negotiation integration. The dynamic favicon is customized through
+  the kit's `SiteConfig.faviconPaths` field in `src/data/site.ts`.
 - **Base path**: The site is configured with `base: "/nucleide"`. Preview and
   tests must account for this prefix.
 
