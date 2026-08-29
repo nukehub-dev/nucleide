@@ -30,6 +30,10 @@ publishes Python wheels (and optionally Rust crates) from tags.
 - Python API: `Cascade.solve_multicomponent()` (M\*-optimizing solve),
   `DepletionSystem` builder and `solve_vec()` for repeated solves without
   per-call overhead, and `MeshTally.total_rel_error`.
+- Python API: `nucleide.data` module (`fetch`, `fetch_compendium`,
+  `default_ref`) for downloading repo data files — the Materials Compendium,
+  sample depletion chains — pinned to the installed version's tag, since the
+  wheel bundles no data files.
 - Criterion benchmarks in `crates/*/benches/` (`cargo bench`).
 - `validation/`: runnable cross-code validation harness against PyNE 0.7.5 and
   OpenMC 0.16.0 (containerized via `validation/Containerfile` +
@@ -43,10 +47,12 @@ publishes Python wheels (and optionally Rust crates) from tags.
 - JOSS submission materials: `paper.md`, `paper.bib`, `CITATION.cff`,
   `CONTRIBUTING.md`, and a draft-PDF workflow.
 - `bindings/wasm`: `wasm-bindgen` crate exposing a subset of the workspace to
-  the browser.
+  the browser, including a `WasmMaterialsCompendium` API that parses the
+  DOE/PNNL Materials Compendium from its JSON text.
 - Documentation website (`website/`, Astro + `@nukehub/docs-kit`) with content
-  synced from `docs/`, theory pages, and interactive WASM tutorials, deployed
-  to GitHub Pages.
+  synced from `docs/`, theory pages, and interactive WASM tutorials (including
+  a compendium browser that fetches the staged `MaterialsCompendium.json` and
+  charts compositions with Plotly), deployed to GitHub Pages.
 - Release workflow: `vX.Y.Z` tags build and publish Python wheels for Linux,
   macOS, and Windows to PyPI and draft a GitHub release from the matching
   changelog section; crates.io publishing is opt-in via `workflow_dispatch`.

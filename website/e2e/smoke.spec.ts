@@ -1,14 +1,19 @@
 import { test, expect } from "@playwright/test";
 
 async function waitForWasmReady(page) {
-  const loader = page.locator("text=Loading Nucleide WASM…");
-  await loader.waitFor({ state: "attached" });
+  // Pages can host several WASM demos, each rendering its own loader and
+  // hydrating on visibility (client:visible). Scroll the page end-to-end so
+  // every demo hydrates, then wait until no loader remains.
+  const loaders = page.locator("text=Loading Nucleide WASM…");
+  await loaders.first().waitFor({ state: "attached" });
   try {
-    await loader.scrollIntoViewIfNeeded();
+    await loaders.first().scrollIntoViewIfNeeded();
   } catch {
     // The loader may have already hydrated and been removed; that's fine.
   }
-  await loader.waitFor({ state: "detached" });
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect(loaders).toHaveCount(0, { timeout: 15_000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
 }
 
 async function assertNoKatexErrors(page) {
@@ -69,6 +74,14 @@ for (const { path, button, output, cell } of INTERACTIVE_PAGES) {
       await expect(
         page.locator("tbody td", { hasText: cell }).first(),
       ).toBeVisible();
+    }
+    if (path === "tutorials/interactive/materials") {
+      // The compendium browser hydrates on visibility (client:visible), then
+      // fetches public/data/MaterialsCompendium.json and parses it with WASM.
+      await page
+        .getByRole("heading", { name: "Browse the Materials Compendium" })
+        .scrollIntoViewIfNeeded();
+      await expect(page.getByText("materials loaded")).toBeVisible();
     }
   });
 }

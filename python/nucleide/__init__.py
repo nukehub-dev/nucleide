@@ -4,10 +4,12 @@ Rust core (crates/*) exposed through PyO3; Python stays the user-facing API.
 Functionality is grouped into domain submodules mirroring the Rust crates:
 `nucleide.nuclei`, `nucleide.material`, `nucleide.mcnp`, `nucleide.serpent`,
 `nucleide.fluka`, `nucleide.vr`, `nucleide.enrichment`, and
-`nucleide.depletion`.
+`nucleide.depletion`. `nucleide.data` fetches repo data files (compendium,
+sample chains) pinned to the installed release.
 """
 
 from nucleide import (
+    data,
     depletion,
     enrichment,
     fluka,
@@ -30,4 +32,5 @@ __all__ = [
     "vr",
     "enrichment",
     "depletion",
+    "data",
 ]

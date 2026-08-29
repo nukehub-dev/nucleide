@@ -330,6 +330,82 @@ impl WasmMaterial {
 }
 
 // ---------------------------------------------------------------------------
+// Materials Compendium
+// ---------------------------------------------------------------------------
+
+/// The DOE/PNNL Materials Compendium parsed from its JSON distribution.
+#[wasm_bindgen]
+pub struct WasmMaterialsCompendium {
+    inner: material::MaterialsLibrary,
+}
+
+#[derive(Serialize)]
+struct CompendiumEntryInfo {
+    name: String,
+    acronym: Vec<String>,
+    mat_num: u32,
+    density: f64,
+    atom_density: f64,
+    source: String,
+    comment: Vec<String>,
+    weight_fractions: BTreeMap<String, f64>,
+}
+
+#[wasm_bindgen]
+impl WasmMaterialsCompendium {
+    /// Parse the compendium from its JSON text.
+    #[wasm_bindgen(js_name = fromJson)]
+    pub fn from_json(text: &str) -> Result<WasmMaterialsCompendium, JsValue> {
+        let inner = material::MaterialsLibrary::from_json(text).map_err(js_err)?;
+        Ok(WasmMaterialsCompendium { inner })
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// All material names.
+    pub fn names(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.names())
+    }
+
+    /// One entry with its isotope-level weight fractions keyed by nuclide name.
+    pub fn get(&self, name: &str) -> Result<JsValue, JsValue> {
+        let entry = self
+            .inner
+            .get(name)
+            .ok_or_else(|| js_err(format!("no compendium material named '{name}'")))?;
+        let weight_fractions = entry
+            .weight_fractions()
+            .into_iter()
+            .map(|(zaid, frac)| {
+                let key = nuclei::dialects::from_zaid(zaid)
+                    .map(|id| id.to_name())
+                    .unwrap_or_else(|_| zaid.to_string());
+                (key, frac)
+            })
+            .collect();
+        let info = CompendiumEntryInfo {
+            name: entry.name.clone(),
+            acronym: entry.acronym.clone(),
+            mat_num: entry.mat_num,
+            density: entry.density,
+            atom_density: entry.atom_density,
+            source: entry.source.clone(),
+            comment: entry.comment.clone(),
+            weight_fractions,
+        };
+        to_js(&info)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Enrichment cascade
 // ---------------------------------------------------------------------------
 

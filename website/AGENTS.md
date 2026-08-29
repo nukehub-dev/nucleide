@@ -10,8 +10,8 @@ tutorials through a `wasm-bindgen` build in `bindings/wasm`.
 
 This doc owns the website build, preview, sync, and end-to-end test workflow.
 It covers `website/` and its generated artifacts (`website/public/wasm`,
-`website/dist`, `website/src/content/docs`). Parent-level Rust/Python/
-verification rules remain in the root `AGENTS.md`.
+`website/public/data`, `website/dist`, `website/src/content/docs`).
+Parent-level Rust/Python/verification rules remain in the root `AGENTS.md`.
 
 ## Local Contracts
 
@@ -19,6 +19,10 @@ verification rules remain in the root `AGENTS.md`.
   `website/src/content/docs` via `npm run sync-docs`.
 - **WASM source of truth**: `bindings/wasm/`. Rebuild with `npm run build:wasm`
   after any Rust change that affects the WASM bindings.
+- **Runtime data**: `fixtures/data/` is the source of truth for data files the
+  interactive tutorials load at runtime (currently the Materials Compendium).
+  `npm run sync-data` stages them, minified, into the git-ignored
+  `website/public/data/`; it runs automatically via `predev`/`prebuild`.
 - **Shared UI**: `@nukehub/docs-kit` provides layout, navigation, and
   markdown-negotiation integration. The dynamic favicon is customized through
   the kit's `SiteConfig.faviconPaths` field in `src/data/site.ts`.

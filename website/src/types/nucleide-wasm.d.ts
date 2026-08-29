@@ -162,6 +162,24 @@ export interface SampledVoxelSummary {
   weight: number;
 }
 
+export interface CompendiumEntryInfo {
+  name: string;
+  acronym: string[];
+  mat_num: number;
+  density: number;
+  atom_density: number;
+  source: string;
+  comment: string[];
+  weight_fractions: Record<string, number>;
+}
+
+export interface WasmMaterialsCompendium {
+  len: number;
+  is_empty: boolean;
+  names(): string[];
+  get(name: string): CompendiumEntryInfo;
+}
+
 export interface WasmApi {
   default: () => Promise<void>;
   WasmNuclide: {
@@ -180,6 +198,9 @@ export interface WasmApi {
   };
   WasmChain: {
     fromXml(xml: string): WasmChain;
+  };
+  WasmMaterialsCompendium: {
+    fromJson(text: string): WasmMaterialsCompendium;
   };
   atomicMass(key: string): number | undefined;
   naturalAbundance(key: string): number | undefined;

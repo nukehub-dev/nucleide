@@ -20,12 +20,25 @@ print(comp)
 
 ## Load the PNNL Materials Compendium
 
+The compendium ships as a standalone JSON file; it is not bundled in the
+Python wheel. Download it with `nucleide.data`, which pins the download to the
+installed version's tag (in a source checkout, the same file is already under
+`fixtures/data/`):
+
 ```python
+from nucleide.data import fetch_compendium
 from nucleide.material import MaterialsCompendium
 
-lib = MaterialsCompendium.load("fixtures/data/MaterialsCompendium.json")
+path = fetch_compendium()  # add ref="main" or a commit SHA to override
+lib = MaterialsCompendium.load(path)
 print(len(lib), "materials")
 print(lib.names()[:5])
+```
+
+The equivalent one-liner with curl:
+
+```bash
+curl -LO https://raw.githubusercontent.com/nukehub-dev/nucleide/main/fixtures/data/MaterialsCompendium.json
 ```
 
 ## Mix materials

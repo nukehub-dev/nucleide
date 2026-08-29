@@ -6,9 +6,10 @@
   "private": true,
   "scripts": {
     "sync-docs": "nukehub-sync-docs --src ../docs --dst ./src/content/docs --repo-root .. --github-file-base https://github.com/nukehub-dev/nucleide/blob/main",
-    "predev": "npm run sync-docs",
+    "sync-data": "node scripts/sync-data.mjs",
+    "predev": "npm run sync-docs && npm run sync-data",
     "dev": "astro dev --host",
-    "prebuild": "npm run sync-docs",
+    "prebuild": "npm run sync-docs && npm run sync-data",
     "build": "astro build",
     "build:wasm": "cd ../bindings/wasm && wasm-pack build --target web --out-dir ../../website/public/wasm",
     "preview": "astro preview --host",

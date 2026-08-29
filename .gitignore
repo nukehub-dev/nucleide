@@ -4,6 +4,7 @@
 /website/dist/
 /website/src/content/docs/
 /website/public/wasm/
+/website/public/data/
 /website/playwright-report/
 /website/test-results/
 

@@ -29,6 +29,7 @@ re-exports its symbols from `nucleide._internal`:
 | `nucleide.vr` | `vr-tools` | MAGIC weight windows, source sampling |
 | `nucleide.enrichment` | `enrichment` | Enrichment cascades |
 | `nucleide.depletion` | `depletion` | Depletion chains and CRAM solves |
+| `nucleide.data` | — (pure Python) | Release-pinned data-file downloads |
 
 ## `nucleide.nuclei`
 
@@ -92,6 +93,18 @@ re-exports its symbols from `nucleide._internal`:
 - `system.solve(n0, dt, order=48)` → result `dict`
 - `system.solve_vec(n0, dt, order=48)` → result `list` in chain nuclide order
 - `deplete(chain, n0, dt, rates=None, order=48)` → result `dict`
+
+## `nucleide.data`
+
+Pure-Python helpers (no backing crate) for downloading repo data files that
+the wheel does not bundle, pinned to the installed release:
+
+- `fetch(path, ref=None, dest=".")` → local path `str` of a repo-relative file
+  (e.g. `"fixtures/depletion/chain_simple.xml"`)
+- `fetch_compendium(ref=None, dest=".")` → local path `str` of the Materials
+  Compendium JSON
+- `default_ref()` → the installed version's tag (e.g. `"v0.1.0"`); pass
+  `ref="main"` or a commit SHA to override
 
 ## Version
 

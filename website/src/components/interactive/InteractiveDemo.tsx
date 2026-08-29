@@ -1,5 +1,6 @@
 import { NuclideExplorer } from "./NuclideExplorer";
 import { MaterialBuilder } from "./MaterialBuilder";
+import { CompendiumBrowser } from "./CompendiumBrowser";
 import { CascadeSolver } from "./CascadeSolver";
 import { DepletionStep } from "./DepletionStep";
 import { McnpParser } from "./McnpParser";
@@ -9,6 +10,7 @@ interface InteractiveDemoProps {
   kind:
     | "nuclides"
     | "materials"
+    | "materials-compendium"
     | "enrichment"
     | "depletion"
     | "mcnp-io"
@@ -21,6 +23,8 @@ export function InteractiveDemo({ kind }: InteractiveDemoProps) {
       return <NuclideExplorer />;
     case "materials":
       return <MaterialBuilder />;
+    case "materials-compendium":
+      return <CompendiumBrowser />;
     case "enrichment":
       return <CascadeSolver />;
     case "depletion":
