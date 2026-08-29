@@ -12,7 +12,7 @@ the MARC model and SWU derivation, see the
 ## Default uranium cascade
 
 ```python
-from nucleide import Cascade
+from nucleide.enrichment import Cascade
 
 c = Cascade.default_uranium()
 c.solve()

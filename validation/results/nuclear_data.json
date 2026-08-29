@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "name": "nuclear_data",
+  "title": "Nuclear data (`nuclear_data_vs_refs.py`)",
+  "environment": {
+    "date": "2026-08-29",
+    "python": "3.12.14",
+    "platform": "Linux-7.1.9-arch1-2-x86_64-with-glibc2.39",
+    "nucleide": "0.1.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Atomic masses"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Reference",
+        "Max abs diff (u)",
+        "Mean abs diff (u)"
+      ],
+      "rows": [
+        [
+          "OpenMC",
+          "0.000000e+00",
+          "0.000000e+00"
+        ],
+        [
+          "PyNE",
+          "4.000000e-06",
+          "3.248103e-07"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Natural abundances (289 isotopes)"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Reference",
+        "Max abs diff",
+        "Mean abs diff"
+      ],
+      "rows": [
+        [
+          "OpenMC",
+          "0.000000e+00",
+          "0.000000e+00"
+        ],
+        [
+          "PyNE",
+          "1.900000e-03",
+          "7.509028e-05"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Half-lives"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Reference",
+        "Max rel diff",
+        "Mean rel diff"
+      ],
+      "rows": [
+        [
+          "OpenMC",
+          "0.000000e+00",
+          "0.000000e+00"
+        ],
+        [
+          "PyNE",
+          "1.519757e-03",
+          "1.183410e-04"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Name-dialect conversions vs `pyne.nucname`"
+    },
+    {
+      "kind": "prose",
+      "text": "All conversions (alara, cinder, nist, nucid, serpent, sza, zaid, zzaaam) had a\nmaximum relative/absolute difference of **0.000000e+00**."
+    }
+  ]
+}

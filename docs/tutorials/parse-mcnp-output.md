@@ -13,7 +13,7 @@ crate.
 An `xsdir` file indexes the cross-section tables available to MCNP.
 
 ```python
-from nucleide import read_xsdir
+from nucleide.mcnp import read_xsdir
 
 xs = read_xsdir("path/to/xsdir")
 print(xs.datapath)
@@ -26,7 +26,7 @@ for t in xs.tables[:5]:
 A `meshtal` file contains one or more FMESH tallies.
 
 ```python
-from nucleide import read_meshtal
+from nucleide.mcnp import read_meshtal
 
 mt = read_meshtal("path/to/meshtal")
 print(mt.version, mt.histories)
@@ -38,7 +38,7 @@ print(t4.dims(), t4.num_ves())
 ## MCTAL, WWINP, PTRAC, and SSW
 
 ```python
-from nucleide import read_mctal, read_wwinp, read_ptrac, read_ssw
+from nucleide.mcnp import read_mctal, read_ptrac, read_ssw, read_wwinp
 
 k = read_mctal("path/to/mctal")
 ww = read_wwinp("path/to/wwinp")
@@ -51,7 +51,7 @@ ss = read_ssw("path/to/ssw")
 Use `write_ssw` to write a modified surface-source file back to disk.
 
 ```python
-from nucleide import write_ssw
+from nucleide.mcnp import write_ssw
 
 write_ssw(ss, "path/to/output.ssw")
 ```

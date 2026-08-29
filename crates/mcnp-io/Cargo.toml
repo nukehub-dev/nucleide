@@ -11,3 +11,10 @@ rust-version.workspace = true
 binrw = "0.14"
 winnow = "0.7"
 nuclei.workspace = true
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "mcnp_io_bench"
+harness = false

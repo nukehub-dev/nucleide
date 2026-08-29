@@ -12,7 +12,7 @@ implementation lives in `crates/depletion`. For the physics and math, see the
 ## Load a depletion chain
 
 ```python
-from nucleide import read_chain
+from nucleide.depletion import read_chain
 
 chain = read_chain("path/to/chain.xml")
 print(chain.nuclides[:10])
@@ -21,7 +21,7 @@ print(chain.nuclides[:10])
 ## Run a CRAM solve
 
 ```python
-from nucleide import deplete
+from nucleide.depletion import deplete
 
 n0 = {"U235": 1.0, "U238": 20.0}
 rates = {"U235": 1e-20}  # optional reaction rates

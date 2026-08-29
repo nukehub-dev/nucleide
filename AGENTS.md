@@ -166,9 +166,15 @@ High-level layout; see the Child NAD Index below for domain-specific details.
 - `bindings/wasm/` — `wasm-bindgen` crate that lets tutorials run Nucleide in
   the browser without Python.
 - `python/nucleide/` — typed pure-Python package surface (`.pyi` stubs +
-  `py.typed`); re-exports only.
+  `py.typed`); domain submodules (`nucleide.nuclei`, `nucleide.mcnp`, ...)
+  re-export the flat `_internal` extension; no business logic.
 - `fixtures/` — golden-byte test data (see `fixtures/README.md`).
 - `tests/` — Python-side tests (run after `maturin develop`).
+- `validation/` — cross-code validation harness against PyNE/OpenMC with
+  committed results quoted by `paper.md` (see `validation/AGENTS.md`).
+- `paper.md` / `paper.bib` — JOSS paper draft; `CITATION.cff` — citation
+  metadata; `.github/workflows/draft-pdf.yml` builds the draft PDF on changes.
+- Criterion benchmarks live in `crates/*/benches/`; run with `cargo bench`.
 - `.research/` — local-only working notes; git-ignored, never referenced by
   committed docs or code.
 
@@ -229,6 +235,8 @@ Use `scripts/bump-version.sh X.Y.Z` to bump the workspace version and stamp
 ## Child NAD Index
 
 - `website/AGENTS.md` — website build, preview, sync, and E2E test workflow.
+- `validation/AGENTS.md` — cross-code validation harness workflow and the
+  generated-results contract.
 
 Create additional child `AGENTS.md` files under `crates/<name>/` or other
 folders once they grow their own durable contracts (e.g. fixture policy

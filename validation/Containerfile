@@ -1,0 +1,47 @@
+# Cross-code validation environment for Nucleide.
+#
+# PyNE 0.7.5 from conda-forge (the newest conda-forge build). This is
+# numerically identical to PyNE 0.7.8 for every module exercised here — the
+# 0.7.5..0.7.8 diff in src/enrichment.cpp, src/data.cpp and
+# pyne/dbgen/atomic_mass.py is quote style and std::isnan qualification only —
+# and PyNE 0.7.8 cannot build on Python 3.12 anyway (its setup.py still does
+# `import imp`, removed in 3.12).
+#
+# OpenMC v0.16.0 built from the upstream release tag. conda-forge still ships
+# 0.15.3, and the docker.io/openmc/openmc:v0.16.0 image actually contains
+# 0.15.3 (its Dockerfile defaults openmc_branch=master and the published tag
+# was built from the 0.15.3 release commit), so neither binary channel works.
+FROM docker.io/condaforge/miniforge3:latest
+
+SHELL ["/bin/bash", "-c"]
+
+ARG OPENMC_VERSION=v0.16.0
+
+# Build toolchain for the OpenMC C++ library.
+RUN apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends \
+      g++ make cmake git libhdf5-dev ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# PyNE and OpenMC's Python dependencies (OpenMC itself is pip-installed
+# --no-deps below, so its deps come from here).
+RUN mamba install -y -c conda-forge \
+      python=3.12 \
+      "pyne=0.7.5=nomoab_noopenmc*" \
+      numpy scipy h5py pandas lxml uncertainties ipython matplotlib endf \
+      setuptools_scm \
+ && mamba clean -afy
+
+# OpenMC C++ library + Python API from the release tag. The CMake build drops
+# libopenmc.so into openmc/lib/ inside the source tree, where
+# [tool.setuptools.package-data] picks it up during pip install.
+RUN git clone --depth 1 -b ${OPENMC_VERSION} https://github.com/openmc-dev/openmc.git /opt/openmc \
+ && cmake -S /opt/openmc -B /opt/openmc/build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DOPENMC_USE_MPI=off \
+ && cmake --build /opt/openmc/build -j"$(nproc)" \
+ && cmake --install /opt/openmc/build \
+ && pip install --no-deps --no-build-isolation /opt/openmc \
+ && rm -rf /opt/openmc/build /opt/openmc/.git \
+ && python -c "import openmc, openmc.deplete, openmc.data, pyne, pyne.enrichment, pyne.data, pyne.nucname; \
+               print('openmc', openmc.__version__, '| pyne', pyne.__version__)"

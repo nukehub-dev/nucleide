@@ -423,6 +423,11 @@ impl PyMeshTally {
     fn total_result(&self) -> Vec<f64> {
         self.inner.total_result.clone()
     }
+    /// Per-cell energy-integrated total relative errors.
+    #[getter]
+    fn total_rel_error(&self) -> Vec<f64> {
+        self.inner.total_rel_error.clone()
+    }
 }
 
 /// Parsed meshtal file.
@@ -794,6 +799,61 @@ fn read_chain(path: &str) -> PyResult<PyChain> {
 
 /// One-group reaction rates keyed by "NuclideName:reaction".
 type RateMap = BTreeMap<String, f64>;
+
+/// Pre-built depletion system for repeated CRAM solves.
+#[pyclass(name = "DepletionSystem")]
+struct PyDepletionSystem {
+    inner: std::sync::Arc<depletion::DepletionSystem>,
+}
+
+#[pymethods]
+impl PyDepletionSystem {
+    /// Solve one depletion step with the pre-built system.
+    #[pyo3(signature = (n0, dt, order=48))]
+    fn solve(
+        &self,
+        n0: BTreeMap<String, f64>,
+        dt: f64,
+        order: u8,
+    ) -> PyResult<BTreeMap<String, f64>> {
+        let order = parse_order(order)?;
+        depletion::deplete(&self.inner, order, &n0, dt)
+            .map(|r| r.atoms)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Solve one depletion step using pre-built index vectors.
+    ///
+    /// `n0` and the returned vector are in chain index order; this avoids the
+    /// name-to-index mapping overhead of `solve()` for tight timing loops.
+    #[pyo3(signature = (n0, dt, order=48))]
+    fn solve_vec(&self, n0: Vec<f64>, dt: f64, order: u8) -> PyResult<Vec<f64>> {
+        let order = parse_order(order)?;
+        depletion::cram(&self.inner, order, &n0, dt)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+}
+
+/// Build a reusable depletion system from a chain and reaction rates.
+#[pyfunction]
+fn build_depletion_system(chain: &PyChain, rates: RateMap) -> PyResult<PyDepletionSystem> {
+    let rs = split_rates(&rates, &chain.inner)?;
+    depletion::DepletionSystem::build((*chain.inner).clone(), &rs)
+        .map(|sys| PyDepletionSystem {
+            inner: std::sync::Arc::new(sys),
+        })
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+fn parse_order(order: u8) -> PyResult<depletion::Order> {
+    match order {
+        16 => Ok(depletion::Order::Order16),
+        48 => Ok(depletion::Order::Order48),
+        other => Err(PyValueError::new_err(format!(
+            "unsupported CRAM order {other}"
+        ))),
+    }
+}
 
 fn split_rates(rates: &RateMap, chain: &depletion::Chain) -> PyResult<depletion::ReactionRates> {
     let mut out = depletion::ReactionRates::new();
@@ -1309,6 +1369,50 @@ impl PyCascade {
         }
     }
 
+    /// Build a cascade from full parameters. `mat_feed` is a dict of
+    /// nuclide-name strings to mass fractions.
+    #[new]
+    #[allow(non_snake_case)]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        alpha: f64,
+        Mstar: f64,
+        j: u32,
+        k: u32,
+        N: f64,
+        M: f64,
+        x_feed_j: f64,
+        x_prod_j: f64,
+        x_tail_j: f64,
+        mat_feed: BTreeMap<String, f64>,
+    ) -> PyResult<Self> {
+        let mut feed = BTreeMap::new();
+        for (name, frac) in mat_feed {
+            let id = NuclideId::from_name(&name).map_err(wrap_nucid_err)?;
+            feed.insert(id, frac);
+        }
+        let casc = enrichment::Cascade {
+            alpha,
+            Mstar,
+            j: NuclideId::from_nucid(j),
+            k: NuclideId::from_nucid(k),
+            N,
+            M,
+            x_feed_j,
+            x_prod_j,
+            x_tail_j,
+            mat_feed: enrichment::Stream::with_total_mass(feed, 1.0),
+            mat_prod: enrichment::Stream::new(),
+            mat_tail: enrichment::Stream::new(),
+            l_t_per_feed: 0.0,
+            swu_per_feed: 0.0,
+            swu_per_prod: 0.0,
+        };
+        Ok(Self {
+            inner: std::sync::Mutex::new(casc),
+        })
+    }
+
     /// Solve via the numeric fixed-point + secant scheme in place.
     #[pyo3(signature = (tolerance=None, max_iterations=None))]
     fn solve(&self, tolerance: Option<f64>, max_iterations: Option<u32>) -> PyResult<()> {
@@ -1323,6 +1427,59 @@ impl PyCascade {
         Ok(())
     }
 
+    /// Solve and optimize `M*` for a multicomponent feed in place.
+    #[pyo3(signature = (tolerance=None, max_iterations=None))]
+    fn solve_multicomponent(
+        &self,
+        tolerance: Option<f64>,
+        max_iterations: Option<u32>,
+    ) -> PyResult<()> {
+        let tol = tolerance.unwrap_or(enrichment::DEFAULT_TOLERANCE);
+        let iters = max_iterations.unwrap_or(enrichment::DEFAULT_MAX_ITER);
+        let mut c = self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?;
+        *c = enrichment::multicomponent(&c, tol, iters)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(())
+    }
+
+    #[getter]
+    fn alpha(&self) -> f64 {
+        self.inner.lock().unwrap().alpha
+    }
+    #[getter]
+    #[allow(non_snake_case)]
+    fn Mstar(&self) -> f64 {
+        self.inner.lock().unwrap().Mstar
+    }
+    #[getter]
+    #[allow(non_snake_case)]
+    fn N(&self) -> f64 {
+        self.inner.lock().unwrap().N
+    }
+    #[getter]
+    #[allow(non_snake_case)]
+    fn M(&self) -> f64 {
+        self.inner.lock().unwrap().M
+    }
+    #[getter]
+    fn x_feed_j(&self) -> f64 {
+        self.inner.lock().unwrap().x_feed_j
+    }
+    #[getter]
+    fn x_prod_j(&self) -> f64 {
+        self.inner.lock().unwrap().x_prod_j
+    }
+    #[getter]
+    fn x_tail_j(&self) -> f64 {
+        self.inner.lock().unwrap().x_tail_j
+    }
+    #[getter]
+    fn l_t_per_feed(&self) -> f64 {
+        self.inner.lock().unwrap().l_t_per_feed
+    }
     #[getter]
     fn swu_per_feed(&self) -> f64 {
         self.inner.lock().unwrap().swu_per_feed
@@ -1331,14 +1488,41 @@ impl PyCascade {
     fn swu_per_prod(&self) -> f64 {
         self.inner.lock().unwrap().swu_per_prod
     }
-    /// Product assay of the key component j.
+    /// Feed composition as {nuclide_name: mass_fraction}.
     #[getter]
-    fn x_prod_j(&self) -> f64 {
-        self.inner.lock().unwrap().x_prod_j
+    fn mat_feed(&self) -> BTreeMap<String, f64> {
+        self.inner
+            .lock()
+            .unwrap()
+            .mat_feed
+            .comp
+            .iter()
+            .map(|(id, frac)| (id.to_name(), *frac))
+            .collect()
     }
+    /// Product composition as {nuclide_name: mass_fraction}.
     #[getter]
-    fn x_tail_j(&self) -> f64 {
-        self.inner.lock().unwrap().x_tail_j
+    fn mat_prod(&self) -> BTreeMap<String, f64> {
+        self.inner
+            .lock()
+            .unwrap()
+            .mat_prod
+            .comp
+            .iter()
+            .map(|(id, frac)| (id.to_name(), *frac))
+            .collect()
+    }
+    /// Tails composition as {nuclide_name: mass_fraction}.
+    #[getter]
+    fn mat_tail(&self) -> BTreeMap<String, f64> {
+        self.inner
+            .lock()
+            .unwrap()
+            .mat_tail
+            .comp
+            .iter()
+            .map(|(id, frac)| (id.to_name(), *frac))
+            .collect()
     }
     /// Separative work per product [kg SWU/kg] from the key assays.
     fn separative_work_per_product(&self) -> f64 {
@@ -1460,6 +1644,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(read_ssw, m)?)?;
     m.add_function(wrap_pyfunction!(read_ptrac, m)?)?;
     m.add_function(wrap_pyfunction!(read_chain, m)?)?;
+    m.add_function(wrap_pyfunction!(build_depletion_system, m)?)?;
     m.add_function(wrap_pyfunction!(deplete, m)?)?;
     m.add_function(wrap_pyfunction!(read_serpent, m)?)?;
     m.add_function(wrap_pyfunction!(read_usrbin, m)?)?;
@@ -1485,6 +1670,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySurfSrc>()?;
     m.add_class::<PyPtracFile>()?;
     m.add_class::<PyChain>()?;
+    m.add_class::<PyDepletionSystem>()?;
     m.add_class::<PyUsrbinTally>()?;
     m.add_class::<PyMagicOutput>()?;
     m.add_class::<PyAliasTable>()?;

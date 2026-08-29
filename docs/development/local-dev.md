@@ -66,6 +66,32 @@ mypy
 CI (`.github/workflows/ci.yml`) runs exactly these checks plus coverage; keep
 it green.
 
+## Benchmarks
+
+Criterion benchmarks live in `crates/*/benches/`:
+
+```bash
+cargo bench                    # full suite; reports in target/criterion/
+cargo bench -p depletion       # single crate
+```
+
+Benchmarks compile under `cargo clippy --all-targets`; keep them warning-free.
+
+## Cross-code validation
+
+The `validation/` harness compares Nucleide against PyNE and OpenMC on shared
+inputs and commits its measured results in `validation/results.md` (quoted by
+the JOSS paper). The canonical environment is a container built from
+`validation/Containerfile` (PyNE 0.7.5 + OpenMC 0.16.0, Python 3.12); a conda
+env with `pyne` and `openmc` from conda-forge works as a fallback. See
+`validation/README.md` and `validation/AGENTS.md`. Run it when changing
+numeric kernels or before a release:
+
+```bash
+./validation/run_container.sh        # containerized (canonical)
+./validation/run_all.sh /path/to/validation-env/bin/python   # any prepared env
+```
+
 ## Documentation website
 
 The site lives in `website/` and consumes `docs/` via `nukehub-sync-docs`.

@@ -9,3 +9,10 @@ rust-version.workspace = true
 
 [dependencies]
 nuclei = { version = "0.1.0", path = "../nuclei" }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "enrichment_bench"
+harness = false

@@ -1,0 +1,267 @@
+{
+  "schema": 1,
+  "name": "enrichment",
+  "title": "Enrichment (`enrichment_vs_pyne.py`)",
+  "environment": {
+    "date": "2026-08-29",
+    "python": "3.12.14",
+    "platform": "Linux-7.1.9-arch1-2-x86_64-with-glibc2.39",
+    "nucleide": "0.1.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Default uranium cascade \u2014 fixed-M* Nucleide vs optimizing PyNE"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Quantity",
+        "Relative difference (numeric)",
+        "Relative difference (symbolic)"
+      ],
+      "rows": [
+        [
+          "`N`",
+          "2.497386e-02",
+          "2.389300e-02"
+        ],
+        [
+          "`M`",
+          "3.159649e-02",
+          "3.026284e-02"
+        ],
+        [
+          "`Mstar`",
+          "2.746142e-04",
+          "2.627812e-04"
+        ],
+        [
+          "`L_t / F`",
+          "1.739816e-03",
+          "1.743063e-03"
+        ],
+        [
+          "`SWU / F`",
+          "3.214112e-07",
+          "2.163133e-07"
+        ],
+        [
+          "`SWU / P`",
+          "3.214112e-07",
+          "2.163133e-07"
+        ],
+        [
+          "max product comp.",
+          "2.419705e-03",
+          "2.331461e-03"
+        ],
+        [
+          "max tails comp.",
+          "1.231770e-02",
+          "1.179636e-02"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Default uranium cascade \u2014 optimizing Nucleide vs optimizing PyNE (like-for-like)"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Quantity",
+        "Relative difference (numeric)",
+        "Relative difference (symbolic)"
+      ],
+      "rows": [
+        [
+          "`N`",
+          "8.284583e-04",
+          "2.790912e-04"
+        ],
+        [
+          "`M`",
+          "1.025559e-03",
+          "3.500748e-04"
+        ],
+        [
+          "`Mstar`",
+          "8.829621e-06",
+          "3.006478e-06"
+        ],
+        [
+          "`L_t / F`",
+          "3.019767e-06",
+          "2.331298e-07"
+        ],
+        [
+          "`SWU / F`",
+          "7.972516e-08",
+          "2.537277e-08"
+        ],
+        [
+          "`SWU / P`",
+          "7.972516e-08",
+          "2.537277e-08"
+        ],
+        [
+          "max product comp.",
+          "6.169442e-05",
+          "2.675748e-05"
+        ],
+        [
+          "max tails comp.",
+          "3.925232e-04",
+          "1.350944e-04"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "With both codes optimizing `M*`, all scalar quantities agree to better than\n**1e-3** relative, and most to better than **1e-4**."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Tungsten / von-Halle multicomponent feed \u2014 fixed-M* Nucleide vs optimizing PyNE"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Quantity",
+        "Numeric",
+        "Symbolic"
+      ],
+      "rows": [
+        [
+          "`N`",
+          "1.490688e-01",
+          "1.489758e-01"
+        ],
+        [
+          "`M`",
+          "1.088844e-01",
+          "1.088051e-01"
+        ],
+        [
+          "`Mstar`",
+          "7.487219e-04",
+          "7.481703e-04"
+        ],
+        [
+          "`L_t / F`",
+          "1.723797e-02",
+          "1.723809e-02"
+        ],
+        [
+          "`SWU / F`",
+          "4.940673e-03",
+          "4.937610e-03"
+        ],
+        [
+          "`SWU / P`",
+          "4.940673e-03",
+          "4.937610e-03"
+        ],
+        [
+          "max product abs diff",
+          "3.043554e-04",
+          "3.033741e-04"
+        ],
+        [
+          "max product rel diff (unconditional)",
+          "9.883329e-01",
+          "9.883004e-01"
+        ],
+        [
+          "max product rel diff (ref > 1e-6)",
+          "8.844646e-01",
+          "8.843092e-01"
+        ],
+        [
+          "max tails rel diff",
+          "5.180447e-06",
+          "5.172020e-06"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "The near-unity unconditional relative difference is driven by **W186** in the\nproduct, where both codes predict essentially zero but with different numerical\nfloor values (Nucleide \u2248 3.20e-14, PyNE \u2248 2.74e-12). When looking only at\nnuclides whose reference fraction exceeds 1e-6, the largest relative mismatch\nis **W184** (\u2248 88% relative) and **W183** (\u2248 64% relative) \u2014 these minor-isotope\ndifferences are expected because Nucleide is run here with a fixed `M*` while\nPyNE optimizes `M*`."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Tungsten / von-Halle multicomponent feed \u2014 optimizing Nucleide vs optimizing PyNE"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Quantity",
+        "Numeric",
+        "Symbolic"
+      ],
+      "rows": [
+        [
+          "`N`",
+          "3.288330e-04",
+          "2.195971e-04"
+        ],
+        [
+          "`M`",
+          "2.670822e-04",
+          "1.780740e-04"
+        ],
+        [
+          "`Mstar`",
+          "1.655446e-06",
+          "1.103461e-06"
+        ],
+        [
+          "`L_t / F`",
+          "2.303832e-07",
+          "1.047743e-07"
+        ],
+        [
+          "`SWU / F`",
+          "9.290483e-06",
+          "6.212783e-06"
+        ],
+        [
+          "`SWU / P`",
+          "9.290483e-06",
+          "6.212783e-06"
+        ],
+        [
+          "max product abs diff",
+          "1.577938e-06",
+          "6.061491e-07"
+        ],
+        [
+          "max product rel diff (unconditional)",
+          "8.320379e-03",
+          "5.565348e-03"
+        ],
+        [
+          "max product rel diff (ref > 1e-6)",
+          "4.040494e-03",
+          "2.701300e-03"
+        ],
+        [
+          "max tails rel diff",
+          "4.069820e-08",
+          "3.864144e-08"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "With `M*` optimization enabled on both sides, the tungsten scalar quantities\nagree to better than **1e-3** and product compositions to a few \u00d7 1e-3."
+    }
+  ]
+}

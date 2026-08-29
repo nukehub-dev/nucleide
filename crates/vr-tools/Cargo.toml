@@ -9,3 +9,10 @@ rust-version.workspace = true
 
 [dependencies]
 mcnp-io = { version = "0.1.0", path = "../mcnp-io" }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "vr_tools_bench"
+harness = false

@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "name": "magic",
+  "title": "MAGIC weight windows (`magic_vs_pyne.py`)",
+  "environment": {
+    "date": "2026-08-29",
+    "python": "3.12.14",
+    "platform": "Linux-7.1.9-arch1-2-x86_64-with-glibc2.39",
+    "nucleide": "0.1.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "text": "PyNE in this environment is built without PyMOAB, so `pyne.variancereduction.magic`\ncannot be called directly. The comparison below uses a pure-Python reimplementation\nof PyNE's documented MAGIC formula."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Mode",
+        "Max abs diff",
+        "Mean abs diff",
+        "Max rel diff"
+      ],
+      "rows": [
+        [
+          "Total",
+          "0.000000e+00",
+          "0.000000e+00",
+          "0.000000e+00"
+        ],
+        [
+          "Per-group",
+          "0.000000e+00",
+          "0.000000e+00",
+          "0.000000e+00"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Nucleide's MAGIC output matched the reference formula exactly for the synthetic\ntest tally."
+    }
+  ]
+}

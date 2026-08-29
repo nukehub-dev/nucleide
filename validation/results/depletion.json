@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "name": "depletion",
+  "title": "Depletion (`depletion_vs_openmc.py`)",
+  "environment": {
+    "date": "2026-08-29",
+    "python": "3.12.14",
+    "platform": "Linux-7.1.9-arch1-2-x86_64-with-glibc2.39",
+    "nucleide": "0.1.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "CRAM-48 on `chain_ni.xml`"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Metric",
+        "Value"
+      ],
+      "rows": [
+        [
+          "Max relative difference",
+          "8.298337e-15"
+        ],
+        [
+          "Mean relative difference",
+          "1.122086e-15"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Differences are relative to OpenMC's own CRAM-48 solver on the same patched\nchain file."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "3-nuclide analytic Bateman check"
+    },
+    {
+      "kind": "prose",
+      "text": "Relative difference vs. analytic solution:"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Nuclide",
+        "Nucleide vs analytic",
+        "OpenMC vs analytic"
+      ],
+      "rows": [
+        [
+          "I-135",
+          "1.171188e-15",
+          "7.027126e-16"
+        ],
+        [
+          "Xe-135",
+          "2.058751e-16",
+          "2.058751e-16"
+        ],
+        [
+          "Cs-135",
+          "9.946437e-16",
+          "2.841839e-16"
+        ]
+      ]
+    }
+  ]
+}

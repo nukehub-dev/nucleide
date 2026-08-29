@@ -17,3 +17,10 @@ nuclei = { version = "0.1.0", path = "../nuclei" }
 num-complex = "0.4"
 roxmltree = "0.20"
 serde_json.workspace = true
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "depletion_bench"
+harness = false

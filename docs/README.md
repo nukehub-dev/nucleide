@@ -62,6 +62,7 @@ license.
 | --- | --- |
 | [Local development](development/local-dev.md) | Toolchain, local build, test, and lint commands |
 | [Contributing](development/contributing.md) | Branch workflow, commit style, and PR checklist |
+| [Cross-code validation](development/validation.md) | Reproduce the PyNE/OpenMC validation harness and measured tables |
 
 ### Architecture
 

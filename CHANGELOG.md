@@ -23,9 +23,24 @@ publishes Python wheels (and optionally Rust crates) from tags.
   branch adjusted), matching OpenMC.
 - `nuclei`: `NuclideId::from_name` now accepts PyNE-normalized forms such as
   `"U-235"`, `"u235"`, and uppercase-`M` metastable markers.
+- Python API: `Cascade.solve_multicomponent()` (M\*-optimizing solve),
+  `DepletionSystem` builder and `solve_vec()` for repeated solves without
+  per-call overhead, and `MeshTally.total_rel_error`.
+- Criterion benchmarks in `crates/*/benches/` (`cargo bench`).
+- `validation/`: runnable cross-code validation harness against PyNE 0.7.5 and
+  OpenMC 0.16.0 (containerized via `validation/Containerfile` +
+  `validation/run_container.sh`) with committed results
+  (`validation/results.md`).
+- JOSS submission materials: `paper.md`, `paper.bib`, `CITATION.cff`,
+  `CONTRIBUTING.md`, and a draft-PDF workflow.
 
 ### Changed
 
+- Python API reorganized into domain submodules (`nucleide.nuclei`,
+  `nucleide.material`, `nucleide.mcnp`, `nucleide.serpent`, `nucleide.fluka`,
+  `nucleide.vr`, `nucleide.enrichment`, `nucleide.depletion`) mirroring the
+  workspace crates; the flat `nucleide.*` namespace is reduced to `version()`
+  and `__version__` before the first release.
 - `vr-tools`: `MeshSourceSampler` now rejects negative or non-finite tally /
   user-density values with an error instead of silently absolutizing them.
 - `depletion`: reaction loss is subtracted once per reaction type per nuclide;

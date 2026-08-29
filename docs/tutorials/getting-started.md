@@ -36,7 +36,7 @@ current virtual environment.
 ```python
 import nucleide as nuc
 
-u = nuc.Nuclide("U235")
+u = nuc.nuclei.Nuclide("U235")
 print(u.nucid, u.zaid, u.serpent)
 
 print("version:", nuc.__version__)

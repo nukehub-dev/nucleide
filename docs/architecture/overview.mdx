@@ -58,8 +58,9 @@ flowchart TB
 
 ## Request/data flow
 
-1. User calls `nucleide.read_*`, `nucleide.to_xml`, or constructs a `Nuclide`
-   from Python; or clicks a button in an interactive tutorial.
+1. User calls a domain submodule (`nucleide.mcnp.read_*`,
+   `nucleide.material.to_xml`, `nucleide.nuclei.Nuclide`, ...) from Python; or
+   clicks a button in an interactive tutorial.
 2. The facade forwards to `nucleide._internal` or the WASM module.
 3. The Rust binding calls into the relevant workspace crate.
 4. The crate parses, computes, and returns a Rust value that the binding

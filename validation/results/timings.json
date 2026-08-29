@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "name": "timings",
+  "title": "Timings (`timings.py`)",
+  "environment": {
+    "date": "2026-08-29",
+    "python": "3.12.14",
+    "platform": "Linux-7.1.9-arch1-2-x86_64-with-glibc2.39",
+    "nucleide": "0.1.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "text": "Mean wall time over 20 repeats. The CRAM comparison now times **only the solve\nstep** on pre-built systems/matrices."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Operation",
+        "Nucleide",
+        "Reference code"
+      ],
+      "rows": [
+        [
+          "CRAM-48 solve (`chain_ni.xml`)",
+          "1.417332e-04 s",
+          "OpenMC CRAM48: 2.959537e-03 s"
+        ],
+        [
+          "Default uranium enrichment solve",
+          "1.092027e-04 s",
+          "PyNE multicomponent: 5.486073e-03 s"
+        ],
+        [
+          "MAGIC total-mode solve (synthetic tally)",
+          "6.160500e-07 s",
+          "PyNE-equivalent pure Python: 4.064450e-06 s"
+        ],
+        [
+          "Native Rust CRAM-48 solve (Criterion, no Python)",
+          "7.675881e-05 s",
+          "\u2014"
+        ],
+        [
+          "Native Rust deplete end-to-end (Criterion, no Python)",
+          "7.858313e-05 s",
+          "\u2014"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "The native Rust Criterion numbers were obtained with `cargo bench -p depletion`\nand represent the same `chain_ni.xml` CRAM-48 solve without any Python/PyO3 overhead."
+    }
+  ]
+}

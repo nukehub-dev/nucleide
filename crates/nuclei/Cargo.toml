@@ -8,3 +8,10 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "nuclei_bench"
+harness = false

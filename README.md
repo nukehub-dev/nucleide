@@ -54,6 +54,7 @@ nucleide/
 ├── bindings/python/   # PyO3 crate -> nucleide._internal
 ├── python/nucleide/   # typed pure-Python facade (maturin mixed layout)
 ├── fixtures/          # golden-byte test data
+├── validation/        # cross-code validation harness vs PyNE/OpenMC
 └── tests/             # Python-side tests
 ```
 
@@ -96,9 +97,18 @@ Python >= 3.10 via abi3 — the same stack used by pydantic-core, polars, and ru
 1. Parsers are validated against **golden-byte fixtures** in `fixtures/`;
    parser output must match recorded snapshots before any release.
 2. Numeric kernels (CRAM, cascade solving) are checked against published
-   analytic vectors and cross-code results on shared inputs.
+   analytic vectors and cross-code results on shared inputs; the runnable
+   cross-code harness in [`validation/`](validation/README.md) compares
+   Nucleide against PyNE and OpenMC and commits its measured results.
 3. Behavioral compatibility with legacy tool output is asserted wherever a
    fixture exists, so downstream workflows see identical data.
+
+Criterion benchmarks (`cargo bench`) cover the numeric kernels and parsers.
+
+## Citing
+
+If you use Nucleide in research, see [`CITATION.cff`](CITATION.cff) and the
+JOSS paper draft in [`paper.md`](paper.md).
 
 ## Status
 

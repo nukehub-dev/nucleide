@@ -56,6 +56,13 @@ strict = true
 # The compiled _internal module is checked via its .pyi stub.
 disallow_untyped_calls = true
 
+# Tests only use pytest.approx/raises; treat pytest (and numpy, which local
+# pytest installs pull in and whose stubs require Python 3.12+ syntax) as
+# opaque so `mypy` behaves the same in local envs and CI (which has no numpy).
+[[tool.mypy.overrides]]
+module = ["pytest", "_pytest", "_pytest.*", "numpy", "numpy.*"]
+follow_imports = "skip"
+
 [tool.coverage.run]
 source = ["nucleide", "tests"]
 
