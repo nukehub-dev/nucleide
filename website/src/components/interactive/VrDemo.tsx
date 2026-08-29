@@ -121,8 +121,6 @@ export function VrDemo() {
                 setMeshtalText(e.target.value);
                 clearError();
               }}
-              rows={6}
-              autoResize={false}
               className="font-mono text-xs"
             />
           </div>

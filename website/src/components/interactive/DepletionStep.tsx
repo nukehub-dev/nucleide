@@ -81,8 +81,6 @@ export function DepletionStep() {
                 setXml(e.target.value);
                 clearError();
               }}
-              rows={8}
-              autoResize={false}
               className="font-mono text-xs"
             />
           </div>
@@ -96,8 +94,6 @@ export function DepletionStep() {
                 setN0Input(e.target.value);
                 clearError();
               }}
-              rows={4}
-              autoResize={false}
               className="font-mono text-sm"
             />
           </div>

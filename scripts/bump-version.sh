@@ -10,9 +10,11 @@
 #   scripts/bump-version.sh 0.2.0
 #
 # Updates:
-#   Cargo.toml           - [workspace.package] version
-#   website/package.json - website package version
-#   CHANGELOG.md         - stamps [Unreleased] with the new version + date
+#   Cargo.toml              - [workspace.package] version
+#   Cargo.lock              - workspace member versions (committed lockfile)
+#   website/package.json    - website package version
+#   website/package-lock.json - website version fields (CI uses `npm ci`)
+#   CHANGELOG.md            - stamps [Unreleased] with the new version + date
 #
 # The script never commits or tags; it prints the follow-up git commands.
 # Re-running with the same version is a no-op.
@@ -40,6 +42,12 @@ if [[ "$_current_version" == "$_version" ]]; then
 else
     sed -i "s/^version = \"[^\"]*\"/version = \"$_version\"/" "$_cargo_toml"
     echo "  Cargo.toml -> $_version"
+    # Keep the committed lockfile in sync (workspace member versions).
+    if (cd "$DIR" && cargo metadata --no-deps --format-version 1 >/dev/null 2>&1); then
+        echo "  Cargo.lock -> $_version"
+    else
+        echo "warning: could not refresh Cargo.lock (offline?); run any cargo command to sync it" >&2
+    fi
 fi
 
 # website/package.json: update version only if it differs.
@@ -50,6 +58,11 @@ if [[ "$_current_website_version" == "$_version" ]]; then
 else
     sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$_version\"/" "$_website_pkg"
     echo "  website/package.json -> $_version"
+    # Keep the website lockfile in sync without touching node_modules.
+    if [[ -f "$DIR/website/package-lock.json" ]]; then
+        (cd "$DIR/website" && npm install --package-lock-only --ignore-scripts >/dev/null)
+        echo "  website/package-lock.json -> $_version"
+    fi
 fi
 
 # CHANGELOG: stamp [Unreleased] with the new version and date (skip when the
@@ -69,8 +82,8 @@ echo
 echo "Bumped to $_version."
 echo
 echo "Next steps:"
-echo "  git diff Cargo.toml website/package.json CHANGELOG.md"
-echo "  git add Cargo.toml website/package.json CHANGELOG.md"
+echo "  git diff Cargo.toml Cargo.lock website/package.json website/package-lock.json CHANGELOG.md"
+echo "  git add Cargo.toml Cargo.lock website/package.json website/package-lock.json CHANGELOG.md"
 echo "  git commit -m \"chore: bump version to $_version\""
 echo "  git tag v$_version"
 echo "  git push origin main --tags   # CI publishes wheels from the tag"

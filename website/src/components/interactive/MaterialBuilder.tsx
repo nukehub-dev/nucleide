@@ -121,8 +121,6 @@ export function MaterialBuilder() {
                 setMixInput(e.target.value);
                 clearError();
               }}
-              rows={3}
-              autoResize={false}
               className="font-mono text-xs"
             />
             <Button onClick={runMix}>Mix</Button>

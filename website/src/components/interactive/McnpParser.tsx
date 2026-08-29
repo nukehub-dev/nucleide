@@ -145,8 +145,6 @@ export function McnpParser() {
           <Textarea
             value={text}
             onChange={(e) => updateText(e.target.value)}
-            rows={8}
-            autoResize={false}
             className="font-mono text-xs"
           />
 

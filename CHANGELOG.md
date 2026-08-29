@@ -67,8 +67,8 @@ publishes Python wheels (and optionally Rust crates) from tags.
 - Python API reorganized into domain submodules (`nucleide.nuclei`,
   `nucleide.material`, `nucleide.mcnp`, `nucleide.serpent`, `nucleide.fluka`,
   `nucleide.vr`, `nucleide.enrichment`, `nucleide.depletion`) mirroring the
-  workspace crates; the flat `nucleide.*` namespace is reduced to `version()`
-  and `__version__` before the first release.
+  workspace crates; the top level re-exports the domain submodules alongside
+  `version()` and `__version__`.
 - `vr-tools`: `MeshSourceSampler` now rejects negative or non-finite tally /
   user-density values with an error instead of silently absolutizing them.
 - `depletion`: reaction loss is subtracted once per reaction type per nuclide;
@@ -78,6 +78,10 @@ publishes Python wheels (and optionally Rust crates) from tags.
 
 ### Fixed
 
+- Interactive tutorials: file/text inputs now use the docs-kit `Textarea`
+  auto-resize (content-fitted height, no manual resize grip); kit bumped for a
+  `Select` dropdown fix so short lists flipped above the trigger no longer
+  float with a gap.
 - `depletion`: `Chain::from_xml` no longer renormalizes decay branching
   ratios — file values are used verbatim, matching OpenMC's `Chain.from_xml`
   (renormalization only happens at chain *generation*). Found by the CASL
