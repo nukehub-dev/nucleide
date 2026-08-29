@@ -365,10 +365,11 @@ exercised in `crates/depletion/src/lib.rs` as `analytic_two_step_decay_cram48`.
   reaction channel. Multigroup fluxes must be collapsed externally.
 - **Fixed cross sections over the step**: $\mathbf{A}$ is treated as constant
   during $t$.
-- **Fission yields are single-energy**: the first yield set attached to a
-  fissionable nuclide is used.
-- **Decay branching ratios are renormalized**: if the modes for a nuclide do
-  not sum to 1.0, the largest branch is adjusted so the total is exactly 1.0.
+- **Fission yields are single-energy**: the yield set at the lowest incident
+  neutron energy is used, matching OpenMC's default.
+- **Decay branching ratios**: chains read from XML keep the file values
+  verbatim; only programmatically built chains are renormalized (the largest
+  branch is adjusted so the modes sum to exactly 1.0).
 - **Stable nuclides have zero diagonal**: they act as sinks in the chain.
 - **CRAM order**: order-16 is adequate for short, simple chains; order-48 is
   recommended for production burnup matrices.
@@ -387,7 +388,8 @@ does not implement:
   absolute rates from a power or source normalization; Nucleide assumes rates
   are already given in $\mathrm{s}^{-1}$.
 - **Energy-dependent fission yields**: OpenMC selects between constant,
-  thermal, and thermal+fast yield modes; Nucleide uses the first yield set.
+  thermal, and thermal+fast yield modes; Nucleide uses the lowest-energy
+  yield set.
 - **Feed and removal terms**: OpenMC adds transfer rates and external source
   vectors to the burnup matrix for MSR-style continuous processing.
 - **Chain truncation**: PyNE's transmutagen-generated solver truncates the

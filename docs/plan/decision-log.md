@@ -61,7 +61,8 @@ parser or depletion code.
 
 ## Open questions
 
-- Whether to publish all crates to crates.io immediately or wait for API
-  stabilization.
+- Whether to keep crates.io publishing opt-in (the `publish_crates`
+  `workflow_dispatch` input in `release.yml`) or enable it by default once the
+  crate APIs stabilize.
 - Whether to enable `abi3-py311` or stay on `abi3-py310` as the minimum Python
   version.

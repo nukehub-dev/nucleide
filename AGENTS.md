@@ -48,11 +48,20 @@ stale or contradictory text immediately. Small edits that do not change
 behavior or contracts may leave docs unchanged, but the NAD pass still must
 happen.
 
-### Docs Pass
+### Docs and Changelog Pass
 
-`AGENTS.md` updates do not cover user/dev documentation. In the same change,
-also update `README.md` when a change alters user-visible behavior — features,
-public API (Rust or Python), file formats, install/dev workflows.
+`AGENTS.md` updates do not cover user/dev documentation or the changelog. In
+the same change, also update:
+
+- **User/dev docs** when a change alters user-visible or developer-facing
+  behavior — features, public API (Rust or Python), file formats, install/dev
+  workflows. Durable docs live in the `docs/` tree (rules in
+  `docs/README.md`); `README.md` covers the top-level feature list and
+  install workflow.
+- **`CHANGELOG.md`** (`[Unreleased]`, Keep a Changelog format) for every
+  user-visible addition, change, or fix — the release flow
+  (`scripts/bump-version.sh` + tag-triggered `release.yml`) stamps and
+  extracts release notes from it, so an unlogged feature never reaches users.
 
 Internal refactors, bug fixes with no behavior change, and test-only work need
 neither.

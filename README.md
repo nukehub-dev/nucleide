@@ -37,7 +37,7 @@ rebuilds the high-value subset in memory-safe Rust with one-command
 | Serpent I/O (`serpent-io`) | `_res.m`, `_dep.m`, `_det.m` readers producing structured records |
 | FLUKA I/O (`fluka-io`) | USRBIN tally reader, material/compound card generation |
 | Depletion (`depletion`) | CRAM (orders 16/48) matrix exponential, depletion-chain XML parsing |
-| Enrichment (`enrichment`) | Multicomponent cascade solver (numeric + assignment), SWU closed-form helpers |
+| Enrichment (`enrichment`) | Multicomponent cascade solver (numeric), SWU closed-form helpers |
 | Variance reduction (`vr-tools`) | MAGIC weight-window generation, mesh source sampling with alias tables |
 | Python bindings | PyO3 extension module behind a typed pure-Python facade (`nucleide._internal`, `.pyi` stubs, `py.typed`) |
 

@@ -27,5 +27,6 @@ result objects.
 
 ## See also
 
-- [`crates/enrichment/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/enrichment/src/lib.rs) for cascade construction details.
+- [`crates/enrichment/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/enrichment/src/lib.rs)
+  for cascade construction details.
 - `tests/test_data_inp_enrichment.py` for integration examples.

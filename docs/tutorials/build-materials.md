@@ -23,15 +23,16 @@ print(comp)
 ```python
 from nucleide.material import MaterialsCompendium
 
-lib = MaterialsCompendium.load("fixtures/data/MaterialsCompendium.txt")
+lib = MaterialsCompendium.load("fixtures/data/MaterialsCompendium.json")
 print(len(lib), "materials")
 print(lib.names()[:5])
 ```
 
 ## Mix materials
 
-On the Rust side, `Material::mix` combines compositions by mass fractions. The
-Python facade exposes equivalent helpers through the `_internal` module.
+On the Rust side, `Material::mix_by_mass` and `Material::mix_by_volume` combine
+compositions by mass or volume fractions. Mixing is not yet exposed through the
+Python facade.
 
 ## Export materials XML
 

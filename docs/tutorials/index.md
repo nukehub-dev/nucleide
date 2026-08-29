@@ -22,6 +22,6 @@ assumes you have already installed the project (see
 
 ## Finding more examples
 
-- Rust unit tests live under `crates/<name>/src/` and `crates/<name>/tests/`.
+- Rust unit tests live in inline `#[cfg(test)]` modules under `crates/<name>/src/`.
 - Python tests live under `tests/`.
 - Golden-byte fixtures and their descriptions live under `fixtures/`.

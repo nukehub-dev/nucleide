@@ -12,10 +12,6 @@ publishes Python wheels (and optionally Rust crates) from tags.
 
 ## [Unreleased]
 
-### Changed
-
-- Documentation theory pages (`depletion`, `enrichment`, `nuclear-data`, `variance-reduction`) now use the citation support from `@nukehub/docs-kit`: references are declared in frontmatter, cited inline with `<Citation />`, and rendered as a linked bibliography with copy-to-clipboard export.
-
 ### Added
 
 - `depletion`: reaction `branching_ratio` support in chain XML (default 1.0),
@@ -46,8 +42,21 @@ publishes Python wheels (and optionally Rust crates) from tags.
   (`validation/figures/`, via `make_figures.py`).
 - JOSS submission materials: `paper.md`, `paper.bib`, `CITATION.cff`,
   `CONTRIBUTING.md`, and a draft-PDF workflow.
+- `bindings/wasm`: `wasm-bindgen` crate exposing a subset of the workspace to
+  the browser.
+- Documentation website (`website/`, Astro + `@nukehub/docs-kit`) with content
+  synced from `docs/`, theory pages, and interactive WASM tutorials, deployed
+  to GitHub Pages.
+- Release workflow: `vX.Y.Z` tags build and publish Python wheels for Linux,
+  macOS, and Windows to PyPI and draft a GitHub release from the matching
+  changelog section; crates.io publishing is opt-in via `workflow_dispatch`.
 
 ### Changed
+
+- Documentation theory pages (`depletion`, `enrichment`, `nuclear-data`,
+  `variance-reduction`) now use the citation support from `@nukehub/docs-kit`:
+  references are declared in frontmatter, cited inline with `<Citation />`, and
+  rendered as a linked bibliography with copy-to-clipboard export.
 
 - Python API reorganized into domain submodules (`nucleide.nuclei`,
   `nucleide.material`, `nucleide.mcnp`, `nucleide.serpent`, `nucleide.fluka`,

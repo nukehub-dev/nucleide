@@ -62,9 +62,9 @@ Depends on `linalg` and `nuclei`.
 ### `vr-tools`
 
 MAGIC weight-window generation and mesh source sampling with alias tables.
-Depends on `mcnp-io` and `nuclei`.
+Depends on `mcnp-io` (`nuclei` comes in transitively).
 
-## Binding crate
+## Binding crates
 
 ### `nucleide-bindings`
 
@@ -73,10 +73,17 @@ PyO3 extension module that exposes workspace crates to Python as
 only crate allowed to know about the Python API surface. It depends on most
 capability crates.
 
+### `nucleide-wasm`
+
+`wasm-bindgen` crate that exposes a subset of the workspace to the browser for
+the interactive tutorials on the docs site. It is not published to crates.io
+(the release workflow's publish list excludes it); the site builds it with
+`wasm-pack`.
+
 ## Dependency rules
 
 - Workspace crates may depend on other workspace crates.
-- Workspace crates must not depend on `nucleide-bindings` or on `pyo3`.
+- Workspace crates must not depend on `nucleide-bindings`, `nucleide-wasm`, or `pyo3`.
 - `nucleide-bindings` may depend on workspace crates.
 - `enrichment` must not depend on `material`.
 

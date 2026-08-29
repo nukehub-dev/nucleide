@@ -146,9 +146,8 @@ first access.
 
 ### Natural abundances
 
-- **Source**: IUPAC isotopic compositions of the elements 2013 (Meija et al.,
-  *Pure and Applied Chemistry* **88**(3), 293–306, 2016) — the same set used
-  for the ENDF/B-VIII.0 standard compositions and embedded by OpenMC.
+- **Source**: standard isotopic compositions from the ENDF/B-VIII.0
+  evaluation<Citation id="brown-2018" />, expressed as fractions.
 - **Coverage**: 289 naturally occurring nuclides, including the isomer
   Ta-180m.
 - **File**: `crates/nuclei/src/data/natural_abundance.tsv`.
@@ -227,5 +226,3 @@ embed:
   compute atomic weights from abundances; Nucleide requires a mass number.
 - **Living references**: [NuDat 3](https://www.nndc.bnl.gov/nudat3/) and the
   IAEA LiveChart track structure and decay data between ENDF releases.
-
-

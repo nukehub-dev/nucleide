@@ -15,10 +15,11 @@ thin, focused API.
 | `mcnp-io` | `crates/mcnp-io` | xsdir, meshtal, SSW/SURFSRC, PTRAC, WWINP, MCTAL readers; material extraction from input decks; mesh-to-geometry deck generation |
 | `serpent-io` | `crates/serpent-io` | `_res.m`, `_dep.m`, `_det.m` readers producing structured records |
 | `fluka-io` | `crates/fluka-io` | USRBIN tally reader, MATERIAL/COMPOUND card generation |
-| `enrichment` | `crates/enrichment` | Multicomponent cascade solver (numeric + assignment), SWU closed-form helpers |
+| `enrichment` | `crates/enrichment` | Multicomponent cascade solver (numeric), SWU closed-form helpers |
 | `depletion` | `crates/depletion` | CRAM matrix exponential (orders 16/48), depletion-chain XML parsing |
 | `vr-tools` | `crates/vr-tools` | MAGIC weight-window generation, mesh source sampling with alias tables |
 | `nucleide-bindings` | `bindings/python` | PyO3 extension module exposing the workspace to Python as `nucleide._internal` |
+| `nucleide-wasm` | `bindings/wasm` | `wasm-bindgen` crate powering the browser-based interactive tutorials |
 
 ## Dependency rules
 

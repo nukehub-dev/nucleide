@@ -63,8 +63,8 @@ ruff format --check python tests && ruff check python tests
 mypy
 ```
 
-CI (`.github/workflows/ci.yml`) runs exactly these checks plus coverage; keep
-it green.
+CI (`.github/workflows/ci.yml`) runs these checks plus coverage (the Python
+job installs a built wheel instead of `maturin develop`); keep it green.
 
 ## Benchmarks
 
@@ -118,5 +118,6 @@ npm run build:wasm          # runs wasm-pack into public/wasm/
 `website/public/wasm/` is git-ignored; regenerate it after any Rust change that
 affects the WASM API.
 
-The docs CI (`.github/workflows/docs.yml`) runs the website build plus
-markdown lint and link checks.
+Docs changes trigger markdown lint and link checks
+(`.github/workflows/docs.yml`); the site build and deploy live in
+`.github/workflows/docs-deploy.yml`.

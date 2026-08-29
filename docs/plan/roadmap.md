@@ -8,9 +8,9 @@ Nucleide is pre-alpha. APIs may change without notice.
 
 ## Current status
 
-The workspace is bootstrapped with ten crates, a PyO3 mixed-layout binding, a
-Python facade, and golden-byte fixtures. The canonical CI checks (format, clippy,
-workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
+The workspace is bootstrapped with nine crates, PyO3 and WASM bindings, a
+typed Python facade, and golden-byte fixtures. The canonical CI checks (format,
+clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 
 ## Recently landed
 
@@ -24,14 +24,18 @@ workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 - Multicomponent enrichment cascade solver (`enrichment`).
 - MAGIC weight windows and mesh source sampling (`vr-tools`).
 - Typed Python facade and `.pyi` stubs (`python/nucleide/`).
+- Criterion benchmarks for CRAM, cascade solving, and parser throughput
+  (`crates/*/benches/`).
+- Cross-code validation harness against PyNE and OpenMC (`validation/`).
+- Documentation website with interactive WASM tutorials (`website/`).
 
 ## Upcoming priorities
 
 - Stabilize the Rust public API across all crates.
 - Expand parser coverage and add more golden-byte fixtures.
 - Add ndarray/NumPy zero-copy bridges where it improves Python ergonomics.
-- Publish Rust crates to crates.io and Python wheels to PyPI.
-- Add benchmarking for CRAM, cascade solving, and parser throughput.
+- Cut the first tagged release: `vX.Y.Z` tags publish Python wheels to PyPI;
+  crates.io publishing is available as an opt-in release-workflow input.
 
 ## JOSS publication milestone (~6 months of public history)
 

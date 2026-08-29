@@ -15,9 +15,9 @@ which mirror the Rust workspace crates.
 import nucleide as nuc
 ```
 
-The top level carries only `version()` and `nucleide.__version__`. Everything
-else lives in a domain submodule, each re-exporting its symbols from
-`nucleide._internal`:
+The top level carries `version()`, `nucleide.__version__`, and the domain
+submodules below (so `nuc.nuclei.Nuclide(...)` works directly). Each submodule
+re-exports its symbols from `nucleide._internal`:
 
 | Submodule | Backing crate | Contents |
 | --- | --- | --- |
@@ -33,6 +33,7 @@ else lives in a domain submodule, each re-exporting its symbols from
 ## `nucleide.nuclei`
 
 - `Nuclide(name)` — canonical nuclide identifier with cross-code name conversions.
+- `from_zaid(zaid)` → `Nuclide` from an MCNP ZAID integer.
 - `Particle(spec)` — particle species with MCNP/FLUKA/Geant4 translations.
 - `atomic_mass(key)` — by nucid integer or name.
 - `natural_abundance(key)`
@@ -81,11 +82,15 @@ else lives in a domain submodule, each re-exporting its symbols from
 
 - `Cascade.default_uranium()` → `Cascade`
 - `c.solve(tolerance=None, max_iterations=None)`
+- `c.solve_multicomponent(tolerance=None, max_iterations=None)` — M\*-optimizing
+  multicomponent solve
 
 ## `nucleide.depletion`
 
 - `read_chain(path)` → `Chain`
 - `build_depletion_system(chain, rates)` → `DepletionSystem`
+- `system.solve(n0, dt, order=48)` → result `dict`
+- `system.solve_vec(n0, dt, order=48)` → result `list` in chain nuclide order
 - `deplete(chain, n0, dt, rates=None, order=48)` → result `dict`
 
 ## Version
