@@ -41,7 +41,9 @@ jobs:
         run: pip install maturin pytest pytest-cov ruff mypy
 
       - name: Build and install Python extension
-        run: maturin develop
+        run: |
+          maturin build
+          pip install --no-index --find-links target/wheels nucleide
 
       - name: Check Python formatting and lint
         run: ruff format --check python tests && ruff check python tests
