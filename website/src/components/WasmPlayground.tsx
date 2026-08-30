@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 // Load the wasm-pack generated module from the site root so it works both in
-// dev and when the site is deployed under a base path (e.g. /nucleide).
-// Astro's BASE_URL may or may not end with a slash depending on the command,
-// so normalize it before appending the wasm path.
+// dev and production. Astro's BASE_URL may or may not end with a slash depending
+// on the command, so normalize it before appending the wasm path.
 const BASE = import.meta.env.BASE_URL.endsWith("/")
   ? import.meta.env.BASE_URL
   : `${import.meta.env.BASE_URL}/`;

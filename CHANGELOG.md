@@ -59,6 +59,10 @@ publishes Python wheels (and optionally Rust crates) from tags.
 
 ### Changed
 
+- Documentation website moved from `https://nukehub-dev.github.io/nucleide` to
+  a custom domain, `https://nucleide.nukehub.org`, hosted on GitHub Pages with
+  Cloudflare DNS; the Astro `base` path changed from `/nucleide` to `/`.
+
 - Documentation theory pages (`depletion`, `enrichment`, `nuclear-data`,
   `variance-reduction`) now use the citation support from `@nukehub/docs-kit`:
   references are declared in frontmatter, cited inline with `<Citation />`, and
@@ -77,6 +81,10 @@ publishes Python wheels (and optionally Rust crates) from tags.
 - `nuclei`: FLUKA name lookups use lazily-built maps instead of linear scans.
 
 ### Fixed
+
+- Documentation website deployment now builds the `bindings/wasm` package in
+  CI, so the interactive tutorials can load `/wasm/nucleide_wasm.js` instead of
+  receiving the SPA fallback HTML response.
 
 - Interactive tutorials: file/text inputs now use the docs-kit `Textarea`
   auto-resize (content-fitted height, no manual resize grip); kit bumped for a
