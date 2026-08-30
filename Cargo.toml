@@ -23,9 +23,15 @@ rust-version = "1.83"
 
 [workspace.dependencies]
 # --- internal crates ---
-nuclei = { path = "crates/nuclei" }
-material = { path = "crates/material" }
-linalg = { path = "crates/linalg" }
+nuclei = { path = "crates/nuclei", version = "0.1.0" }
+material = { path = "crates/material", version = "0.1.0" }
+linalg = { path = "crates/linalg", version = "0.1.0", default-features = false }
+mcnp-io = { path = "crates/mcnp-io", version = "0.1.0" }
+serpent-io = { path = "crates/serpent-io", version = "0.1.0" }
+fluka-io = { path = "crates/fluka-io", version = "0.1.0" }
+vr-tools = { path = "crates/vr-tools", version = "0.1.0" }
+enrichment = { path = "crates/enrichment", version = "0.1.0" }
+depletion = { path = "crates/depletion", version = "0.1.0", default-features = false }
 
 # --- planned stack (enabled per-crate as features land) ---
 # abi3-py310: one wheel per platform serves all Python >= 3.10

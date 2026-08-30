@@ -242,9 +242,11 @@ Use `scripts/bump-version.sh X.Y.Z` to bump the workspace version and stamp
   "fix" it without updating fixtures and their consumers together.
 - **Commit `Cargo.lock`** (binary workspace); do not hand-edit it.
 - **Version bumps** happen in `[workspace.package] version` in the root
-  `Cargo.toml`; crates inherit via `version.workspace = true`. Run
-  `scripts/bump-version.sh X.Y.Z` to update the workspace version and stamp
-  `CHANGELOG.md`; then commit, tag `vX.Y.Z`, and push.
+  `Cargo.toml`; crates inherit via `version.workspace = true`, and workspace
+  dependency entries for internal crates are kept in sync by
+  `scripts/bump-version.sh`. Run `scripts/bump-version.sh X.Y.Z` to update the
+  workspace version and dependency versions and stamp `CHANGELOG.md`; then
+  commit, tag `vX.Y.Z`, and push.
 
 ## Child NAD Index
 

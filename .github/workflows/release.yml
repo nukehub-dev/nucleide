@@ -107,15 +107,9 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
-      - name: Dry-run publish workspace crates
-        run: |
-          for crate in linalg nuclei material mcnp-io serpent-io fluka-io enrichment depletion vr-tools nucleide-bindings; do
-            echo "--- cargo publish --dry-run -p $crate ---"
-            cargo publish --dry-run -p "$crate"
-          done
-
       - name: Publish workspace crates
         run: |
+          set -euo pipefail
           for crate in linalg nuclei material mcnp-io serpent-io fluka-io enrichment depletion vr-tools nucleide-bindings; do
             echo "--- cargo publish -p $crate ---"
             cargo publish -p "$crate"

@@ -12,8 +12,8 @@ default = ["rayon"]
 rayon = ["linalg/rayon"]
 
 [dependencies]
-linalg = { version = "0.1.0", path = "../linalg", default-features = false }
-nuclei = { version = "0.1.0", path = "../nuclei" }
+linalg = { workspace = true, default-features = false }
+nuclei.workspace = true
 num-complex = "0.4"
 roxmltree = "0.20"
 serde_json.workspace = true

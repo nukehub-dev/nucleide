@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-mcnp-io = { version = "0.1.0", path = "../mcnp-io" }
+mcnp-io.workspace = true
 
 [dev-dependencies]
 criterion = "0.5"

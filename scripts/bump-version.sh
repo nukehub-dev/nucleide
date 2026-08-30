@@ -34,13 +34,16 @@ _version="${1:-}"
 
 _date="$(date +%F)"
 
-# Cargo.toml: update [workspace.package] version only if it differs.
+# Cargo.toml: update [workspace.package] version and internal crate dependency
+# versions only if they differ.
 _cargo_toml="$DIR/Cargo.toml"
 _current_version="$(sed -n 's/^version = "\([^"]*\)".*/\1/p' "$_cargo_toml" | head -n1)"
 if [[ "$_current_version" == "$_version" ]]; then
     echo "note: Cargo.toml already at $_version; left unchanged"
 else
     sed -i "s/^version = \"[^\"]*\"/version = \"$_version\"/" "$_cargo_toml"
+    # Internal workspace crate dependencies also carry a version for crates.io.
+    sed -i "s/\(path = \"crates\/[^\"]*\", version = \"\)[^\"]*\"/\1$_version\"/g" "$_cargo_toml"
     echo "  Cargo.toml -> $_version"
     # Keep the committed lockfile in sync (workspace member versions).
     if (cd "$DIR" && cargo metadata --no-deps --format-version 1 >/dev/null 2>&1); then

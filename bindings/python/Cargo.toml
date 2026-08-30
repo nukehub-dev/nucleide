@@ -15,9 +15,9 @@ crate-type = ["cdylib"]
 pyo3.workspace = true
 nuclei.workspace = true
 material.workspace = true
-mcnp-io = { path = "../../crates/mcnp-io" }
-depletion = { path = "../../crates/depletion" }
-serpent-io = { path = "../../crates/serpent-io" }
-fluka-io = { path = "../../crates/fluka-io" }
-vr-tools = { path = "../../crates/vr-tools" }
-enrichment = { path = "../../crates/enrichment" }
+mcnp-io.workspace = true
+depletion = { workspace = true, default-features = true }
+serpent-io.workspace = true
+fluka-io.workspace = true
+vr-tools.workspace = true
+enrichment.workspace = true

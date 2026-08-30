@@ -6,11 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are cut with `scripts/bump-version.sh X.Y.Z`, which stamps the
-`[Unreleased]` section below and updates `[workspace.package] version` in the
-root `Cargo.toml`. Git tags (`vX.Y.Z`) are the release source of truth; CI
-publishes Python wheels (and optionally Rust crates) from tags.
+`[Unreleased]` section below and updates `[workspace.package] version` and
+workspace crate dependency versions in the root `Cargo.toml`. Git tags
+(`vX.Y.Z`) are the release source of truth; CI publishes Python wheels and
+workspace crates from tags.
 
 ## [Unreleased]
+
+### Changed
+
+- Release workflow: removed the non-functional `cargo publish --dry-run` step
+  for workspace crates and added `set -euo pipefail` to the publish loop so a
+  failure in one crate stops the job.
+
+### Fixed
+
+- Workspace crate dependencies now specify a `version` requirement so
+  `cargo publish` accepts them for crates.io.
+- `scripts/bump-version.sh` now updates workspace crate dependency versions
+  alongside `[workspace.package]` version.
 
 ## [0.1.0] - 2026-08-30
 

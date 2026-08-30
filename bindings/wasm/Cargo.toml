@@ -20,12 +20,12 @@ serde_json = { workspace = true }
 
 # Workspace crates — keep Rayon disabled so this builds for wasm32-unknown-unknown.
 nuclei.workspace = true
-material = { path = "../../crates/material" }
-enrichment = { path = "../../crates/enrichment" }
-depletion = { path = "../../crates/depletion", default-features = false }
-mcnp-io = { path = "../../crates/mcnp-io" }
-vr-tools = { path = "../../crates/vr-tools" }
-linalg = { path = "../../crates/linalg", default-features = false }
+material.workspace = true
+enrichment.workspace = true
+depletion = { workspace = true, default-features = false }
+mcnp-io.workspace = true
+vr-tools.workspace = true
+linalg = { workspace = true, default-features = false }
 
 [features]
 default = []
