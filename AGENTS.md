@@ -220,8 +220,8 @@ Git tags of the form `vX.Y.Z` trigger `.github/workflows/release.yml`, which:
    `.github/workflows/release.yml`, and GitHub Environment `pypi`; create the
    matching `pypi` environment under Settings → Environments. No long-lived
    `PYPI_API_TOKEN` is required.
-3. Optionally publishes workspace crates to crates.io in dependency order
-   (requires `CARGO_REGISTRY_TOKEN`; enabled via a `workflow_dispatch` input).
+3. Publishes workspace crates to crates.io in dependency order
+   (requires `CARGO_REGISTRY_TOKEN`).
 4. Drafts a GitHub release with the wheels and the matching `CHANGELOG.md`
    section.
 

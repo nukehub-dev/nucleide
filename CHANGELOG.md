@@ -61,8 +61,8 @@ publishes Python wheels (and optionally Rust crates) from tags.
   enriching key via the ideal-cascade recurrence, exposed through WASM as
   `WasmCascade.stageProfile()`.
 - Release workflow: `vX.Y.Z` tags build and publish Python wheels for Linux,
-  macOS, and Windows to PyPI and draft a GitHub release from the matching
-  changelog section; crates.io publishing is opt-in via `workflow_dispatch`.
+  macOS, and Windows to PyPI, publish workspace crates to crates.io, and draft
+  a GitHub release from the matching changelog section.
 
 ### Changed
 

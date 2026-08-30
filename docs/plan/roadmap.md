@@ -34,8 +34,8 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 - Stabilize the Rust public API across all crates.
 - Expand parser coverage and add more golden-byte fixtures.
 - Add ndarray/NumPy zero-copy bridges where it improves Python ergonomics.
-- Cut the first tagged release: `vX.Y.Z` tags publish Python wheels to PyPI;
-  crates.io publishing is available as an opt-in release-workflow input.
+- Cut the first tagged release: `vX.Y.Z` tags publish Python wheels to PyPI
+  and workspace crates to crates.io.
 
 ## JOSS publication milestone (~6 months of public history)
 
