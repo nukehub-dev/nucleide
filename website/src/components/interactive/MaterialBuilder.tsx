@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useWasm } from "../../lib/wasm";
+import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
@@ -108,6 +109,9 @@ export function MaterialBuilder() {
               <FractionTable title="Atom fractions" data={atomFracs} />
               <FractionTable title="Weight fractions" data={weightFracs} />
             </div>
+            {atomFracs && weightFracs && (
+              <CompositionChart atomFracs={atomFracs} weightFracs={weightFracs} />
+            )}
           </div>
 
           <div className="space-y-2">
@@ -185,5 +189,52 @@ function FractionTable({ title, data }: { title: string; data: Record<string, nu
         </tbody>
       </table>
     </div>
+  );
+}
+
+function CompositionChart({
+  atomFracs,
+  weightFracs,
+}: {
+  atomFracs: Record<string, number>;
+  weightFracs: Record<string, number>;
+}) {
+  const keys = Array.from(new Set([...Object.keys(atomFracs), ...Object.keys(weightFracs)]));
+  keys.sort((a, b) => {
+    const maxA = Math.max(atomFracs[a] ?? 0, weightFracs[a] ?? 0);
+    const maxB = Math.max(atomFracs[b] ?? 0, weightFracs[b] ?? 0);
+    return maxB - maxA;
+  });
+
+  const atomValues = keys.map((k) => atomFracs[k] ?? 0);
+  const weightValues = keys.map((k) => weightFracs[k] ?? 0);
+
+  return (
+    <Plotly
+      aspect="video"
+      data={[
+        {
+          type: "bar",
+          orientation: "h",
+          name: "Atom fraction",
+          x: atomValues.slice().reverse(),
+          y: keys.slice().reverse(),
+        },
+        {
+          type: "bar",
+          orientation: "h",
+          name: "Weight fraction",
+          x: weightValues.slice().reverse(),
+          y: keys.slice().reverse(),
+        },
+      ]}
+      layout={{
+        barmode: "group",
+        xaxis: { title: { text: "Fraction" } },
+        yaxis: { title: { text: "Nuclide" } },
+        margin: { t: 16, r: 16, b: 48, l: 64 },
+        legend: { orientation: "h", y: -0.2 },
+      }}
+    />
   );
 }

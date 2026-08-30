@@ -1,10 +1,16 @@
 import { useState } from "react";
 import { useWasm } from "../../lib/wasm";
+import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
 import { Select } from "@nukehub/docs-kit/components/ui/Select";
 import { Textarea } from "@nukehub/docs-kit/components/ui/Textarea";
+
+const BASE = import.meta.env.BASE_URL.endsWith("/")
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
+const CHAIN_SAMPLE_URL = `${BASE}data/chain_simple.xml`;
 
 const DEFAULT_CHAIN = `<?xml version="1.0"?>
 <depletion_chain>
@@ -22,6 +28,9 @@ const ORDER_OPTIONS = [
   { value: "48", label: "48" },
 ];
 
+const MAX_BURNUP_STEPS = 200;
+const DEFAULT_BURNUP_STEPS = 50;
+
 export function DepletionStep() {
   const { wasm, ready, error } = useWasm();
   const [xml, setXml] = useState(DEFAULT_CHAIN);
@@ -29,27 +38,87 @@ export function DepletionStep() {
   const [dt, setDt] = useState(86400.0);
   const [order, setOrder] = useState<16 | 48>(48);
   const [result, setResult] = useState<Record<string, number> | null>(null);
+  const [burnupSteps, setBurnupSteps] = useState(DEFAULT_BURNUP_STEPS);
+  const [burnup, setBurnup] = useState<BurnupCurve | null>(null);
+  const [burnupBusy, setBurnupBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function clearError() {
     setLocalError(null);
   }
 
+  async function loadSampleChain() {
+    try {
+      const res = await fetch(CHAIN_SAMPLE_URL);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const sample = await res.text();
+      setXml(sample);
+      clearError();
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function parseN0(): Record<string, number> {
+    const n0: Record<string, number> = {};
+    for (const line of n0Input.split("\n")) {
+      const [name, count] = line.trim().split(/\s+/);
+      if (name && count) n0[name] = parseFloat(count);
+    }
+    return n0;
+  }
+
   function run() {
     if (!wasm) return;
     try {
       const chain = wasm.WasmChain.fromXml(xml);
-      const n0: Record<string, number> = {};
-      for (const line of n0Input.split("\n")) {
-        const [name, count] = line.trim().split(/\s+/);
-        if (name && count) n0[name] = parseFloat(count);
-      }
+      const n0 = parseN0();
       const out = wasm.deplete(chain, n0, dt, {}, order);
       setResult(out);
       setLocalError(null);
     } catch (e) {
       setLocalError(e instanceof Error ? e.message : String(e));
       setResult(null);
+    }
+  }
+
+  function runBurnup() {
+    if (!wasm) return;
+    const steps = Math.min(Math.max(1, burnupSteps), MAX_BURNUP_STEPS);
+    setBurnupSteps(steps);
+    setBurnupBusy(true);
+    try {
+      const chain = wasm.WasmChain.fromXml(xml);
+      let n = parseN0();
+      const times: number[] = [0];
+      const series: Record<string, number[]> = {};
+      for (const name of Object.keys(n)) {
+        series[name] = [n[name]];
+      }
+
+      for (let i = 1; i <= steps; i++) {
+        n = wasm.deplete(chain, n, dt, {}, order);
+        times.push(i * dt);
+        for (const [name, value] of Object.entries(n)) {
+          if (!series[name]) series[name] = [];
+          series[name].push(value);
+        }
+      }
+
+      // Align series length (new nuclides may appear mid-curve).
+      for (const values of Object.values(series)) {
+        while (values.length < times.length) {
+          values.push(0);
+        }
+      }
+
+      setBurnup({ times, series });
+      setLocalError(null);
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : String(e));
+      setBurnup(null);
+    } finally {
+      setBurnupBusy(false);
     }
   }
 
@@ -74,7 +143,12 @@ export function DepletionStep() {
       {ready && (
         <>
           <div className="space-y-2">
-            <Label>Depletion chain XML</Label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label>Depletion chain XML</Label>
+              <Button variant="outline" size="sm" onClick={loadSampleChain}>
+                Load sample chain
+              </Button>
+            </div>
             <Textarea
               value={xml}
               onChange={(e) => {
@@ -125,7 +199,28 @@ export function DepletionStep() {
             </div>
           </div>
 
-          <Button onClick={run}>Deplete</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={run}>Deplete</Button>
+            <Button variant="outline" onClick={runBurnup} disabled={burnupBusy}>
+              {burnupBusy ? "Running burnup curve…" : "Burnup curve"}
+            </Button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label>Burnup steps (max {MAX_BURNUP_STEPS})</Label>
+              <Input
+                type="number"
+                min={1}
+                max={MAX_BURNUP_STEPS}
+                value={burnupSteps}
+                onChange={(e) => {
+                  setBurnupSteps(parseInt(e.target.value));
+                  clearError();
+                }}
+              />
+            </div>
+          </div>
 
           {result && Object.keys(result).length === 0 && (
             <p className="text-sm text-muted-foreground">No nuclides in result.</p>
@@ -149,8 +244,38 @@ export function DepletionStep() {
               </tbody>
             </table>
           )}
+
+          {burnup && <BurnupPlot burnup={burnup} />}
         </>
       )}
     </div>
+  );
+}
+
+interface BurnupCurve {
+  times: number[];
+  series: Record<string, number[]>;
+}
+
+function BurnupPlot({ burnup }: { burnup: BurnupCurve }) {
+  const traces = Object.entries(burnup.series).map(([name, values]) => ({
+    type: "scatter" as const,
+    mode: "lines" as const,
+    name,
+    x: burnup.times,
+    y: values,
+  }));
+
+  return (
+    <Plotly
+      aspect="video"
+      data={traces}
+      layout={{
+        xaxis: { title: { text: "Time (s)" }, type: "linear" },
+        yaxis: { title: { text: "Atom count" }, type: "log" },
+        margin: { t: 16, r: 16, b: 48, l: 64 },
+        legend: { orientation: "h", y: -0.25 },
+      }}
+    />
   );
 }

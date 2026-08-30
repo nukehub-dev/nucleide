@@ -197,6 +197,45 @@ impl Cascade {
     fn xj(&self) -> f64 {
         self.mat_feed.get(self.j)
     }
+
+    /// Per-stage assay of the enriching key `j` through the ideal cascade.
+    ///
+    /// The profile starts at [`Cascade::x_tail_j`] (stage 0) and walks forward
+    /// one ideal stage at a time using the stage recurrence
+    /// `x' = alpha*_j * x / (1 + (alpha*_j - 1) * x)`. Stage `M + 1` is the
+    /// feed point and stage `N + M + 1` is the product point; here the stage
+    /// counts are rounded up to integers so the returned profile always has a
+    /// bounded length.
+    ///
+    /// v1 is assay-only; interstage flow is not computed per stage.
+    pub fn stage_profile(&self) -> Result<Vec<StagePoint>> {
+        let m_j = atomic_mass(self.j.nucid()).ok_or(Error::MissingMass(self.j))?;
+        let alpha_star_j = alphastar_i(self.alpha, self.Mstar, m_j);
+        let total_stages = (self.N + self.M + 1.0).ceil().max(1.0) as u32;
+
+        let mut x = self.x_tail_j;
+        let mut profile = Vec::with_capacity(total_stages as usize + 1);
+        profile.push(StagePoint {
+            stage: 0,
+            assay_j: x,
+        });
+
+        for stage in 1..=total_stages {
+            x = alpha_star_j * x / (1.0 + (alpha_star_j - 1.0) * x);
+            profile.push(StagePoint { stage, assay_j: x });
+        }
+
+        Ok(profile)
+    }
+}
+
+/// A single point in an ideal-cascade stage profile.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StagePoint {
+    /// Stage index, starting at 0 for the tails end.
+    pub stage: u32,
+    /// Assay of the enriching key at this stage.
+    pub assay_j: f64,
 }
 
 /// Product-over-feed mass ratio `P/F = (xF - xT)/(xP - xT)`.
@@ -1560,5 +1599,86 @@ mod tests {
         let err = solve_numeric(&casc, DEFAULT_TOLERANCE, DEFAULT_MAX_ITER)
             .expect_err("NaN k abundance must fail");
         assert!(matches!(err, Error::BadComposition { .. }), "{err}");
+    }
+
+    #[test]
+    fn stage_profile_default_uranium_endpoints() {
+        let orig = default_uranium_cascade();
+        let casc = solve_numeric(&orig, INTEGRATION_TOLERANCE, 100).expect("solve");
+        let profile = casc.stage_profile().expect("profile");
+
+        assert!(!profile.is_empty());
+        assert_approx(
+            profile[0].assay_j,
+            casc.x_tail_j,
+            "profile starts at tails assay",
+        );
+
+        let last = profile.last().unwrap();
+        // The simple binary recurrence is an approximation for the multicomponent
+        // solver result; allow a generous tolerance on the product endpoint.
+        assert!(
+            last.assay_j > casc.x_feed_j && last.assay_j <= casc.x_prod_j * 1.2,
+            "profile ends near product assay: observed {}, target {}",
+            last.assay_j,
+            casc.x_prod_j
+        );
+
+        // The feed assay should be bracketed by the tails and product endpoints.
+        assert!(
+            profile[0].assay_j < casc.x_feed_j && last.assay_j > casc.x_feed_j,
+            "feed assay should lie inside the profile"
+        );
+
+        // The profile should be monotonically increasing.
+        for pair in profile.windows(2) {
+            assert!(
+                pair[1].assay_j >= pair[0].assay_j,
+                "stage profile must be non-decreasing"
+            );
+        }
+    }
+
+    #[test]
+    fn stage_profile_binary_feed_is_consistent() {
+        // For a two-component feed the binary recurrence should land close to
+        // the product assay (within ~10 %, limited by fractional ceil(N+M+1)).
+        let mut orig = default_uranium_cascade();
+        orig.mat_feed = Stream::from_comp(comp(&[(U235, 0.0072), (U238, 0.9928)]));
+        let casc = solve_numeric(&orig, INTEGRATION_TOLERANCE, 100).expect("solve");
+        let profile = casc.stage_profile().expect("profile");
+
+        assert!(!profile.is_empty());
+        assert_approx(profile[0].assay_j, casc.x_tail_j, "tails endpoint");
+        assert_rel_close(
+            profile.last().unwrap().assay_j,
+            casc.x_prod_j,
+            1e-1,
+            "product endpoint",
+        );
+
+        for pair in profile.windows(2) {
+            assert!(pair[1].assay_j >= pair[0].assay_j, "monotonic");
+        }
+    }
+
+    #[test]
+    fn stage_profile_requires_key_mass() {
+        let mut casc = Cascade::new();
+        casc.alpha = 1.05;
+        casc.Mstar = 236.5;
+        casc.j = U235;
+        casc.x_tail_j = 0.0025;
+        casc.x_prod_j = 0.05;
+        casc.N = 30.0;
+        casc.M = 10.0;
+        // Atomic mass lookup works from the nucid, so the valid key succeeds.
+        assert!(casc.stage_profile().is_ok());
+        // Test the error path with an invalid key (Z = 0 has no mass entry).
+        casc.j = NuclideId::from_nucid(0);
+        match casc.stage_profile() {
+            Err(Error::MissingMass(_)) => {}
+            other => panic!("expected MissingMass, got {other:?}"),
+        }
     }
 }

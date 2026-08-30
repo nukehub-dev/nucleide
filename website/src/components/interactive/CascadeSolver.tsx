@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useWasm } from "../../lib/wasm";
-import type { CascadeResult } from "../../types/nucleide-wasm";
+import type { CascadeResult, StagePointJson } from "../../types/nucleide-wasm";
+import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
@@ -17,6 +18,7 @@ export function CascadeSolver() {
     tailsAssay: 0.0025,
   });
   const [result, setResult] = useState<CascadeResult | null>(null);
+  const [stageProfile, setStageProfile] = useState<StagePointJson[] | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function run(solveMode: "solve" | "multicomponent") {
@@ -38,10 +40,12 @@ export function CascadeSolver() {
         c.solveMulticomponent();
       }
       setResult(c.toObject());
+      setStageProfile(c.stageProfile());
       setLocalError(null);
     } catch (e) {
       setLocalError(e instanceof Error ? e.message : String(e));
       setResult(null);
+      setStageProfile(null);
     }
   }
 
@@ -133,11 +137,103 @@ export function CascadeSolver() {
                 <StreamTable title="Product" data={result.product} />
                 <StreamTable title="Tails" data={result.tails} />
               </div>
+
+              {stageProfile && <StageProfileChart profile={stageProfile} result={result} />}
             </div>
           )}
         </>
       )}
     </div>
+  );
+}
+
+function StageProfileChart({
+  profile,
+  result,
+}: {
+  profile: StagePointJson[];
+  result: CascadeResult;
+}) {
+  const stages = profile.map((p) => p.stage);
+  const assays = profile.map((p) => p.assayJ);
+  const feedStage = Math.round(result.stagesStripping + 1);
+
+  return (
+    <Plotly
+      aspect="video"
+      data={[
+        {
+          type: "scatter",
+          mode: "lines+markers",
+          name: "U-235 assay",
+          x: stages,
+          y: assays,
+        },
+      ]}
+      layout={{
+        title: {
+          text: `Stage profile (SWU/feed = ${result.swuPerFeed.toFixed(3)})`,
+        },
+        xaxis: { title: { text: "Stage" } },
+        yaxis: { title: { text: "U-235 assay" }, type: "log" },
+        margin: { t: 40, r: 16, b: 48, l: 64 },
+        shapes: [
+          {
+            type: "line",
+            xref: "paper",
+            x0: 0,
+            x1: 1,
+            y0: result.tailsAssay,
+            y1: result.tailsAssay,
+            line: { dash: "dash", color: "#ef4444" },
+          },
+          {
+            type: "line",
+            xref: "paper",
+            x0: 0,
+            x1: 1,
+            y0: result.feedAssay,
+            y1: result.feedAssay,
+            line: { dash: "dash", color: "#f59e0b" },
+          },
+          {
+            type: "line",
+            xref: "paper",
+            x0: 0,
+            x1: 1,
+            y0: result.productAssay,
+            y1: result.productAssay,
+            line: { dash: "dash", color: "#22c55e" },
+          },
+        ],
+        annotations: [
+          {
+            x: feedStage,
+            y: result.feedAssay,
+            text: "Feed",
+            showarrow: true,
+            arrowhead: 2,
+            ay: -40,
+          },
+          {
+            x: profile[profile.length - 1].stage,
+            y: result.productAssay,
+            text: "Product",
+            showarrow: true,
+            arrowhead: 2,
+            ay: -40,
+          },
+          {
+            x: 0,
+            y: result.tailsAssay,
+            text: "Tails",
+            showarrow: true,
+            arrowhead: 2,
+            ay: -40,
+          },
+        ],
+      }}
+    />
   );
 }
 

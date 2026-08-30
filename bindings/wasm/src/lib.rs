@@ -464,6 +464,13 @@ struct CascadeResult {
     tails: BTreeMap<String, f64>,
 }
 
+#[derive(Serialize)]
+struct StagePointJson {
+    stage: u32,
+    #[serde(rename = "assayJ")]
+    assay_j: f64,
+}
+
 impl WasmCascade {
     fn to_result(&self) -> Result<JsValue, JsValue> {
         to_js(&CascadeResult {
@@ -612,6 +619,20 @@ impl WasmCascade {
     #[wasm_bindgen(getter, js_name = swuPerProduct)]
     pub fn swu_per_product(&self) -> f64 {
         self.inner.swu_per_prod
+    }
+
+    /// Per-stage assay of the enriching key through the ideal cascade.
+    #[wasm_bindgen(js_name = stageProfile)]
+    pub fn stage_profile(&self) -> Result<JsValue, JsValue> {
+        let profile = self.inner.stage_profile().map_err(js_err)?;
+        let out: Vec<StagePointJson> = profile
+            .into_iter()
+            .map(|p| StagePointJson {
+                stage: p.stage,
+                assay_j: p.assay_j,
+            })
+            .collect();
+        to_js(&out)
     }
 }
 

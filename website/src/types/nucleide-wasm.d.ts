@@ -64,10 +64,16 @@ export interface CascadeResult {
   tails: Record<string, number>;
 }
 
+export interface StagePointJson {
+  stage: number;
+  assayJ: number;
+}
+
 export interface WasmCascade {
   solve(): void;
   solveMulticomponent(): void;
   toObject(): CascadeResult;
+  stageProfile(): StagePointJson[];
   alpha: number;
   feedAssay: number;
   productAssay: number;

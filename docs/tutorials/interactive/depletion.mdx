@@ -30,7 +30,8 @@ $$
 
 `deplete(chain, n0, dt, rates, order)` integrates over one time step `dt`. In
 production you would loop this call, update reaction rates from a transport
-solve, and accumulate burnup.
+solve, and accumulate burnup. The demo also offers a **Burnup curve** run that
+repeats the step and plots nuclide densities versus cumulative time.
 
 <InteractiveDemo kind="depletion" />
 

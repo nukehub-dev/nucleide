@@ -50,8 +50,8 @@ mod swu;
 
 pub use cascade::{
     alphastar_i, default_uranium_cascade, feed_per_prod, feed_per_tail, multicomponent,
-    prod_per_feed, prod_per_tail, solve_numeric, tail_per_feed, tail_per_prod, Cascade, Stream,
-    DEFAULT_MAX_ITER, DEFAULT_TOLERANCE,
+    prod_per_feed, prod_per_tail, solve_numeric, tail_per_feed, tail_per_prod, Cascade, StagePoint,
+    Stream, DEFAULT_MAX_ITER, DEFAULT_TOLERANCE,
 };
 pub use swu::{swu_per_feed, swu_per_prod, swu_per_tail, value_func};
 

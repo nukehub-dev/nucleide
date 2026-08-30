@@ -12,14 +12,16 @@ parsed output must update a fixture deliberately, never accidentally.
 Contents:
 
 - `data/` — DOE/PNNL Materials Compendium JSON (+ its license)
-- `mcnp/xsdir` — xsdir parser oracle
-- `mcnp/meshtal` — single + multiple meshtal files
+- `mcnp/xsdir` — xsdir parser oracle; `dummy_xsdir` is staged for the website
+- `mcnp/meshtal` — single + multiple meshtal files; `mcnp_meshtal_single_meshtal.txt`
+  is staged for the website
 - `mcnp/ssw` — mcnp5/mcnp6/mcnpx surfsrc + one-track (SSW round-trip oracles)
 - `mcnp/ptrac` — i4/i8 + MCNP6 variants + input card
 - `mcnp/wwinp` — n/p/np weight-window files
 - `mcnp/inp` — material-bearing input decks (+ commented variant)
 - `mcnp/mctal/synthetic_*` — generated kcode decks (no public corpus exists)
-- `depletion/` — depletion-chain XML files (simple chains, Ni chain)
+- `depletion/` — depletion-chain XML files (simple chains, Ni chain);
+  `chain_simple.xml` is staged for the website
 - `serpent/` — Serpent 1 & 2 res/dep/det outputs
 - `fluka/` — USRBIN `.lis` files (single/multiple/degenerate) + test input
 

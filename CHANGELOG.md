@@ -53,6 +53,13 @@ publishes Python wheels (and optionally Rust crates) from tags.
   synced from `docs/`, theory pages, and interactive WASM tutorials (including
   a compendium browser that fetches the staged `MaterialsCompendium.json` and
   charts compositions with Plotly), deployed to GitHub Pages.
+- Interactive tutorials: MCNP meshtal z-slice heatmap with log colorscale and
+  relative-error toggle, xsdir table-count histogram by element, depletion
+  burnup-curve plot, material atom-vs-weight-fraction bar chart, enrichment
+  cascade stage-profile line chart, and MAGIC energy upper-bound step line.
+- `enrichment`: `Cascade::stage_profile()` returns per-stage assays of the
+  enriching key via the ideal-cascade recurrence, exposed through WASM as
+  `WasmCascade.stageProfile()`.
 - Release workflow: `vX.Y.Z` tags build and publish Python wheels for Linux,
   macOS, and Windows to PyPI and draft a GitHub release from the matching
   changelog section; crates.io publishing is opt-in via `workflow_dispatch`.

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useWasm } from "../../lib/wasm";
 import type { MagicSummary, SampledVoxelSummary } from "../../types/nucleide-wasm";
+import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
@@ -178,11 +179,12 @@ export function VrDemo() {
           <Button onClick={runMagic}>Generate MAGIC bounds</Button>
 
           {magic && (
-            <div className="space-y-2 text-sm">
+            <div className="space-y-3 text-sm">
               <p>Tag: {magic.wwTagName}</p>
               <p>Groups per voxel: {magic.groupsPerVe}</p>
               <p>Lower bounds: [{magic.lowerBoundsWw.map((v) => v.toExponential(3)).join(", ")}]</p>
               <p>Scale factors: [{magic.scaleFactors.map((v) => v.toExponential(3)).join(", ")}]</p>
+              <MagicBoundsChart magic={magic} />
             </div>
           )}
 
@@ -225,5 +227,29 @@ export function VrDemo() {
         </>
       )}
     </div>
+  );
+}
+
+function MagicBoundsChart({ magic }: { magic: MagicSummary }) {
+  const groups = magic.eUpperBounds.map((_, i) => i);
+  return (
+    <Plotly
+      aspect="video"
+      data={[
+        {
+          type: "scatter",
+          mode: "lines",
+          name: "Energy upper bounds",
+          x: groups,
+          y: magic.eUpperBounds,
+          line: { shape: "hv" },
+        },
+      ]}
+      layout={{
+        xaxis: { title: { text: "Energy group" } },
+        yaxis: { title: { text: "Upper bound (MeV)" }, type: "log" },
+        margin: { t: 16, r: 16, b: 48, l: 64 },
+      }}
+    />
   );
 }

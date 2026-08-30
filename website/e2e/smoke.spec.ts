@@ -37,30 +37,35 @@ const INTERACTIVE_PAGES = [
     // A known data cell: guards against map-shaped WASM values rendering as
     // empty tables (Object.entries on a JS Map yields no rows).
     cell: "H1",
+    chart: { selector: ".js-plotly-plot" },
   },
   {
     path: "tutorials/interactive/enrichment",
     button: "Solve cascade",
     output: "text=Enriching stages",
+    chart: { button: "Solve cascade", selector: ".js-plotly-plot" },
   },
   {
     path: "tutorials/interactive/depletion",
     button: "Deplete",
     output: "text=Atom count",
+    chart: { button: "Burnup curve", selector: ".js-plotly-plot" },
   },
   {
     path: "tutorials/interactive/mcnp-io",
     button: "Parse",
     output: "text=Material 1",
+    chart: { actions: ["meshtal", "Load sample meshtal", "Parse"], selector: ".js-plotly-plot" },
   },
   {
     path: "tutorials/interactive/variance-reduction",
     button: "Generate MAGIC bounds",
     output: "text=Groups per voxel:",
+    chart: { selector: ".js-plotly-plot" },
   },
 ];
 
-for (const { path, button, output, cell } of INTERACTIVE_PAGES) {
+for (const { path, button, output, cell, chart } of INTERACTIVE_PAGES) {
   test(`interactive demo: ${path}`, async ({ page }) => {
     await page.goto(path);
     await waitForWasmReady(page);
@@ -80,6 +85,18 @@ for (const { path, button, output, cell } of INTERACTIVE_PAGES) {
         .getByRole("heading", { name: "Browse the Materials Compendium" })
         .scrollIntoViewIfNeeded();
       await expect(page.getByText("materials loaded")).toBeVisible();
+    }
+
+    if (chart) {
+      if (chart.actions) {
+        for (const action of chart.actions) {
+          await page.getByRole("button", { name: action }).click();
+        }
+      } else if (chart.button) {
+        await page.getByRole("button", { name: chart.button }).click();
+      }
+      await assertNoWasmError(page);
+      await expect(page.locator(chart.selector).first()).toBeVisible({ timeout: 10_000 });
     }
   });
 }
