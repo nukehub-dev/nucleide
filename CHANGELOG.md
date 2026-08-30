@@ -123,7 +123,3 @@ publishes Python wheels (and optionally Rust crates) from tags.
 - `bindings/wasm`: fraction and result maps are now serialized as plain JS
   objects instead of JS `Map`s, fixing empty tables in all interactive
   tutorials.
-
-### Removed
-
-- `vr-tools`: unused `nuclei` dependency.

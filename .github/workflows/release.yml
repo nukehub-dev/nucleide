@@ -71,6 +71,8 @@ jobs:
         python-version: ['3.10', '3.11', '3.12', '3.13']
     permissions:
       contents: read
+      id-token: write
+    environment: pypi
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -85,8 +87,6 @@ jobs:
         with:
           command: publish
           args: --non-interactive --skip-existing --out dist
-        env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
 
       - name: Upload wheels artifact
         uses: actions/upload-artifact@v7
