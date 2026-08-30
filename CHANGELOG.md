@@ -12,6 +12,8 @@ publishes Python wheels (and optionally Rust crates) from tags.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-30
+
 ### Added
 
 - `depletion`: reaction `branching_ratio` support in chain XML (default 1.0),
