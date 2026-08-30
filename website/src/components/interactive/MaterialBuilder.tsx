@@ -156,7 +156,10 @@ export function MaterialBuilder() {
               <Button onClick={runXml}>To XML</Button>
             </div>
             {xml && (
-              <pre className="max-h-48 overflow-auto rounded-lg border border-border bg-muted p-2 text-xs">
+              // clip-path clips the painted scrollbar to the rounded shape too
+              // (border-radius alone doesn't clip classic scrollbars). The 1px
+              // expansion keeps clip AA from shaving the border's outer edge.
+              <pre className="max-h-48 overflow-auto rounded-lg border border-border bg-muted p-2 text-xs [clip-path:inset(-1px_round_calc(0.5rem+1px))]">
                 {xml}
               </pre>
             )}
@@ -208,6 +211,10 @@ function CompositionChart({
 
   const atomValues = keys.map((k) => atomFracs[k] ?? 0);
   const weightValues = keys.map((k) => weightFracs[k] ?? 0);
+  // Leave headroom on the value axis so the longest bar stays clear of the
+  // modebar overlay in the top-right corner.
+  const maxFraction = Math.max(0, ...atomValues, ...weightValues);
+  const xMax = Math.min(1, maxFraction * 1.25);
 
   return (
     <Plotly
@@ -230,7 +237,7 @@ function CompositionChart({
       ]}
       layout={{
         barmode: "group",
-        xaxis: { title: { text: "Fraction" } },
+        xaxis: { title: { text: "Fraction" }, range: [0, xMax] },
         yaxis: { title: { text: "Nuclide" } },
         margin: { t: 16, r: 16, b: 48, l: 64 },
         legend: { orientation: "h", y: -0.2 },

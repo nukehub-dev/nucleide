@@ -78,6 +78,10 @@ export function CompendiumBrowser() {
     chartLabels.push(`other (${rest.length})`);
     chartValues.push(restTotal);
   }
+  // Leave headroom on the value axis so the longest bar stays clear of the
+  // modebar overlay in the top-right corner.
+  const maxFraction = chartValues.length > 0 ? Math.max(...chartValues) : 0;
+  const xMax = Math.min(1, maxFraction * 1.25);
 
   return (
     <div className="rounded-xl border border-border/50 bg-background p-4 space-y-4">
@@ -132,7 +136,7 @@ export function CompendiumBrowser() {
                     },
                   ]}
                   layout={{
-                    xaxis: { title: { text: "Weight fraction" } },
+                    xaxis: { title: { text: "Weight fraction" }, range: [0, xMax] },
                     margin: { t: 16, r: 16, b: 48, l: 96 },
                   }}
                 />

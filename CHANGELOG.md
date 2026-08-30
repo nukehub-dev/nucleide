@@ -89,6 +89,11 @@ publishes Python wheels (and optionally Rust crates) from tags.
 
 ### Fixed
 
+- Documentation website "Edit this page on GitHub" links now point at real
+  repo files (docs-kit sync injects the source path as `editPath`
+  frontmatter); previously every link 404'd — all were missing the file
+  extension, and the changelog link pointed at `docs/changelog` instead of
+  the repo-root `CHANGELOG.md`.
 - Documentation website deployment now builds the `bindings/wasm` package in
   CI, so the interactive tutorials can load `/wasm/nucleide_wasm.js` instead of
   receiving the SPA fallback HTML response.

@@ -24,6 +24,8 @@ const docs = defineCollection({
   schema: z.object({
     title: z.string(),
     description: z.string().optional(),
+    // Injected by nukehub-sync-docs: repo-relative source path for EditLink.
+    editPath: z.string().optional(),
     sidebar: z
       .object({
         label: z.string().optional(),

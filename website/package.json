@@ -23,7 +23,7 @@
     "@astrojs/mdx": "^7.0.3",
     "@astrojs/react": "^6.0.1",
     "@astrojs/sitemap": "^3.7.3",
-    "@nukehub/docs-kit": "^0.3.3",
+    "@nukehub/docs-kit": "^0.3.4",
     "@tailwindcss/vite": "^4.3.2",
     "astro": "^7.0.9",
     "clsx": "^2.1.1",
