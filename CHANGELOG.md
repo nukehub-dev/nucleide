@@ -13,6 +13,16 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Added
+
+- `alara-io` crate: ALARA input-deck, group-flux, material/element/WDR library,
+  activation-output, photon-source, and schedule-expansion parsers (glue only;
+  solver out of scope). Fixtures vendored verbatim from UW ALARA BSD samples
+  under `fixtures/alara/` (terms in `fixtures/alara/LICENSE.ALARA`).
+- Python API: `nucleide.alara` (`alara_parse_deck`, `alara_parse_flux`,
+  `alara_parse_output`, `alara_expand_schedule`) exposing the `alara-io`
+  deck/flux/output/schedule glue as plain dicts/lists.
+
 ### Changed
 
 - Release workflow: removed the non-functional `cargo publish --dry-run` step

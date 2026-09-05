@@ -12,6 +12,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "alara-io"
+version = "0.1.0"
+dependencies = [
+ "nuclei",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "anes"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -746,6 +755,7 @@ dependencies = [
 name = "nucleide-bindings"
 version = "0.1.0"
 dependencies = [
+ "alara-io",
  "depletion",
  "enrichment",
  "fluka-io",

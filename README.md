@@ -36,6 +36,7 @@ rebuilds the high-value subset in memory-safe Rust with one-command
 | MCNP I/O (`mcnp-io`) | xsdir, meshtal, SSW/SURFSRC, PTRAC, WWINP, MCTAL readers; material extraction from input decks; mesh-to-geometry deck generation |
 | Serpent I/O (`serpent-io`) | `_res.m`, `_dep.m`, `_det.m` readers producing structured records |
 | FLUKA I/O (`fluka-io`) | USRBIN tally reader, material/compound card generation |
+| ALARA I/O (`alara-io`) | Deck/flux/matlib-elelib-WDR/output/photon/schedule-expansion glue; solver out of scope |
 | Depletion (`depletion`) | CRAM (orders 16/48) matrix exponential, depletion-chain XML parsing |
 | Enrichment (`enrichment`) | Multicomponent cascade solver (numeric), SWU closed-form helpers |
 | Variance reduction (`vr-tools`) | MAGIC weight-window generation, mesh source sampling with alias tables |
@@ -56,6 +57,7 @@ nucleide/
 │   ├── mcnp-io/       # xsdir/meshtal/SSW/MCTAL/PTRAC/WWINP
 │   ├── serpent-io/    # res/dep/det readers
 │   ├── fluka-io/      # usrbin reader, material cards
+│   ├── alara-io/      # ALARA deck/flux/libs/output/photon/schedule glue (no solver)
 │   ├── vr-tools/      # MAGIC weight windows, source sampling
 │   ├── enrichment/    # cascades, SWU
 │   ├── depletion/     # CRAM + chain files

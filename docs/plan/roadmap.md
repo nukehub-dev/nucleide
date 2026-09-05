@@ -8,7 +8,7 @@ Nucleide is pre-alpha. APIs may change without notice.
 
 ## Current status
 
-The workspace is bootstrapped with nine crates, PyO3 and WASM bindings, a
+The workspace is bootstrapped with ten crates, PyO3 and WASM bindings, a
 typed Python facade, and golden-byte fixtures. The canonical CI checks (format,
 clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 
@@ -20,6 +20,8 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   (`mcnp-io`).
 - Serpent `_res.m`, `_dep.m`, `_det.m` readers (`serpent-io`).
 - FLUKA USRBIN reader and material/compound card generation (`fluka-io`).
+- ALARA Phase 1 interop (`alara-io`): deck/flux/libs/output/photon/schedule
+  glue (solver out of scope).
 - CRAM depletion solver and chain XML parsing (`depletion`).
 - Multicomponent enrichment cascade solver (`enrichment`).
 - MAGIC weight windows and mesh source sampling (`vr-tools`).
@@ -32,7 +34,9 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 ## Upcoming priorities
 
 - Stabilize the Rust public API across all crates.
-- Expand parser coverage and add more golden-byte fixtures.
+- Expand parser coverage and add more golden-byte fixtures (ALARA Phase 1
+  landed; remaining: Python facade polish + R2S orchestrator, explicitly
+  future work).
 - Add ndarray/NumPy zero-copy bridges where it improves Python ergonomics.
 - Cut the first tagged release: `vX.Y.Z` tags publish Python wheels to PyPI
   and workspace crates to crates.io.

@@ -24,6 +24,12 @@ Contents:
   `chain_simple.xml` is staged for the website
 - `serpent/` — Serpent 1 & 2 res/dep/det outputs
 - `fluka/` — USRBIN `.lis` files (single/multiple/degenerate) + test input
+- `alara/` — UW ALARA samples vendored verbatim (terms in `alara/LICENSE.ALARA`):
+  input-deck oracles `decks/sample2` + `decks/sample3`; group-flux files
+  `flux/fluxin2` + all-zero edge case `flux/fluxin_zeros`; support libraries
+  `libs/sampleMatlib` (material lib), `libs/myElelib` (element lib),
+  `libs/NRCA` + `libs/NRCC` (WDR libs); activation-output oracle
+  `output/sample2.out`
 
 Still to add in later phases: truncated PTRAC samples for fuzzing; recorded
 CRAM input/output pairs for regression pinning (currently validated

@@ -9,6 +9,7 @@ sample chains) pinned to the installed release.
 """
 
 from nucleide import (
+    alara,
     data,
     depletion,
     enrichment,
@@ -24,6 +25,7 @@ from nucleide._internal import version
 __version__ = version()
 __all__ = [
     "version",
+    "alara",
     "nuclei",
     "material",
     "mcnp",

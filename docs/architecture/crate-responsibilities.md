@@ -49,6 +49,12 @@ No internal crate dependencies.
 FLUKA interface: USRBIN tally reader and MATERIAL/COMPOUND card generation.
 Depends on `nuclei`.
 
+### `alara-io`
+
+ALARA activation-code interop: input-deck, group-flux, material/element/WDR
+library, activation-output, photon-source, and schedule-expansion glue. Depends
+on `nuclei` only among workspace crates; the solver stays inside ALARA.
+
 ### `enrichment`
 
 Multicomponent enrichment cascades and SWU analytics. Depends on `nuclei` and
@@ -97,7 +103,8 @@ When publishing to crates.io, publish in dependency order:
 4. `mcnp-io`
 5. `serpent-io`
 6. `fluka-io`
-7. `enrichment`
-8. `depletion`
-9. `vr-tools`
-10. `nucleide-bindings`
+7. `alara-io`
+8. `enrichment`
+9. `depletion`
+10. `vr-tools`
+11. `nucleide-bindings`

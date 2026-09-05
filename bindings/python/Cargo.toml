@@ -21,3 +21,4 @@ serpent-io.workspace = true
 fluka-io.workspace = true
 vr-tools.workspace = true
 enrichment.workspace = true
+alara-io.workspace = true

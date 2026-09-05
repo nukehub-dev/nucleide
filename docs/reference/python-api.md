@@ -29,6 +29,7 @@ re-exports its symbols from `nucleide._internal`:
 | `nucleide.vr` | `vr-tools` | MAGIC weight windows, source sampling |
 | `nucleide.enrichment` | `enrichment` | Enrichment cascades |
 | `nucleide.depletion` | `depletion` | Depletion chains and CRAM solves |
+| `nucleide.alara` | `alara-io` | ALARA decks, group fluxes, output listings, schedule expansion |
 | `nucleide.data` | — (pure Python) | Release-pinned data-file downloads |
 
 ## `nucleide.nuclei`
@@ -93,6 +94,16 @@ re-exports its symbols from `nucleide._internal`:
 - `system.solve(n0, dt, order=48)` → result `dict`
 - `system.solve_vec(n0, dt, order=48)` → result `list` in chain nuclide order
 - `deplete(chain, n0, dt, rates=None, order=48)` → result `dict`
+
+## `nucleide.alara`
+
+- `alara_parse_deck(text)` → deck `dict` (block kinds, mixtures, flux defs,
+  cooling times, schedules, pulse histories, outputs)
+- `alara_parse_flux(text, name)` → flux `dict` (groups per interval, intervals,
+  totals)
+- `alara_parse_output(text, run_lbl)` → list of 11-field response row `dict`s
+- `alara_expand_schedule(deck_text, top=None)` → flat
+  `{duration_s, flux, is_cooling}` steps from the deck hierarchy
 
 ## `nucleide.data`
 

@@ -10,6 +10,7 @@ members = [
     "crates/vr-tools",
     "crates/enrichment",
     "crates/depletion",
+    "crates/alara-io",
     "bindings/python",
     "bindings/wasm",
 ]
@@ -32,6 +33,7 @@ fluka-io = { path = "crates/fluka-io", version = "0.1.0" }
 vr-tools = { path = "crates/vr-tools", version = "0.1.0" }
 enrichment = { path = "crates/enrichment", version = "0.1.0" }
 depletion = { path = "crates/depletion", version = "0.1.0", default-features = false }
+alara-io = { path = "crates/alara-io", version = "0.1.0" }
 
 # --- planned stack (enabled per-crate as features land) ---
 # abi3-py310: one wheel per platform serves all Python >= 3.10

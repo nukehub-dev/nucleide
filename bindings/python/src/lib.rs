@@ -1203,6 +1203,420 @@ fn mesh_to_geom(
 }
 
 // ---------------------------------------------------------------------------
+// ALARA I/O (thin glue over `alara-io`; solver stays out of scope)
+// ---------------------------------------------------------------------------
+
+/// Parse an ALARA input deck into plain Python containers.
+///
+/// Returns a dict with `block_kinds` (list[str] in file order), `geometry`
+/// (str | None), `mixtures` (list of {name, entries}), `fluxes` (list of
+/// {name, file, scale, skip, format}), `cooling_times_s` (list[float]),
+/// `schedules`, `pulse_histories`, `outputs`, and `truncation`.
+#[pyfunction]
+fn alara_parse_deck(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
+    let owned = text.to_owned();
+    let deck = py
+        .detach(move || alara_io::AlaraDeck::parse(&owned))
+        .map_err(ala_err)?;
+    Ok(deck_to_py(py, &deck))
+}
+
+fn ala_err(e: alara_io::Error) -> PyErr {
+    PyValueError::new_err(e.to_string())
+}
+
+fn deck_to_py(py: Python<'_>, deck: &alara_io::AlaraDeck) -> Py<PyAny> {
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    let block_kinds: Vec<&str> = deck.block_kinds();
+    out.set_item("block_kinds", block_kinds).ok();
+    out.set_item("geometry", deck.geometry.as_ref().map(|g| g.kind.clone()))
+        .ok();
+    let mixtures: Vec<Py<PyAny>> = deck.mixtures.iter().map(|m| mixture_to_py(py, m)).collect();
+    out.set_item("mixtures", mixtures).ok();
+    let fluxes: Vec<Py<PyAny>> = deck.fluxes.iter().map(|f| fluxdef_to_py(py, f)).collect();
+    out.set_item("fluxes", fluxes).ok();
+    out.set_item(
+        "cooling_times_s",
+        deck.cooling
+            .as_ref()
+            .map(|c| c.times_s.clone())
+            .unwrap_or_default(),
+    )
+    .ok();
+    let schedules: Vec<Py<PyAny>> = deck
+        .schedules
+        .iter()
+        .map(|s| {
+            let d = PyDict::new(py);
+            let items: Vec<Vec<String>> = s.items.iter().map(|it| it.tokens.clone()).collect();
+            d.set_item("name", &s.name).ok();
+            d.set_item("items", items).ok();
+            d.into_any().unbind()
+        })
+        .collect();
+    out.set_item("schedules", schedules).ok();
+    let histories: Vec<Py<PyAny>> = deck
+        .pulse_histories
+        .iter()
+        .map(|h| {
+            let d = PyDict::new(py);
+            let levels: Vec<Py<PyAny>> = h
+                .levels
+                .iter()
+                .map(|l| {
+                    let e = PyDict::new(py);
+                    e.set_item("pulses", l.pulses).ok();
+                    e.set_item("delay_s", l.delay_s).ok();
+                    e.into_any().unbind()
+                })
+                .collect();
+            d.set_item("name", &h.name).ok();
+            d.set_item("levels", levels).ok();
+            d.into_any().unbind()
+        })
+        .collect();
+    out.set_item("pulse_histories", histories).ok();
+    let outputs: Vec<Py<PyAny>> = deck
+        .outputs
+        .iter()
+        .map(|o| {
+            let d = PyDict::new(py);
+            d.set_item("resolution", &o.resolution).ok();
+            d.set_item("entries", o.entries.clone()).ok();
+            d.into_any().unbind()
+        })
+        .collect();
+    out.set_item("outputs", outputs).ok();
+    out.set_item("truncation", deck.truncation.as_ref().map(|t| t.tolerance))
+        .ok();
+    out.into_any().unbind()
+}
+
+fn mixture_to_py(py: Python<'_>, mix: &alara_io::deck::Mixture) -> Py<PyAny> {
+    use pyo3::types::PyDict;
+    let entries: Vec<Py<PyAny>> = mix
+        .entries
+        .iter()
+        .map(|e| mixture_entry_to_py(py, e))
+        .collect();
+    let d = PyDict::new(py);
+    d.set_item("name", &mix.name).ok();
+    d.set_item("entries", entries).ok();
+    d.into_any().unbind()
+}
+
+fn mixture_entry_to_py(py: Python<'_>, entry: &alara_io::deck::MixtureEntry) -> Py<PyAny> {
+    use alara_io::deck::MixtureEntry as E;
+    use pyo3::types::PyDict;
+    let d = PyDict::new(py);
+    match entry {
+        E::Material {
+            name,
+            rel_density,
+            vol_fraction,
+        } => {
+            d.set_item("kind", "material").ok();
+            d.set_item("name", name).ok();
+            d.set_item("rel_density", *rel_density).ok();
+            d.set_item("vol_fraction", *vol_fraction).ok();
+        }
+        E::Element {
+            symbol,
+            rel_density,
+            vol_fraction,
+        } => {
+            d.set_item("kind", "element").ok();
+            d.set_item("symbol", symbol).ok();
+            d.set_item("rel_density", *rel_density).ok();
+            d.set_item("vol_fraction", *vol_fraction).ok();
+        }
+        E::Like {
+            mixture,
+            rel_density,
+        } => {
+            d.set_item("kind", "like").ok();
+            d.set_item("mixture", mixture).ok();
+            d.set_item("rel_density", *rel_density).ok();
+        }
+        E::Target { target_kind, name } => {
+            d.set_item("kind", "target").ok();
+            d.set_item("target_kind", target_kind).ok();
+            d.set_item("name", name).ok();
+        }
+    }
+    d.into_any().unbind()
+}
+
+fn fluxdef_to_py(py: Python<'_>, flux: &alara_io::deck::FluxDef) -> Py<PyAny> {
+    use pyo3::types::PyDict;
+    let d = PyDict::new(py);
+    d.set_item("name", &flux.name).ok();
+    d.set_item("file", &flux.file).ok();
+    d.set_item("scale", flux.scale).ok();
+    d.set_item("skip", flux.skip).ok();
+    d.set_item("format", &flux.format).ok();
+    d.into_any().unbind()
+}
+
+/// Parse an ALARA default-format group-flux file into plain containers.
+///
+/// Returns a dict with `name`, `groups_per_interval`, `num_intervals`,
+/// `totals` (per-interval sums), `total` (grand sum), and `intervals`.
+#[pyfunction]
+fn alara_parse_flux(py: Python<'_>, text: &str, name: &str) -> PyResult<Py<PyAny>> {
+    let owned_text = text.to_owned();
+    let owned_name = name.to_owned();
+    let spectra = py
+        .detach(move || alara_io::FluxSpectra::parse(&owned_name, &owned_text))
+        .map_err(ala_err)?;
+    use pyo3::types::PyDict;
+    let d = PyDict::new(py);
+    d.set_item("name", spectra.name.clone()).ok();
+    d.set_item("groups_per_interval", spectra.groups_per_interval)
+        .ok();
+    d.set_item("num_intervals", spectra.num_intervals()).ok();
+    let totals: Vec<f64> = spectra.intervals.iter().map(|iv| iv.iter().sum()).collect();
+    d.set_item("totals", totals).ok();
+    d.set_item("total", spectra.total()).ok();
+    d.set_item("intervals", spectra.intervals.clone()).ok();
+    Ok(d.into_any().unbind())
+}
+
+/// Parse an ALARA activation-output listing into a list of row dicts.
+///
+/// Each row carries the 11 `ResponseRow` fields as plain floats/strings/ints:
+/// `time_s`, `time_label`, `nuclide`, `half_life_s`, `run_lbl`, `block`,
+/// `block_name`, `block_num`, `variable`, `var_unit`, `value`.
+#[pyfunction]
+fn alara_parse_output(
+    py: Python<'_>,
+    text: &str,
+    run_lbl: &str,
+) -> PyResult<Vec<BTreeMap<String, Py<PyAny>>>> {
+    let owned_text = text.to_owned();
+    let owned_lbl = run_lbl.to_owned();
+    let rows = py
+        .detach(move || {
+            alara_io::output::ResponseFrame::parse(&owned_text, &owned_lbl).map(|f| f.rows)
+        })
+        .map_err(ala_err)?;
+    Ok(rows
+        .iter()
+        .map(|r| {
+            let mut d = BTreeMap::new();
+            d.insert(
+                "time_s".to_string(),
+                r.time_s.into_pyobject(py).unwrap().unbind().into_any(),
+            );
+            d.insert(
+                "time_label".to_string(),
+                r.time_label
+                    .clone()
+                    .into_pyobject(py)
+                    .unwrap()
+                    .unbind()
+                    .into_any(),
+            );
+            d.insert(
+                "nuclide".to_string(),
+                r.nuclide
+                    .clone()
+                    .into_pyobject(py)
+                    .unwrap()
+                    .unbind()
+                    .into_any(),
+            );
+            d.insert(
+                "half_life_s".to_string(),
+                r.half_life_s.into_pyobject(py).unwrap().unbind().into_any(),
+            );
+            d.insert(
+                "run_lbl".to_string(),
+                r.run_lbl
+                    .clone()
+                    .into_pyobject(py)
+                    .unwrap()
+                    .unbind()
+                    .into_any(),
+            );
+            d.insert(
+                "block".to_string(),
+                r.block
+                    .as_str()
+                    .into_pyobject(py)
+                    .unwrap()
+                    .unbind()
+                    .into_any(),
+            );
+            d.insert(
+                "block_name".to_string(),
+                r.block_name
+                    .clone()
+                    .into_pyobject(py)
+                    .unwrap()
+                    .unbind()
+                    .into_any(),
+            );
+            d.insert(
+                "block_num".to_string(),
+                r.block_num.into_pyobject(py).unwrap().unbind().into_any(),
+            );
+            d.insert(
+                "variable".to_string(),
+                r.variable
+                    .as_str()
+                    .into_pyobject(py)
+                    .unwrap()
+                    .unbind()
+                    .into_any(),
+            );
+            d.insert(
+                "var_unit".to_string(),
+                r.var_unit
+                    .clone()
+                    .into_pyobject(py)
+                    .unwrap()
+                    .unbind()
+                    .into_any(),
+            );
+            d.insert(
+                "value".to_string(),
+                r.value.into_pyobject(py).unwrap().unbind().into_any(),
+            );
+            d
+        })
+        .collect())
+}
+
+/// Expand a deck's schedule hierarchy into flat irradiation/cooling steps.
+///
+/// Choice: takes deck text (plus optional top schedule name) instead of JSON
+/// schedule/history blobs, so callers reuse the already-parsed deck blocks
+/// without a parallel JSON schema. Returns a list of
+/// {duration_s, flux, is_cooling} dicts.
+#[pyfunction]
+#[pyo3(signature = (deck_text, top=None))]
+fn alara_expand_schedule(
+    py: Python<'_>,
+    deck_text: &str,
+    top: Option<&str>,
+) -> PyResult<Vec<BTreeMap<String, Py<PyAny>>>> {
+    let owned_text = deck_text.to_owned();
+    let owned_top = top.map(str::to_owned);
+    let steps = py
+        .detach(move || expand_deck_schedules(&owned_text, owned_top.as_deref()))
+        .map_err(PyValueError::new_err)?;
+    Ok(steps
+        .into_iter()
+        .map(|s| {
+            let mut d = BTreeMap::new();
+            let cooling = s.is_cooling();
+            d.insert(
+                "duration_s".to_string(),
+                s.duration_s.into_pyobject(py).unwrap().unbind().into_any(),
+            );
+            d.insert(
+                "flux".to_string(),
+                s.flux
+                    .clone()
+                    .into_pyobject(py)
+                    .unwrap()
+                    .unbind()
+                    .into_any(),
+            );
+            d.insert(
+                "is_cooling".to_string(),
+                pyo3::types::PyBool::new(py, cooling)
+                    .to_owned()
+                    .into_any()
+                    .unbind(),
+            );
+            d
+        })
+        .collect())
+}
+
+fn expand_deck_schedules(
+    deck_text: &str,
+    top: Option<&str>,
+) -> Result<Vec<alara_io::FlatStep>, String> {
+    let deck = alara_io::AlaraDeck::parse(deck_text).map_err(|e| e.to_string())?;
+    let mut scheds = Vec::with_capacity(deck.schedules.len());
+    for raw in &deck.schedules {
+        let mut items = Vec::with_capacity(raw.items.len());
+        for entry in &raw.items {
+            items.push(
+                parse_deck_sched_item(&entry.tokens)
+                    .map_err(|m| format!("schedule `{}` line {}: {m}", raw.name, entry.line))?,
+            );
+        }
+        scheds.push(alara_io::schedule::ScheduleDef {
+            name: raw.name.clone(),
+            items,
+        });
+    }
+    let histories: Vec<alara_io::schedule::PulseHistory> = deck
+        .pulse_histories
+        .iter()
+        .map(|h| alara_io::schedule::PulseHistory {
+            name: h.name.clone(),
+            levels: h
+                .levels
+                .iter()
+                .map(|l| alara_io::schedule::PulseLevel {
+                    count: l.pulses,
+                    delay_s: l.delay_s,
+                })
+                .collect(),
+        })
+        .collect();
+    match top {
+        Some(name) => alara_io::expand_from(name, &scheds, &histories).map_err(|e| e.to_string()),
+        None => alara_io::expand(&scheds, &histories).map_err(|e| e.to_string()),
+    }
+}
+
+fn parse_deck_sched_item(tokens: &[String]) -> Result<alara_io::SchedItem, String> {
+    match tokens {
+        [op_text, op_unit, flux, history, delay_text, delay_unit] => {
+            let op: f64 = op_text
+                .parse()
+                .map_err(|_| format!("expected operating time, found `{op_text}`"))?;
+            let delay: f64 = delay_text
+                .parse()
+                .map_err(|_| format!("expected delay, found `{delay_text}`"))?;
+            let op_time_s =
+                alara_io::parse_time_to_seconds(op, op_unit).map_err(|e| e.to_string())?;
+            let delay_s =
+                alara_io::parse_time_to_seconds(delay, delay_unit).map_err(|e| e.to_string())?;
+            Ok(alara_io::SchedItem::Pulse {
+                op_time_s,
+                flux: flux.clone(),
+                history: history.clone(),
+                delay_s,
+            })
+        }
+        [name, history, delay_text, delay_unit] => {
+            let delay: f64 = delay_text
+                .parse()
+                .map_err(|_| format!("expected delay, found `{delay_text}`"))?;
+            let delay_s =
+                alara_io::parse_time_to_seconds(delay, delay_unit).map_err(|e| e.to_string())?;
+            Ok(alara_io::SchedItem::SubSchedule {
+                name: name.clone(),
+                history: history.clone(),
+                delay_s,
+            })
+        }
+        _ => Err(format!(
+            "expected 4- or 6-token schedule item, found {}",
+            tokens.join(" ")
+        )),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Data accessors, input parsing, enrichment, materials
 // ---------------------------------------------------------------------------
 
@@ -1659,6 +2073,10 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(from_formula, m)?)?;
     m.add_function(wrap_pyfunction!(activity, m)?)?;
     m.add_function(wrap_pyfunction!(to_xml, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_parse_deck, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_parse_flux, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_parse_output, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_expand_schedule, m)?)?;
     m.add_class::<PyNuclide>()?;
     m.add_class::<PyParticle>()?;
     m.add_class::<PyXsdir>()?;

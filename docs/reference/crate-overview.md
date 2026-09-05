@@ -15,6 +15,7 @@ thin, focused API.
 | `mcnp-io` | `crates/mcnp-io` | xsdir, meshtal, SSW/SURFSRC, PTRAC, WWINP, MCTAL readers; material extraction from input decks; mesh-to-geometry deck generation |
 | `serpent-io` | `crates/serpent-io` | `_res.m`, `_dep.m`, `_det.m` readers producing structured records |
 | `fluka-io` | `crates/fluka-io` | USRBIN tally reader, MATERIAL/COMPOUND card generation |
+| `alara-io` | `crates/alara-io` | ALARA deck/flux/libs/output/photon/schedule glue (NOT a solver) |
 | `enrichment` | `crates/enrichment` | Multicomponent cascade solver (numeric), SWU closed-form helpers |
 | `depletion` | `crates/depletion` | CRAM matrix exponential (orders 16/48), depletion-chain XML parsing |
 | `vr-tools` | `crates/vr-tools` | MAGIC weight-window generation, mesh source sampling with alias tables |
