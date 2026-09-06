@@ -1,0 +1,27 @@
+# SYNTHETIC FISPACT-II-style inventory sample for parser tests.
+# Authored for nucleide; not copied from any FISPACT-II output.
+# Layout: `TIME = <value> <unit>` headers; rows `<nuclide> <atoms> <activity_Bq> <heat_W> [...]`.
+C Fortran-style comment line is skipped by the parser.
+SYNTHETIC INVENTORY DEMO RUN
+TIME = 0.0 SECS
+NUCLIDE ATOMS ACTIVITY HEAT
+h-3 1.0000E+20 1.2000E+09 3.5000E-03
+fe-55 2.5000E+19 2.2000E+09 1.1000E-02
+co-60 5.0000E+18 2.1000E+09 6.2000E-02
+total 1.3000E+20 5.5000E+09 7.6600E-02
+
+# Second cooling step carries an extra dose column (ignored by the parser).
+TIME = 1.0 DAYS
+NUCLIDE ATOMS ACTIVITY HEAT DOSE
+h-3 9.9900E+19 1.1990E+09 3.4900E-03 1.0000E-05
+fe-55 2.4990E+19 2.1990E+09 1.0990E-02 2.0000E-05
+co-60 4.9900E+18 2.0990E+09 6.1900E-02 3.0000E-05
+total 1.2988E+20 5.4970E+09 7.6389E-02 6.0000E-05
+
+C Third step exercises the 365-day year factor.
+TIME = 1.0 YEARS
+=====
+h-3 9.5000E+19 1.1400E+09 3.3200E-03
+fe-55 2.4000E+19 2.1100E+09 1.0600E-02
+co-60 4.4000E+18 1.8500E+09 5.4600E-02
+total 1.2340E+20 5.1000E+09 6.8520E-02

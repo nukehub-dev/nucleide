@@ -40,6 +40,10 @@ rebuilds the high-value subset in memory-safe Rust with one-command
 | Depletion (`depletion`) | CRAM (orders 16/48) matrix exponential, depletion-chain XML parsing |
 | Enrichment (`enrichment`) | Multicomponent cascade solver (numeric), SWU closed-form helpers |
 | Variance reduction (`vr-tools`) | MAGIC weight-window generation, mesh source sampling with alias tables |
+| CCCC I/O (`cccc-io`) | ISOTXS/RTFLUX text-subset parsers + PARTISN deck writer (no solver) |
+| FISPACT I/O (`fispact-io`) | FISPACT-II inventory output parser reusing the ALARA response frame (output-only) |
+| ORIGEN I/O (`origen-io`) | Scoped ORIGEN 2.2 TAPE5 input-echo, TAPE6 inventory, and TAPE9 decay readers |
+| R2S (`r2s`) | Scoped R2S workflow builder: zone-to-flux linking, schedule expansion, uniform-split photon assembly |
 | Python bindings | PyO3 extension module behind a typed pure-Python facade (`nucleide._internal`, `.pyi` stubs, `py.typed`) |
 
 ## Out of scope
@@ -58,6 +62,10 @@ nucleide/
 │   ├── serpent-io/    # res/dep/det readers
 │   ├── fluka-io/      # usrbin reader, material cards
 │   ├── alara-io/      # ALARA deck/flux/libs/output/photon/schedule glue (no solver)
+│   ├── cccc-io/       # ISOTXS/RTFLUX text-subset parsers + PARTISN writer (no solver)
+│   ├── fispact-io/    # FISPACT-II inventory output parser (output-only)
+│   ├── origen-io/     # scoped ORIGEN TAPE5/6/9 readers
+│   ├── r2s/           # scoped R2S workflow builder (uniform-split photon approximation)
 │   ├── vr-tools/      # MAGIC weight windows, source sampling
 │   ├── enrichment/    # cascades, SWU
 │   ├── depletion/     # CRAM + chain files

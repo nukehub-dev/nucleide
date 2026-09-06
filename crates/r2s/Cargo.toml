@@ -1,0 +1,18 @@
+[package]
+name = "r2s"
+description = "Rigorous two-step (R2S) shutdown-dose-rate orchestration over mcnp-io, alara-io, and vr-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+alara-io.workspace = true
+depletion.workspace = true
+material.workspace = true
+mcnp-io.workspace = true
+nuclei.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+vr-tools.workspace = true

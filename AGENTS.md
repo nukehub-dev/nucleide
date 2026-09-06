@@ -170,7 +170,8 @@ High-level layout; see the Child NAD Index below for domain-specific details.
 
 - `crates/` — Rust workspace members (one crate per capability area):
   `nuclei`, `material`, `mcnp-io`, `serpent-io`, `fluka-io`, `alara-io`,
-  `vr-tools`, `enrichment`, `depletion`, `linalg`.
+  `cccc-io`, `fispact-io`, `origen-io`, `r2s`, `vr-tools`, `enrichment`,
+  `depletion`, `linalg`.
 - `bindings/python/` — PyO3 crate exposing `nucleide._internal`; thin facade,
   no business logic.
 - `bindings/wasm/` — `wasm-bindgen` crate that lets tutorials run Nucleide in

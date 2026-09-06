@@ -113,6 +113,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
+name = "cccc-io"
+version = "0.1.0"
+dependencies = [
+ "nuclei",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -390,6 +399,16 @@ dependencies = [
  "num-traits",
  "pulp 0.18.22",
  "reborrow",
+]
+
+[[package]]
+name = "fispact-io"
+version = "0.1.0"
+dependencies = [
+ "alara-io",
+ "nuclei",
+ "serde",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -756,13 +775,17 @@ name = "nucleide-bindings"
 version = "0.1.0"
 dependencies = [
  "alara-io",
+ "cccc-io",
  "depletion",
  "enrichment",
+ "fispact-io",
  "fluka-io",
  "material",
  "mcnp-io",
  "nuclei",
+ "origen-io",
  "pyo3",
+ "r2s",
  "serpent-io",
  "vr-tools",
 ]
@@ -816,6 +839,15 @@ name = "oorandom"
 version = "11.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
+
+[[package]]
+name = "origen-io"
+version = "0.1.0"
+dependencies = [
+ "nuclei",
+ "serde",
+ "thiserror 2.0.20",
+]
 
 [[package]]
 name = "owo-colors"
@@ -978,6 +1010,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "r2s"
+version = "0.1.0"
+dependencies = [
+ "alara-io",
+ "depletion",
+ "material",
+ "mcnp-io",
+ "nuclei",
+ "serde",
+ "thiserror 2.0.20",
+ "vr-tools",
 ]
 
 [[package]]

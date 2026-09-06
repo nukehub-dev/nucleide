@@ -16,6 +16,10 @@ thin, focused API.
 | `serpent-io` | `crates/serpent-io` | `_res.m`, `_dep.m`, `_det.m` readers producing structured records |
 | `fluka-io` | `crates/fluka-io` | USRBIN tally reader, MATERIAL/COMPOUND card generation |
 | `alara-io` | `crates/alara-io` | ALARA deck/flux/libs/output/photon/schedule glue (NOT a solver) |
+| `cccc-io` | `crates/cccc-io` | ISOTXS/RTFLUX text-subset parsers + PARTISN deck writer (NOT a solver) |
+| `fispact-io` | `crates/fispact-io` | FISPACT-II inventory output parser reusing the ALARA response frame (output-only) |
+| `origen-io` | `crates/origen-io` | Scoped ORIGEN 2.2 TAPE5 input-echo, TAPE6 inventory, TAPE9 decay readers |
+| `r2s` | `crates/r2s` | Scoped R2S workflow builder: zone-to-flux linking, schedule expansion, uniform-split photon assembly |
 | `enrichment` | `crates/enrichment` | Multicomponent cascade solver (numeric), SWU closed-form helpers |
 | `depletion` | `crates/depletion` | CRAM matrix exponential (orders 16/48), depletion-chain XML parsing |
 | `vr-tools` | `crates/vr-tools` | MAGIC weight-window generation, mesh source sampling with alias tables |

@@ -8,7 +8,7 @@ Nucleide is pre-alpha. APIs may change without notice.
 
 ## Current status
 
-The workspace is bootstrapped with ten crates, PyO3 and WASM bindings, a
+The workspace is bootstrapped with fourteen crates, PyO3 and WASM bindings, a
 typed Python facade, and golden-byte fixtures. The canonical CI checks (format,
 clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 
@@ -25,6 +25,14 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 - CRAM depletion solver and chain XML parsing (`depletion`).
 - Multicomponent enrichment cascade solver (`enrichment`).
 - MAGIC weight windows and mesh source sampling (`vr-tools`).
+- CCCC text-subset parsers + PARTISN writer (`cccc-io`): ISOTXS/RTFLUX
+  readers and deck validation (no solver).
+- FISPACT-II inventory output parser (`fispact-io`): output-only, reusing the
+  ALARA response frame.
+- Scoped ORIGEN 2.2 TAPE5/6/9 readers (`origen-io`).
+- R2S orchestrator landed as a scoped workflow builder (`r2s`): zone-to-flux
+  linking, schedule expansion, and uniform-split photon assembly (transport
+  and activation solving stay out of scope).
 - Typed Python facade and `.pyi` stubs (`python/nucleide/`).
 - Criterion benchmarks for CRAM, cascade solving, and parser throughput
   (`crates/*/benches/`).
@@ -34,9 +42,9 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 ## Upcoming priorities
 
 - Stabilize the Rust public API across all crates.
-- Expand parser coverage and add more golden-byte fixtures (ALARA Phase 1
-  landed; remaining: Python facade polish + R2S orchestrator, explicitly
-  future work).
+- Expand parser coverage and add more golden-byte fixtures (CCCC, FISPACT,
+  ORIGEN, and the scoped R2S workflow builder have landed; remaining:
+  validation harness extension).
 - Add ndarray/NumPy zero-copy bridges where it improves Python ergonomics.
 - Cut the first tagged release: `vX.Y.Z` tags publish Python wheels to PyPI
   and workspace crates to crates.io.

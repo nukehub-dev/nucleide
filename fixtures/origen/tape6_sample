@@ -1,0 +1,5 @@
+# SYNTHETIC ORIGEN TAPE6 sample - simplified inventory for parser tests (not real ORIGEN output).
+U235 10.2 8.16e5
+U238 995.0 1.23e4
+Pu239 0.245 5.63e8
+Cs137 0.012 3.84e10

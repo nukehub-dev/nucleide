@@ -1,0 +1,14 @@
+[package]
+name = "fispact-io"
+description = "FISPACT-II output parser producing ALARA-compatible response frames (no solver)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+alara-io.workspace = true
+nuclei.workspace = true
+serde.workspace = true
+thiserror.workspace = true

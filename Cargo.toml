@@ -11,6 +11,10 @@ members = [
     "crates/enrichment",
     "crates/depletion",
     "crates/alara-io",
+    "crates/cccc-io",
+    "crates/fispact-io",
+    "crates/origen-io",
+    "crates/r2s",
     "bindings/python",
     "bindings/wasm",
 ]
@@ -34,6 +38,10 @@ vr-tools = { path = "crates/vr-tools", version = "0.1.0" }
 enrichment = { path = "crates/enrichment", version = "0.1.0" }
 depletion = { path = "crates/depletion", version = "0.1.0", default-features = false }
 alara-io = { path = "crates/alara-io", version = "0.1.0" }
+cccc-io = { path = "crates/cccc-io", version = "0.1.0" }
+fispact-io = { path = "crates/fispact-io", version = "0.1.0" }
+origen-io = { path = "crates/origen-io", version = "0.1.0" }
+r2s = { path = "crates/r2s", version = "0.1.0" }
 
 # --- planned stack (enabled per-crate as features land) ---
 # abi3-py310: one wheel per platform serves all Python >= 3.10

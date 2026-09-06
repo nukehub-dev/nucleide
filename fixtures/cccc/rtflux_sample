@@ -1,0 +1,4 @@
+# SYNTHETIC RTFLUX fixture for parser tests (not measured data): 2 points x 3 groups.
+RTFLUX 2 3
+1.0 2.0 3.0
+4.0 5.0 6.0

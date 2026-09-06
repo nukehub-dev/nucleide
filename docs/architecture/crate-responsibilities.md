@@ -70,6 +70,34 @@ Depends on `linalg` and `nuclei`.
 MAGIC weight-window generation and mesh source sampling with alias tables.
 Depends on `mcnp-io` (`nuclei` comes in transitively).
 
+### `cccc-io`
+
+CCCC text-subset readers (ISOTXS multigroup libraries, RTFLUX/ATFLUX/RZFLUX
+flux files) plus a minimal PARTISN deck writer with ISOTXS nuclide mapping.
+Depends on `nuclei` only among workspace crates; the solver stays out of
+scope.
+
+### `fispact-io`
+
+FISPACT-II inventory-output parser producing ALARA-compatible response
+frames (`alara-io` `ResponseFrame` rows). Depends on `alara-io` and `nuclei`;
+activation solving stays inside FISPACT-II.
+
+### `origen-io`
+
+Scoped ORIGEN 2.2 TAPE readers: `TAPE5` input echo, `TAPE6` output
+inventories, `TAPE9`-style decay constants. Depends on `nuclei` only among
+workspace crates; burnup driving stays inside ORIGEN.
+
+### `r2s`
+
+Scoped rigorous two-step (R2S) workflow builder: zone-to-flux linking from
+ALARA decks, schedule expansion, and uniform-split photon-source assembly.
+Depends on `alara-io`, `mcnp-io`, `vr-tools`, `material`, `depletion`, and
+`nuclei`; transport and activation solving stay inside their respective
+codes. The uniform split preserves only the total shutdown strength until
+group-wise emission data is wired through per nuclide.
+
 ## Binding crates
 
 ### `nucleide-bindings`
@@ -103,8 +131,12 @@ When publishing to crates.io, publish in dependency order:
 4. `mcnp-io`
 5. `serpent-io`
 6. `fluka-io`
-7. `alara-io`
-8. `enrichment`
-9. `depletion`
-10. `vr-tools`
-11. `nucleide-bindings`
+7. `enrichment`
+8. `depletion`
+9. `vr-tools`
+10. `alara-io`
+11. `cccc-io`
+12. `fispact-io`
+13. `origen-io`
+14. `r2s`
+15. `nucleide-bindings`

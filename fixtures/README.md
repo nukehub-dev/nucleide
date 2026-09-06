@@ -30,6 +30,14 @@ Contents:
   `libs/sampleMatlib` (material lib), `libs/myElelib` (element lib),
   `libs/NRCA` + `libs/NRCC` (WDR libs); activation-output oracle
   `output/sample2.out`
+- `cccc/` — synthetic ISOTXS/RTFLUX samples authored for Nucleide (no license
+  needed): `isotxs_sample` (2 nuclides x 3 groups), `rtflux_sample`
+  (2 points x 3 groups)
+- `fispact/` — synthetic FISPACT-II-style inventory authored for Nucleide (no
+  license needed): `inventory.fis` (3 cooling steps x 4 rows x 3 variables)
+- `origen/` — synthetic ORIGEN TAPE samples authored for Nucleide (no license
+  needed): `tape5_sample` (input echo), `tape6_sample` (inventory),
+  `tape9_sample` (decay constants)
 
 Still to add in later phases: truncated PTRAC samples for fuzzing; recorded
 CRAM input/output pairs for regression pinning (currently validated

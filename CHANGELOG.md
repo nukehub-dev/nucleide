@@ -15,6 +15,27 @@ workspace crates from tags.
 
 ### Added
 
+- `cccc-io` crate: CCCC text-subset parsers (ISOTXS multigroup libraries,
+  RTFLUX/ATFLUX/RZFLUX flux files) + PARTISN deck writer with ISOTXS nuclide
+  mapping and validation (no solver). Synthetic fixtures under
+  `fixtures/cccc/` (no license needed).
+- `fispact-io` crate: FISPACT-II inventory-output parser producing
+  ALARA-compatible response frames (output-only, reusing `ResponseFrame`;
+  no solver). Synthetic fixture `fixtures/fispact/inventory.fis`
+  (no license needed).
+- `origen-io` crate: scoped ORIGEN 2.2 TAPE readers — `TAPE5` input echo,
+  `TAPE6` output inventory, `TAPE9`-style decay constants. Synthetic fixtures
+  under `fixtures/origen/` (no license needed).
+- `r2s` crate: scoped R2S workflow builder — zone-to-flux linking from ALARA
+  decks, schedule expansion, per-zone deck emission, and photon-source
+  assembly with a documented uniform-split approximation (total strength
+  preserved; group-wise emission lines stay in ALARA `.photonSrc` spectra).
+  Transport and activation solving stay out of scope.
+- Python API: `nucleide.cccc` (`isotxs_parse`, `rtflux_parse`,
+  `partisn_render`, `partisn_validate`), `nucleide.fispact`
+  (`fispact_parse_output`), `nucleide.origen` (`origen_parse_tape5/6/9`),
+  and `nucleide.r2s` (`r2s_from_deck`, `r2s_validate`, `r2s_expand`,
+  `r2s_assemble`) exposing the four new crates as plain dicts/lists.
 - `alara-io` crate: ALARA input-deck, group-flux, material/element/WDR library,
   activation-output, photon-source, and schedule-expansion parsers (glue only;
   solver out of scope). Fixtures vendored verbatim from UW ALARA BSD samples

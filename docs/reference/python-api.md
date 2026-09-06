@@ -30,6 +30,10 @@ re-exports its symbols from `nucleide._internal`:
 | `nucleide.enrichment` | `enrichment` | Enrichment cascades |
 | `nucleide.depletion` | `depletion` | Depletion chains and CRAM solves |
 | `nucleide.alara` | `alara-io` | ALARA decks, group fluxes, output listings, schedule expansion |
+| `nucleide.cccc` | `cccc-io` | ISOTXS/RTFLUX parsers, PARTISN render/validate (no solver) |
+| `nucleide.fispact` | `fispact-io` | FISPACT-II inventory output listings (output-only) |
+| `nucleide.origen` | `origen-io` | Scoped ORIGEN TAPE5/6/9 readers |
+| `nucleide.r2s` | `r2s` | Scoped R2S workflow summaries: from_deck/validate/expand/assemble |
 | `nucleide.data` | — (pure Python) | Release-pinned data-file downloads |
 
 ## `nucleide.nuclei`
@@ -104,6 +108,46 @@ re-exports its symbols from `nucleide._internal`:
 - `alara_parse_output(text, run_lbl)` → list of 11-field response row `dict`s
 - `alara_expand_schedule(deck_text, top=None)` → flat
   `{duration_s, flux, is_cooling}` steps from the deck hierarchy
+
+## `nucleide.cccc`
+
+- `isotxs_parse(text)` → `dict` with `nuclides` (`label`, `zaid`, `groups`,
+  `total_xs` in file order)
+- `rtflux_parse(text, kind="rtflux")` → `dict` with `kind`, `groups`,
+  `per_point`, `npoints`, `values`, `total` (`kind` is
+  `rtflux`|`atflux`|`rzflux`)
+- `partisn_render(deck)` → PARTISN input text from a `dict` (`title`, `dim`,
+  `zones`, `source`)
+- `partisn_validate(deck, isotxs_text)` → `None`; raises `ValueError` on bad
+  `dim` or dangling ISOTXS labels
+
+## `nucleide.fispact`
+
+- `fispact_parse_output(text, run_lbl)` (alias `parse_output`) → list of
+  11-field response row `dict`s (`time_s`, `time_label`, `nuclide`,
+  `half_life_s`, `run_lbl`, `block`, `block_name`, `block_num`, `variable`,
+  `var_unit`, `value`)
+
+## `nucleide.origen`
+
+- `origen_parse_tape5(text)` (alias `tape5_parse`) → `dict` with `titles`,
+  `irradiation_steps` (`flux`, `days`), `materials` (`name`, `entries`)
+- `origen_parse_tape6(text)` (alias `tape6_parse`) → `dict` with `records`
+  (`nuclide`, `grams`, `activity_bq`) and `total_activity`
+- `origen_parse_tape9(text)` (alias `tape9_parse`) → list of
+  `{nuclide, decay_const}` `dict`s
+
+## `nucleide.r2s`
+
+- `r2s_from_deck(deck_text)` (alias `from_deck`) → workflow `dict` (`steps`,
+  `cooling_s`, `top_schedule`)
+- `r2s_validate(workflow, deck_text)` (alias `validate`) → `None`; raises
+  `ValueError` on unknown zones/fluxes or missing cooling
+- `r2s_expand(deck_text, top=None)` (alias `expand`) → flat
+  `{duration_s, flux, is_cooling}` steps via the workflow
+- `r2s_assemble(output_text, run_lbl, zone, groups)` (alias `assemble`) →
+  `{zone, groups, total}` uniform-split photon summary (strength-conserving
+  placeholder; real spectra live in ALARA `.photonSrc` files)
 
 ## `nucleide.data`
 

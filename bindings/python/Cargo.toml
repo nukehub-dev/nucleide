@@ -22,3 +22,7 @@ fluka-io.workspace = true
 vr-tools.workspace = true
 enrichment.workspace = true
 alara-io.workspace = true
+cccc-io.workspace = true
+fispact-io.workspace = true
+origen-io.workspace = true
+r2s.workspace = true

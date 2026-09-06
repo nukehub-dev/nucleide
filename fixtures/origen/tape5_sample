@@ -1,0 +1,11 @@
+# SYNTHETIC ORIGEN TAPE5 sample - simplified input echo for parser tests (not real ORIGEN output).
+SYNTHETIC PWR PIN - TAPE5 SAMPLE
+CASE 1 - BASE DEPLETION
+FLUX= 3.0e13 DAYS= 100.0
+FLUX= 0.0 DAYS= 30.0
+MAT fuel
+U235 10.5
+U238 1000.0
+Pu239 0.25
+MAT clad
+Zr90 50.0

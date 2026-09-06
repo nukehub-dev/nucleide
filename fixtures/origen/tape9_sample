@@ -1,0 +1,8 @@
+# SYNTHETIC ORIGEN TAPE9 sample - simplified decay constants for parser tests (not real ORIGEN data).
+U235 3.1209e-17
+U238 4.9161e-18
+Pu239 9.1105e-13
+
+# short-lived fission products and activation nuclides below
+Cs137 7.3217e-10
+Co60 4.1674e-09

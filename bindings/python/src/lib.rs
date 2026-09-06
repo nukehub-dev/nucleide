@@ -2041,6 +2041,588 @@ impl PyMaterialsCompendium {
     }
 }
 
+// ---------------------------------------------------------------------------
+// CCCC I/O (thin glue over `cccc-io`; no solver)
+// ---------------------------------------------------------------------------
+
+/// Parse ISOTXS text into plain Python containers.
+///
+/// Returns a dict with `nuclides` (list of {label, zaid, groups, total_xs}
+/// in file order).
+#[pyfunction]
+fn isotxs_parse(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
+    let owned = text.to_owned();
+    let lib = py
+        .detach(move || cccc_io::IsotxsLib::parse(&owned))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(isotxs_to_py(py, &lib))
+}
+
+fn isotxs_to_py(py: Python<'_>, lib: &cccc_io::IsotxsLib) -> Py<PyAny> {
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    let nuclides: Vec<Py<PyAny>> = lib
+        .nuclides
+        .iter()
+        .map(|n| {
+            let d = PyDict::new(py);
+            d.set_item("label", &n.label).ok();
+            d.set_item("zaid", &n.zaid).ok();
+            d.set_item("groups", n.groups).ok();
+            d.set_item("total_xs", n.total_xs.clone()).ok();
+            d.into_any().unbind()
+        })
+        .collect();
+    out.set_item("nuclides", nuclides).ok();
+    out.into_any().unbind()
+}
+
+/// Parse an RTFLUX/ATFLUX/RZFLUX flux file into plain containers.
+///
+/// `kind` selects the expected header keyword (`rtflux`|`atflux`|`rzflux`,
+/// case-insensitive). Returns a dict with `kind`, `groups`, `per_point`,
+/// `npoints`, `values`, and `total`.
+#[pyfunction]
+#[pyo3(signature = (text, kind="rtflux"))]
+fn rtflux_parse(py: Python<'_>, text: &str, kind: &str) -> PyResult<Py<PyAny>> {
+    let flux_kind = match kind.to_ascii_lowercase().as_str() {
+        "rtflux" => cccc_io::rtflux::FluxKind::Rtflux,
+        "atflux" => cccc_io::rtflux::FluxKind::Atflux,
+        "rzflux" => cccc_io::rtflux::FluxKind::Rzflux,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "kind must be rtflux|atflux|rzflux, got `{other}`"
+            )))
+        }
+    };
+    let owned = text.to_owned();
+    let flux = py
+        .detach(move || cccc_io::FluxFile::parse(flux_kind, &owned))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    use pyo3::types::PyDict;
+    let d = PyDict::new(py);
+    d.set_item("kind", flux.kind.keyword()).ok();
+    d.set_item("groups", flux.groups).ok();
+    d.set_item("per_point", flux.per_point).ok();
+    d.set_item("npoints", flux.npoints()).ok();
+    d.set_item("values", flux.values.clone()).ok();
+    d.set_item("total", flux.total()).ok();
+    Ok(d.into_any().unbind())
+}
+
+fn partisn_deck_from_dict(deck: &Bound<'_, pyo3::types::PyDict>) -> PyResult<cccc_io::PartisnDeck> {
+    let title: String = match deck.get_item("title")? {
+        Some(v) => v
+            .extract()
+            .map_err(|_| PyValueError::new_err("partisn deck `title` must be str"))?,
+        None => return Err(PyValueError::new_err("partisn deck missing `title`")),
+    };
+    let dim: u8 = match deck.get_item("dim")? {
+        Some(v) => v
+            .extract()
+            .map_err(|_| PyValueError::new_err("partisn deck `dim` must be 1, 2, or 3"))?,
+        None => return Err(PyValueError::new_err("partisn deck missing `dim`")),
+    };
+    let zones_value = match deck.get_item("zones")? {
+        Some(v) => v,
+        None => return Err(PyValueError::new_err("partisn deck missing `zones`")),
+    };
+    let zone_dicts: Vec<Bound<'_, pyo3::types::PyDict>> = zones_value
+        .extract()
+        .map_err(|_| PyValueError::new_err("partisn deck `zones` must be a list of dicts"))?;
+    let mut zones = Vec::with_capacity(zone_dicts.len());
+    for z in &zone_dicts {
+        let id: u32 = match z.get_item("id")? {
+            Some(v) => v
+                .extract()
+                .map_err(|_| PyValueError::new_err("partisn zone `id` must be int"))?,
+            None => return Err(PyValueError::new_err("partisn zone missing `id`")),
+        };
+        let material: String = match z.get_item("material")? {
+            Some(v) => v
+                .extract()
+                .map_err(|_| PyValueError::new_err("partisn zone `material` must be str"))?,
+            None => return Err(PyValueError::new_err("partisn zone missing `material`")),
+        };
+        let isotxs_labels: Vec<String> = match z.get_item("isotxs_labels")? {
+            Some(v) => v.extract().map_err(|_| {
+                PyValueError::new_err("partisn zone `isotxs_labels` must be a list of str")
+            })?,
+            None => {
+                return Err(PyValueError::new_err(
+                    "partisn zone missing `isotxs_labels`",
+                ))
+            }
+        };
+        let density: f64 = match z.get_item("density")? {
+            Some(v) => v
+                .extract()
+                .map_err(|_| PyValueError::new_err("partisn zone `density` must be float"))?,
+            None => return Err(PyValueError::new_err("partisn zone missing `density`")),
+        };
+        zones.push(cccc_io::partisn::PartisnZone {
+            id,
+            material,
+            isotxs_labels,
+            density,
+        });
+    }
+    let source: Option<String> = match deck.get_item("source")? {
+        Some(v) if v.is_none() => None,
+        Some(v) => Some(
+            v.extract()
+                .map_err(|_| PyValueError::new_err("partisn deck `source` must be str or None"))?,
+        ),
+        None => None,
+    };
+    Ok(cccc_io::PartisnDeck {
+        title,
+        dim,
+        zones,
+        source,
+    })
+}
+
+/// Render a PARTISN deck dict to PARTISN input text.
+///
+/// Deck shape: {title: str, dim: 1|2|3, zones: [{id, material,
+/// isotxs_labels, density}], source: str | None}.
+#[pyfunction]
+fn partisn_render(py: Python<'_>, deck: &Bound<'_, pyo3::types::PyDict>) -> PyResult<String> {
+    let rust_deck = partisn_deck_from_dict(deck)?;
+    Ok(py.detach(move || rust_deck.render()))
+}
+
+/// Validate a PARTISN deck dict against ISOTXS text.
+///
+/// Raises `ValueError` when `dim` is not 1/2/3 or a zone names an ISOTXS
+/// label absent from the library.
+#[pyfunction]
+fn partisn_validate(
+    py: Python<'_>,
+    deck: &Bound<'_, pyo3::types::PyDict>,
+    isotxs_text: &str,
+) -> PyResult<()> {
+    let rust_deck = partisn_deck_from_dict(deck)?;
+    let owned = isotxs_text.to_owned();
+    let lib = py
+        .detach(move || cccc_io::IsotxsLib::parse(&owned))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    rust_deck
+        .validate(&lib)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+// ---------------------------------------------------------------------------
+// FISPACT-II output (thin glue over `fispact-io`; reuses ResponseFrame)
+// ---------------------------------------------------------------------------
+
+fn fispact_row_to_map(
+    py: Python<'_>,
+    r: &alara_io::output::ResponseRow,
+) -> BTreeMap<String, Py<PyAny>> {
+    let mut d = BTreeMap::new();
+    d.insert(
+        "time_s".to_string(),
+        r.time_s.into_pyobject(py).unwrap().unbind().into_any(),
+    );
+    d.insert(
+        "time_label".to_string(),
+        r.time_label
+            .clone()
+            .into_pyobject(py)
+            .unwrap()
+            .unbind()
+            .into_any(),
+    );
+    d.insert(
+        "nuclide".to_string(),
+        r.nuclide
+            .clone()
+            .into_pyobject(py)
+            .unwrap()
+            .unbind()
+            .into_any(),
+    );
+    d.insert(
+        "half_life_s".to_string(),
+        r.half_life_s.into_pyobject(py).unwrap().unbind().into_any(),
+    );
+    d.insert(
+        "run_lbl".to_string(),
+        r.run_lbl
+            .clone()
+            .into_pyobject(py)
+            .unwrap()
+            .unbind()
+            .into_any(),
+    );
+    d.insert(
+        "block".to_string(),
+        r.block
+            .as_str()
+            .into_pyobject(py)
+            .unwrap()
+            .unbind()
+            .into_any(),
+    );
+    d.insert(
+        "block_name".to_string(),
+        r.block_name
+            .clone()
+            .into_pyobject(py)
+            .unwrap()
+            .unbind()
+            .into_any(),
+    );
+    d.insert(
+        "block_num".to_string(),
+        r.block_num.into_pyobject(py).unwrap().unbind().into_any(),
+    );
+    d.insert(
+        "variable".to_string(),
+        r.variable
+            .as_str()
+            .into_pyobject(py)
+            .unwrap()
+            .unbind()
+            .into_any(),
+    );
+    d.insert(
+        "var_unit".to_string(),
+        r.var_unit
+            .clone()
+            .into_pyobject(py)
+            .unwrap()
+            .unbind()
+            .into_any(),
+    );
+    d.insert(
+        "value".to_string(),
+        r.value.into_pyobject(py).unwrap().unbind().into_any(),
+    );
+    d
+}
+
+/// Parse a FISPACT-II inventory listing into a list of row dicts.
+///
+/// Each row carries the 11 `ResponseRow` fields as plain floats/strings/ints:
+/// `time_s`, `time_label`, `nuclide`, `half_life_s`, `run_lbl`, `block`,
+/// `block_name`, `block_num`, `variable`, `var_unit`, `value`.
+#[pyfunction]
+fn fispact_parse_output(
+    py: Python<'_>,
+    text: &str,
+    run_lbl: &str,
+) -> PyResult<Vec<BTreeMap<String, Py<PyAny>>>> {
+    let owned_text = text.to_owned();
+    let owned_lbl = run_lbl.to_owned();
+    let rows = py
+        .detach(move || fispact_io::parse_to_frame(&owned_text, &owned_lbl).map(|f| f.rows))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(rows.iter().map(|r| fispact_row_to_map(py, r)).collect())
+}
+
+// ---------------------------------------------------------------------------
+// ORIGEN TAPE readers (thin glue over `origen-io`; scoped TAPE5/6/9)
+// ---------------------------------------------------------------------------
+
+/// Parse ORIGEN TAPE5 input-echo text into plain containers.
+///
+/// Returns a dict with `titles` (list[str]), `irradiation_steps`
+/// (list of {flux, days}), and `materials` (list of {name, entries:
+/// [{nuclide, grams}]}).
+#[pyfunction]
+fn origen_parse_tape5(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
+    let owned = text.to_owned();
+    let tape = py
+        .detach(move || origen_io::Tape5::parse(&owned))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    out.set_item("titles", tape.titles.clone()).ok();
+    let steps: Vec<Py<PyAny>> = tape
+        .irradiation_steps
+        .iter()
+        .map(|s| {
+            let d = PyDict::new(py);
+            d.set_item("flux", s.flux).ok();
+            d.set_item("days", s.days).ok();
+            d.into_any().unbind()
+        })
+        .collect();
+    out.set_item("irradiation_steps", steps).ok();
+    let materials: Vec<Py<PyAny>> = tape
+        .materials
+        .iter()
+        .map(|m| {
+            let d = PyDict::new(py);
+            d.set_item("name", &m.name).ok();
+            let entries: Vec<Py<PyAny>> = m
+                .grams
+                .iter()
+                .map(|(nuclide, grams)| {
+                    let e = PyDict::new(py);
+                    e.set_item("nuclide", nuclide).ok();
+                    e.set_item("grams", *grams).ok();
+                    e.into_any().unbind()
+                })
+                .collect();
+            d.set_item("entries", entries).ok();
+            d.into_any().unbind()
+        })
+        .collect();
+    out.set_item("materials", materials).ok();
+    Ok(out.into_any().unbind())
+}
+
+/// Parse ORIGEN TAPE6 output-inventory text into plain containers.
+///
+/// Returns a dict with `records` (list of {nuclide, grams, activity_bq} in
+/// file order) and `total_activity` (sum over records).
+#[pyfunction]
+fn origen_parse_tape6(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
+    let owned = text.to_owned();
+    let tape = py
+        .detach(move || origen_io::Tape6::parse(&owned))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    let records: Vec<Py<PyAny>> = tape
+        .records
+        .iter()
+        .map(|r| {
+            let d = PyDict::new(py);
+            d.set_item("nuclide", &r.nuclide).ok();
+            d.set_item("grams", r.grams).ok();
+            d.set_item("activity_bq", r.activity_bq).ok();
+            d.into_any().unbind()
+        })
+        .collect();
+    out.set_item("records", records).ok();
+    out.set_item("total_activity", tape.total_activity()).ok();
+    Ok(out.into_any().unbind())
+}
+
+/// Parse ORIGEN TAPE9 decay-constant text into a list of row dicts.
+///
+/// Each entry is {nuclide, decay_const} in file order.
+#[pyfunction]
+fn origen_parse_tape9(py: Python<'_>, text: &str) -> PyResult<Vec<BTreeMap<String, Py<PyAny>>>> {
+    let owned = text.to_owned();
+    let entries = py
+        .detach(move || origen_io::Tape9Entry::parse(&owned))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(entries
+        .iter()
+        .map(|e| {
+            let mut d = BTreeMap::new();
+            d.insert(
+                "nuclide".to_string(),
+                e.nuclide
+                    .clone()
+                    .into_pyobject(py)
+                    .unwrap()
+                    .unbind()
+                    .into_any(),
+            );
+            d.insert(
+                "decay_const".to_string(),
+                e.decay_const.into_pyobject(py).unwrap().unbind().into_any(),
+            );
+            d
+        })
+        .collect())
+}
+
+// ---------------------------------------------------------------------------
+// R2S workflow builder (thin glue over `r2s`; no transport/activation solve)
+// ---------------------------------------------------------------------------
+
+fn r2s_workflow_to_py(py: Python<'_>, workflow: &r2s::R2sWorkflow) -> Py<PyAny> {
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    let steps: Vec<Py<PyAny>> = workflow
+        .steps
+        .iter()
+        .map(|s| {
+            let d = PyDict::new(py);
+            d.set_item("zone", &s.zone).ok();
+            d.set_item("flux", &s.flux).ok();
+            d.into_any().unbind()
+        })
+        .collect();
+    out.set_item("steps", steps).ok();
+    out.set_item("cooling_s", workflow.cooling_s.clone()).ok();
+    out.set_item("top_schedule", &workflow.top_schedule).ok();
+    out.into_any().unbind()
+}
+
+fn r2s_workflow_from_dict(workflow: &Bound<'_, pyo3::types::PyDict>) -> PyResult<r2s::R2sWorkflow> {
+    let steps_value = match workflow.get_item("steps")? {
+        Some(v) => v,
+        None => return Err(PyValueError::new_err("r2s workflow missing `steps`")),
+    };
+    let step_dicts: Vec<Bound<'_, pyo3::types::PyDict>> = steps_value
+        .extract()
+        .map_err(|_| PyValueError::new_err("r2s workflow `steps` must be a list of dicts"))?;
+    let mut steps = Vec::with_capacity(step_dicts.len());
+    for s in &step_dicts {
+        let zone: String = match s.get_item("zone")? {
+            Some(v) => v
+                .extract()
+                .map_err(|_| PyValueError::new_err("r2s step `zone` must be str"))?,
+            None => return Err(PyValueError::new_err("r2s step missing `zone`")),
+        };
+        let flux: String = match s.get_item("flux")? {
+            Some(v) => v
+                .extract()
+                .map_err(|_| PyValueError::new_err("r2s step `flux` must be str"))?,
+            None => return Err(PyValueError::new_err("r2s step missing `flux`")),
+        };
+        steps.push(r2s::R2sStep { zone, flux });
+    }
+    let cooling_s: Vec<f64> = match workflow.get_item("cooling_s")? {
+        Some(v) => v.extract().map_err(|_| {
+            PyValueError::new_err("r2s workflow `cooling_s` must be a list of float")
+        })?,
+        None => return Err(PyValueError::new_err("r2s workflow missing `cooling_s`")),
+    };
+    let top_schedule: String = match workflow.get_item("top_schedule")? {
+        Some(v) => v
+            .extract()
+            .map_err(|_| PyValueError::new_err("r2s workflow `top_schedule` must be str"))?,
+        None => return Err(PyValueError::new_err("r2s workflow missing `top_schedule`")),
+    };
+    Ok(r2s::R2sWorkflow {
+        steps,
+        cooling_s,
+        top_schedule,
+    })
+}
+
+/// Derive an R2S workflow summary from an ALARA deck.
+///
+/// Returns a dict with `steps` (list of {zone, flux}), `cooling_s`
+/// (list[float]), and `top_schedule` (str).
+#[pyfunction]
+fn r2s_from_deck(py: Python<'_>, deck_text: &str) -> PyResult<Py<PyAny>> {
+    let owned = deck_text.to_owned();
+    let workflow = py
+        .detach(move || {
+            let deck = alara_io::AlaraDeck::parse(&owned)
+                .map_err(|e| r2s::Error::Invalid(e.to_string()))?;
+            r2s::R2sWorkflow::from_deck(&deck)
+        })
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(r2s_workflow_to_py(py, &workflow))
+}
+
+/// Validate an R2S workflow dict against an ALARA deck.
+///
+/// Raises `ValueError` when a step zone/flux is unknown or cooling histories
+/// are missing.
+#[pyfunction]
+fn r2s_validate(
+    py: Python<'_>,
+    workflow: &Bound<'_, pyo3::types::PyDict>,
+    deck_text: &str,
+) -> PyResult<()> {
+    let rust_workflow = r2s_workflow_from_dict(workflow)?;
+    let owned = deck_text.to_owned();
+    let deck = py
+        .detach(move || alara_io::AlaraDeck::parse(&owned))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    rust_workflow
+        .validate_against(&deck)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Expand an ALARA deck's irradiation hierarchy into flat steps via R2S.
+///
+/// Returns a list of {duration_s, flux, is_cooling} dicts. When `top` is
+/// given it overrides the workflow's discovered top schedule.
+#[pyfunction]
+#[pyo3(signature = (deck_text, top=None))]
+fn r2s_expand(
+    py: Python<'_>,
+    deck_text: &str,
+    top: Option<&str>,
+) -> PyResult<Vec<BTreeMap<String, Py<PyAny>>>> {
+    let owned_text = deck_text.to_owned();
+    let owned_top = top.map(str::to_owned);
+    let steps = py
+        .detach(move || {
+            let deck = alara_io::AlaraDeck::parse(&owned_text)
+                .map_err(|e| r2s::Error::Invalid(e.to_string()))?;
+            let mut workflow = r2s::R2sWorkflow::from_deck(&deck)?;
+            if let Some(top) = owned_top {
+                workflow.top_schedule = top;
+            }
+            workflow.expand(&deck, &[])
+        })
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(steps
+        .into_iter()
+        .map(|s| {
+            let mut d = BTreeMap::new();
+            let cooling = s.is_cooling();
+            d.insert(
+                "duration_s".to_string(),
+                s.duration_s.into_pyobject(py).unwrap().unbind().into_any(),
+            );
+            d.insert(
+                "flux".to_string(),
+                s.flux.into_pyobject(py).unwrap().unbind().into_any(),
+            );
+            d.insert(
+                "is_cooling".to_string(),
+                pyo3::types::PyBool::new(py, cooling)
+                    .to_owned()
+                    .into_any()
+                    .unbind(),
+            );
+            d
+        })
+        .collect())
+}
+
+/// Assemble a uniform-split photon source summary for `zone`.
+///
+/// Parses an ALARA activation-output listing, sums shutdown
+/// `SpecificActivity` over the zone's nuclide rows (skipping `total`
+/// aggregates), and splits the total uniformly over `groups` energy groups.
+/// Returns a dict with `zone`, `groups` (list[float]), and `total`.
+///
+/// Approximation: the uniform split preserves only the total shutdown
+/// strength; real decay photons follow the nuclide- and energy-dependent
+/// lines in ALARA `.photonSrc` spectra.
+#[pyfunction]
+fn r2s_assemble(
+    py: Python<'_>,
+    output_text: &str,
+    run_lbl: &str,
+    zone: &str,
+    groups: usize,
+) -> PyResult<Py<PyAny>> {
+    let owned_text = output_text.to_owned();
+    let owned_lbl = run_lbl.to_owned();
+    let owned_zone = zone.to_owned();
+    let source = py
+        .detach(move || {
+            let frame = alara_io::output::ResponseFrame::parse(&owned_text, &owned_lbl)
+                .map_err(|e| r2s::Error::Invalid(e.to_string()))?;
+            Ok::<_, r2s::Error>(r2s::photon::assemble(&frame, &owned_zone, groups))
+        })
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    out.set_item("zone", source.zone.clone()).ok();
+    out.set_item("groups", source.groups.clone()).ok();
+    out.set_item("total", source.total()).ok();
+    Ok(out.into_any().unbind())
+}
+
 /// Python module entry point.
 #[pymodule]
 fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -2077,6 +2659,18 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(alara_parse_flux, m)?)?;
     m.add_function(wrap_pyfunction!(alara_parse_output, m)?)?;
     m.add_function(wrap_pyfunction!(alara_expand_schedule, m)?)?;
+    m.add_function(wrap_pyfunction!(isotxs_parse, m)?)?;
+    m.add_function(wrap_pyfunction!(rtflux_parse, m)?)?;
+    m.add_function(wrap_pyfunction!(partisn_render, m)?)?;
+    m.add_function(wrap_pyfunction!(partisn_validate, m)?)?;
+    m.add_function(wrap_pyfunction!(fispact_parse_output, m)?)?;
+    m.add_function(wrap_pyfunction!(origen_parse_tape5, m)?)?;
+    m.add_function(wrap_pyfunction!(origen_parse_tape6, m)?)?;
+    m.add_function(wrap_pyfunction!(origen_parse_tape9, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_from_deck, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_validate, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_expand, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_assemble, m)?)?;
     m.add_class::<PyNuclide>()?;
     m.add_class::<PyParticle>()?;
     m.add_class::<PyXsdir>()?;

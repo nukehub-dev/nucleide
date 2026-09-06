@@ -1,0 +1,7 @@
+# SYNTHETIC ISOTXS fixture for parser tests (not measured data): 2 nuclides x 3 groups.
+ISOTXS 3
+NUCLIDE U235 92235 3
+1.1 2.2 3.3
+NUCLIDE PU239 94239 3
+4.4
+5.5 6.6
