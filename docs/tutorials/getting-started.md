@@ -46,4 +46,4 @@ in [Local development](../development/local-dev.md).
 ## Next steps
 
 - Read the [crate overview](../reference/crate-overview.mdx).
-- Try [parsing an MCNP output file](parse-mcnp-output.md).
+- Try [parsing an MCNP output file](python/parse-mcnp-output.md).

@@ -1,0 +1,30 @@
+/* Pills for generated reference pages (scripts/gen-reference.py).
+ *
+ * Generated crate cards use plain Markdown links with a `ref-pill` span so the
+ * docs sync rewrites them to routes; these rules supply the pill look without
+ * inline styles. `.prose .ref-pill` (0,2,0) outranks docs-kit `.prose a`
+ * (0,1,1), whose `overflow-wrap: anywhere` would otherwise split identifiers
+ * mid-token. `currentColor` keeps pills readable in light and dark themes.
+ */
+.prose .ref-pill {
+  display: inline-block;
+  border: 1px solid currentColor;
+  border-radius: 9999px;
+  padding: 0 0.6em;
+  margin: 0.1em 0.15em;
+  font-size: 0.85em;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  text-decoration: none;
+  opacity: 0.9;
+}
+
+.prose .ref-pill:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.prose .ref-pill code {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}

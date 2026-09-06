@@ -4,9 +4,6 @@ sidebar:
   order: 2
 ---
 
-import * as React from "react";
-import { DataTable } from "@nukehub/docs-kit/components/mdx/DataTable";
-
 Nucleide exposes a typed pure-Python package at `python/nucleide/` that re-exports
 a compiled PyO3 extension built from `bindings/python/`. The extension module is
 named `nucleide._internal`; users import from the `nucleide` domain submodules,
@@ -22,38 +19,55 @@ The top level carries `version()`, `nucleide.__version__`, and the domain
 submodules below (so `nuc.nuclei.Nuclide(...)` works directly). Each submodule
 re-exports its symbols from `nucleide._internal`:
 
-{/* GEN:module-table:START */}
+{/*GEN:module-table:START*/}
 
-<DataTable
-  caption="Python submodules, their backing crates, and contents."
-  columns={[
-    { key: "submodule", header: "Submodule" },
-    { key: "backing", header: "Backing crate" },
-    { key: "contents", header: "Contents" },
-  ]}
-  data={[
-    { submodule: React.createElement("a", { href: "#nucleidenuclei", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.nuclei")), backing: React.createElement("a", { href: "../architecture/crate-responsibilities.md#nuclei", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nuclei")), contents: "Nuclide identifiers, nuclear data, and reaction names" },
-    { submodule: React.createElement("a", { href: "#nucleidematerial", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.material")), backing: React.createElement("a", { href: "../architecture/crate-responsibilities.md#material", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "material")), contents: "Material composition, activation, and the PNNL compendium" },
-    { submodule: React.createElement("a", { href: "#nucleidemcnp", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.mcnp")), backing: React.createElement("a", { href: "../architecture/crate-responsibilities.md#mcnp-io", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "mcnp-io")), contents: "MCNP file readers and writers" },
-    { submodule: React.createElement("a", { href: "#nucleideserpent", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.serpent")), backing: React.createElement("a", { href: "../architecture/crate-responsibilities.md#serpent-io", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "serpent-io")), contents: "Serpent output readers" },
-    { submodule: React.createElement("a", { href: "#nucleidefluka", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.fluka")), backing: React.createElement("a", { href: "../architecture/crate-responsibilities.md#fluka-io", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "fluka-io")), contents: "FLUKA USRBIN readers" },
-    { submodule: React.createElement("a", { href: "#nucleidevr", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.vr")), backing: React.createElement("a", { href: "../architecture/crate-responsibilities.md#vr-tools", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "vr-tools")), contents: "Variance-reduction tools" },
-    { submodule: React.createElement("a", { href: "#nucleideenrichment", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.enrichment")), backing: React.createElement("a", { href: "../architecture/crate-responsibilities.md#enrichment", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "enrichment")), contents: "Enrichment cascade solving" },
-    { submodule: React.createElement("a", { href: "#nucleidedepletion", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.depletion")), backing: React.createElement("a", { href: "../architecture/crate-responsibilities.md#depletion", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "depletion")), contents: "Depletion chains and CRAM solvers" },
-    { submodule: React.createElement("a", { href: "#nucleidealara", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.alara")), backing: React.createElement("a", { href: "../architecture/crate-responsibilities.md#alara-io", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "alara-io")), contents: "ALARA activation-code interop" },
-    { submodule: React.createElement("a", { href: "#nucleidecccc", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.cccc")), backing: React.createElement("a", { href: "../architecture/crate-responsibilities.md#cccc-io", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "cccc-io")), contents: "CCCC binary-standard readers and PARTISN deck writer" },
-    { submodule: React.createElement("a", { href: "#nucleidefispact", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.fispact")), backing: React.createElement("a", { href: "../architecture/crate-responsibilities.md#fispact-io", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "fispact-io")), contents: "FISPACT-II output parser" },
-    { submodule: React.createElement("a", { href: "#nucleideorigen", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.origen")), backing: React.createElement("a", { href: "../architecture/crate-responsibilities.md#origen-io", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "origen-io")), contents: "Scoped ORIGEN 2.2 TAPE readers" },
-    { submodule: React.createElement("a", { href: "#nucleider2s", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.r2s")), backing: React.createElement("a", { href: "../architecture/crate-responsibilities.md#r2s", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "r2s")), contents: "Rigorous two-step (R2S) shutdown-dose-rate orchestration" },
-    { submodule: React.createElement("a", { href: "#nucleidedata", style: { whiteSpace: "nowrap" } }, React.createElement("code", { style: { whiteSpace: "nowrap" } }, "nucleide.data")), backing: "— (pure Python)", contents: "Download Nucleide data files pinned to a release tag, branch, or commit." },
-  ]}
-/>
+- [<span class="ref-pill"><code>nucleide.nuclei</code></span>](#nucleidenuclei)
+  — Nuclide identifiers, nuclear data, and reaction names · [<span class="ref-pill"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei)
 
-{/* GEN:module-table:END */}
+- [<span class="ref-pill"><code>nucleide.material</code></span>](#nucleidematerial)
+  — Material composition, activation, and the PNNL compendium · [<span class="ref-pill"><code>material</code></span>](../architecture/crate-responsibilities.md#material)
+
+- [<span class="ref-pill"><code>nucleide.mcnp</code></span>](#nucleidemcnp)
+  — MCNP file readers and writers · [<span class="ref-pill"><code>mcnp-io</code></span>](../architecture/crate-responsibilities.md#mcnp-io)
+
+- [<span class="ref-pill"><code>nucleide.serpent</code></span>](#nucleideserpent)
+  — Serpent output readers · [<span class="ref-pill"><code>serpent-io</code></span>](../architecture/crate-responsibilities.md#serpent-io)
+
+- [<span class="ref-pill"><code>nucleide.fluka</code></span>](#nucleidefluka)
+  — FLUKA USRBIN readers · [<span class="ref-pill"><code>fluka-io</code></span>](../architecture/crate-responsibilities.md#fluka-io)
+
+- [<span class="ref-pill"><code>nucleide.vr</code></span>](#nucleidevr)
+  — Variance-reduction tools · [<span class="ref-pill"><code>vr-tools</code></span>](../architecture/crate-responsibilities.md#vr-tools)
+
+- [<span class="ref-pill"><code>nucleide.enrichment</code></span>](#nucleideenrichment)
+  — Enrichment cascade solving · [<span class="ref-pill"><code>enrichment</code></span>](../architecture/crate-responsibilities.md#enrichment)
+
+- [<span class="ref-pill"><code>nucleide.depletion</code></span>](#nucleidedepletion)
+  — Depletion chains and CRAM solvers · [<span class="ref-pill"><code>depletion</code></span>](../architecture/crate-responsibilities.md#depletion)
+
+- [<span class="ref-pill"><code>nucleide.alara</code></span>](#nucleidealara)
+  — ALARA activation-code interop · [<span class="ref-pill"><code>alara-io</code></span>](../architecture/crate-responsibilities.md#alara-io)
+
+- [<span class="ref-pill"><code>nucleide.cccc</code></span>](#nucleidecccc)
+  — CCCC binary-standard readers and PARTISN deck writer · [<span class="ref-pill"><code>cccc-io</code></span>](../architecture/crate-responsibilities.md#cccc-io)
+
+- [<span class="ref-pill"><code>nucleide.fispact</code></span>](#nucleidefispact)
+  — FISPACT-II output parser · [<span class="ref-pill"><code>fispact-io</code></span>](../architecture/crate-responsibilities.md#fispact-io)
+
+- [<span class="ref-pill"><code>nucleide.origen</code></span>](#nucleideorigen)
+  — Scoped ORIGEN 2.2 TAPE readers · [<span class="ref-pill"><code>origen-io</code></span>](../architecture/crate-responsibilities.md#origen-io)
+
+- [<span class="ref-pill"><code>nucleide.r2s</code></span>](#nucleider2s)
+  — Rigorous two-step (R2S) shutdown-dose-rate orchestration · [<span class="ref-pill"><code>r2s</code></span>](../architecture/crate-responsibilities.md#r2s)
+
+- [<span class="ref-pill"><code>nucleide.data</code></span>](#nucleidedata)
+  — Download Nucleide data files pinned to a release tag, branch, or commit. · pure Python
+
+{/*GEN:module-table:END*/}
 
 ## `nucleide.nuclei`
 
-{/* GEN:module-nuclei:START */}
+{/*GEN:module-nuclei:START*/}
 
 Backing crate: [`nuclei`](../architecture/crate-responsibilities.md#nuclei) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/nuclei)
 
@@ -98,11 +112,11 @@ Backing crate: [`nuclei`](../architecture/crate-responsibilities.md#nuclei) · [
 - [`rxname_name(id: int) -> str | None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L349)
 - [`rxname_mt(id: int) -> int`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L350)
 
-{/* GEN:module-nuclei:END */}
+{/*GEN:module-nuclei:END*/}
 
 ## `nucleide.material`
 
-{/* GEN:module-material:START */}
+{/*GEN:module-material:START*/}
 
 Backing crate: [`material`](../architecture/crate-responsibilities.md#material) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/material)
 
@@ -117,11 +131,11 @@ Backing crate: [`material`](../architecture/crate-responsibilities.md#material) 
 - [`activity(comp: dict[str, float]) -> dict[str, float]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L363)
 - [`to_xml(comp: dict[str, float], name: str, density: float, units: str = 'g/cm3') -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L364)
 
-{/* GEN:module-material:END */}
+{/*GEN:module-material:END*/}
 
 ## `nucleide.mcnp`
 
-{/* GEN:module-mcnp:START */}
+{/*GEN:module-mcnp:START*/}
 
 Backing crate: [`mcnp-io`](../architecture/crate-responsibilities.md#mcnp-io) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/mcnp-io)
 
@@ -236,21 +250,21 @@ Backing crate: [`mcnp-io`](../architecture/crate-responsibilities.md#mcnp-io) ·
   mesh_to_geom(x_bounds: Sequence[float], y_bounds: Sequence[float], z_bounds: Sequence[float], cell_materials: Sequence[tuple[str, float] | None], title_card: str) -> str
   ```
 
-{/* GEN:module-mcnp:END */}
+{/*GEN:module-mcnp:END*/}
 
 ## `nucleide.serpent`
 
-{/* GEN:module-serpent:START */}
+{/*GEN:module-serpent:START*/}
 
 Backing crate: [`serpent-io`](../architecture/crate-responsibilities.md#serpent-io) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/serpent-io)
 
 - [`read_serpent(path: str, kind: str) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L365)
 
-{/* GEN:module-serpent:END */}
+{/*GEN:module-serpent:END*/}
 
 ## `nucleide.fluka`
 
-{/* GEN:module-fluka:START */}
+{/*GEN:module-fluka:START*/}
 
 Backing crate: [`fluka-io`](../architecture/crate-responsibilities.md#fluka-io) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/fluka-io)
 
@@ -270,11 +284,11 @@ Backing crate: [`fluka-io`](../architecture/crate-responsibilities.md#fluka-io) 
 
 - [`read_usrbin(path: str) -> list[UsrbinTally]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L366)
 
-{/* GEN:module-fluka:END */}
+{/*GEN:module-fluka:END*/}
 
 ## `nucleide.vr`
 
-{/* GEN:module-vr:START */}
+{/*GEN:module-vr:START*/}
 
 Backing crate: [`vr-tools`](../architecture/crate-responsibilities.md#vr-tools) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/vr-tools)
 
@@ -299,11 +313,11 @@ Backing crate: [`vr-tools`](../architecture/crate-responsibilities.md#vr-tools) 
   - `__init__(tally: MeshTally, mode: str, user_pdf: list[float] | None = None) -> None`
   - `sample(r1: float, r2: float) -> dict[str, float]`
 
-{/* GEN:module-vr:END */}
+{/*GEN:module-vr:END*/}
 
 ## `nucleide.enrichment`
 
-{/* GEN:module-enrichment:START */}
+{/*GEN:module-enrichment:START*/}
 
 Backing crate: [`enrichment`](../architecture/crate-responsibilities.md#enrichment) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/enrichment)
 
@@ -334,11 +348,11 @@ Backing crate: [`enrichment`](../architecture/crate-responsibilities.md#enrichme
   - `mat_tail: dict[str, float]` (property)
   - `separative_work_per_product() -> float`
 
-{/* GEN:module-enrichment:END */}
+{/*GEN:module-enrichment:END*/}
 
 ## `nucleide.depletion`
 
-{/* GEN:module-depletion:START */}
+{/*GEN:module-depletion:START*/}
 
 Backing crate: [`depletion`](../architecture/crate-responsibilities.md#depletion) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/depletion)
 
@@ -361,11 +375,11 @@ Backing crate: [`depletion`](../architecture/crate-responsibilities.md#depletion
   deplete(chain: Chain, n0: dict[str, float], dt: float, rates: dict[str, float] | None = None, order: int = 48) -> dict[str, float]
   ```
 
-{/* GEN:module-depletion:END */}
+{/*GEN:module-depletion:END*/}
 
 ## `nucleide.alara`
 
-{/* GEN:module-alara:START */}
+{/*GEN:module-alara:START*/}
 
 Backing crate: [`alara-io`](../architecture/crate-responsibilities.md#alara-io) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/alara-io)
 
@@ -374,11 +388,11 @@ Backing crate: [`alara-io`](../architecture/crate-responsibilities.md#alara-io) 
 - [`alara_parse_output(text: str, run_lbl: str) -> list[dict[str, Any]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L378)
 - [`alara_expand_schedule(deck_text: str, top: str | None = None) -> list[dict[str, Any]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L379)
 
-{/* GEN:module-alara:END */}
+{/*GEN:module-alara:END*/}
 
 ## `nucleide.cccc`
 
-{/* GEN:module-cccc:START */}
+{/*GEN:module-cccc:START*/}
 
 Backing crate: [`cccc-io`](../architecture/crate-responsibilities.md#cccc-io) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/cccc-io)
 
@@ -395,11 +409,11 @@ Backing crate: [`cccc-io`](../architecture/crate-responsibilities.md#cccc-io) ·
 - [`cccc_validate_partisn(deck: dict[str, Any], isotxs_text: str) -> None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/cccc.py#L19)
   (alias of `partisn_validate`)
 
-{/* GEN:module-cccc:END */}
+{/*GEN:module-cccc:END*/}
 
 ## `nucleide.fispact`
 
-{/* GEN:module-fispact:START */}
+{/*GEN:module-fispact:START*/}
 
 Backing crate: [`fispact-io`](../architecture/crate-responsibilities.md#fispact-io) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/fispact-io)
 
@@ -407,11 +421,11 @@ Backing crate: [`fispact-io`](../architecture/crate-responsibilities.md#fispact-
 - [`parse_output(text: str, run_lbl: str) -> list[dict[str, Any]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/fispact.py#L11)
   (alias of `fispact_parse_output`)
 
-{/* GEN:module-fispact:END */}
+{/*GEN:module-fispact:END*/}
 
 ## `nucleide.origen`
 
-{/* GEN:module-origen:START */}
+{/*GEN:module-origen:START*/}
 
 Backing crate: [`origen-io`](../architecture/crate-responsibilities.md#origen-io) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/origen-io)
 
@@ -425,11 +439,11 @@ Backing crate: [`origen-io`](../architecture/crate-responsibilities.md#origen-io
 - [`tape9_parse(text: str) -> list[dict[str, Any]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/origen.py#L17)
   (alias of `origen_parse_tape9`)
 
-{/* GEN:module-origen:END */}
+{/*GEN:module-origen:END*/}
 
 ## `nucleide.r2s`
 
-{/* GEN:module-r2s:START */}
+{/*GEN:module-r2s:START*/}
 
 Backing crate: [`r2s`](../architecture/crate-responsibilities.md#r2s) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/r2s)
 
@@ -446,23 +460,23 @@ Backing crate: [`r2s`](../architecture/crate-responsibilities.md#r2s) · [source
 - [`assemble(output_text: str, run_lbl: str, zone: str, groups: int) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L27)
   (alias of `r2s_assemble`)
 
-{/* GEN:module-r2s:END */}
+{/*GEN:module-r2s:END*/}
 
 ## `nucleide.data`
 
 Pure-Python helpers (no backing crate) for downloading repo data files that
 the wheel does not bundle, pinned to the installed release:
 
-{/* GEN:module-data:START */}
+{/*GEN:module-data:START*/}
 
 Backing crate: pure Python · [source file](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/data.py)
 
 - [`COMPENDIUM_PATH = 'fixtures/data/MaterialsCompendium.json'`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/data.py#L16)
 - [`default_ref() -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/data.py#L26)
-- [`fetch(path: str, *, ref: str | None = None, dest: str | Path = '.') -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/data.py#L31)
-- [`fetch_compendium(*, ref: str | None = None, dest: str | Path = '.') -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/data.py#L54)
+- [`fetch(path: str, &#42;, ref: str | None = None, dest: str | Path = '.') -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/data.py#L31)
+- [`fetch_compendium(&#42;, ref: str | None = None, dest: str | Path = '.') -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/data.py#L54)
 
-{/* GEN:module-data:END */}
+{/*GEN:module-data:END*/}
 
 ## Version
 

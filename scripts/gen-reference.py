@@ -8,6 +8,8 @@ Sources:
     ``python/nucleide/*.py`` facades (module docstrings + ``__all__`` +
     alias assignments), and ``python/nucleide/__init__.py`` (submodule list)
     -> ``docs/reference/python-api.mdx``.
+  - ``fixtures/<area>/README.md`` (first line per area) + the file inventory
+    under each area dir -> ``fixtures/README.md`` fixture index table.
 
 The two MDX files keep hand-written prose outside marked regions. This
 script only rewrites the bodies delimited by::
@@ -15,6 +17,10 @@ script only rewrites the bodies delimited by::
     {/* GEN:<name>:START */}
     ...generated...
     {/* GEN:<name>:END */}
+
+``fixtures/README.md`` is plain Markdown, so it uses the HTML comment style
+(``<!-- GEN:<name>:START -->``) instead; each file keeps whichever marker
+style it already uses.
 
 The crate overview is per-crate card sections (``### <name>`` heading, path
 line with a ``[source]`` tree link, one-line responsibility, then a tag row
@@ -53,7 +59,6 @@ regex/line parsing and signatures use ``ast.unparse``).
 import argparse
 import ast
 import difflib
-import json
 import re
 import sys
 from pathlib import Path
@@ -63,6 +68,9 @@ PYTHON_DIR = REPO_ROOT / "python" / "nucleide"
 PYI_PATH = PYTHON_DIR / "_internal.pyi"
 CRATE_OVERVIEW_MD = REPO_ROOT / "docs" / "reference" / "crate-overview.mdx"
 PYTHON_API_MD = REPO_ROOT / "docs" / "reference" / "python-api.mdx"
+FIXTURES_DIR = REPO_ROOT / "fixtures"
+FIXTURES_README = FIXTURES_DIR / "README.md"
+DOCS_FIXTURES_MDX = REPO_ROOT / "docs" / "reference" / "fixtures.mdx"
 
 # Same file base the website docs sync uses
 # (website/package.json `sync-docs --github-file-base`).
@@ -247,56 +255,25 @@ def escape_cell(text: str) -> str:
     return text.replace("|", "\\|").replace("_", "\\_")
 
 
-def _js_string(text: str) -> str:
-    """Render text as a double-quoted JS string literal for DataTable data."""
-    return json.dumps(text, ensure_ascii=False)
-
-
-def _link_cell(href: str, text: str) -> str:
-    """Render ``<a><code>`` as React elements for DataTable data.
-
-    MDX ``<a>`` JSX compiles to Astro elements (``{astro:jsx, ...}``), which
-    React cannot render inside the docs-kit DataTable island (Astro-React
-    interop). ``React.createElement`` builds real React elements instead, so
-    the site build passes and the DOM is still ``<a><code>``. Both elements
-    carry ``whiteSpace: nowrap`` to override docs-kit ``.prose a``
-    ``overflow-wrap: anywhere`` (which leaks into ``not-prose`` islands and
-    would otherwise split identifiers like ``linalg`` mid-token); plain-string
-    cells (Path/Responsibility/Depends/Contents) wrap only at spaces. Requires
-    ``import * as React from "react"`` at the top of the MDX file (outside GEN
-    regions);     the MDX files also import the React ``DataTable`` directly so
-    ``<DataTable>`` renders static (no island hydration, which cannot serialize
-    element props).
-    """
-    href_js = _js_string(href)
-    text_js = _js_string(text)
-    nowrap = '{ whiteSpace: "nowrap" }'
-    inner = f'React.createElement("code", {{ style: {nowrap} }}, {text_js})'
-    return f'React.createElement("a", {{ href: {href_js}, style: {nowrap} }}, {inner})'
-
-
-PILL_STYLE = (
-    "display:inline-block;border:1px solid currentColor;"
-    "border-radius:9999px;padding:0 .6em;margin:.1em .15em;"
-    "font-size:.85em;white-space:nowrap;text-decoration:none"
-)
+def _md_text(text: str) -> str:
+    """Escape prose for plain-markdown rendering (underscores would emphasize)."""
+    return text.replace("_", "\\_")
 
 
 def _pill(href: str, text: str) -> str:
-    """Render a pill as a Markdown link with a styled inner span.
+    """Render a pill as a Markdown link with a ``ref-pill`` span.
 
-    Plain Markdown ``[<code>](url)`` links do not pill-style, so the link
-    text carries raw inline HTML ``<span style><code></code></span>`` with
-    ``currentColor`` (theme-safe in light and dark). ``inline-block`` plus
-    ``white-space: nowrap`` keeps each pill whole while spaces between pills
-    still allow wrapping. The link itself stays Markdown (not raw ``<a>``)
+    Plain Markdown ``[<code>](url)`` links do not pill-style; the link text
+    carries ``<span class="ref-pill"><code></code></span>`` instead of inline
+    styles (see ``website/src/styles/ref-pills.css``, imported by
+    ``DocLayout.astro``). The link itself stays Markdown (not raw ``<a>``)
     because only Markdown ``[text](href)`` links are rewritten to routes by
     the docs sync (``sync-docs.mjs``) and Astro; raw ``<a href>`` HTML passes
     through verbatim and would 404 as ``*.mdx``. ``href`` must start with
     ``./`` or ``../`` for cross-page links; absolute GitHub URLs stay as-is
     for source links. Static output, no hydration.
     """
-    return f'[<span style="{PILL_STYLE}"><code>{text}</code></span>]({href})'
+    return f'[<span class="ref-pill"><code>{text}</code></span>]({href})'
 
 
 def render_crate_cards(crates: list[dict[str, object]], crate_to_module: dict[str, str]) -> str:
@@ -304,27 +281,30 @@ def render_crate_cards(crates: list[dict[str, object]], crate_to_module: dict[st
 
     Each card is a ``### <name>`` heading, a ```<path>`` line with a
     ``[source]`` tree link, a one-line responsibility, then a tag row with
-    ``Depends on:`` pills and a ``Python:`` pill (``-`` when empty).
+    ``Depends on:`` pills and a ``Python:`` pill (``-`` when empty). Pills
+    are one per source line (soft breaks render as spaces, so rows still wrap
+    between pills) to keep generated lines lint-clean.
     """
     parts: list[str] = []
     for crate in crates:
         name = str(crate["name"])
         path = str(crate["path"])
-        desc = str(crate["description"]).strip()
+        desc = _md_text(str(crate["description"]).strip())
         deps = list(crate["deps"])  # type: ignore[arg-type]
         if deps:
-            pills = " ".join(_pill(_responsibilities_url(str(d)), str(d)) for d in deps)
+            pill_lines = "\n  ".join(_pill(_responsibilities_url(str(d)), str(d)) for d in deps)
+            depends = f"Depends on:\n  {pill_lines}"
         else:
-            pills = "-"
+            depends = "Depends on: -"
         mod = crate_to_module.get(name)
         if mod is None:
-            python = "-"
+            python = "Python: -"
         else:
             slug = github_slug(f"nucleide.{mod}")
-            python = _pill(f"./python-api.mdx#{slug}", f"nucleide.{mod}")
+            python = f"Python:\n  {_pill(f'./python-api.mdx#{slug}', f'nucleide.{mod}')}"
         parts.append(
             f"### {name}\n\n`{path}` · [source]({_tree_url(path)})\n\n"
-            f"{desc}\n\nDepends on: {pills} · Python: {python}"
+            f"{desc}\n\n{depends}\n\n{python}"
         )
     return "\n\n".join(parts)
 
@@ -497,8 +477,11 @@ def _sig_bullet(
     ``url`` is None for class-member sub-bullets, which stay unlinked (one
     link per symbol). Single-line linked bullets always fit the lint budget
     unless they carry a wrappable ``(alias of ...)`` suffix past column 120;
-    those wrap the suffix onto a continuation line instead.
+    those wrap the suffix onto a continuation line instead. Bare ``*``
+    (keyword-only markers) is entity-escaped inside code spans: MD037 misfires
+    on asterisks inside linked code spans, while ``&#42;`` renders identically.
     """
+    code = code.replace("*", "&#42;")
     suffix = f" (alias of `{alias_of}`)" if alias_of else ""
     if len(code) + len(suffix) > LONG_THRESHOLD:
         if url is not None and alias_of is not None:
@@ -516,44 +499,30 @@ def _sig_bullet(
 
 
 def render_module_table(facades: dict[str, dict[str, object]]) -> str:
-    """Render the Python module map as a docs-kit DataTable.
+    """Render the Python module map as pill bullets.
 
-    Submodule/Backing-crate cells render ``<a><code>`` links (same-page anchors
-    and relative responsibility links) via ``React.createElement``; Contents
-    stay plain strings. Tables render static; ``sortable`` stays off to
-    preserve MODULE_ORDER.
+    One bullet per submodule: a ``ref-pill`` link to the same-page section,
+    then a continuation line with the contents summary and a ``ref-pill``
+    link to the backing crate (or ``pure Python`` for ``data``). Bullets wrap
+    cleanly (pills are nowrap, breaks fall between items), unlike DataTable
+    cells.
     """
-    lines = [
-        "<DataTable",
-        '  caption="Python submodules, their backing crates, and contents."',
-        "  columns={[",
-        '    { key: "submodule", header: "Submodule" },',
-        '    { key: "backing", header: "Backing crate" },',
-        '    { key: "contents", header: "Contents" },',
-        "  ]}",
-        "  data={[",
-    ]
+    lines: list[str] = []
     for mod in MODULE_ORDER:
         facade = facades[mod]
+        slug = github_slug(f"nucleide.{mod}")
+        submodule = _pill(f"#{slug}", f"nucleide.{mod}")
+        contents = _md_text(str(facade["contents"]).strip())
         backed = facade["backed"]
         if backed:
             crate = str(backed)
-            url = _responsibilities_url(crate)
-            backing = _link_cell(url, crate)
+            backing = _pill(_responsibilities_url(crate), crate)
         else:
-            backing = _js_string("— (pure Python)")
-        slug = github_slug(f"nucleide.{mod}")
-        submodule = _link_cell(f"#{slug}", f"nucleide.{mod}")
-        contents = _js_string(str(facade["contents"]).strip())
-        row = f"    {{ submodule: {submodule}, backing: {backing}, contents: {contents} }},"
-        lines.append(row)
-    lines.extend(
-        [
-            "  ]}",
-            "/>",
-        ]
-    )
-    return "\n".join(lines)
+            backing = "pure Python"
+        lines.append(f"- {submodule}")
+        lines.append(f"  — {contents} · {backing}")
+        lines.append("")
+    return "\n".join(lines).rstrip("\n")
 
 
 def render_backing_line(mod: str, facade: dict[str, object], crate_dirs: dict[str, str]) -> str:
@@ -656,8 +625,14 @@ def replace_regions(text: str, regions: dict[str, str]) -> str:
         name = _gen_name(match)
         if name not in regions:
             raise RuntimeError(f"unexpected GEN region: {name}")
-        start = f"{{/* GEN:{name}:START */}}"
-        end = f"{{/* GEN:{name}:END */}}"
+        if match.group("open_a") is not None:
+            start = f"<!-- GEN:{name}:START -->"
+            end = f"<!-- GEN:{name}:END -->"
+        else:
+            # Spaceless: `{/* GEN:x */}` trips MD037 (spaces inside emphasis
+            # markers); `{/*GEN:x*/}` does not.
+            start = f"{{/*GEN:{name}:START*/}}"
+            end = f"{{/*GEN:{name}:END*/}}"
         return f"{start}\n\n{regions[name]}\n\n{end}"
 
     result = GEN_RE.sub(_repl, text)
@@ -691,6 +666,138 @@ def build_python_regions() -> dict[str, str]:
         backing = render_backing_line(mod, facades[mod], crate_dirs)
         regions[f"module-{mod}"] = f"{backing}\n\n{body}"
     return regions
+
+
+def fixture_area_rows(
+    repo_root: Path = REPO_ROOT,
+) -> list[tuple[str, int, int, str]]:
+    """Scan ``fixtures/<area>/`` dirs into (area, files, bytes, contents).
+
+    ``contents`` is the first non-empty line of the area README with its
+    leading ``#`` heading markup stripped. A missing or empty area README is
+    a loud ``RuntimeError`` (like the ``__all__`` coverage assertion), so a
+    new fixture area cannot land undocumented: ``--check`` fails until the
+    area README exists.
+    """
+    fixtures_dir = repo_root / "fixtures"
+    areas = sorted(p for p in fixtures_dir.iterdir() if p.is_dir())
+    if not areas:
+        raise RuntimeError(f"{fixtures_dir}: no fixture areas found")
+    rows: list[tuple[str, int, int, str]] = []
+    for area in areas:
+        readme = area / "README.md"
+        if not readme.is_file():
+            raise RuntimeError(
+                f"{readme}: missing area README "
+                "(every fixtures/<area>/ needs one; "
+                "its first line feeds fixtures/README.md)"
+            )
+        first = next(
+            (
+                line.strip()
+                for line in readme.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ),
+            "",
+        )
+        if not first:
+            raise RuntimeError(f"{readme}: empty area README")
+        contents = re.sub(r"^#+\s*", "", first).replace("|", "\\|")
+        files = [
+            p
+            for p in area.rglob("*")
+            if p.is_file() and p.relative_to(area).as_posix() != "README.md"
+        ]
+        total = sum(p.stat().st_size for p in files)
+        rows.append((area.name, len(files), total, contents))
+    return rows
+
+
+def render_fixture_table(rows: list[tuple[str, int, int, str]]) -> str:
+    """Render the fixture index as a Markdown table.
+
+    Columns are Area | Files | Size, plus the Contents one-liner sourced from
+    each area README. Tables are exempt from the markdownlint line-length
+    budget, so long Contents cells stay on one row.
+    """
+    lines = ["| Area | Files | Size | Contents |", "| --- | --- | --- | --- |"]
+    for area, nfiles, total, contents in rows:
+        lines.append(f"| `{area}/` | {nfiles} | {total:,} bytes | {contents} |")
+    return "\n".join(lines)
+
+
+def build_fixture_regions(repo_root: Path = REPO_ROOT) -> dict[str, str]:
+    return {"fixture-index": render_fixture_table(fixture_area_rows(repo_root))}
+
+
+def _human_bytes(n: int) -> str:
+    """Format a byte count compactly (exact bytes stay in fixtures/README.md)."""
+    if n < 1024:
+        return f"{n} B"
+    if n < 1024 * 1024:
+        return f"{n / 1024:.1f} KB"
+    return f"{n / (1024 * 1024):.1f} MB"
+
+
+def render_fixtures_page(repo_root: Path = REPO_ROOT) -> str:
+    """Render the whole docs fixtures reference page (generated, no hand edits).
+
+    Per area: a ``###`` section with the area README one-liner and a bullet
+    per file linking to its GitHub blob (recomputed every run, so renames can
+    never drift). Fixture bytes stay out of the site bundle; this page is a
+    browsable index, not a download mirror.
+    """
+    fixtures_dir = repo_root / "fixtures"
+    areas = sorted(p for p in fixtures_dir.iterdir() if p.is_dir())
+    parts = [
+        "---",
+        "title: Fixtures",
+        "sidebar:",
+        "  order: 3",
+        "---",
+        "",
+        "Golden-byte test data backing the parsers and numeric kernels. Each",
+        "area links to its files on GitHub; see `fixtures/README.md` in the",
+        "repo for the maintenance contract (byte-exact oracles, deliberate",
+        "updates only).",
+        "",
+        "## Areas",
+        "",
+    ]
+    for area in areas:
+        readme = area / "README.md"
+        if not readme.is_file():
+            raise RuntimeError(f"{readme}: missing area README (every fixtures/<area>/ needs one)")
+        first = next(
+            (
+                line.strip()
+                for line in readme.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ),
+            "",
+        )
+        desc = re.sub(r"^#+\s*", "", first)
+        parts.append(f"### `{area.name}/`")
+        parts.append("")
+        parts.append(desc)
+        parts.append("")
+        files = sorted(
+            p
+            for p in area.rglob("*")
+            if p.is_file() and p.relative_to(area).as_posix() != "README.md"
+        )
+        for path in files:
+            rel = path.relative_to(fixtures_dir).as_posix()
+            size = _human_bytes(path.stat().st_size)
+            bullet = f"- [`{rel}`]({GITHUB_BASE}/fixtures/{rel}) — {size}"
+            if len(bullet) <= MARKDOWN_LINE_LENGTH:
+                parts.append(bullet)
+            else:
+                # Soft break renders as a space; keeps long URLs lint-clean.
+                link, _, tail = bullet.rpartition(" — ")
+                parts.append(f"{link}\n  — {tail}")
+        parts.append("")
+    return "\n".join(parts).rstrip("\n") + "\n"
 
 
 def check_init_submodules() -> None:
@@ -732,6 +839,7 @@ def main(argv: list[str] | None = None) -> int:
     targets = [
         (CRATE_OVERVIEW_MD, build_crate_regions()),
         (PYTHON_API_MD, build_python_regions()),
+        (FIXTURES_README, build_fixture_regions()),
     ]
     stale: list[Path] = []
     for path, regions in targets:
@@ -747,6 +855,20 @@ def main(argv: list[str] | None = None) -> int:
                 new.splitlines(keepends=True),
                 fromfile=str(path),
                 tofile=str(path),
+            )
+            sys.stdout.writelines(diff)
+    whole_new = render_fixtures_page()
+    whole_old = DOCS_FIXTURES_MDX.read_text(encoding="utf-8") if DOCS_FIXTURES_MDX.is_file() else ""
+    if whole_old != whole_new:
+        stale.append(DOCS_FIXTURES_MDX)
+        if args.write:
+            DOCS_FIXTURES_MDX.write_text(whole_new, encoding="utf-8")
+        else:
+            diff = difflib.unified_diff(
+                whole_old.splitlines(keepends=True),
+                whole_new.splitlines(keepends=True),
+                fromfile=str(DOCS_FIXTURES_MDX),
+                tofile=str(DOCS_FIXTURES_MDX),
             )
             sys.stdout.writelines(diff)
     if args.write:

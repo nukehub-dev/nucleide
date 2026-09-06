@@ -10,6 +10,7 @@ Quick-reference pages for the Nucleide workspace.
 | --- | --- |
 | [Crate overview](crate-overview.mdx) | One-line responsibilities for every Rust crate |
 | [Python API](python-api.mdx) | Python facade overview and module map |
+| [Fixtures](fixtures.mdx) | Golden-byte test data index with per-file source links |
 
 For methodology and derivations of the algorithms implemented in these crates,
 see the [Theory](../theory/index.mdx) section.

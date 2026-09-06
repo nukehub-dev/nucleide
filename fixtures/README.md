@@ -11,33 +11,25 @@ parsed output must update a fixture deliberately, never accidentally.
 
 Contents:
 
-- `data/` — DOE/PNNL Materials Compendium JSON (+ its license)
-- `mcnp/xsdir` — xsdir parser oracle; `dummy_xsdir` is staged for the website
-- `mcnp/meshtal` — single + multiple meshtal files; `mcnp_meshtal_single_meshtal.txt`
-  is staged for the website
-- `mcnp/ssw` — mcnp5/mcnp6/mcnpx surfsrc + one-track (SSW round-trip oracles)
-- `mcnp/ptrac` — i4/i8 + MCNP6 variants + input card
-- `mcnp/wwinp` — n/p/np weight-window files
-- `mcnp/inp` — material-bearing input decks (+ commented variant)
-- `mcnp/mctal/synthetic_*` — generated kcode decks (no public corpus exists)
-- `depletion/` — depletion-chain XML files (simple chains, Ni chain);
-  `chain_simple.xml` is staged for the website
-- `serpent/` — Serpent 1 & 2 res/dep/det outputs
-- `fluka/` — USRBIN `.lis` files (single/multiple/degenerate) + test input
-- `alara/` — UW ALARA samples vendored verbatim (terms in `alara/LICENSE.ALARA`):
-  input-deck oracles `decks/sample2` + `decks/sample3`; group-flux files
-  `flux/fluxin2` + all-zero edge case `flux/fluxin_zeros`; support libraries
-  `libs/sampleMatlib` (material lib), `libs/myElelib` (element lib),
-  `libs/NRCA` + `libs/NRCC` (WDR libs); activation-output oracle
-  `output/sample2.out`
-- `cccc/` — synthetic ISOTXS/RTFLUX samples authored for Nucleide (no license
-  needed): `isotxs_sample` (2 nuclides x 3 groups), `rtflux_sample`
-  (2 points x 3 groups)
-- `fispact/` — synthetic FISPACT-II-style inventory authored for Nucleide (no
-  license needed): `inventory.fis` (3 cooling steps x 4 rows x 3 variables)
-- `origen/` — synthetic ORIGEN TAPE samples authored for Nucleide (no license
-  needed): `tape5_sample` (input echo), `tape6_sample` (inventory),
-  `tape9_sample` (decay constants)
+Each `fixtures/<area>/README.md` describes its area; the index below is
+generated from those files — run `python3 scripts/gen-reference.py --write`
+after adding fixtures (CI enforces freshness via `--check`).
+
+<!-- GEN:fixture-index:START -->
+
+| Area | Files | Size | Contents |
+| --- | --- | --- | --- |
+| `alara/` | 10 | 97,611 bytes | alara — UW ALARA samples vendored verbatim (terms in `alara/LICENSE.ALARA`) |
+| `cccc/` | 2 | 285 bytes | cccc — Synthetic ISOTXS/RTFLUX samples authored for Nucleide (no license needed) |
+| `data/` | 2 | 7,859,273 bytes | data — DOE/PNNL Materials Compendium JSON (+ its license) |
+| `depletion/` | 3 | 37,177 bytes | depletion — Depletion-chain XML files (simple chains, Ni chain) |
+| `fispact/` | 1 | 1,058 bytes | fispact — Synthetic FISPACT-II-style inventory authored for Nucleide (no license needed) |
+| `fluka/` | 4 | 7,685 bytes | fluka — USRBIN `.lis` files (single/multiple/degenerate) + test input |
+| `mcnp/` | 20 | 468,802 bytes | mcnp — MCNP input decks, tallies, and binary-format oracles |
+| `origen/` | 3 | 681 bytes | origen — Synthetic ORIGEN TAPE samples authored for Nucleide (no license needed) |
+| `serpent/` | 6 | 653,120 bytes | serpent — Serpent 1 & 2 res/dep/det outputs |
+
+<!-- GEN:fixture-index:END -->
 
 Still to add in later phases: truncated PTRAC samples for fuzzing; recorded
 CRAM input/output pairs for regression pinning (currently validated

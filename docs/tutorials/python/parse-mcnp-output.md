@@ -1,7 +1,7 @@
 ---
 title: Parse MCNP Output
 sidebar:
-  order: 3
+  order: 1
 ---
 
 Nucleide reads several common MCNP-family files without running MCNP itself.

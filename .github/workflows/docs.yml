@@ -14,6 +14,7 @@ on:
       - 'python/nucleide/**'
       - 'crates/*/Cargo.toml'
       - 'bindings/*/Cargo.toml'
+      - 'fixtures/**/README.md'
   pull_request:
     branches: [main]
     paths:
@@ -27,6 +28,7 @@ on:
       - 'python/nucleide/**'
       - 'crates/*/Cargo.toml'
       - 'bindings/*/Cargo.toml'
+      - 'fixtures/**/README.md'
   workflow_dispatch:
 
 permissions:

@@ -89,7 +89,8 @@ generated API docs, or fixture READMEs. Link instead.
 1. **Keep docs in sync with code.** A PR that changes a public API, parser
    output, or crate boundary must update the matching tutorial or reference page.
 2. **Regenerate the reference tables.** After changing `python/nucleide/_internal.pyi`,
-   the `python/nucleide/*.py` facades, or crate manifests/descriptions, run
+   the `python/nucleide/*.py` facades, crate manifests/descriptions, or adding
+   fixtures (document the area README), run
    `python3 scripts/gen-reference.py --write` and commit the result (CI enforces
    freshness).
 3. **Prefer deletion over stale historical notes.** If a section no longer

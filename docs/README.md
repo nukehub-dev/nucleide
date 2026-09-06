@@ -26,12 +26,13 @@ license.
 | --- | --- |
 | [Tutorials](tutorials/index.md) | Tutorial index and suggested reading order |
 | [Getting started](tutorials/getting-started.md) | Install Nucleide from PyPI and run your first Python snippet |
-| [Parse MCNP output](tutorials/parse-mcnp-output.md) | Read xsdir, meshtal, MCTAL, WWINP, PTRAC, and SSW files |
-| [Build materials](tutorials/build-materials.md) | Build materials from formulae, mix compositions, and export XML |
-| [Run depletion](tutorials/run-depletion.md) | Load a depletion chain and run a short CRAM solve |
-| [Enrichment cascade](tutorials/enrichment-cascade.md) | Set up and solve a multicomponent enrichment cascade |
-| [Activation analysis](tutorials/activation-analysis.md) | Read ALARA, FISPACT-II, and ORIGEN files and assemble an R2S workflow |
-| [Deterministic I/O](tutorials/deterministic-io.md) | Read ISOTXS and flux files and write PARTISN decks |
+| [Python tutorials](tutorials/python/index.md) | Python tutorial index and suggested reading order |
+| [Parse MCNP output](tutorials/python/parse-mcnp-output.md) | Read xsdir, meshtal, MCTAL, WWINP, PTRAC, and SSW files |
+| [Build materials](tutorials/python/build-materials.md) | Build materials from formulae, mix compositions, and export XML |
+| [Run depletion](tutorials/python/run-depletion.md) | Load a depletion chain and run a short CRAM solve |
+| [Enrichment cascade](tutorials/python/enrichment-cascade.md) | Set up and solve a multicomponent enrichment cascade |
+| [Activation analysis](tutorials/python/activation-analysis.md) | Read ALARA, FISPACT-II, and ORIGEN files and assemble an R2S workflow |
+| [Deterministic I/O](tutorials/python/deterministic-io.md) | Read ISOTXS and flux files and write PARTISN decks |
 | [Interactive tutorials](tutorials/interactive/index.mdx) | Run Nucleide in the browser through the WASM build |
 | [Interactive — nuclides](tutorials/interactive/nuclides.mdx) | Nuclide identifiers and nuclear data |
 | [Interactive — materials](tutorials/interactive/materials.mdx) | Formulas, fractions, mixing, and XML export |
@@ -59,6 +60,7 @@ license.
 | [Reference](reference/index.md) | Reference index and quick links |
 | [Crate overview](reference/crate-overview.mdx) | One-line responsibilities for every workspace crate |
 | [Python API](reference/python-api.mdx) | Python facade overview and module map |
+| [Fixtures](reference/fixtures.mdx) | Golden-byte test data index with per-file source links |
 
 ### Development
 

@@ -1,0 +1,138 @@
+---
+title: Fixtures
+sidebar:
+  order: 3
+---
+
+Golden-byte test data backing the parsers and numeric kernels. Each
+area links to its files on GitHub; see `fixtures/README.md` in the
+repo for the maintenance contract (byte-exact oracles, deliberate
+updates only).
+
+## Areas
+
+### `alara/`
+
+alara — UW ALARA samples vendored verbatim (terms in `alara/LICENSE.ALARA`)
+
+- [`alara/LICENSE.ALARA`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/alara/LICENSE.ALARA) — 1.6 KB
+- [`alara/decks/sample2`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/alara/decks/sample2) — 1.4 KB
+- [`alara/decks/sample3`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/alara/decks/sample3) — 1.4 KB
+- [`alara/flux/fluxin2`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/alara/flux/fluxin2) — 6.3 KB
+- [`alara/flux/fluxin_zeros`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/alara/flux/fluxin_zeros)
+  — 701 B
+- [`alara/libs/NRCA`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/alara/libs/NRCA) — 160 B
+- [`alara/libs/NRCC`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/alara/libs/NRCC) — 144 B
+- [`alara/libs/myElelib`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/alara/libs/myElelib) — 23.4 KB
+- [`alara/libs/sampleMatlib`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/alara/libs/sampleMatlib)
+  — 3.4 KB
+- [`alara/output/sample2.out`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/alara/output/sample2.out)
+  — 56.8 KB
+
+### `cccc/`
+
+cccc — Synthetic ISOTXS/RTFLUX samples authored for Nucleide (no license needed)
+
+- [`cccc/isotxs_sample`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/cccc/isotxs_sample) — 164 B
+- [`cccc/rtflux_sample`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/cccc/rtflux_sample) — 121 B
+
+### `data/`
+
+data — DOE/PNNL Materials Compendium JSON (+ its license)
+
+- [`data/MaterialsCompendium.LICENSE`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/data/MaterialsCompendium.LICENSE)
+  — 1.3 KB
+- [`data/MaterialsCompendium.json`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/data/MaterialsCompendium.json)
+  — 7.5 MB
+
+### `depletion/`
+
+depletion — Depletion-chain XML files (simple chains, Ni chain)
+
+- [`depletion/chain_ni.xml`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/depletion/chain_ni.xml)
+  — 19.2 KB
+- [`depletion/chain_simple.xml`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/depletion/chain_simple.xml)
+  — 8.4 KB
+- [`depletion/chain_simple_decay.xml`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/depletion/chain_simple_decay.xml)
+  — 8.7 KB
+
+### `fispact/`
+
+fispact — Synthetic FISPACT-II-style inventory authored for Nucleide (no license needed)
+
+- [`fispact/inventory.fis`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/fispact/inventory.fis) — 1.0 KB
+
+### `fluka/`
+
+fluka — USRBIN `.lis` files (single/multiple/degenerate) + test input
+
+- [`fluka/fluka_usrbin_degenerate.lis`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/fluka/fluka_usrbin_degenerate.lis)
+  — 2.2 KB
+- [`fluka/fluka_usrbin_multiple.lis`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/fluka/fluka_usrbin_multiple.lis)
+  — 2.5 KB
+- [`fluka/fluka_usrbin_single.lis`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/fluka/fluka_usrbin_single.lis)
+  — 1.2 KB
+- [`fluka/fluka_usrbin_test_input.inp`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/fluka/fluka_usrbin_test_input.inp)
+  — 1.6 KB
+
+### `mcnp/`
+
+mcnp — MCNP input decks, tallies, and binary-format oracles
+
+- [`mcnp/inp/mcnp_inp.txt`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/inp/mcnp_inp.txt) — 1.1 KB
+- [`mcnp/inp/mcnp_inp_comments.txt`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/inp/mcnp_inp_comments.txt)
+  — 760 B
+- [`mcnp/inp/mcnp_ptrac_inp.txt`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/inp/mcnp_ptrac_inp.txt)
+  — 368 B
+- [`mcnp/mctal/synthetic_kcode19.mctal`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/mctal/synthetic_kcode19.mctal)
+  — 1.6 KB
+- [`mcnp/mctal/synthetic_kcode5.mctal`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/mctal/synthetic_kcode5.mctal)
+  — 545 B
+- [`mcnp/meshtal/mcnp_meshtal_multiple_meshtal.txt`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/meshtal/mcnp_meshtal_multiple_meshtal.txt)
+  — 23.7 KB
+- [`mcnp/meshtal/mcnp_meshtal_single_meshtal.txt`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/meshtal/mcnp_meshtal_single_meshtal.txt)
+  — 12.3 KB
+- [`mcnp/ptrac/mcnp6_ptrac_i4_little.ptrac`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/ptrac/mcnp6_ptrac_i4_little.ptrac)
+  — 1.9 KB
+- [`mcnp/ptrac/mcnp6_serial_ptrac_i4_little.ptrac`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/ptrac/mcnp6_serial_ptrac_i4_little.ptrac)
+  — 1.2 KB
+- [`mcnp/ptrac/mcnp_ptrac_i4_little.ptrac`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/ptrac/mcnp_ptrac_i4_little.ptrac)
+  — 1.2 KB
+- [`mcnp/ptrac/mcnp_ptrac_i8_little.ptrac`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/ptrac/mcnp_ptrac_i8_little.ptrac)
+  — 1.9 KB
+- [`mcnp/ptrac/mcnp_ptrac_inp.txt`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/ptrac/mcnp_ptrac_inp.txt)
+  — 368 B
+- [`mcnp/ssw/mcnp5_surfsrc.w`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/ssw/mcnp5_surfsrc.w)
+  — 16.6 KB
+- [`mcnp/ssw/mcnp6_surfsrc.w`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/ssw/mcnp6_surfsrc.w)
+  — 161.2 KB
+- [`mcnp/ssw/mcnp_surfsrc_onetrack.w`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/ssw/mcnp_surfsrc_onetrack.w)
+  — 475 B
+- [`mcnp/ssw/mcnpx_surfsrc.w`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/ssw/mcnpx_surfsrc.w)
+  — 156.3 KB
+- [`mcnp/wwinp/mcnp_wwinp_wwinp_n.txt`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/wwinp/mcnp_wwinp_wwinp_n.txt)
+  — 65.5 KB
+- [`mcnp/wwinp/mcnp_wwinp_wwinp_np.txt`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/wwinp/mcnp_wwinp_wwinp_np.txt)
+  — 5.5 KB
+- [`mcnp/wwinp/mcnp_wwinp_wwinp_p.txt`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/wwinp/mcnp_wwinp_wwinp_p.txt)
+  — 4.9 KB
+- [`mcnp/xsdir/dummy_xsdir`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/mcnp/xsdir/dummy_xsdir) — 431 B
+
+### `origen/`
+
+origen — Synthetic ORIGEN TAPE samples authored for Nucleide (no license needed)
+
+- [`origen/tape5_sample`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/origen/tape5_sample) — 263 B
+- [`origen/tape6_sample`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/origen/tape6_sample) — 172 B
+- [`origen/tape9_sample`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/origen/tape9_sample) — 246 B
+
+### `serpent/`
+
+serpent — Serpent 1 & 2 res/dep/det outputs
+
+- [`serpent/sample1_dep.m`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/serpent/sample1_dep.m) — 469.1 KB
+- [`serpent/sample2_dep.m`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/serpent/sample2_dep.m) — 22.3 KB
+- [`serpent/sample_det.m`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/serpent/sample_det.m) — 7.4 KB
+- [`serpent/sample_res.m`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/serpent/sample_res.m) — 90.2 KB
+- [`serpent/serp2_det.m`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/serpent/serp2_det.m) — 20.8 KB
+- [`serpent/serp2_res.m`](https://github.com/nukehub-dev/nucleide/blob/main/fixtures/serpent/serp2_res.m) — 28.0 KB
