@@ -1,0 +1,148 @@
+---
+title: Crate Overview
+sidebar:
+  order: 1
+---
+
+Nucleide is a Cargo workspace. Each crate owns one capability area and exposes a
+thin, focused API.
+
+{/* GEN:crate-table:START */}
+
+### linalg
+
+`crates/linalg` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/linalg)
+
+Isolation facade over the numeric backend (planned: faer) so the rest of the workspace never depends on it directly
+
+Depends on: - · Python: -
+
+### nuclei
+
+`crates/nuclei` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/nuclei)
+
+Nuclide identification, naming conventions, and reaction names
+
+Depends on: - · Python: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nucleide.nuclei</code></span>](./python-api.mdx#nucleidenuclei)
+
+### material
+
+`crates/material` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/material)
+
+Nuclear material compositions: mixing, conversions, materials XML export
+
+Depends on: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei) · Python: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nucleide.material</code></span>](./python-api.mdx#nucleidematerial)
+
+### mcnp-io
+
+`crates/mcnp-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/mcnp-io)
+
+MCNP-family file I/O: xsdir, meshtal, SSW, PTRAC readers/writers
+
+Depends on: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei) · Python: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nucleide.mcnp</code></span>](./python-api.mdx#nucleidemcnp)
+
+### serpent-io
+
+`crates/serpent-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/serpent-io)
+
+Parsers for Serpent Monte Carlo MATLAB-style output files (_res.m, _dep.m, _det.m)
+
+Depends on: - · Python: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nucleide.serpent</code></span>](./python-api.mdx#nucleideserpent)
+
+### fluka-io
+
+`crates/fluka-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/fluka-io)
+
+FLUKA Monte Carlo interface: USRBIN tally reading and MATERIAL/COMPOUND card generation
+
+Depends on: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei) · Python: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nucleide.fluka</code></span>](./python-api.mdx#nucleidefluka)
+
+### alara-io
+
+`crates/alara-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/alara-io)
+
+ALARA activation-code interop: input-deck, flux, schedule, and output glue (no solver)
+
+Depends on: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei) · Python: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nucleide.alara</code></span>](./python-api.mdx#nucleidealara)
+
+### cccc-io
+
+`crates/cccc-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/cccc-io)
+
+CCCC binary-standard readers (ISOTXS, RTFLUX/ATFLUX, RZFLUX) and PARTISN deck writer
+
+Depends on: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei) · Python: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nucleide.cccc</code></span>](./python-api.mdx#nucleidecccc)
+
+### fispact-io
+
+`crates/fispact-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/fispact-io)
+
+FISPACT-II output parser producing ALARA-compatible response frames (no solver)
+
+Depends on: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>alara-io</code></span>](../architecture/crate-responsibilities.md#alara-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei) · Python: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nucleide.fispact</code></span>](./python-api.mdx#nucleidefispact)
+
+### origen-io
+
+`crates/origen-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/origen-io)
+
+ORIGEN 2.2 TAPE readers (scoped: TAPE5 input echo, TAPE6 output, TAPE9 decay constants)
+
+Depends on: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei) · Python: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nucleide.origen</code></span>](./python-api.mdx#nucleideorigen)
+
+### enrichment
+
+`crates/enrichment` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/enrichment)
+
+Multicomponent enrichment cascades and SWU analytics
+
+Depends on: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei) · Python: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nucleide.enrichment</code></span>](./python-api.mdx#nucleideenrichment)
+
+### depletion
+
+`crates/depletion` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/depletion)
+
+CRAM matrix exponential (orders 16/48), depletion-chain XML parsing
+
+Depends on: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>linalg</code></span>](../architecture/crate-responsibilities.md#linalg) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei) · Python: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nucleide.depletion</code></span>](./python-api.mdx#nucleidedepletion)
+
+### vr-tools
+
+`crates/vr-tools` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/vr-tools)
+
+MAGIC weight-window generation, mesh source sampling with alias tables
+
+Depends on: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>mcnp-io</code></span>](../architecture/crate-responsibilities.md#mcnp-io) · Python: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nucleide.vr</code></span>](./python-api.mdx#nucleidevr)
+
+### r2s
+
+`crates/r2s` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/r2s)
+
+Rigorous two-step (R2S) shutdown-dose-rate orchestration over mcnp-io, alara-io, and vr-tools
+
+Depends on: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>alara-io</code></span>](../architecture/crate-responsibilities.md#alara-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>depletion</code></span>](../architecture/crate-responsibilities.md#depletion) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>material</code></span>](../architecture/crate-responsibilities.md#material) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>mcnp-io</code></span>](../architecture/crate-responsibilities.md#mcnp-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>vr-tools</code></span>](../architecture/crate-responsibilities.md#vr-tools) · Python: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nucleide.r2s</code></span>](./python-api.mdx#nucleider2s)
+
+### nucleide-bindings
+
+`bindings/python` · [source](https://github.com/nukehub-dev/nucleide/tree/main/bindings/python)
+
+PyO3 bindings exposing Nucleide to Python as nucleide._internal
+
+Depends on: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>material</code></span>](../architecture/crate-responsibilities.md#material) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>mcnp-io</code></span>](../architecture/crate-responsibilities.md#mcnp-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>depletion</code></span>](../architecture/crate-responsibilities.md#depletion) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>serpent-io</code></span>](../architecture/crate-responsibilities.md#serpent-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>fluka-io</code></span>](../architecture/crate-responsibilities.md#fluka-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>vr-tools</code></span>](../architecture/crate-responsibilities.md#vr-tools) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>enrichment</code></span>](../architecture/crate-responsibilities.md#enrichment) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>alara-io</code></span>](../architecture/crate-responsibilities.md#alara-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>cccc-io</code></span>](../architecture/crate-responsibilities.md#cccc-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>fispact-io</code></span>](../architecture/crate-responsibilities.md#fispact-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>origen-io</code></span>](../architecture/crate-responsibilities.md#origen-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>r2s</code></span>](../architecture/crate-responsibilities.md#r2s) · Python: -
+
+### nucleide-wasm
+
+`bindings/wasm` · [source](https://github.com/nukehub-dev/nucleide/tree/main/bindings/wasm)
+
+wasm-bindgen facade exposing Nucleide core capabilities to the browser
+
+Depends on: [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>material</code></span>](../architecture/crate-responsibilities.md#material) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>enrichment</code></span>](../architecture/crate-responsibilities.md#enrichment) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>depletion</code></span>](../architecture/crate-responsibilities.md#depletion) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>mcnp-io</code></span>](../architecture/crate-responsibilities.md#mcnp-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>alara-io</code></span>](../architecture/crate-responsibilities.md#alara-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>cccc-io</code></span>](../architecture/crate-responsibilities.md#cccc-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>fispact-io</code></span>](../architecture/crate-responsibilities.md#fispact-io) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>vr-tools</code></span>](../architecture/crate-responsibilities.md#vr-tools) [<span style="display:inline-block;border:1px solid currentColor;border-radius:9999px;padding:0 .6em;margin:.1em .15em;font-size:.85em;white-space:nowrap;text-decoration:none"><code>linalg</code></span>](../architecture/crate-responsibilities.md#linalg) · Python: -
+
+{/* GEN:crate-table:END */}
+
+## Dependency rules
+
+- `bindings/python` may depend on workspace crates.
+- Workspace crates must never depend on `bindings/python` or on Python.
+- `enrichment` stays independent of `material` by design.
+
+See [Crate responsibilities](../architecture/crate-responsibilities.md) for the dependency rationale and layering rules.

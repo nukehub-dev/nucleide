@@ -57,8 +57,8 @@ license.
 | Document | Purpose |
 | --- | --- |
 | [Reference](reference/index.md) | Reference index and quick links |
-| [Crate overview](reference/crate-overview.md) | One-line responsibilities for every workspace crate |
-| [Python API](reference/python-api.md) | Python facade overview and module map |
+| [Crate overview](reference/crate-overview.mdx) | One-line responsibilities for every workspace crate |
+| [Python API](reference/python-api.mdx) | Python facade overview and module map |
 
 ### Development
 

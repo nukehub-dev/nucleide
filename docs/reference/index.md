@@ -8,8 +8,8 @@ Quick-reference pages for the Nucleide workspace.
 
 | Document | Purpose |
 | --- | --- |
-| [Crate overview](crate-overview.md) | One-line responsibilities for every Rust crate |
-| [Python API](python-api.md) | Python facade overview and module map |
+| [Crate overview](crate-overview.mdx) | One-line responsibilities for every Rust crate |
+| [Python API](python-api.mdx) | Python facade overview and module map |
 
 For methodology and derivations of the algorithms implemented in these crates,
 see the [Theory](../theory/index.mdx) section.
