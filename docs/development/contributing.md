@@ -84,6 +84,27 @@ Documentation is a first-class deliverable. Update docs when your change affects
 Do not duplicate information that already lives in `README.md`, `AGENTS.md`,
 generated API docs, or fixture READMEs. Link instead.
 
+### Maintaining the docs
+
+1. **Keep docs in sync with code.** A PR that changes a public API, parser
+   output, or crate boundary must update the matching tutorial or reference page.
+2. **Prefer deletion over stale historical notes.** If a section no longer
+   reflects current behavior, delete it or move it to an explicit "Historical"
+   appendix with a removal date.
+3. **Do not duplicate details that live elsewhere.** Link to the
+   [project README](../../README.md), API stubs, and fixture READMEs instead of
+   copying them.
+4. **Use relative links.** Internal links must be relative so documentation
+   stays usable offline and in branches.
+5. **Use `.mdx` for component-heavy pages.** Pages that use `@nukehub/docs-kit`
+   shortcodes such as `<Mermaid>`, `<Callout>`, or `<DataTable>` must have an
+   `.mdx` extension. Plain `.md` is fine for prose-only pages.
+6. **Every page sets `title` and `sidebar.order` in frontmatter.** Without an
+   explicit order the site sidebar falls back to alphabetical sorting. Keep the
+   order values aligned with the reading order in the section index tables, and
+   do not repeat the title as an in-body `#` heading (the site renders the
+   frontmatter title as the page heading).
+
 ## Testing
 
 ### Rust tests

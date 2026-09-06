@@ -194,7 +194,8 @@ High-level layout; see the Child NAD Index below for domain-specific details.
 The `docs/` tree owns durable user and contributor documentation.
 
 - Audience-based layout: `tutorials/`, `reference/`, `development/`, `architecture/`, `plan/`.
-- Index and maintenance rules live in `docs/README.md`.
+- Index lives in `docs/README.md`; doc maintenance rules live in
+  `docs/development/contributing.md`.
 - Internal links must be relative and must not duplicate details already in
   `README.md`, `AGENTS.md`, generated API stubs, or fixture READMEs.
 - Docs changes trigger `.github/workflows/docs.yml` for markdown lint and link
