@@ -1,10 +1,19 @@
 """Python-side tests for the naming/data core (run after `maturin develop`)."""
 
+import re
+from pathlib import Path
+
 import nucleide
 
 
 def test_version() -> None:
-    assert nucleide.__version__ == "0.1.0"
+    # Pinned literals rot on every `scripts/bump-version.sh` run (the script
+    # does not touch tests/), so compare against the workspace source of
+    # truth instead: the wheel built from this source must report it.
+    cargo = (Path(__file__).resolve().parent.parent / "Cargo.toml").read_text(encoding="utf-8")
+    match = re.search(r'^\[workspace\.package\]\nversion = "([^"]+)"', cargo, re.M)
+    assert match is not None, "workspace version not found in Cargo.toml"
+    assert nucleide.__version__ == match.group(1)
 
 
 def test_nuclide_uranium235() -> None:

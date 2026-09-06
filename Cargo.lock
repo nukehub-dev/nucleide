@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "alara-io"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nuclei",
  "serde",
@@ -114,7 +114,7 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cccc-io"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nuclei",
  "serde",
@@ -260,7 +260,7 @@ checksum = "e6ca96b45ca70b8045e0462f191bd209fcb3c3bfe8dbfb1257ada54c4dd59169"
 
 [[package]]
 name = "depletion"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "linalg",
@@ -303,7 +303,7 @@ checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 
 [[package]]
 name = "enrichment"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "nuclei",
@@ -403,7 +403,7 @@ dependencies = [
 
 [[package]]
 name = "fispact-io"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "alara-io",
  "nuclei",
@@ -413,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "fluka-io"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nuclei",
 ]
@@ -643,7 +643,7 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "linalg"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "faer",
  "num-complex",
@@ -652,7 +652,7 @@ dependencies = [
 
 [[package]]
 name = "material"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nuclei",
  "quick-xml",
@@ -679,7 +679,7 @@ checksum = "b0bdabb30db18805d5290b3da7ceaccbddba795620b86c02145d688e04900a73"
 
 [[package]]
 name = "mcnp-io"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "binrw",
  "criterion",
@@ -765,14 +765,14 @@ dependencies = [
 
 [[package]]
 name = "nuclei"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
 ]
 
 [[package]]
 name = "nucleide-bindings"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "alara-io",
  "cccc-io",
@@ -792,7 +792,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-wasm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "alara-io",
  "cccc-io",
@@ -845,7 +845,7 @@ checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
 name = "origen-io"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nuclei",
  "serde",
@@ -1017,7 +1017,7 @@ dependencies = [
 
 [[package]]
 name = "r2s"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "alara-io",
  "depletion",
@@ -1176,7 +1176,7 @@ dependencies = [
 
 [[package]]
 name = "serpent-io"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "slab"
@@ -1301,7 +1301,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vr-tools"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "mcnp-io",

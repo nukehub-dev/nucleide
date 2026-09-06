@@ -45,13 +45,28 @@ else
     # Internal workspace crate dependencies also carry a version for crates.io.
     sed -i "s/\(path = \"crates\/[^\"]*\", version = \"\)[^\"]*\"/\1$_version\"/g" "$_cargo_toml"
     echo "  Cargo.toml -> $_version"
-    # Keep the committed lockfile in sync (workspace member versions).
-    if (cd "$DIR" && cargo metadata --no-deps --format-version 1 >/dev/null 2>&1); then
-        echo "  Cargo.lock -> $_version"
-    else
-        echo "warning: could not refresh Cargo.lock (offline?); run any cargo command to sync it" >&2
-    fi
 fi
+# Keep the committed lockfile in sync (workspace member versions). This runs
+# on every invocation — not just version changes — so re-running the script
+# heals a stale lock. NOTE: `cargo metadata --no-deps` does NOT rewrite
+# member versions (verified: it exits 0 while leaving stale versions
+# behind), so run the full resolve here, then assert every member's locked
+# version matches.
+if ! (cd "$DIR" && cargo metadata --format-version 1 >/dev/null 2>&1); then
+    die "cargo metadata failed; Cargo.lock left stale — run any resolving cargo command to sync it"
+fi
+_members="$(sed -n '/^members = \[/,/^\]/p' "$_cargo_toml" | sed -n 's/^ *"\([^"]*\)".*/\1/p')"
+_mismatch=0
+for _member in $_members; do
+    _pkg="$(sed -n 's/^name = "\([^"]*\)".*/\1/p' "$DIR/$_member/Cargo.toml" | head -n1)"
+    _locked="$(grep -A1 "^name = \"$_pkg\"$" "$DIR/Cargo.lock" | sed -n 's/^version = "\(.*\)"/\1/p')"
+    if [[ "$_locked" != "$_version" ]]; then
+        echo "error: Cargo.lock has $_pkg at '${_locked:-missing}', expected $_version" >&2
+        _mismatch=1
+    fi
+done
+[[ "$_mismatch" -eq 0 ]] || die "Cargo.lock verification failed"
+echo "  Cargo.lock -> $_version (verified for all workspace members)"
 
 # website/package.json: update version only if it differs.
 _website_pkg="$DIR/website/package.json"
