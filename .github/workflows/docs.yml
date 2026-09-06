@@ -10,11 +10,11 @@ on:
       - 'AGENTS.md'
       - '.github/workflows/docs.yml'
       - '.markdownlint-cli2.jsonc'
-      - 'scripts/gen-reference.py'
-      - 'python/nucleide/**'
-      - 'crates/*/Cargo.toml'
-      - 'bindings/*/Cargo.toml'
-      - 'fixtures/**/README.md'
+      - 'scripts/**'
+      - 'python/**'
+      - 'crates/**'
+      - 'bindings/**'
+      - 'fixtures/**'
   pull_request:
     branches: [main]
     paths:
@@ -24,11 +24,11 @@ on:
       - 'AGENTS.md'
       - '.github/workflows/docs.yml'
       - '.markdownlint-cli2.jsonc'
-      - 'scripts/gen-reference.py'
-      - 'python/nucleide/**'
-      - 'crates/*/Cargo.toml'
-      - 'bindings/*/Cargo.toml'
-      - 'fixtures/**/README.md'
+      - 'scripts/**'
+      - 'python/**'
+      - 'crates/**'
+      - 'bindings/**'
+      - 'fixtures/**'
   workflow_dispatch:
 
 permissions:
