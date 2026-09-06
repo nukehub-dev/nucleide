@@ -231,23 +231,33 @@ export function VrDemo() {
 }
 
 function MagicBoundsChart({ magic }: { magic: MagicSummary }) {
+  const n = magic.eUpperBounds.length;
   const groups = magic.eUpperBounds.map((_, i) => i);
+  // A log axis over a single point (the default demo tally has one energy
+  // group) collapses its ticks into an unreadable stack, and a one-point
+  // "line" renders nothing. Pad explicitly and mark lone points instead.
+  const positives = magic.eUpperBounds.filter((v) => Number.isFinite(v) && v > 0);
+  const logAxis = positives.length ? { type: "log" as const, dtick: 1 } : {};
   return (
     <Plotly
       aspect="video"
       data={[
         {
           type: "scatter",
-          mode: "lines",
+          mode: n === 1 ? "markers" : "lines",
           name: "Energy upper bounds",
           x: groups,
           y: magic.eUpperBounds,
           line: { shape: "hv" },
+          marker: { size: 8 },
         },
       ]}
       layout={{
-        xaxis: { title: { text: "Energy group" } },
-        yaxis: { title: { text: "Upper bound (MeV)" }, type: "log" },
+        xaxis: {
+          title: { text: "Energy group" },
+          range: [-0.5, Math.max(n - 0.5, 0.5)],
+        },
+        yaxis: { title: { text: "Upper bound (MeV)" }, ...logAxis },
         margin: { t: 16, r: 16, b: 48, l: 64 },
       }}
     />

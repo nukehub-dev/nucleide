@@ -175,7 +175,7 @@ function StageProfileChart({
           text: `Stage profile (SWU/feed = ${result.swuPerFeed.toFixed(3)})`,
         },
         xaxis: { title: { text: "Stage" } },
-        yaxis: { title: { text: "U-235 assay" }, type: "log" },
+        yaxis: { title: { text: "U-235 assay" }, type: "log", dtick: 1 },
         margin: { t: 40, r: 16, b: 48, l: 64 },
         shapes: [
           {

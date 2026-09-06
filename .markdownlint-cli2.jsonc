@@ -12,6 +12,11 @@
     },
     "no-inline-html": false,
     "no-bare-urls": false,
+    // Keep-a-Changelog repeats Added/Changed/Fixed under every release
+    // section; only flag duplicates that are true siblings.
+    "no-duplicate-heading": {
+      "siblings_only": true
+    },
     "front_matter": "^---$"
   },
   "gitignore": true

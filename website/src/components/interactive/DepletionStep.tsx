@@ -265,6 +265,16 @@ function BurnupPlot({ burnup }: { burnup: BurnupCurve }) {
     x: burnup.times,
     y: values,
   }));
+  // Atom counts can span ten decades (hot I135/Xe135 vs trace products), so a
+  // fixed decade tick still stacks labels. Step ticks to ~6 across the span.
+  const positives = Object.values(burnup.series)
+    .flat()
+    .filter((v) => Number.isFinite(v) && v > 0);
+  const span =
+    positives.length > 0
+      ? Math.log10(Math.max(...positives)) - Math.log10(Math.min(...positives))
+      : 0;
+  const dtick = span > 0 ? Math.max(1, Math.ceil(span / 6)) : 1;
 
   return (
     <Plotly
@@ -272,7 +282,7 @@ function BurnupPlot({ burnup }: { burnup: BurnupCurve }) {
       data={traces}
       layout={{
         xaxis: { title: { text: "Time (s)" }, type: "linear" },
-        yaxis: { title: { text: "Atom count" }, type: "log" },
+        yaxis: { title: { text: "Atom count" }, type: "log", dtick, tickformat: ".0e" },
         margin: { t: 16, r: 16, b: 48, l: 64 },
         legend: { orientation: "h", y: -0.25 },
       }}
