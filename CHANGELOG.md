@@ -13,6 +13,8 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-06
+
 ### Added
 
 - `cccc-io` crate: CCCC text-subset parsers (ISOTXS multigroup libraries,
