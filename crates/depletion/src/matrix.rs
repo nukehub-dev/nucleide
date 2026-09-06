@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use linalg::Pattern;
+use nucleide_linalg::Pattern;
 
 use crate::chain::{Chain, Error};
 
@@ -24,7 +24,7 @@ pub struct DepletionSystem {
     /// Entries parallel to the pattern's entry order.
     pub entries: Vec<Entry>,
     /// Unscaled A values in entry order [1/s].
-    pub base_values: Vec<linalg::C64>,
+    pub base_values: Vec<nucleide_linalg::C64>,
     /// Entry index of each diagonal element (for fast theta shifts).
     diag_entry: Vec<usize>,
 }
@@ -192,13 +192,21 @@ impl DepletionSystem {
             chain,
             pattern,
             entries,
-            base_values: base_values.into_iter().map(linalg::C64::from).collect(),
+            base_values: base_values
+                .into_iter()
+                .map(nucleide_linalg::C64::from)
+                .collect(),
             diag_entry,
         })
     }
 
     /// Values of `A*dt - theta*I` in entry order, written into `out`.
-    pub fn shifted_values_into(&self, dt: f64, theta: linalg::C64, out: &mut [linalg::C64]) {
+    pub fn shifted_values_into(
+        &self,
+        dt: f64,
+        theta: nucleide_linalg::C64,
+        out: &mut [nucleide_linalg::C64],
+    ) {
         assert_eq!(out.len(), self.entries.len());
         for (k, (e, v)) in self.entries.iter().zip(&self.base_values).enumerate() {
             let scaled = *v * dt;
@@ -211,15 +219,19 @@ impl DepletionSystem {
     }
 
     /// Values of `A*dt - theta*I` in entry order.
-    pub fn shifted_values(&self, dt: f64, theta: linalg::C64) -> Vec<linalg::C64> {
-        let mut out = vec![linalg::C64_ZERO; self.entries.len()];
+    pub fn shifted_values(
+        &self,
+        dt: f64,
+        theta: nucleide_linalg::C64,
+    ) -> Vec<nucleide_linalg::C64> {
+        let mut out = vec![nucleide_linalg::C64_ZERO; self.entries.len()];
         self.shifted_values_into(dt, theta, &mut out);
         out
     }
 
     /// Matrix for a given timestep (no shift) — useful for inspection/tests.
-    pub fn matrix_for_dt(&self, dt: f64) -> Result<linalg::ComplexCsc, Error> {
-        linalg::ComplexCsc::from_entries(
+    pub fn matrix_for_dt(&self, dt: f64) -> Result<nucleide_linalg::ComplexCsc, Error> {
+        nucleide_linalg::ComplexCsc::from_entries(
             &self.pattern,
             &self
                 .entries

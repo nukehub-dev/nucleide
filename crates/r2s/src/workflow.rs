@@ -14,7 +14,7 @@
 //!   which [`R2sWorkflow::validate_against`] rejects.
 //! - **Top schedule**: the single schedule never referenced as a sub-schedule
 //!   (4-token item) by another schedule — mirroring
-//!   [`alara_io::schedule::expand`]'s top discovery — or the lone schedule
+//!   [`nucleide_alara_io::schedule::expand`]'s top discovery — or the lone schedule
 //!   when the deck defines exactly one. Zero or several unreferenced
 //!   schedules are a [`Error::CrossRef`].
 //!
@@ -49,7 +49,7 @@ pub struct R2sWorkflow {
 
 impl R2sWorkflow {
     /// Derive a workflow from an ALARA deck (see module docs for the rules).
-    pub fn from_deck(deck: &alara_io::deck::AlaraDeck) -> Result<Self> {
+    pub fn from_deck(deck: &nucleide_alara_io::deck::AlaraDeck) -> Result<Self> {
         let loading = deck
             .mat_loading
             .as_ref()
@@ -110,7 +110,7 @@ impl R2sWorkflow {
     /// in `mat_loading`, every step flux must be a defined `flux` block, and
     /// both the workflow (`cooling_s`) and the deck (`cooling` block) must
     /// carry a non-empty cooling history.
-    pub fn validate_against(&self, deck: &alara_io::deck::AlaraDeck) -> Result<()> {
+    pub fn validate_against(&self, deck: &nucleide_alara_io::deck::AlaraDeck) -> Result<()> {
         self.validate()?;
         let loading = deck
             .mat_loading
@@ -152,16 +152,16 @@ impl R2sWorkflow {
     /// Expand the deck irradiation hierarchy into flat steps.
     ///
     /// Deck `schedule`/`pulsehistory` blocks are converted to the
-    /// [`alara_io::schedule`] model and combined with `histories` (deck
+    /// [`nucleide_alara_io::schedule`] model and combined with `histories` (deck
     /// histories win on name clashes). When [`Self::top_schedule`] is set the
     /// hierarchy rooted there is expanded via
-    /// [`alara_io::schedule::expand_from`]; otherwise the single unreferenced
-    /// top is discovered via [`alara_io::schedule::expand`].
+    /// [`nucleide_alara_io::schedule::expand_from`]; otherwise the single unreferenced
+    /// top is discovered via [`nucleide_alara_io::schedule::expand`].
     pub fn expand(
         &self,
-        deck: &alara_io::deck::AlaraDeck,
-        histories: &[alara_io::schedule::PulseHistory],
-    ) -> Result<Vec<alara_io::schedule::FlatStep>> {
+        deck: &nucleide_alara_io::deck::AlaraDeck,
+        histories: &[nucleide_alara_io::schedule::PulseHistory],
+    ) -> Result<Vec<nucleide_alara_io::schedule::FlatStep>> {
         let mut schedules = Vec::with_capacity(deck.schedules.len());
         for def in &deck.schedules {
             schedules.push(convert_schedule(def)?);
@@ -172,7 +172,7 @@ impl R2sWorkflow {
         }
         let mut known: HashSet<String> = combined
             .iter()
-            .map(|history: &alara_io::schedule::PulseHistory| history.name.clone())
+            .map(|history: &nucleide_alara_io::schedule::PulseHistory| history.name.clone())
             .collect();
         for history in histories {
             if known.insert(history.name.clone()) {
@@ -180,9 +180,9 @@ impl R2sWorkflow {
             }
         }
         if self.top_schedule.is_empty() {
-            alara_io::schedule::expand(&schedules, &combined).map_err(map_alara)
+            nucleide_alara_io::schedule::expand(&schedules, &combined).map_err(map_alara)
         } else {
-            alara_io::schedule::expand_from(&self.top_schedule, &schedules, &combined)
+            nucleide_alara_io::schedule::expand_from(&self.top_schedule, &schedules, &combined)
                 .map_err(map_alara)
         }
     }
@@ -199,8 +199,8 @@ impl R2sWorkflow {
     /// tailoring stays with the caller.
     pub fn emit_decks(
         &self,
-        template: &alara_io::deck::AlaraDeck,
-    ) -> Result<Vec<alara_io::deck::AlaraDeck>> {
+        template: &nucleide_alara_io::deck::AlaraDeck,
+    ) -> Result<Vec<nucleide_alara_io::deck::AlaraDeck>> {
         self.validate()?;
         let mut decks = Vec::with_capacity(self.steps.len());
         for step in &self.steps {
@@ -210,7 +210,7 @@ impl R2sWorkflow {
                 .as_ref()
                 .map(|zones| zones.line)
                 .unwrap_or(0);
-            deck.solve_zones = Some(alara_io::deck::SolveZones {
+            deck.solve_zones = Some(nucleide_alara_io::deck::SolveZones {
                 zones: vec![step.zone.clone()],
                 line,
             });
@@ -224,7 +224,7 @@ impl R2sWorkflow {
                 found = true;
             }
             if !found {
-                deck.blocks.push(alara_io::deck::RawBlock {
+                deck.blocks.push(nucleide_alara_io::deck::RawBlock {
                     kind: "solve_zones".to_string(),
                     line,
                     body: vec![step.zone.clone()],
@@ -237,7 +237,7 @@ impl R2sWorkflow {
 }
 
 /// Pick the flux block for `zone`: broadcast a lone flux, else match by name.
-fn resolve_flux(fluxes: &[alara_io::deck::FluxDef], zone: &str) -> Result<String> {
+fn resolve_flux(fluxes: &[nucleide_alara_io::deck::FluxDef], zone: &str) -> Result<String> {
     if fluxes.len() == 1 {
         return Ok(fluxes[0].name.clone());
     }
@@ -253,10 +253,10 @@ fn resolve_flux(fluxes: &[alara_io::deck::FluxDef], zone: &str) -> Result<String
         })
 }
 
-/// Top-schedule discovery mirroring [`alara_io::schedule::expand`]: the lone
+/// Top-schedule discovery mirroring [`nucleide_alara_io::schedule::expand`]: the lone
 /// schedule wins outright, otherwise the single schedule never referenced as
 /// a 4-token sub-schedule item must be unique.
-fn top_schedule_name(deck: &alara_io::deck::AlaraDeck) -> Result<String> {
+fn top_schedule_name(deck: &nucleide_alara_io::deck::AlaraDeck) -> Result<String> {
     if deck.schedules.is_empty() {
         return Err(Error::Invalid("deck defines no schedules".to_string()));
     }
@@ -289,13 +289,15 @@ fn top_schedule_name(deck: &alara_io::deck::AlaraDeck) -> Result<String> {
 }
 
 /// Convert a raw deck schedule (verbatim token items) to the expandable model.
-fn convert_schedule(def: &alara_io::deck::ScheduleDef) -> Result<alara_io::schedule::ScheduleDef> {
+fn convert_schedule(
+    def: &nucleide_alara_io::deck::ScheduleDef,
+) -> Result<nucleide_alara_io::schedule::ScheduleDef> {
     let mut items = Vec::with_capacity(def.items.len());
     for item in &def.items {
         let tokens = &item.tokens;
         match tokens.as_slice() {
             [op_text, op_unit, flux, history, delay_text, delay_unit] => {
-                items.push(alara_io::schedule::SchedItem::Pulse {
+                items.push(nucleide_alara_io::schedule::SchedItem::Pulse {
                     op_time_s: parse_time(op_text, op_unit, item.line)?,
                     flux: flux.clone(),
                     history: history.clone(),
@@ -303,7 +305,7 @@ fn convert_schedule(def: &alara_io::deck::ScheduleDef) -> Result<alara_io::sched
                 });
             }
             [name, history, delay_text, delay_unit] => {
-                items.push(alara_io::schedule::SchedItem::SubSchedule {
+                items.push(nucleide_alara_io::schedule::SchedItem::SubSchedule {
                     name: name.clone(),
                     history: history.clone(),
                     delay_s: parse_time(delay_text, delay_unit, item.line)?,
@@ -317,20 +319,22 @@ fn convert_schedule(def: &alara_io::deck::ScheduleDef) -> Result<alara_io::sched
             }
         }
     }
-    Ok(alara_io::schedule::ScheduleDef {
+    Ok(nucleide_alara_io::schedule::ScheduleDef {
         name: def.name.clone(),
         items,
     })
 }
 
 /// Convert a deck pulsing history to the expandable model.
-fn convert_history(history: &alara_io::deck::PulseHistory) -> alara_io::schedule::PulseHistory {
-    alara_io::schedule::PulseHistory {
+fn convert_history(
+    history: &nucleide_alara_io::deck::PulseHistory,
+) -> nucleide_alara_io::schedule::PulseHistory {
+    nucleide_alara_io::schedule::PulseHistory {
         name: history.name.clone(),
         levels: history
             .levels
             .iter()
-            .map(|level| alara_io::schedule::PulseLevel {
+            .map(|level| nucleide_alara_io::schedule::PulseLevel {
                 count: level.pulses,
                 delay_s: level.delay_s,
             })
@@ -345,14 +349,14 @@ fn parse_time(value_text: &str, unit: &str, line: usize) -> Result<f64> {
             "expected operating time at line {line}, found `{value_text}`"
         ))
     })?;
-    alara_io::schedule::parse_time_to_seconds(value, unit).map_err(map_alara)
+    nucleide_alara_io::schedule::parse_time_to_seconds(value, unit).map_err(map_alara)
 }
 
 /// Map ALARA errors onto the R2S error type.
-fn map_alara(error: alara_io::Error) -> Error {
+fn map_alara(error: nucleide_alara_io::Error) -> Error {
     match error {
-        alara_io::Error::Io(inner) => Error::Io(inner),
-        alara_io::Error::CrossRef(message) => Error::CrossRef(message),
+        nucleide_alara_io::Error::Io(inner) => Error::Io(inner),
+        nucleide_alara_io::Error::CrossRef(message) => Error::CrossRef(message),
         other => Error::Invalid(other.to_string()),
     }
 }
@@ -382,8 +386,8 @@ mod tests {
          1 d\n\
          end\n";
 
-    fn minimal_deck() -> alara_io::deck::AlaraDeck {
-        let deck = alara_io::deck::AlaraDeck::parse(MINIMAL_DECK).unwrap();
+    fn minimal_deck() -> nucleide_alara_io::deck::AlaraDeck {
+        let deck = nucleide_alara_io::deck::AlaraDeck::parse(MINIMAL_DECK).unwrap();
         deck.validate().unwrap();
         deck
     }
@@ -410,7 +414,7 @@ mod tests {
 
     #[test]
     fn from_deck_skips_void_zones_only() {
-        let deck = alara_io::deck::AlaraDeck::parse(
+        let deck = nucleide_alara_io::deck::AlaraDeck::parse(
             "geometry rectangular\n\
              mat_loading\n\
              z1 void\n\
@@ -426,7 +430,7 @@ mod tests {
 
     #[test]
     fn from_deck_matches_multiple_fluxes_by_zone_name() {
-        let deck = alara_io::deck::AlaraDeck::parse(
+        let deck = nucleide_alara_io::deck::AlaraDeck::parse(
             "geometry rectangular\n\
              mat_loading\n\
              zone_a mix_a\n\
@@ -456,7 +460,7 @@ mod tests {
 
     #[test]
     fn from_deck_rejects_unmatched_flux() {
-        let deck = alara_io::deck::AlaraDeck::parse(
+        let deck = nucleide_alara_io::deck::AlaraDeck::parse(
             "geometry rectangular\n\
              mat_loading\n\
              zone_a mix_a\n\
@@ -486,7 +490,7 @@ mod tests {
     #[test]
     fn top_schedule_prefers_unreferenced_over_lone_fallback() {
         // Two schedules where `inner` is referenced: `top` wins.
-        let deck = alara_io::deck::AlaraDeck::parse(
+        let deck = nucleide_alara_io::deck::AlaraDeck::parse(
             "geometry rectangular\n\
              mat_loading\n\
              zone_a mix_a\n\
@@ -512,7 +516,7 @@ mod tests {
         assert_eq!(R2sWorkflow::from_deck(&deck).unwrap().top_schedule, "top");
 
         // Two unreferenced schedules: ambiguous.
-        let deck = alara_io::deck::AlaraDeck::parse(
+        let deck = nucleide_alara_io::deck::AlaraDeck::parse(
             "geometry rectangular\n\
              mat_loading\n\
              zone_a mix_a\n\
@@ -593,7 +597,7 @@ mod tests {
         ));
 
         // Deck without a cooling block.
-        let bare = alara_io::deck::AlaraDeck::parse(
+        let bare = nucleide_alara_io::deck::AlaraDeck::parse(
             "geometry rectangular\n\
              mat_loading\n\
              zone_a mix_a\n\
@@ -632,22 +636,22 @@ mod tests {
         assert_eq!(steps.len(), 1);
         assert_eq!(steps[0].duration_s, 86_400.0);
         assert_eq!(steps[0].flux, "flux_a");
-        assert_eq!(alara_io::schedule::total_time(&steps), 86_400.0);
+        assert_eq!(nucleide_alara_io::schedule::total_time(&steps), 86_400.0);
     }
 
     #[test]
     fn expand_accepts_extra_histories() {
         let deck = minimal_deck();
         let workflow = R2sWorkflow::from_deck(&deck).unwrap();
-        let extra = alara_io::schedule::PulseHistory {
+        let extra = nucleide_alara_io::schedule::PulseHistory {
             name: "extra".to_string(),
-            levels: vec![alara_io::schedule::PulseLevel {
+            levels: vec![nucleide_alara_io::schedule::PulseLevel {
                 count: 1,
                 delay_s: 0.0,
             }],
         };
         let steps = workflow.expand(&deck, &[extra]).unwrap();
-        assert_eq!(alara_io::schedule::total_time(&steps), 86_400.0);
+        assert_eq!(nucleide_alara_io::schedule::total_time(&steps), 86_400.0);
     }
 
     #[test]
@@ -673,7 +677,7 @@ mod tests {
         assert!(deck.solve_zones.is_none());
         // Round-trips through the canonical writer.
         let text = emitted[0].to_string();
-        let reparsed = alara_io::deck::AlaraDeck::parse(&text).unwrap();
+        let reparsed = nucleide_alara_io::deck::AlaraDeck::parse(&text).unwrap();
         assert_eq!(
             reparsed.solve_zones.as_ref().unwrap().zones,
             ["zone_a".to_string()]
@@ -682,7 +686,7 @@ mod tests {
 
     #[test]
     fn emit_decks_replaces_existing_solve_zones() {
-        let deck = alara_io::deck::AlaraDeck::parse(&format!(
+        let deck = nucleide_alara_io::deck::AlaraDeck::parse(&format!(
             "{MINIMAL_DECK}solve_zones\nzone_a\nzone_void\nend\n"
         ))
         .unwrap();

@@ -7,7 +7,7 @@
 //! ALARA; time stepping here only carries durations in plain `f64` seconds,
 //! compatible with the `depletion` crate's step sizes.
 //!
-//! Nuclide identity reuses [`nuclei::NuclideId`]; every fallible entry point
+//! Nuclide identity reuses [`nucleide_nuclei::NuclideId`]; every fallible entry point
 //! returns [`Error`] (never panics) with file/line context where known.
 //!
 //! ## Out of scope (explicitly)
@@ -19,7 +19,7 @@
 //! - ALARA Perl post-processing scripts
 //!
 //! ```
-//! use alara_io::parse_time_to_seconds;
+//! use nucleide_alara_io::parse_time_to_seconds;
 //!
 //! assert_eq!(parse_time_to_seconds(2.0, "h").unwrap(), 7200.0);
 //! ```

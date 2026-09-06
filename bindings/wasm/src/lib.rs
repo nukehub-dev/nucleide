@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-use nuclei::NuclideId;
+use nucleide_nuclei::NuclideId;
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -89,15 +89,15 @@ impl WasmNuclide {
             a: self.inner.a(),
             state: self.inner.state(),
             zzaaam: self.inner.zzaaam(),
-            zaid: nuclei::dialects::to_zaid(self.inner),
-            zzllaaam: nuclei::dialects::zzllaaam(self.inner),
-            serpent: nuclei::dialects::serpent(self.inner),
-            nist: nuclei::dialects::nist(self.inner),
-            cinder: nuclei::dialects::to_cinder(self.inner),
-            alara: nuclei::dialects::alara(self.inner),
-            sza: nuclei::dialects::to_sza(self.inner),
-            mass: nuclei::data::atomic_mass(self.inner.nucid()),
-            abundance: nuclei::data::natural_abundance(self.inner.nucid()),
+            zaid: nucleide_nuclei::dialects::to_zaid(self.inner),
+            zzllaaam: nucleide_nuclei::dialects::zzllaaam(self.inner),
+            serpent: nucleide_nuclei::dialects::serpent(self.inner),
+            nist: nucleide_nuclei::dialects::nist(self.inner),
+            cinder: nucleide_nuclei::dialects::to_cinder(self.inner),
+            alara: nucleide_nuclei::dialects::alara(self.inner),
+            sza: nucleide_nuclei::dialects::to_sza(self.inner),
+            mass: nucleide_nuclei::data::atomic_mass(self.inner.nucid()),
+            abundance: nucleide_nuclei::data::natural_abundance(self.inner.nucid()),
         })
     }
 
@@ -133,52 +133,52 @@ impl WasmNuclide {
 
     #[wasm_bindgen(getter)]
     pub fn zaid(&self) -> u32 {
-        nuclei::dialects::to_zaid(self.inner)
+        nucleide_nuclei::dialects::to_zaid(self.inner)
     }
 
     #[wasm_bindgen(getter)]
     pub fn zzllaaam(&self) -> String {
-        nuclei::dialects::zzllaaam(self.inner)
+        nucleide_nuclei::dialects::zzllaaam(self.inner)
     }
 
     #[wasm_bindgen(getter)]
     pub fn serpent(&self) -> String {
-        nuclei::dialects::serpent(self.inner)
+        nucleide_nuclei::dialects::serpent(self.inner)
     }
 
     #[wasm_bindgen(getter)]
     pub fn nist(&self) -> String {
-        nuclei::dialects::nist(self.inner)
+        nucleide_nuclei::dialects::nist(self.inner)
     }
 
     #[wasm_bindgen(getter)]
     pub fn cinder(&self) -> u32 {
-        nuclei::dialects::to_cinder(self.inner)
+        nucleide_nuclei::dialects::to_cinder(self.inner)
     }
 
     #[wasm_bindgen(getter)]
     pub fn alara(&self) -> String {
-        nuclei::dialects::alara(self.inner)
+        nucleide_nuclei::dialects::alara(self.inner)
     }
 
     #[wasm_bindgen(getter)]
     pub fn sza(&self) -> u32 {
-        nuclei::dialects::to_sza(self.inner)
+        nucleide_nuclei::dialects::to_sza(self.inner)
     }
 
     #[wasm_bindgen(getter)]
     pub fn mass(&self) -> Option<f64> {
-        nuclei::data::atomic_mass(self.inner.nucid())
+        nucleide_nuclei::data::atomic_mass(self.inner.nucid())
     }
 
     #[wasm_bindgen(getter)]
     pub fn abundance(&self) -> Option<f64> {
-        nuclei::data::natural_abundance(self.inner.nucid())
+        nucleide_nuclei::data::natural_abundance(self.inner.nucid())
     }
 
     #[wasm_bindgen]
     pub fn fluka(&self) -> Result<String, JsValue> {
-        nuclei::dialects::id_to_fluka(self.inner)
+        nucleide_nuclei::dialects::id_to_fluka(self.inner)
             .map(String::from)
             .map_err(js_err)
     }
@@ -195,37 +195,37 @@ fn resolve_nucid(key: &str) -> Result<NuclideId, JsValue> {
 #[wasm_bindgen]
 pub fn atomic_mass(key: &str) -> Result<Option<f64>, JsValue> {
     let id = resolve_nucid(key)?;
-    Ok(nuclei::data::atomic_mass(id.nucid()))
+    Ok(nucleide_nuclei::data::atomic_mass(id.nucid()))
 }
 
 #[wasm_bindgen]
 pub fn natural_abundance(key: &str) -> Result<Option<f64>, JsValue> {
     let id = resolve_nucid(key)?;
-    Ok(nuclei::data::natural_abundance(id.nucid()))
+    Ok(nucleide_nuclei::data::natural_abundance(id.nucid()))
 }
 
 #[wasm_bindgen]
 pub fn half_life(key: &str) -> Result<Option<f64>, JsValue> {
     let id = resolve_nucid(key)?;
-    Ok(nuclei::data::half_life(id.nucid()))
+    Ok(nucleide_nuclei::data::half_life(id.nucid()))
 }
 
 #[wasm_bindgen]
 pub fn decay_constant(key: &str) -> Result<Option<f64>, JsValue> {
     let id = resolve_nucid(key)?;
-    Ok(nuclei::data::half_life(id.nucid()).map(|t| std::f64::consts::LN_2 / t))
+    Ok(nucleide_nuclei::data::half_life(id.nucid()).map(|t| std::f64::consts::LN_2 / t))
 }
 
 #[wasm_bindgen]
 pub fn q_value_capture(key: &str) -> Result<Option<f64>, JsValue> {
     let id = resolve_nucid(key)?;
-    Ok(nuclei::data::q_value_neutron_capture(id.nucid()))
+    Ok(nucleide_nuclei::data::q_value_neutron_capture(id.nucid()))
 }
 
 #[wasm_bindgen]
 pub fn q_value_alpha(key: &str) -> Result<Option<f64>, JsValue> {
     let id = resolve_nucid(key)?;
-    Ok(nuclei::data::q_value_alpha(id.nucid()))
+    Ok(nucleide_nuclei::data::q_value_alpha(id.nucid()))
 }
 
 // ---------------------------------------------------------------------------
@@ -235,7 +235,7 @@ pub fn q_value_alpha(key: &str) -> Result<Option<f64>, JsValue> {
 /// A nuclear material built from a chemical formula.
 #[wasm_bindgen]
 pub struct WasmMaterial {
-    inner: material::Material,
+    inner: nucleide_material::Material,
 }
 
 #[derive(Deserialize)]
@@ -250,10 +250,10 @@ impl WasmMaterial {
     /// abundances and AME2020 atomic masses.
     #[wasm_bindgen(constructor)]
     pub fn from_formula(formula: &str) -> Result<WasmMaterial, JsValue> {
-        let mat = material::Material::from_formula(
+        let mat = nucleide_material::Material::from_formula(
             formula,
-            &material::Ame2020,
-            &material::NaturalAbundances,
+            &nucleide_material::Ame2020,
+            &nucleide_material::NaturalAbundances,
             None,
         )
         .map_err(js_err)?;
@@ -269,7 +269,8 @@ impl WasmMaterial {
             .map(|(k, v)| Ok((k.parse::<NuclideId>().map_err(js_err)?, v)))
             .collect::<Result<Vec<_>, JsValue>>()?;
         let mat =
-            material::Material::from_atom_frac(&atoms, &material::Ame2020, None).map_err(js_err)?;
+            nucleide_material::Material::from_atom_frac(&atoms, &nucleide_material::Ame2020, None)
+                .map_err(js_err)?;
         Ok(WasmMaterial { inner: mat })
     }
 
@@ -282,12 +283,12 @@ impl WasmMaterial {
             .iter()
             .map(|p| WasmMaterial::from_formula(&p.formula))
             .collect::<Result<Vec<_>, _>>()?;
-        let refs: Vec<(&material::Material, f64)> = materials
+        let refs: Vec<(&nucleide_material::Material, f64)> = materials
             .iter()
             .zip(parts.iter().map(|p| p.fraction))
             .map(|(m, f)| (&m.inner, f))
             .collect();
-        let mixed = material::Material::mix_by_mass(&refs).map_err(js_err)?;
+        let mixed = nucleide_material::Material::mix_by_mass(&refs).map_err(js_err)?;
         Ok(WasmMaterial { inner: mixed })
     }
 
@@ -315,7 +316,7 @@ impl WasmMaterial {
     pub fn atom_fractions(&self) -> Result<JsValue, JsValue> {
         let frac = self
             .inner
-            .atom_fractions(&material::Ame2020)
+            .atom_fractions(&nucleide_material::Ame2020)
             .map_err(js_err)?;
         let map: BTreeMap<String, f64> =
             frac.into_iter().map(|(id, v)| (id.to_name(), v)).collect();
@@ -336,7 +337,7 @@ impl WasmMaterial {
 /// The DOE/PNNL Materials Compendium parsed from its JSON distribution.
 #[wasm_bindgen]
 pub struct WasmMaterialsCompendium {
-    inner: material::MaterialsLibrary,
+    inner: nucleide_material::MaterialsLibrary,
 }
 
 #[derive(Serialize)]
@@ -356,7 +357,7 @@ impl WasmMaterialsCompendium {
     /// Parse the compendium from its JSON text.
     #[wasm_bindgen(js_name = fromJson)]
     pub fn from_json(text: &str) -> Result<WasmMaterialsCompendium, JsValue> {
-        let inner = material::MaterialsLibrary::from_json(text).map_err(js_err)?;
+        let inner = nucleide_material::MaterialsLibrary::from_json(text).map_err(js_err)?;
         Ok(WasmMaterialsCompendium { inner })
     }
 
@@ -385,7 +386,7 @@ impl WasmMaterialsCompendium {
             .weight_fractions()
             .into_iter()
             .map(|(zaid, frac)| {
-                let key = nuclei::dialects::from_zaid(zaid)
+                let key = nucleide_nuclei::dialects::from_zaid(zaid)
                     .map(|id| id.to_name())
                     .unwrap_or_else(|_| zaid.to_string());
                 (key, frac)
@@ -411,7 +412,7 @@ impl WasmMaterialsCompendium {
 
 #[wasm_bindgen]
 pub struct WasmCascade {
-    inner: enrichment::Cascade,
+    inner: nucleide_enrichment::Cascade,
 }
 
 #[derive(Deserialize)]
@@ -483,12 +484,12 @@ impl WasmCascade {
             stages_stripping: self.inner.M,
             swu_per_feed: self.inner.swu_per_feed,
             swu_per_product: self.inner.swu_per_prod,
-            product_per_feed: enrichment::prod_per_feed(
+            product_per_feed: nucleide_enrichment::prod_per_feed(
                 self.inner.x_feed_j,
                 self.inner.x_prod_j,
                 self.inner.x_tail_j,
             ),
-            tails_per_feed: enrichment::tail_per_feed(
+            tails_per_feed: nucleide_enrichment::tail_per_feed(
                 self.inner.x_feed_j,
                 self.inner.x_prod_j,
                 self.inner.x_tail_j,
@@ -500,7 +501,7 @@ impl WasmCascade {
     }
 }
 
-fn stream_to_map(stream: &enrichment::Stream) -> BTreeMap<String, f64> {
+fn stream_to_map(stream: &nucleide_enrichment::Stream) -> BTreeMap<String, f64> {
     stream
         .comp
         .iter()
@@ -514,7 +515,7 @@ impl WasmCascade {
     #[wasm_bindgen(js_name = defaultUranium)]
     pub fn default_uranium() -> WasmCascade {
         WasmCascade {
-            inner: enrichment::default_uranium_cascade(),
+            inner: nucleide_enrichment::default_uranium_cascade(),
         }
     }
 
@@ -526,16 +527,16 @@ impl WasmCascade {
         let k = cfg.stripping_key.parse::<NuclideId>().map_err(js_err)?;
 
         let mat_feed = if let Some(feed) = cfg.feed {
-            enrichment::Stream::from_comp(
+            nucleide_enrichment::Stream::from_comp(
                 feed.into_iter()
                     .map(|(k, v)| Ok((k.parse::<NuclideId>().map_err(js_err)?, v)))
                     .collect::<Result<BTreeMap<_, _>, JsValue>>()?,
             )
         } else {
-            enrichment::default_uranium_cascade().mat_feed
+            nucleide_enrichment::default_uranium_cascade().mat_feed
         };
 
-        let mut cascade = enrichment::Cascade {
+        let mut cascade = nucleide_enrichment::Cascade {
             alpha: cfg.alpha,
             Mstar: cfg.mstar,
             j,
@@ -554,10 +555,10 @@ impl WasmCascade {
 
     /// Solve the cascade in place.
     pub fn solve(&mut self) -> Result<(), JsValue> {
-        self.inner = enrichment::solve_numeric(
+        self.inner = nucleide_enrichment::solve_numeric(
             &self.inner,
-            enrichment::DEFAULT_TOLERANCE,
-            enrichment::DEFAULT_MAX_ITER,
+            nucleide_enrichment::DEFAULT_TOLERANCE,
+            nucleide_enrichment::DEFAULT_MAX_ITER,
         )
         .map_err(js_err)?;
         Ok(())
@@ -566,10 +567,10 @@ impl WasmCascade {
     /// Optimize Mstar to minimize total flow, then solve.
     #[wasm_bindgen(js_name = solveMulticomponent)]
     pub fn solve_multicomponent(&mut self) -> Result<(), JsValue> {
-        self.inner = enrichment::multicomponent(
+        self.inner = nucleide_enrichment::multicomponent(
             &self.inner,
-            enrichment::DEFAULT_TOLERANCE,
-            enrichment::DEFAULT_MAX_ITER,
+            nucleide_enrichment::DEFAULT_TOLERANCE,
+            nucleide_enrichment::DEFAULT_MAX_ITER,
         )
         .map_err(js_err)?;
         Ok(())
@@ -642,7 +643,7 @@ impl WasmCascade {
 
 #[wasm_bindgen]
 pub struct WasmChain {
-    inner: std::sync::Arc<depletion::Chain>,
+    inner: std::sync::Arc<nucleide_depletion::Chain>,
 }
 
 #[wasm_bindgen]
@@ -650,7 +651,7 @@ impl WasmChain {
     /// Parse a depletion-chain XML document from a string.
     #[wasm_bindgen(js_name = fromXml)]
     pub fn from_xml(xml: &str) -> Result<WasmChain, JsValue> {
-        depletion::Chain::from_xml(xml)
+        nucleide_depletion::Chain::from_xml(xml)
             .map(|inner| WasmChain {
                 inner: std::sync::Arc::new(inner),
             })
@@ -681,12 +682,12 @@ pub fn deplete(
     let rates: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(rates).map_err(js_err)?;
 
     let order = match order {
-        16 => depletion::Order::Order16,
-        48 => depletion::Order::Order48,
+        16 => nucleide_depletion::Order::Order16,
+        48 => nucleide_depletion::Order::Order48,
         other => return Err(js_err(format!("unsupported CRAM order {other}"))),
     };
 
-    let mut reaction_rates = depletion::ReactionRates::new();
+    let mut reaction_rates = nucleide_depletion::ReactionRates::new();
     for (key, v) in rates {
         let (nuc, rx) = key
             .split_once(':')
@@ -701,9 +702,9 @@ pub fn deplete(
             .insert(rx.to_string(), v);
     }
 
-    let sys = depletion::DepletionSystem::build((*chain.inner).clone(), &reaction_rates)
+    let sys = nucleide_depletion::DepletionSystem::build((*chain.inner).clone(), &reaction_rates)
         .map_err(js_err)?;
-    let result = depletion::deplete(&sys, order, &n0, dt).map_err(js_err)?;
+    let result = nucleide_depletion::deplete(&sys, order, &n0, dt).map_err(js_err)?;
     to_js(&result.atoms)
 }
 
@@ -723,7 +724,7 @@ struct McnpMaterialJson {
 
 #[wasm_bindgen(js_name = parseMcnpMaterials)]
 pub fn parse_mcnp_materials(text: &str) -> Result<JsValue, JsValue> {
-    let mats = mcnp_io::inp::materials_from_str(text).map_err(js_err)?;
+    let mats = nucleide_mcnp_io::inp::materials_from_str(text).map_err(js_err)?;
     let out: Vec<McnpMaterialJson> = mats
         .into_iter()
         .map(|m| McnpMaterialJson {
@@ -734,8 +735,8 @@ pub fn parse_mcnp_materials(text: &str) -> Result<JsValue, JsValue> {
                 .map(|(id, v)| (id.to_name(), v))
                 .collect(),
             fraction_type: match m.fraction_type {
-                mcnp_io::inp::FracKind::Atom => "atom".to_string(),
-                mcnp_io::inp::FracKind::Mass => "mass".to_string(),
+                nucleide_mcnp_io::inp::FracKind::Atom => "atom".to_string(),
+                nucleide_mcnp_io::inp::FracKind::Mass => "mass".to_string(),
             },
             density: m.density,
             comments: m.comments,
@@ -770,7 +771,7 @@ struct XsdirSummary {
 
 #[wasm_bindgen(js_name = parseXsdir)]
 pub fn parse_xsdir(text: &str) -> Result<JsValue, JsValue> {
-    let xsdir = mcnp_io::xsdir::Xsdir::parse(text).map_err(js_err)?;
+    let xsdir = nucleide_mcnp_io::xsdir::Xsdir::parse(text).map_err(js_err)?;
     let tables: Vec<XsdirTableJson> = xsdir
         .tables
         .into_iter()
@@ -834,7 +835,7 @@ struct MeshtalSummary {
 
 #[wasm_bindgen(js_name = parseMeshtal)]
 pub fn parse_meshtal(text: &str) -> Result<JsValue, JsValue> {
-    let meshtal = mcnp_io::meshtal::Meshtal::parse(text).map_err(js_err)?;
+    let meshtal = nucleide_mcnp_io::meshtal::Meshtal::parse(text).map_err(js_err)?;
     let tallies: BTreeMap<String, MeshTallySummary> = meshtal
         .tallies
         .into_iter()
@@ -882,7 +883,7 @@ struct WwinpSummary {
 
 #[wasm_bindgen(js_name = parseWwinp)]
 pub fn parse_wwinp(text: &str) -> Result<JsValue, JsValue> {
-    let wwinp = mcnp_io::wwinp::Wwinp::parse(text).map_err(js_err)?;
+    let wwinp = nucleide_mcnp_io::wwinp::Wwinp::parse(text).map_err(js_err)?;
     to_js(&WwinpSummary {
         ni: wwinp.ni,
         nr: wwinp.nr,
@@ -924,20 +925,20 @@ pub fn magic_bounds(
     tolerance: f64,
     null_value: f64,
 ) -> Result<JsValue, JsValue> {
-    let meshtal = mcnp_io::meshtal::Meshtal::parse(meshtal_text).map_err(js_err)?;
+    let meshtal = nucleide_mcnp_io::meshtal::Meshtal::parse(meshtal_text).map_err(js_err)?;
     let tally = meshtal
         .tallies
         .get(&tally_number)
         .ok_or_else(|| js_err(format!("tally {tally_number} not found")))?;
     let sel = match selection {
-        "total" => vr_tools::magic::MagicSelection::Total,
-        "perGroup" => vr_tools::magic::MagicSelection::PerGroup,
+        "total" => nucleide_vr_tools::magic::MagicSelection::Total,
+        "perGroup" => nucleide_vr_tools::magic::MagicSelection::PerGroup,
         _ => return Err(js_err("selection must be 'total' or 'perGroup'")),
     };
-    let out = vr_tools::magic::magic_with(
+    let out = nucleide_vr_tools::magic::magic_with(
         tally,
         sel,
-        vr_tools::magic::MagicParams {
+        nucleide_vr_tools::magic::MagicParams {
             tolerance,
             null_value,
         },
@@ -955,7 +956,7 @@ pub fn magic_bounds(
 
 #[wasm_bindgen(js_name = aliasTableSample)]
 pub fn alias_table_sample(pdf: Vec<f64>, r1: f64, r2: f64) -> Result<usize, JsValue> {
-    let table = vr_tools::sampling::AliasTable::new(&pdf).map_err(js_err)?;
+    let table = nucleide_vr_tools::sampling::AliasTable::new(&pdf).map_err(js_err)?;
     Ok(table.sample(r1, r2))
 }
 
@@ -976,17 +977,18 @@ pub fn mesh_source_sample(
     r1: f64,
     r2: f64,
 ) -> Result<JsValue, JsValue> {
-    let meshtal = mcnp_io::meshtal::Meshtal::parse(meshtal_text).map_err(js_err)?;
+    let meshtal = nucleide_mcnp_io::meshtal::Meshtal::parse(meshtal_text).map_err(js_err)?;
     let tally = meshtal
         .tallies
         .get(&tally_number)
         .ok_or_else(|| js_err(format!("tally {tally_number} not found")))?;
     let mode = match mode {
-        "analog" => vr_tools::sampling::Mode::Analog,
-        "uniform" => vr_tools::sampling::Mode::Uniform,
+        "analog" => nucleide_vr_tools::sampling::Mode::Analog,
+        "uniform" => nucleide_vr_tools::sampling::Mode::Uniform,
         _ => return Err(js_err("mode must be 'analog' or 'uniform'")),
     };
-    let sampler = vr_tools::sampling::MeshSourceSampler::new(tally, mode, None).map_err(js_err)?;
+    let sampler =
+        nucleide_vr_tools::sampling::MeshSourceSampler::new(tally, mode, None).map_err(js_err)?;
     let sample = sampler.sample(r1, r2);
     to_js(&SampledVoxelSummary {
         index: sample.index,
@@ -1031,8 +1033,8 @@ struct AlaraDeckSummary {
     schedules: Vec<AlaraScheduleJson>,
 }
 
-fn mixture_entry_text(entry: &alara_io::deck::MixtureEntry) -> String {
-    use alara_io::deck::MixtureEntry as E;
+fn mixture_entry_text(entry: &nucleide_alara_io::deck::MixtureEntry) -> String {
+    use nucleide_alara_io::deck::MixtureEntry as E;
     match entry {
         E::Material {
             name,
@@ -1055,7 +1057,7 @@ fn mixture_entry_text(entry: &alara_io::deck::MixtureEntry) -> String {
 /// Parse an ALARA input deck into a JSON summary.
 #[wasm_bindgen(js_name = parseAlaraDeck)]
 pub fn parse_alara_deck(text: &str) -> Result<JsValue, JsValue> {
-    let deck = alara_io::AlaraDeck::parse(text).map_err(js_err)?;
+    let deck = nucleide_alara_io::AlaraDeck::parse(text).map_err(js_err)?;
     to_js(&AlaraDeckSummary {
         block_kinds: deck
             .block_kinds()
@@ -1116,7 +1118,7 @@ struct ResponseRowJson {
     value: f64,
 }
 
-fn response_row_json(row: &alara_io::output::ResponseRow) -> ResponseRowJson {
+fn response_row_json(row: &nucleide_alara_io::output::ResponseRow) -> ResponseRowJson {
     ResponseRowJson {
         time_s: row.time_s,
         time_label: row.time_label.clone(),
@@ -1147,7 +1149,7 @@ struct AlaraOutputSummary {
 /// Parse an ALARA activation-output listing into a JSON summary.
 #[wasm_bindgen(js_name = parseAlaraOutput)]
 pub fn parse_alara_output(text: &str, run_lbl: &str) -> Result<JsValue, JsValue> {
-    let frame = alara_io::output::ResponseFrame::parse(text, run_lbl).map_err(js_err)?;
+    let frame = nucleide_alara_io::output::ResponseFrame::parse(text, run_lbl).map_err(js_err)?;
     to_js(&AlaraOutputSummary {
         rows: frame.rows.iter().map(response_row_json).collect(),
         variables: distinct_sorted(
@@ -1169,7 +1171,7 @@ struct FispactOutputSummary {
 /// Parse a FISPACT-II inventory listing into a JSON summary.
 #[wasm_bindgen(js_name = parseFispactOutput)]
 pub fn parse_fispact_output(text: &str, run_lbl: &str) -> Result<JsValue, JsValue> {
-    let frame = fispact_io::parse_to_frame(text, run_lbl).map_err(js_err)?;
+    let frame = nucleide_fispact_io::parse_to_frame(text, run_lbl).map_err(js_err)?;
     to_js(&FispactOutputSummary {
         rows: frame.rows.iter().map(response_row_json).collect(),
         variables: distinct_sorted(
@@ -1197,10 +1199,13 @@ struct R2sSummary {
 
 /// Pick the flux block for `zone`: broadcast a lone flux, else match by name.
 ///
-/// Mirrors `r2s::R2sWorkflow::from_deck`, which is not depended on here
+/// Mirrors `nucleide_r2s::R2sWorkflow::from_deck`, which is not depended on here
 /// because the `r2s` crate enables the `depletion`/`rayon` feature that this
 /// `wasm32-unknown-unknown` build keeps disabled.
-fn r2s_resolve_flux(fluxes: &[alara_io::deck::FluxDef], zone: &str) -> Result<String, String> {
+fn r2s_resolve_flux(
+    fluxes: &[nucleide_alara_io::deck::FluxDef],
+    zone: &str,
+) -> Result<String, String> {
     if fluxes.len() == 1 {
         return Ok(fluxes[0].name.clone());
     }
@@ -1216,8 +1221,8 @@ fn r2s_resolve_flux(fluxes: &[alara_io::deck::FluxDef], zone: &str) -> Result<St
         })
 }
 
-/// Top-schedule discovery mirroring `r2s::R2sWorkflow::from_deck`.
-fn r2s_top_schedule(deck: &alara_io::deck::AlaraDeck) -> Result<String, String> {
+/// Top-schedule discovery mirroring `nucleide_r2s::R2sWorkflow::from_deck`.
+fn r2s_top_schedule(deck: &nucleide_alara_io::deck::AlaraDeck) -> Result<String, String> {
     if deck.schedules.is_empty() {
         return Err("deck defines no schedules".to_string());
     }
@@ -1250,7 +1255,7 @@ fn r2s_top_schedule(deck: &alara_io::deck::AlaraDeck) -> Result<String, String> 
 }
 
 /// Convert one raw deck schedule item (4- or 6-token form) for expansion.
-fn r2s_sched_item(tokens: &[String], line: usize) -> Result<alara_io::SchedItem, String> {
+fn r2s_sched_item(tokens: &[String], line: usize) -> Result<nucleide_alara_io::SchedItem, String> {
     match tokens {
         [op_text, op_unit, flux, history, delay_text, delay_unit] => {
             let op: f64 = op_text
@@ -1259,12 +1264,12 @@ fn r2s_sched_item(tokens: &[String], line: usize) -> Result<alara_io::SchedItem,
             let delay: f64 = delay_text
                 .parse()
                 .map_err(|_| format!("line {line}: expected delay, found `{delay_text}`"))?;
-            Ok(alara_io::SchedItem::Pulse {
-                op_time_s: alara_io::parse_time_to_seconds(op, op_unit)
+            Ok(nucleide_alara_io::SchedItem::Pulse {
+                op_time_s: nucleide_alara_io::parse_time_to_seconds(op, op_unit)
                     .map_err(|e| e.to_string())?,
                 flux: flux.clone(),
                 history: history.clone(),
-                delay_s: alara_io::parse_time_to_seconds(delay, delay_unit)
+                delay_s: nucleide_alara_io::parse_time_to_seconds(delay, delay_unit)
                     .map_err(|e| e.to_string())?,
             })
         }
@@ -1272,10 +1277,10 @@ fn r2s_sched_item(tokens: &[String], line: usize) -> Result<alara_io::SchedItem,
             let delay: f64 = delay_text
                 .parse()
                 .map_err(|_| format!("line {line}: expected delay, found `{delay_text}`"))?;
-            Ok(alara_io::SchedItem::SubSchedule {
+            Ok(nucleide_alara_io::SchedItem::SubSchedule {
                 name: name.clone(),
                 history: history.clone(),
-                delay_s: alara_io::parse_time_to_seconds(delay, delay_unit)
+                delay_s: nucleide_alara_io::parse_time_to_seconds(delay, delay_unit)
                     .map_err(|e| e.to_string())?,
             })
         }
@@ -1289,7 +1294,7 @@ fn r2s_sched_item(tokens: &[String], line: usize) -> Result<alara_io::SchedItem,
 /// Derive an R2S workflow summary from an ALARA deck.
 #[wasm_bindgen(js_name = r2sFromDeck)]
 pub fn r2s_from_deck(text: &str) -> Result<JsValue, JsValue> {
-    let deck = alara_io::AlaraDeck::parse(text).map_err(js_err)?;
+    let deck = nucleide_alara_io::AlaraDeck::parse(text).map_err(js_err)?;
     let loading = deck
         .mat_loading
         .as_ref()
@@ -1328,33 +1333,33 @@ pub fn r2s_from_deck(text: &str) -> Result<JsValue, JsValue> {
         for entry in &raw.items {
             items.push(r2s_sched_item(&entry.tokens, entry.line).map_err(js_err)?);
         }
-        schedules.push(alara_io::schedule::ScheduleDef {
+        schedules.push(nucleide_alara_io::schedule::ScheduleDef {
             name: raw.name.clone(),
             items,
         });
     }
-    let histories: Vec<alara_io::schedule::PulseHistory> = deck
+    let histories: Vec<nucleide_alara_io::schedule::PulseHistory> = deck
         .pulse_histories
         .iter()
-        .map(|history| alara_io::schedule::PulseHistory {
+        .map(|history| nucleide_alara_io::schedule::PulseHistory {
             name: history.name.clone(),
             levels: history
                 .levels
                 .iter()
-                .map(|level| alara_io::schedule::PulseLevel {
+                .map(|level| nucleide_alara_io::schedule::PulseLevel {
                     count: level.pulses,
                     delay_s: level.delay_s,
                 })
                 .collect(),
         })
         .collect();
-    let flat =
-        alara_io::schedule::expand_from(&top_schedule, &schedules, &histories).map_err(js_err)?;
+    let flat = nucleide_alara_io::schedule::expand_from(&top_schedule, &schedules, &histories)
+        .map_err(js_err)?;
     to_js(&R2sSummary {
         steps,
         cooling_s,
         top_schedule,
-        total_s: alara_io::total_time(&flat),
+        total_s: nucleide_alara_io::total_time(&flat),
     })
 }
 
@@ -1379,7 +1384,7 @@ struct IsotxsSummary {
 /// Parse an ISOTXS multigroup library into a JSON summary.
 #[wasm_bindgen(js_name = parseIsotxs)]
 pub fn parse_isotxs(text: &str) -> Result<JsValue, JsValue> {
-    let lib = cccc_io::IsotxsLib::parse(text).map_err(js_err)?;
+    let lib = nucleide_cccc_io::IsotxsLib::parse(text).map_err(js_err)?;
     to_js(&IsotxsSummary {
         groups: lib.nuclides.first().map(|n| n.groups).unwrap_or(0),
         nuclides: lib

@@ -9,13 +9,13 @@ workspace dependency graph.
 
 ## Foundation crates
 
-### `linalg`
+### `nucleide-linalg`
 
 Isolation facade over the linear-algebra backend. Today it pulls in `faer`,
 `num-complex`, and `roxmltree` so numeric dependencies do not leak into other
-crates. Other workspace crates depend on `linalg`, not on the backend directly.
+crates. Other workspace crates depend on `nucleide-linalg`, not on the backend directly.
 
-### `nuclei`
+### `nucleide-nuclei`
 
 Canonical nuclide identification. Owns:
 
@@ -28,73 +28,73 @@ Canonical nuclide identification. Owns:
 
 ## Capability crates
 
-### `material`
+### `nucleide-material`
 
 Compositions, mixing arithmetic, unit conversions, DOE/PNNL Materials Compendium
-loading, and materials XML export. Depends on `nuclei`.
+loading, and materials XML export. Depends on `nucleide-nuclei`.
 
-### `mcnp-io`
+### `nucleide-mcnp-io`
 
 MCNP-family file I/O: `xsdir`, `meshtal`, SSW/SURFSRC, PTRAC, WWINP, MCTAL
 readers; material extraction from input decks; mesh-to-geometry deck
-generation. Depends on `nuclei`.
+generation. Depends on `nucleide-nuclei`.
 
-### `serpent-io`
+### `nucleide-serpent-io`
 
 Parsers for Serpent MATLAB-style output files (`_res.m`, `_dep.m`, `_det.m`).
 No internal crate dependencies.
 
-### `fluka-io`
+### `nucleide-fluka-io`
 
 FLUKA interface: USRBIN tally reader and MATERIAL/COMPOUND card generation.
-Depends on `nuclei`.
+Depends on `nucleide-nuclei`.
 
-### `alara-io`
+### `nucleide-alara-io`
 
 ALARA activation-code interop: input-deck, group-flux, material/element/WDR
 library, activation-output, photon-source, and schedule-expansion glue. Depends
-on `nuclei` only among workspace crates; the solver stays inside ALARA.
+on `nucleide-nuclei` only among workspace crates; the solver stays inside ALARA.
 
-### `enrichment`
+### `nucleide-enrichment`
 
-Multicomponent enrichment cascades and SWU analytics. Depends on `nuclei` and
-stays independent of `material`.
+Multicomponent enrichment cascades and SWU analytics. Depends on `nucleide-nuclei` and
+stays independent of `nucleide-material`.
 
-### `depletion`
+### `nucleide-depletion`
 
 CRAM matrix exponential (orders 16 and 48) and depletion-chain XML parsing.
-Depends on `linalg` and `nuclei`.
+Depends on `nucleide-linalg` and `nucleide-nuclei`.
 
-### `vr-tools`
+### `nucleide-vr-tools`
 
 MAGIC weight-window generation and mesh source sampling with alias tables.
-Depends on `mcnp-io` (`nuclei` comes in transitively).
+Depends on `nucleide-mcnp-io` (`nucleide-nuclei` comes in transitively).
 
-### `cccc-io`
+### `nucleide-cccc-io`
 
 CCCC text-subset readers (ISOTXS multigroup libraries, RTFLUX/ATFLUX/RZFLUX
 flux files) plus a minimal PARTISN deck writer with ISOTXS nuclide mapping.
-Depends on `nuclei` only among workspace crates; the solver stays out of
+Depends on `nucleide-nuclei` only among workspace crates; the solver stays out of
 scope.
 
-### `fispact-io`
+### `nucleide-fispact-io`
 
 FISPACT-II inventory-output parser producing ALARA-compatible response
-frames (`alara-io` `ResponseFrame` rows). Depends on `alara-io` and `nuclei`;
+frames (`nucleide-alara-io` `ResponseFrame` rows). Depends on `nucleide-alara-io` and `nucleide-nuclei`;
 activation solving stays inside FISPACT-II.
 
-### `origen-io`
+### `nucleide-origen-io`
 
 Scoped ORIGEN 2.2 TAPE readers: `TAPE5` input echo, `TAPE6` output
-inventories, `TAPE9`-style decay constants. Depends on `nuclei` only among
+inventories, `TAPE9`-style decay constants. Depends on `nucleide-nuclei` only among
 workspace crates; burnup driving stays inside ORIGEN.
 
-### `r2s`
+### `nucleide-r2s`
 
 Scoped rigorous two-step (R2S) workflow builder: zone-to-flux linking from
 ALARA decks, schedule expansion, and uniform-split photon-source assembly.
-Depends on `alara-io`, `mcnp-io`, `vr-tools`, `material`, `depletion`, and
-`nuclei`; transport and activation solving stay inside their respective
+Depends on `nucleide-alara-io`, `nucleide-mcnp-io`, `nucleide-vr-tools`, `nucleide-material`, `nucleide-depletion`, and
+`nucleide-nuclei`; transport and activation solving stay inside their respective
 codes. The uniform split preserves only the total shutdown strength until
 group-wise emission data is wired through per nuclide.
 
@@ -119,24 +119,24 @@ the interactive tutorials on the docs site. It is not published to crates.io
 - Workspace crates may depend on other workspace crates.
 - Workspace crates must not depend on `nucleide-bindings`, `nucleide-wasm`, or `pyo3`.
 - `nucleide-bindings` may depend on workspace crates.
-- `enrichment` must not depend on `material`.
+- `nucleide-enrichment` must not depend on `nucleide-material`.
 
 ## Release order
 
 When publishing to crates.io, publish in dependency order:
 
-1. `linalg`
-2. `nuclei`
-3. `material`
-4. `mcnp-io`
-5. `serpent-io`
-6. `fluka-io`
-7. `enrichment`
-8. `depletion`
-9. `vr-tools`
-10. `alara-io`
-11. `cccc-io`
-12. `fispact-io`
-13. `origen-io`
-14. `r2s`
+1. `nucleide-linalg`
+2. `nucleide-nuclei`
+3. `nucleide-material`
+4. `nucleide-mcnp-io`
+5. `nucleide-serpent-io`
+6. `nucleide-fluka-io`
+7. `nucleide-enrichment`
+8. `nucleide-depletion`
+9. `nucleide-vr-tools`
+10. `nucleide-alara-io`
+11. `nucleide-cccc-io`
+12. `nucleide-fispact-io`
+13. `nucleide-origen-io`
+14. `nucleide-r2s`
 15. `nucleide-bindings`

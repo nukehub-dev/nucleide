@@ -1,5 +1,5 @@
 [package]
-name = "linalg"
+name = "nucleide-linalg"
 description = "Isolation facade over the numeric backend (planned: faer) so the rest of the workspace never depends on it directly"
 version.workspace = true
 edition.workspace = true

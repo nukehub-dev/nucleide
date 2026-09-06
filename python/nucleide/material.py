@@ -1,4 +1,4 @@
-"""Material composition, activation, and the PNNL compendium (backed by the `material` crate)."""
+"""Materials, activation, and the PNNL compendium (backed by `nucleide-material`)."""
 
 from nucleide._internal import (
     MaterialsCompendium,

@@ -1,4 +1,4 @@
-"""Rigorous two-step (R2S) shutdown-dose-rate orchestration (backed by the `r2s` crate).
+"""Rigorous two-step (R2S) shutdown-dose-rate orchestration (backed by the `nucleide-r2s` crate).
 
 Combines neutron flux meshes, ALARA activation decks, decay photon sources,
 and mesh source sampling into one reproducible workflow description.

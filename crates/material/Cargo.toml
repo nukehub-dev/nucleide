@@ -1,5 +1,5 @@
 [package]
-name = "material"
+name = "nucleide-material"
 description = "Nuclear material compositions: mixing, conversions, materials XML export"
 version.workspace = true
 edition.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-nuclei.workspace = true
+nucleide-nuclei.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 quick-xml.workspace = true

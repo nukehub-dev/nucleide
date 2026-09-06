@@ -21,7 +21,7 @@
 //!
 //! ```
 //! let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/serpent/sample_res.m")).unwrap();
-//! let res = serpent_io::parse_res(&text).unwrap();
+//! let res = nucleide_serpent_io::parse_res(&text).unwrap();
 //! assert_eq!(res.get_f64("IDX").unwrap(), 3.0);
 //! let keff = res.get_matrix("IMP_KEFF").unwrap();
 //! assert_eq!((keff.row_f64(0).unwrap()[0] * 1e5).round(), 124_207.0);

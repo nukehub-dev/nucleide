@@ -1,4 +1,4 @@
-"""Variance-reduction tools (backed by the `vr-tools` crate)."""
+"""Variance-reduction tools (backed by the `nucleide-vr-tools` crate)."""
 
 from nucleide._internal import (
     AliasTable,

@@ -1,5 +1,5 @@
 [package]
-name = "mcnp-io"
+name = "nucleide-mcnp-io"
 description = "MCNP-family file I/O: xsdir, meshtal, SSW, PTRAC readers/writers"
 version.workspace = true
 edition.workspace = true
@@ -10,7 +10,7 @@ rust-version.workspace = true
 [dependencies]
 binrw = "0.14"
 winnow = "0.7"
-nuclei.workspace = true
+nucleide-nuclei.workspace = true
 
 [dev-dependencies]
 criterion = "0.5"

@@ -123,7 +123,7 @@ pub fn canonical_element_z(symbol: &str) -> Option<u32> {
         canonical.extend(first.to_uppercase());
     }
     canonical.push_str(&chars.as_str().to_lowercase());
-    nuclei::element_z(&canonical).filter(|z| *z > 0)
+    nucleide_nuclei::element_z(&canonical).filter(|z| *z > 0)
 }
 
 /// Collect non-blank, non-`#`-comment lines with their 1-based line numbers.

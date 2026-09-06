@@ -4807,7 +4807,7 @@ fn alt_id(name: &str) -> Option<u32> {
 /// numeric MT number — to its canonical reaction id.
 ///
 /// ```
-/// use nuclei::rxname;
+/// use nucleide_nuclei::rxname;
 /// assert_eq!(rxname::name_to_id("fission"), Ok(rxname::hash("fission")));
 /// assert_eq!(rxname::name_to_id("alpha"), Ok(rxname::hash("a")));
 /// assert_eq!(rxname::name_to_id("107"), Ok(rxname::hash("a"))); // MT 107

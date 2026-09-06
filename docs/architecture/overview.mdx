@@ -40,7 +40,7 @@ flowchart TB
   `bindings/wasm` (wasm-bindgen for browser tutorials).
 - **Capability crates** — `crates/*` parsers, materials, depletion, enrichment,
   variance reduction, etc.
-- **Linear-algebra facade** — `linalg` isolates the numeric backend choice so
+- **Linear-algebra facade** — `nucleide-linalg` isolates the numeric backend choice so
   other crates do not depend on it directly.
 
 ## Design principles
@@ -54,7 +54,7 @@ flowchart TB
   browser.
 - **Parser parity.** Where a reader reproduces legacy output byte-for-byte,
   that behavior is intentional and protected by golden-byte fixtures.
-- `enrichment` stays independent of `material` by design.
+- `nucleide-enrichment` stays independent of `nucleide-material` by design.
 
 ## Request/data flow
 

@@ -1,4 +1,4 @@
-"""ALARA activation-code interop (backed by the `alara-io` crate).
+"""ALARA activation-code interop (backed by the `nucleide-alara-io` crate).
 
 Thin glue over ALARA input decks, group-flux files, activation-output
 listings, and schedule expansion. The solver itself stays out of scope.

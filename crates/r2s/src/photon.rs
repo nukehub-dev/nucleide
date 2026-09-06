@@ -1,9 +1,9 @@
 //! Decay photon-source assembly for R2S.
 //!
 //! [`assemble`] builds a per-zone photon source from an ALARA activation
-//! listing ([`alara_io::output::ResponseFrame`]); [`from_photon_file`] loads
+//! listing ([`nucleide_alara_io::output::ResponseFrame`]); [`from_photon_file`] loads
 //! the group-wise spectra ALARA writes to `.photonSrc` files
-//! ([`alara_io::photon::PhotonSource`]).
+//! ([`nucleide_alara_io::photon::PhotonSource`]).
 
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +27,7 @@ impl ZonePhotonSource {
 
 /// Assemble the shutdown photon source for `zone` from an activation listing.
 ///
-/// Sums [`alara_io::output::ResponseVar::SpecificActivity`] values over every
+/// Sums [`nucleide_alara_io::output::ResponseVar::SpecificActivity`] values over every
 /// nuclide row whose block name equals `zone` (any block resolution: `Zone`
 /// and `Interval` listings both carry the zone name) at shutdown (`time_s ==
 /// 0.0`). `total` aggregate rows are skipped so nuclides are counted once.
@@ -42,14 +42,14 @@ impl ZonePhotonSource {
 /// spectrum as a strength-conserving placeholder until group-wise emission
 /// data is wired through per nuclide.
 pub fn assemble(
-    frame: &alara_io::output::ResponseFrame,
+    frame: &nucleide_alara_io::output::ResponseFrame,
     zone: &str,
     groups: usize,
 ) -> ZonePhotonSource {
     let total: f64 = frame
         .rows
         .iter()
-        .filter(|row| row.variable == alara_io::output::ResponseVar::SpecificActivity)
+        .filter(|row| row.variable == nucleide_alara_io::output::ResponseVar::SpecificActivity)
         .filter(|row| row.time_s == 0.0)
         .filter(|row| row.block_name == zone)
         .filter(|row| !row.is_total())
@@ -68,15 +68,15 @@ pub fn assemble(
 
 /// Load group-wise photon spectra from an ALARA `.photonSrc` file.
 ///
-/// Delegates to [`alara_io::photon::PhotonSource::from_file`]; unlike
+/// Delegates to [`nucleide_alara_io::photon::PhotonSource::from_file`]; unlike
 /// [`assemble`] this preserves the per-group, per-nuclide, per-cooling-time
 /// structure ALARA computed.
 pub fn from_photon_file(
     path: impl AsRef<std::path::Path>,
-) -> Result<alara_io::photon::PhotonSource> {
-    alara_io::photon::PhotonSource::from_file(path).map_err(|error| match error {
-        alara_io::Error::Io(inner) => Error::Io(inner),
-        alara_io::Error::CrossRef(message) => Error::CrossRef(message),
+) -> Result<nucleide_alara_io::photon::PhotonSource> {
+    nucleide_alara_io::photon::PhotonSource::from_file(path).map_err(|error| match error {
+        nucleide_alara_io::Error::Io(inner) => Error::Io(inner),
+        nucleide_alara_io::Error::CrossRef(message) => Error::CrossRef(message),
         other => Error::Invalid(other.to_string()),
     })
 }
@@ -84,7 +84,7 @@ pub fn from_photon_file(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alara_io::output::{BlockKind, ResponseRow, ResponseVar};
+    use nucleide_alara_io::output::{BlockKind, ResponseRow, ResponseVar};
 
     fn row(
         nuclide: &str,
@@ -109,8 +109,8 @@ mod tests {
         }
     }
 
-    fn frame() -> alara_io::output::ResponseFrame {
-        alara_io::output::ResponseFrame {
+    fn frame() -> nucleide_alara_io::output::ResponseFrame {
+        nucleide_alara_io::output::ResponseFrame {
             rows: vec![
                 row(
                     "mn-56",

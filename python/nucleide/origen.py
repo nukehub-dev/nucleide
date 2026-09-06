@@ -1,4 +1,4 @@
-"""Scoped ORIGEN 2.2 TAPE readers (backed by the `origen-io` crate).
+"""Scoped ORIGEN 2.2 TAPE readers (backed by the `nucleide-origen-io` crate).
 
 Covers the decay-data path (`TAPE9`-style decay constants), `TAPE5` input
 echo, and `TAPE6` output inventories. Full ORIGEN burnup driving stays inside

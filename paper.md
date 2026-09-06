@@ -79,10 +79,11 @@ solver.
 
 # Software design
 
-The Rust workspace enforces strict layering: capability crates (`nuclei`,
-`material`, `mcnp-io`, `serpent-io`, `fluka-io`, `vr-tools`, `enrichment`,
-`depletion`, `linalg`, `alara-io`, `cccc-io`, `fispact-io`, `origen-io`,
-`r2s`) never depend on the bindings; `bindings/python` and
+The Rust workspace enforces strict layering: capability crates (`nucleide-nuclei`,
+`nucleide-material`, `nucleide-mcnp-io`, `nucleide-serpent-io`, `nucleide-fluka-io`,
+`nucleide-vr-tools`, `nucleide-enrichment`, `nucleide-depletion`, `nucleide-linalg`,
+`nucleide-alara-io`, `nucleide-cccc-io`, `nucleide-fispact-io`, `nucleide-origen-io`,
+`nucleide-r2s`) never depend on the bindings; `bindings/python` and
 `bindings/wasm` are thin facades with no business logic; the pure-Python
 package re-exports the compiled module behind `.pyi` stubs so the public API is
 fully typed and `mypy --strict` clean. Parsers reproduce legacy output

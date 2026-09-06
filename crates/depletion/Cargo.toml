@@ -1,5 +1,5 @@
 [package]
-name = "depletion"
+name = "nucleide-depletion"
 description = "CRAM matrix exponential (orders 16/48), depletion-chain XML parsing"
 version.workspace = true
 edition.workspace = true
@@ -9,11 +9,11 @@ rust-version.workspace = true
 
 [features]
 default = ["rayon"]
-rayon = ["linalg/rayon"]
+rayon = ["nucleide-linalg/rayon"]
 
 [dependencies]
-linalg = { workspace = true, default-features = false }
-nuclei.workspace = true
+nucleide-linalg = { workspace = true, default-features = false }
+nucleide-nuclei.workspace = true
 num-complex = "0.4"
 roxmltree = "0.20"
 serde_json.workspace = true

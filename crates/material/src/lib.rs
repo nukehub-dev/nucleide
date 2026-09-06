@@ -8,11 +8,11 @@
 //! Atomic-mass-dependent conversions ([`Material::from_atom_frac`] and
 //! [`Material::atom_fractions`]) take a [`MassProvider`] so the material
 //! crate stays independent of the nuclear-data tables; wire up
-//! `nuclei::data` once it lands.
+//! `nucleide_nuclei::data` once it lands.
 //!
 //! ```
-//! use material::{MassProvider, Material, NoMasses};
-//! use nuclei::NuclideId;
+//! use nucleide_material::{MassProvider, Material, NoMasses};
+//! use nucleide_nuclei::NuclideId;
 //!
 //! let mut mat = Material::new();
 //! mat.add_nuclide(NuclideId::from_name("U235").unwrap(), 19.0);
@@ -42,7 +42,7 @@ pub use material::{
 };
 pub use xml::MaterialsDoc;
 
-use nuclei::NuclideId;
+use nucleide_nuclei::NuclideId;
 use thiserror::Error;
 
 /// Result alias for the material crate.
@@ -58,7 +58,7 @@ pub enum Error {
         name: String,
         /// Underlying parsing error from the nuclei crate.
         #[source]
-        source: nuclei::Error,
+        source: nucleide_nuclei::Error,
     },
     /// An atomic mass was required but not supplied.
     #[error("no atomic mass available for nuclide `{0}`")]

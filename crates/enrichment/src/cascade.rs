@@ -17,8 +17,8 @@
 
 use std::collections::BTreeMap;
 
-use nuclei::data::atomic_mass;
-use nuclei::NuclideId;
+use nucleide_nuclei::data::atomic_mass;
+use nucleide_nuclei::NuclideId;
 
 use crate::{Error, Result};
 

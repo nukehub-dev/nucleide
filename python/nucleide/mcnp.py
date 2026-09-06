@@ -1,4 +1,4 @@
-"""MCNP file readers and writers (backed by the `mcnp-io` crate)."""
+"""MCNP file readers and writers (backed by the `nucleide-mcnp-io` crate)."""
 
 from nucleide._internal import (
     Mctal,

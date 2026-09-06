@@ -22,7 +22,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
-use nuclei::NuclideId;
+use nucleide_nuclei::NuclideId;
 
 /// Block keywords recognized by the deck parser (all lowercase).
 ///
@@ -772,7 +772,7 @@ fn validate_element_symbol(symbol: &str, line: usize) -> Result<()> {
         })?;
         return Ok(());
     }
-    if !nuclei::ELEMENTS
+    if !nucleide_nuclei::ELEMENTS
         .iter()
         .any(|element| element.eq_ignore_ascii_case(base))
     {

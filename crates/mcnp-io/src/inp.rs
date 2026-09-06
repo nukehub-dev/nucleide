@@ -65,8 +65,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 
-use nuclei::data::{abundance_table, atomic_mass, mass_table};
-use nuclei::{dialects, NuclideId};
+use nucleide_nuclei::data::{abundance_table, atomic_mass, mass_table};
+use nucleide_nuclei::{dialects, NuclideId};
 
 /// Avogadro constant (2019 SI exact value), atoms per mole.
 const AVOGADRO: f64 = 6.022_140_76e23;

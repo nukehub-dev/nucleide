@@ -1,5 +1,5 @@
 [package]
-name = "vr-tools"
+name = "nucleide-vr-tools"
 description = "MAGIC weight-window generation, mesh source sampling with alias tables"
 version.workspace = true
 edition.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-mcnp-io.workspace = true
+nucleide-mcnp-io.workspace = true
 
 [dev-dependencies]
 criterion = "0.5"

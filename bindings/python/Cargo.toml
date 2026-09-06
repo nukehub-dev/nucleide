@@ -13,16 +13,16 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3.workspace = true
-nuclei.workspace = true
-material.workspace = true
-mcnp-io.workspace = true
-depletion = { workspace = true, default-features = true }
-serpent-io.workspace = true
-fluka-io.workspace = true
-vr-tools.workspace = true
-enrichment.workspace = true
-alara-io.workspace = true
-cccc-io.workspace = true
-fispact-io.workspace = true
-origen-io.workspace = true
-r2s.workspace = true
+nucleide-nuclei.workspace = true
+nucleide-material.workspace = true
+nucleide-mcnp-io.workspace = true
+nucleide-depletion = { workspace = true, default-features = true }
+nucleide-serpent-io.workspace = true
+nucleide-fluka-io.workspace = true
+nucleide-vr-tools.workspace = true
+nucleide-enrichment.workspace = true
+nucleide-alara-io.workspace = true
+nucleide-cccc-io.workspace = true
+nucleide-fispact-io.workspace = true
+nucleide-origen-io.workspace = true
+nucleide-r2s.workspace = true

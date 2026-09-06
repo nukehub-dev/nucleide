@@ -1,7 +1,7 @@
 //! Criterion benchmark for MCNP meshtal end-to-end parsing.
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use mcnp_io::meshtal::Meshtal;
+use nucleide_mcnp_io::meshtal::Meshtal;
 
 fn fixture_path(name: &str) -> String {
     format!(

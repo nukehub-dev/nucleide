@@ -1,5 +1,5 @@
 [package]
-name = "serpent-io"
+name = "nucleide-serpent-io"
 description = "Parsers for Serpent Monte Carlo MATLAB-style output files (_res.m, _dep.m, _det.m)"
 version.workspace = true
 edition.workspace = true

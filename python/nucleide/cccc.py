@@ -1,4 +1,4 @@
-"""CCCC binary-standard readers and PARTISN deck writer (backed by the `cccc-io` crate).
+"""CCCC binary-standard readers and PARTISN deck writer (backed by the `nucleide-cccc-io` crate).
 
 Thin glue over the documented text-analog subset: ISOTXS multigroup
 libraries, RTFLUX/ATFLUX/RZFLUX flux files, and a minimal PARTISN input

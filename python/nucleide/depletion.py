@@ -1,4 +1,4 @@
-"""Depletion chains and CRAM solvers (backed by the `depletion` crate)."""
+"""Depletion chains and CRAM solvers (backed by the `nucleide-depletion` crate)."""
 
 from nucleide._internal import (
     Chain,

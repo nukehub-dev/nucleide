@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::ops::{Add, Div, Mul, Sub};
 
-use nuclei::NuclideId;
+use nucleide_nuclei::NuclideId;
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 
@@ -25,7 +25,7 @@ fn is_negative(v: f64) -> bool {
 /// Atomic-mass-dependent operations ([`Material::from_atom_frac`] and
 /// [`Material::atom_fractions`]) are generic over this trait so the material
 /// crate never depends on the nuclear-data tables directly. Integrating the
-/// real tables later is a single `impl MassProvider for nuclei::data::...`.
+/// real tables later is a single `impl MassProvider for nucleide_nuclei::data::...`.
 pub trait MassProvider {
     /// Atomic mass of the nuclide identified by raw `nucid`
     /// (`(Z*1000 + A)*10_000 + state`), or `None` if unknown.
@@ -45,13 +45,13 @@ impl MassProvider for NoMasses {
     }
 }
 
-/// [`MassProvider`] backed by the AME2020 tables in `nuclei::data`.
+/// [`MassProvider`] backed by the AME2020 tables in `nucleide_nuclei::data`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Ame2020;
 
 impl MassProvider for Ame2020 {
     fn mass(&self, nucid: u32) -> Option<f64> {
-        nuclei::data::atomic_mass(nucid)
+        nucleide_nuclei::data::atomic_mass(nucid)
     }
 }
 
@@ -386,7 +386,7 @@ impl<'de> Deserialize<'de> for Material {
 // [`DecayProvider`] plus the existing [`MassProvider`]. Proper decay heat
 // needs per-branch decay energies (mean beta/gamma/alpha energy release),
 // which no table currently provides; add `decay_heat` once a decay-energy
-// table lands in `nuclei::data` — the plumbing here is exactly this module's.
+// table lands in `nucleide_nuclei::data` — the plumbing here is exactly this module's.
 // ---------------------------------------------------------------------------
 
 /// Avogadro constant, atoms per mole (exact, 2019 SI).
@@ -419,13 +419,13 @@ impl DecayProvider for NoDecay {
 }
 
 /// [`DecayProvider`] backed by the ENDF/B-VIII.0 half-life table in
-/// `nuclei::data`.
+/// `nucleide_nuclei::data`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ChainDecays;
 
 impl DecayProvider for ChainDecays {
     fn decay_constant(&self, nucid: u32) -> Option<f64> {
-        nuclei::data::decay_constant(nucid)
+        nucleide_nuclei::data::decay_constant(nucid)
     }
 }
 
@@ -435,9 +435,9 @@ impl DecayProvider for ChainDecays {
 /// activities from decay constants — so they travel together:
 ///
 /// ```
-/// use material::{Analytics, Ame2020, ChainDecays};
-/// # let mut mat = material::Material::new();
-/// # let co = nuclei::NuclideId::from_name("Co60").unwrap();
+/// use nucleide_material::{Analytics, Ame2020, ChainDecays};
+/// # let mut mat = nucleide_material::Material::new();
+/// # let co = nucleide_nuclei::NuclideId::from_name("Co60").unwrap();
 /// # mat.add_nuclide(co, 1e-6);
 /// let an = Analytics { masses: &Ame2020, decays: &ChainDecays };
 /// let a = mat.activity(&an).unwrap();
@@ -840,7 +840,7 @@ mod radio_tests {
         let co60 = nid("Co60");
 
         // λ from the half-life table, independently of ChainDecays.
-        let lambda = LN_2 / nuclei::data::half_life(co60.nucid()).unwrap();
+        let lambda = LN_2 / nucleide_nuclei::data::half_life(co60.nucid()).unwrap();
         assert_eq!(activity.keys().next().copied(), Some(co60));
         assert_eq!(
             ChainDecays.decay_constant(co60.nucid()),
@@ -848,7 +848,7 @@ mod radio_tests {
             "ChainDecays must be ln(2)/t_half of the tabulated half-life"
         );
         // N = m / (M · u) atoms for 1 g.
-        let mass_u = nuclei::data::atomic_mass(co60.nucid()).unwrap();
+        let mass_u = nucleide_nuclei::data::atomic_mass(co60.nucid()).unwrap();
         let expected = lambda * (1.0 / (mass_u * GRAMS_PER_U));
         assert!((activity[&co60] - expected).abs() / expected < 1e-12);
     }
@@ -874,7 +874,7 @@ mod radio_tests {
     fn chain_decays_lambda_is_ln2_over_tabulated_half_life() {
         let nucid = nid("Co60").nucid();
         let lambda = ChainDecays.decay_constant(nucid).unwrap();
-        let t_half = nuclei::data::half_life(nucid).unwrap();
+        let t_half = nucleide_nuclei::data::half_life(nucid).unwrap();
         assert!((lambda - LN_2 / t_half).abs() < 1e-18);
         // Stable Fe56 has no tabulated decay data.
         assert_eq!(ChainDecays.decay_constant(nid("Fe56").nucid()), None);
@@ -928,14 +928,16 @@ mod ame_tests {
         // H2O from atom fractions with real masses
         let m = Material::from_atom_frac(
             &[
-                (nuclei::NuclideId::from_name("H1").unwrap(), 2.0),
-                (nuclei::NuclideId::from_name("O16").unwrap(), 1.0),
+                (nucleide_nuclei::NuclideId::from_name("H1").unwrap(), 2.0),
+                (nucleide_nuclei::NuclideId::from_name("O16").unwrap(), 1.0),
             ],
             &Ame2020,
             Some(1.0),
         )
         .unwrap();
         let af = m.atom_fractions(&Ame2020).unwrap();
-        assert!((af[&nuclei::NuclideId::from_name("H1").unwrap()] - 2.0 / 3.0).abs() < 1e-12);
+        assert!(
+            (af[&nucleide_nuclei::NuclideId::from_name("H1").unwrap()] - 2.0 / 3.0).abs() < 1e-12
+        );
     }
 }

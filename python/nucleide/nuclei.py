@@ -1,4 +1,4 @@
-"""Nuclide identifiers, nuclear data, and reaction names (backed by the `nuclei` crate)."""
+"""Nuclide identifiers, nuclear data, and reaction names (backed by the `nucleide-nuclei` crate)."""
 
 from nucleide._internal import (
     Nuclide,

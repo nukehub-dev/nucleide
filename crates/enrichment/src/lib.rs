@@ -30,7 +30,7 @@
 //!   alongside.
 //! - This crate is materials-free on purpose: no dependency on the
 //!   workspace `material` crate, so enrichment math stays usable standalone.
-//! - Atomic masses come from the AME2020 tables in `nuclei::data`.
+//! - Atomic masses come from the AME2020 tables in `nucleide_nuclei::data`.
 //!
 //! # Error handling deviations from legacy implementations
 //!
@@ -55,7 +55,7 @@ pub use cascade::{
 };
 pub use swu::{swu_per_feed, swu_per_prod, swu_per_tail, value_func};
 
-use nuclei::NuclideId;
+use nucleide_nuclei::NuclideId;
 
 /// Errors raised by the cascade solvers.
 ///

@@ -12,8 +12,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::Path;
 
-use nuclei::dialects;
-use nuclei::NuclideId;
+use nucleide_nuclei::dialects;
+use nucleide_nuclei::NuclideId;
 
 /// Errors raised while parsing or converting xsdir data.
 #[derive(Debug, Clone, PartialEq)]

@@ -8,7 +8,7 @@
 //! consumes an external density array. Only voxel-level sampling is provided;
 //! subvoxel/cell-fraction modes are out of scope.
 
-use mcnp_io::meshtal::MeshTallyData;
+use nucleide_mcnp_io::meshtal::MeshTallyData;
 
 use crate::Error;
 
@@ -493,7 +493,7 @@ mod tests {
             "{}/../../fixtures/mcnp/meshtal/{name}",
             env!("CARGO_MANIFEST_DIR")
         );
-        let m = mcnp_io::meshtal::Meshtal::from_file(path).unwrap();
+        let m = nucleide_mcnp_io::meshtal::Meshtal::from_file(path).unwrap();
         m.tallies[&num].clone()
     }
 
@@ -535,7 +535,7 @@ mod tests {
         // default tolerance here), analog pdf = flux / sum(flux).
         let t = MeshTallyData {
             tally_number: 1,
-            particle: mcnp_io::meshtal::ParticleKind::Neutron,
+            particle: nucleide_mcnp_io::meshtal::ParticleKind::Neutron,
             dose_response: false,
             x_bounds: vec![0.0, 1.0],
             y_bounds: vec![0.0, 1.0],
@@ -567,7 +567,7 @@ mod tests {
         // uniform PDF ∝ volume = [1, 3].
         let t = MeshTallyData {
             tally_number: 1,
-            particle: mcnp_io::meshtal::ParticleKind::Neutron,
+            particle: nucleide_mcnp_io::meshtal::ParticleKind::Neutron,
             dose_response: false,
             x_bounds: vec![0.0, 1.0, 4.0],
             y_bounds: vec![0.0, 1.0],
@@ -607,7 +607,7 @@ mod tests {
     fn user_mode_respects_external_pdf_and_reports_weights() {
         let t = MeshTallyData {
             tally_number: 1,
-            particle: mcnp_io::meshtal::ParticleKind::Photon,
+            particle: nucleide_mcnp_io::meshtal::ParticleKind::Photon,
             dose_response: false,
             x_bounds: vec![0.0, 1.0, 2.0],
             y_bounds: vec![0.0, 1.0],
@@ -741,7 +741,7 @@ mod tests {
         // to the raw totals.
         let t = MeshTallyData {
             tally_number: 1,
-            particle: mcnp_io::meshtal::ParticleKind::Neutron,
+            particle: nucleide_mcnp_io::meshtal::ParticleKind::Neutron,
             dose_response: false,
             x_bounds: vec![0.0, 1.0, 2.0],
             y_bounds: vec![0.0, 1.0],

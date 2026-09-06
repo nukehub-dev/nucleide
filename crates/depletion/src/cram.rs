@@ -6,7 +6,7 @@
 //! `y += 2*Re(alpha_k * (A' - theta_k I)^-1 y)` for all k and scale by
 //! `alpha0`. Symbolic LU analysis is reused across all poles.
 
-use linalg::{ComplexCsc, ComplexLu, SymbolicLu, C64};
+use nucleide_linalg::{ComplexCsc, ComplexLu, SymbolicLu, C64};
 
 use crate::matrix::DepletionSystem;
 
@@ -253,8 +253,8 @@ pub fn cram_with_symbolic(
     let (alphas, thetas, alpha0) = coefficients(order);
 
     // Reusable scratch buffers for pole values and in-place solves.
-    let mut shifted = vec![linalg::C64_ZERO; sys.entries.len()];
-    let mut x = vec![linalg::C64_ZERO; n0.len()];
+    let mut shifted = vec![nucleide_linalg::C64_ZERO; sys.entries.len()];
+    let mut x = vec![nucleide_linalg::C64_ZERO; n0.len()];
 
     // Build and factorize A*dt - theta*I for every pole.
     let mut factors: Vec<ComplexLu> = Vec::with_capacity(thetas.len());

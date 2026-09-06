@@ -1,5 +1,5 @@
 [package]
-name = "cccc-io"
+name = "nucleide-cccc-io"
 description = "CCCC binary-standard readers (ISOTXS, RTFLUX/ATFLUX, RZFLUX) and PARTISN deck writer"
 version.workspace = true
 edition.workspace = true
@@ -8,6 +8,6 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-nuclei.workspace = true
+nucleide-nuclei.workspace = true
 serde.workspace = true
 thiserror.workspace = true

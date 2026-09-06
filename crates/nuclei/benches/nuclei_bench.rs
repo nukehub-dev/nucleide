@@ -1,7 +1,7 @@
 //! Criterion benchmarks for nuclide identification and data lookups.
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use nuclei::{
+use nucleide_nuclei::{
     data::{atomic_mass, atomic_mass_by_name, half_life, half_life_by_name},
     dialects::{alara_to_id, fluka_to_id, from_cinder, from_serpent, from_zaid, nist_to_id},
     NuclideId,

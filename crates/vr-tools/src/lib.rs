@@ -1,7 +1,7 @@
 //! Monte Carlo variance-reduction utilities built on [`mcnp_io`] meshtal data.
 //!
 //! - [`magic`] — MAGIC weight-window generation operating on native
-//!   [`mcnp_io::meshtal::MeshTallyData`] instead of MOAB-tagged meshes.
+//!   [`nucleide_mcnp_io::meshtal::MeshTallyData`] instead of MOAB-tagged meshes.
 //! - [`sampling`] — Walker/Vose alias-table source sampling plus a
 //!   voxel-level `MeshSourceSampler` with ANALOG / UNIFORM / USER bias modes.
 

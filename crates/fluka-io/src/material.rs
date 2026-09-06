@@ -2,7 +2,7 @@
 //! `MATERIAL` / `COMPOUND` card-string generators.
 //!
 //! Reuses the FLUKA element/isotope name table vendored in
-//! [`nuclei::dialects`]; golden card strings are pinned by the vendored
+//! [`nucleide_nuclei::dialects`]; golden card strings are pinned by the vendored
 //! fixtures.
 //!
 //! # Formatting contract (C++ iostream parity)
@@ -28,13 +28,13 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
-use nuclei::data as nuc_data;
-use nuclei::{dialects, NuclideId};
+use nucleide_nuclei::data as nuc_data;
+use nucleide_nuclei::{dialects, NuclideId};
 
 /// Errors raised while generating FLUKA cards.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
-    /// Nuclide → FLUKA-name resolution failed (see [`nuclei::dialects`]).
+    /// Nuclide → FLUKA-name resolution failed (see [`nucleide_nuclei::dialects`]).
     Naming(dialects::DialectError),
     /// Atomic number has no entry in the FLUKA element-name table.
     UnknownElementZ(u32),
@@ -531,7 +531,7 @@ mod tests {
         let u235 = NuclideId::from_nucid(U235_NUCID);
         assert_eq!(
             FlukaNuc::from(u235).fluka_name().unwrap(),
-            nuclei::dialects::id_to_fluka(u235).unwrap()
+            nucleide_nuclei::dialects::id_to_fluka(u235).unwrap()
         );
         assert_eq!(FlukaNuc::from(u235).fluka_name().unwrap(), "235-U");
         let h1 = NuclideId::from_name("H1").unwrap();

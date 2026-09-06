@@ -9,10 +9,10 @@
 //! trait ([`AbundanceProvider`]) so nothing here hard-depends on data
 //! availability: [`NoAbundances`] fails explicitly with
 //! [`FormulaError::NoAbundanceData`], while [`NaturalAbundances`] serves
-//! the tabulated natural abundances from `nuclei::data`.
+//! the tabulated natural abundances from `nucleide_nuclei::data`.
 //!
 //! ```
-//! use material::{Ame2020, Material, NaturalAbundances};
+//! use nucleide_material::{Ame2020, Material, NaturalAbundances};
 //!
 //! let water = Material::from_formula(
 //!     "H2O",
@@ -29,7 +29,7 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use nuclei::{element_z, NuclideId};
+use nucleide_nuclei::{element_z, NuclideId};
 use thiserror::Error;
 
 use crate::Material;
@@ -272,7 +272,7 @@ impl AbundanceProvider for NoAbundances {
 }
 
 /// [`AbundanceProvider`] backed by the natural-abundance table in
-/// `nuclei::data`.
+/// `nucleide_nuclei::data`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NaturalAbundances;
 
@@ -282,7 +282,7 @@ impl NaturalAbundances {
         static GROUPS: OnceLock<BTreeMap<u32, Vec<(NuclideId, f64)>>> = OnceLock::new();
         GROUPS.get_or_init(|| {
             let mut groups: BTreeMap<u32, Vec<(NuclideId, f64)>> = BTreeMap::new();
-            for (&nucid, &frac) in nuclei::data::abundance_table() {
+            for (&nucid, &frac) in nucleide_nuclei::data::abundance_table() {
                 if frac > 0.0 {
                     let id = NuclideId::from_nucid(nucid);
                     groups.entry(id.z()).or_default().push((id, frac));
@@ -645,7 +645,10 @@ mod tests {
         assert_eq!(collapsed.comp.len(), 1);
         close(collapsed.comp[&key], 4.0);
         // The key really is the z*10_000_000 placeholder form (zaid 92000).
-        assert_eq!(key.nucid(), nuclei::element_z("U").unwrap() * 10_000_000);
+        assert_eq!(
+            key.nucid(),
+            nucleide_nuclei::element_z("U").unwrap() * 10_000_000
+        );
         assert_eq!(collapsed.density(), Some(19.1));
     }
 

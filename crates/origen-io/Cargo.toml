@@ -1,5 +1,5 @@
 [package]
-name = "origen-io"
+name = "nucleide-origen-io"
 description = "ORIGEN 2.2 TAPE readers (scoped: TAPE5 input echo, TAPE6 output, TAPE9 decay constants)"
 version.workspace = true
 edition.workspace = true
@@ -8,6 +8,6 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-nuclei.workspace = true
+nucleide-nuclei.workspace = true
 serde.workspace = true
 thiserror.workspace = true

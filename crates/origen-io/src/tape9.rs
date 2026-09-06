@@ -84,8 +84,8 @@ impl Tape9Entry {
 /// True when two nuclide tokens name the same nuclide.
 fn names_match(stored: &str, query: &str) -> bool {
     match (
-        nuclei::NuclideId::from_name(stored),
-        nuclei::NuclideId::from_name(query),
+        nucleide_nuclei::NuclideId::from_name(stored),
+        nucleide_nuclei::NuclideId::from_name(query),
     ) {
         (Ok(a), Ok(b)) => a == b,
         _ => stored.eq_ignore_ascii_case(query),

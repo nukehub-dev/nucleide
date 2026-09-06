@@ -1,4 +1,4 @@
-"""FISPACT-II output parser (backed by the `fispact-io` crate).
+"""FISPACT-II output parser (backed by the `nucleide-fispact-io` crate).
 
 Reads FISPACT-II inventory tables into ALARA-compatible response frames so
 ALARA and FISPACT-II results share one analysis shape. No activation solving

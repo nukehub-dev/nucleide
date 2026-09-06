@@ -11,7 +11,7 @@ thin, focused API.
 
 {/*GEN:crate-table:START*/}
 
-### linalg
+### nucleide-linalg
 
 `crates/linalg` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/linalg)
 
@@ -21,7 +21,7 @@ Depends on: -
 
 Python: -
 
-### nuclei
+### nucleide-nuclei
 
 `crates/nuclei` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/nuclei)
 
@@ -32,31 +32,30 @@ Depends on: -
 Python:
   [<span class="ref-pill"><code>nucleide.nuclei</code></span>](./python-api.mdx#nucleidenuclei)
 
-### material
+### nucleide-material
 
 `crates/material` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/material)
 
 Nuclear material compositions: mixing, conversions, materials XML export
 
 Depends on:
-  [<span class="ref-pill"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei)
+  [<span class="ref-pill"><code>nucleide-nuclei</code></span>](../architecture/crate-responsibilities.md#nucleide-nuclei)
 
-Python:
-  [<span class="ref-pill"><code>nucleide.material</code></span>](./python-api.mdx#nucleidematerial)
+Python: -
 
-### mcnp-io
+### nucleide-mcnp-io
 
 `crates/mcnp-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/mcnp-io)
 
 MCNP-family file I/O: xsdir, meshtal, SSW, PTRAC readers/writers
 
 Depends on:
-  [<span class="ref-pill"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei)
+  [<span class="ref-pill"><code>nucleide-nuclei</code></span>](../architecture/crate-responsibilities.md#nucleide-nuclei)
 
 Python:
   [<span class="ref-pill"><code>nucleide.mcnp</code></span>](./python-api.mdx#nucleidemcnp)
 
-### serpent-io
+### nucleide-serpent-io
 
 `crates/serpent-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/serpent-io)
 
@@ -67,117 +66,117 @@ Depends on: -
 Python:
   [<span class="ref-pill"><code>nucleide.serpent</code></span>](./python-api.mdx#nucleideserpent)
 
-### fluka-io
+### nucleide-fluka-io
 
 `crates/fluka-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/fluka-io)
 
 FLUKA Monte Carlo interface: USRBIN tally reading and MATERIAL/COMPOUND card generation
 
 Depends on:
-  [<span class="ref-pill"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei)
+  [<span class="ref-pill"><code>nucleide-nuclei</code></span>](../architecture/crate-responsibilities.md#nucleide-nuclei)
 
 Python:
   [<span class="ref-pill"><code>nucleide.fluka</code></span>](./python-api.mdx#nucleidefluka)
 
-### alara-io
+### nucleide-alara-io
 
 `crates/alara-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/alara-io)
 
 ALARA activation-code interop: input-deck, flux, schedule, and output glue (no solver)
 
 Depends on:
-  [<span class="ref-pill"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei)
+  [<span class="ref-pill"><code>nucleide-nuclei</code></span>](../architecture/crate-responsibilities.md#nucleide-nuclei)
 
 Python:
   [<span class="ref-pill"><code>nucleide.alara</code></span>](./python-api.mdx#nucleidealara)
 
-### cccc-io
+### nucleide-cccc-io
 
 `crates/cccc-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/cccc-io)
 
 CCCC binary-standard readers (ISOTXS, RTFLUX/ATFLUX, RZFLUX) and PARTISN deck writer
 
 Depends on:
-  [<span class="ref-pill"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei)
+  [<span class="ref-pill"><code>nucleide-nuclei</code></span>](../architecture/crate-responsibilities.md#nucleide-nuclei)
 
 Python:
   [<span class="ref-pill"><code>nucleide.cccc</code></span>](./python-api.mdx#nucleidecccc)
 
-### fispact-io
+### nucleide-fispact-io
 
 `crates/fispact-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/fispact-io)
 
 FISPACT-II output parser producing ALARA-compatible response frames (no solver)
 
 Depends on:
-  [<span class="ref-pill"><code>alara-io</code></span>](../architecture/crate-responsibilities.md#alara-io)
-  [<span class="ref-pill"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei)
+  [<span class="ref-pill"><code>nucleide-alara-io</code></span>](../architecture/crate-responsibilities.md#nucleide-alara-io)
+  [<span class="ref-pill"><code>nucleide-nuclei</code></span>](../architecture/crate-responsibilities.md#nucleide-nuclei)
 
 Python:
   [<span class="ref-pill"><code>nucleide.fispact</code></span>](./python-api.mdx#nucleidefispact)
 
-### origen-io
+### nucleide-origen-io
 
 `crates/origen-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/origen-io)
 
 ORIGEN 2.2 TAPE readers (scoped: TAPE5 input echo, TAPE6 output, TAPE9 decay constants)
 
 Depends on:
-  [<span class="ref-pill"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei)
+  [<span class="ref-pill"><code>nucleide-nuclei</code></span>](../architecture/crate-responsibilities.md#nucleide-nuclei)
 
 Python:
   [<span class="ref-pill"><code>nucleide.origen</code></span>](./python-api.mdx#nucleideorigen)
 
-### enrichment
+### nucleide-enrichment
 
 `crates/enrichment` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/enrichment)
 
 Multicomponent enrichment cascades and SWU analytics
 
 Depends on:
-  [<span class="ref-pill"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei)
+  [<span class="ref-pill"><code>nucleide-nuclei</code></span>](../architecture/crate-responsibilities.md#nucleide-nuclei)
 
 Python:
   [<span class="ref-pill"><code>nucleide.enrichment</code></span>](./python-api.mdx#nucleideenrichment)
 
-### depletion
+### nucleide-depletion
 
 `crates/depletion` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/depletion)
 
 CRAM matrix exponential (orders 16/48), depletion-chain XML parsing
 
 Depends on:
-  [<span class="ref-pill"><code>linalg</code></span>](../architecture/crate-responsibilities.md#linalg)
-  [<span class="ref-pill"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei)
+  [<span class="ref-pill"><code>nucleide-linalg</code></span>](../architecture/crate-responsibilities.md#nucleide-linalg)
+  [<span class="ref-pill"><code>nucleide-nuclei</code></span>](../architecture/crate-responsibilities.md#nucleide-nuclei)
 
 Python:
   [<span class="ref-pill"><code>nucleide.depletion</code></span>](./python-api.mdx#nucleidedepletion)
 
-### vr-tools
+### nucleide-vr-tools
 
 `crates/vr-tools` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/vr-tools)
 
 MAGIC weight-window generation, mesh source sampling with alias tables
 
 Depends on:
-  [<span class="ref-pill"><code>mcnp-io</code></span>](../architecture/crate-responsibilities.md#mcnp-io)
+  [<span class="ref-pill"><code>nucleide-mcnp-io</code></span>](../architecture/crate-responsibilities.md#nucleide-mcnp-io)
 
 Python:
   [<span class="ref-pill"><code>nucleide.vr</code></span>](./python-api.mdx#nucleidevr)
 
-### r2s
+### nucleide-r2s
 
 `crates/r2s` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/r2s)
 
 Rigorous two-step (R2S) shutdown-dose-rate orchestration over mcnp-io, alara-io, and vr-tools
 
 Depends on:
-  [<span class="ref-pill"><code>alara-io</code></span>](../architecture/crate-responsibilities.md#alara-io)
-  [<span class="ref-pill"><code>depletion</code></span>](../architecture/crate-responsibilities.md#depletion)
-  [<span class="ref-pill"><code>material</code></span>](../architecture/crate-responsibilities.md#material)
-  [<span class="ref-pill"><code>mcnp-io</code></span>](../architecture/crate-responsibilities.md#mcnp-io)
-  [<span class="ref-pill"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei)
-  [<span class="ref-pill"><code>vr-tools</code></span>](../architecture/crate-responsibilities.md#vr-tools)
+  [<span class="ref-pill"><code>nucleide-alara-io</code></span>](../architecture/crate-responsibilities.md#nucleide-alara-io)
+  [<span class="ref-pill"><code>nucleide-depletion</code></span>](../architecture/crate-responsibilities.md#nucleide-depletion)
+  [<span class="ref-pill"><code>nucleide-material</code></span>](../architecture/crate-responsibilities.md#nucleide-material)
+  [<span class="ref-pill"><code>nucleide-mcnp-io</code></span>](../architecture/crate-responsibilities.md#nucleide-mcnp-io)
+  [<span class="ref-pill"><code>nucleide-nuclei</code></span>](../architecture/crate-responsibilities.md#nucleide-nuclei)
+  [<span class="ref-pill"><code>nucleide-vr-tools</code></span>](../architecture/crate-responsibilities.md#nucleide-vr-tools)
 
 Python:
   [<span class="ref-pill"><code>nucleide.r2s</code></span>](./python-api.mdx#nucleider2s)
@@ -189,19 +188,19 @@ Python:
 PyO3 bindings exposing Nucleide to Python as nucleide.\_internal
 
 Depends on:
-  [<span class="ref-pill"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei)
-  [<span class="ref-pill"><code>material</code></span>](../architecture/crate-responsibilities.md#material)
-  [<span class="ref-pill"><code>mcnp-io</code></span>](../architecture/crate-responsibilities.md#mcnp-io)
-  [<span class="ref-pill"><code>depletion</code></span>](../architecture/crate-responsibilities.md#depletion)
-  [<span class="ref-pill"><code>serpent-io</code></span>](../architecture/crate-responsibilities.md#serpent-io)
-  [<span class="ref-pill"><code>fluka-io</code></span>](../architecture/crate-responsibilities.md#fluka-io)
-  [<span class="ref-pill"><code>vr-tools</code></span>](../architecture/crate-responsibilities.md#vr-tools)
-  [<span class="ref-pill"><code>enrichment</code></span>](../architecture/crate-responsibilities.md#enrichment)
-  [<span class="ref-pill"><code>alara-io</code></span>](../architecture/crate-responsibilities.md#alara-io)
-  [<span class="ref-pill"><code>cccc-io</code></span>](../architecture/crate-responsibilities.md#cccc-io)
-  [<span class="ref-pill"><code>fispact-io</code></span>](../architecture/crate-responsibilities.md#fispact-io)
-  [<span class="ref-pill"><code>origen-io</code></span>](../architecture/crate-responsibilities.md#origen-io)
-  [<span class="ref-pill"><code>r2s</code></span>](../architecture/crate-responsibilities.md#r2s)
+  [<span class="ref-pill"><code>nucleide-nuclei</code></span>](../architecture/crate-responsibilities.md#nucleide-nuclei)
+  [<span class="ref-pill"><code>nucleide-material</code></span>](../architecture/crate-responsibilities.md#nucleide-material)
+  [<span class="ref-pill"><code>nucleide-mcnp-io</code></span>](../architecture/crate-responsibilities.md#nucleide-mcnp-io)
+  [<span class="ref-pill"><code>nucleide-depletion</code></span>](../architecture/crate-responsibilities.md#nucleide-depletion)
+  [<span class="ref-pill"><code>nucleide-serpent-io</code></span>](../architecture/crate-responsibilities.md#nucleide-serpent-io)
+  [<span class="ref-pill"><code>nucleide-fluka-io</code></span>](../architecture/crate-responsibilities.md#nucleide-fluka-io)
+  [<span class="ref-pill"><code>nucleide-vr-tools</code></span>](../architecture/crate-responsibilities.md#nucleide-vr-tools)
+  [<span class="ref-pill"><code>nucleide-enrichment</code></span>](../architecture/crate-responsibilities.md#nucleide-enrichment)
+  [<span class="ref-pill"><code>nucleide-alara-io</code></span>](../architecture/crate-responsibilities.md#nucleide-alara-io)
+  [<span class="ref-pill"><code>nucleide-cccc-io</code></span>](../architecture/crate-responsibilities.md#nucleide-cccc-io)
+  [<span class="ref-pill"><code>nucleide-fispact-io</code></span>](../architecture/crate-responsibilities.md#nucleide-fispact-io)
+  [<span class="ref-pill"><code>nucleide-origen-io</code></span>](../architecture/crate-responsibilities.md#nucleide-origen-io)
+  [<span class="ref-pill"><code>nucleide-r2s</code></span>](../architecture/crate-responsibilities.md#nucleide-r2s)
 
 Python: -
 
@@ -212,16 +211,16 @@ Python: -
 wasm-bindgen facade exposing Nucleide core capabilities to the browser
 
 Depends on:
-  [<span class="ref-pill"><code>nuclei</code></span>](../architecture/crate-responsibilities.md#nuclei)
-  [<span class="ref-pill"><code>material</code></span>](../architecture/crate-responsibilities.md#material)
-  [<span class="ref-pill"><code>enrichment</code></span>](../architecture/crate-responsibilities.md#enrichment)
-  [<span class="ref-pill"><code>depletion</code></span>](../architecture/crate-responsibilities.md#depletion)
-  [<span class="ref-pill"><code>mcnp-io</code></span>](../architecture/crate-responsibilities.md#mcnp-io)
-  [<span class="ref-pill"><code>alara-io</code></span>](../architecture/crate-responsibilities.md#alara-io)
-  [<span class="ref-pill"><code>cccc-io</code></span>](../architecture/crate-responsibilities.md#cccc-io)
-  [<span class="ref-pill"><code>fispact-io</code></span>](../architecture/crate-responsibilities.md#fispact-io)
-  [<span class="ref-pill"><code>vr-tools</code></span>](../architecture/crate-responsibilities.md#vr-tools)
-  [<span class="ref-pill"><code>linalg</code></span>](../architecture/crate-responsibilities.md#linalg)
+  [<span class="ref-pill"><code>nucleide-nuclei</code></span>](../architecture/crate-responsibilities.md#nucleide-nuclei)
+  [<span class="ref-pill"><code>nucleide-material</code></span>](../architecture/crate-responsibilities.md#nucleide-material)
+  [<span class="ref-pill"><code>nucleide-enrichment</code></span>](../architecture/crate-responsibilities.md#nucleide-enrichment)
+  [<span class="ref-pill"><code>nucleide-depletion</code></span>](../architecture/crate-responsibilities.md#nucleide-depletion)
+  [<span class="ref-pill"><code>nucleide-mcnp-io</code></span>](../architecture/crate-responsibilities.md#nucleide-mcnp-io)
+  [<span class="ref-pill"><code>nucleide-alara-io</code></span>](../architecture/crate-responsibilities.md#nucleide-alara-io)
+  [<span class="ref-pill"><code>nucleide-cccc-io</code></span>](../architecture/crate-responsibilities.md#nucleide-cccc-io)
+  [<span class="ref-pill"><code>nucleide-fispact-io</code></span>](../architecture/crate-responsibilities.md#nucleide-fispact-io)
+  [<span class="ref-pill"><code>nucleide-vr-tools</code></span>](../architecture/crate-responsibilities.md#nucleide-vr-tools)
+  [<span class="ref-pill"><code>nucleide-linalg</code></span>](../architecture/crate-responsibilities.md#nucleide-linalg)
 
 Python: -
 

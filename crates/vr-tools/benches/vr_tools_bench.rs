@@ -1,8 +1,8 @@
 //! Criterion benchmarks for MAGIC weight-window generation and source sampling.
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use mcnp_io::meshtal::{MeshTallyData, ParticleKind};
-use vr_tools::{
+use nucleide_mcnp_io::meshtal::{MeshTallyData, ParticleKind};
+use nucleide_vr_tools::{
     magic, magic_with,
     sampling::{AliasTable, MeshSourceSampler, Mode},
     MagicSelection,

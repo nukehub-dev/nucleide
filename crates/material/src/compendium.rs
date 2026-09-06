@@ -19,7 +19,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::material::Material;
-use nuclei::NuclideId;
+use nucleide_nuclei::NuclideId;
 
 /// Errors from compendium loading.
 #[derive(Debug, Clone, PartialEq)]
@@ -140,7 +140,7 @@ impl CompendiumEntry {
     /// Density and provenance are attached as metadata; set the real mass or
     /// density separately when building transport inputs.
     pub fn to_material(&self) -> Result<Material, Error> {
-        use nuclei::dialects;
+        use nucleide_nuclei::dialects;
         let mut mat = Material::new();
         for (zaid, wf) in self.weight_fractions() {
             if wf <= 0.0 {

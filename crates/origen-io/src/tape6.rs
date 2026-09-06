@@ -8,7 +8,7 @@
 //! ```
 //!
 //! Blank lines and `#` comments are skipped. Nuclide tokens are validated
-//! with [`nuclei::NuclideId`]; unknown names are 1-based parse errors.
+//! with [`nucleide_nuclei::NuclideId`]; unknown names are 1-based parse errors.
 //! Nuclide tokens are stored verbatim as written.
 
 use std::path::Path;
@@ -58,7 +58,7 @@ impl Tape6 {
                     msg: format!("expected `<nuclide> <grams> <Bq>`, got `{line}`"),
                 });
             }
-            if nuclei::NuclideId::from_name(parts[0]).is_err() {
+            if nucleide_nuclei::NuclideId::from_name(parts[0]).is_err() {
                 return Err(Error::Parse {
                     line: line_no,
                     msg: format!("unknown nuclide `{}`", parts[0]),
@@ -97,8 +97,8 @@ impl Tape6 {
 /// True when two nuclide tokens name the same nuclide.
 fn names_match(stored: &str, query: &str) -> bool {
     match (
-        nuclei::NuclideId::from_name(stored),
-        nuclei::NuclideId::from_name(query),
+        nucleide_nuclei::NuclideId::from_name(stored),
+        nucleide_nuclei::NuclideId::from_name(query),
     ) {
         (Ok(a), Ok(b)) => a == b,
         _ => stored.eq_ignore_ascii_case(query),

@@ -1,5 +1,5 @@
 [package]
-name = "alara-io"
+name = "nucleide-alara-io"
 description = "ALARA activation-code interop: input-deck, flux, schedule, and output glue (no solver)"
 version.workspace = true
 edition.workspace = true
@@ -8,6 +8,6 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-nuclei.workspace = true
+nucleide-nuclei.workspace = true
 serde.workspace = true
 thiserror.workspace = true

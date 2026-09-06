@@ -151,8 +151,8 @@ mod tests {
 
     use super::*;
 
-    fn id(name: &str) -> nuclei::NuclideId {
-        nuclei::NuclideId::from_name(name).unwrap()
+    fn id(name: &str) -> nucleide_nuclei::NuclideId {
+        nucleide_nuclei::NuclideId::from_name(name).unwrap()
     }
 
     fn uranium() -> Material {

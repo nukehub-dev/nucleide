@@ -1,5 +1,5 @@
 [package]
-name = "enrichment"
+name = "nucleide-enrichment"
 description = "Multicomponent enrichment cascades and SWU analytics"
 version.workspace = true
 edition.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-nuclei.workspace = true
+nucleide-nuclei.workspace = true
 
 [dev-dependencies]
 criterion = "0.5"

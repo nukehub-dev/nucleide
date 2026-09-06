@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
-use nuclei::NuclideId;
+use nucleide_nuclei::NuclideId;
 
 /// Package version, re-exported to Python.
 #[pyfunction]
@@ -16,7 +16,7 @@ fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-fn wrap_nucid_err(e: nuclei::Error) -> PyErr {
+fn wrap_nucid_err(e: nucleide_nuclei::Error) -> PyErr {
     PyValueError::new_err(e.to_string())
 }
 
@@ -79,60 +79,61 @@ impl PyNuclide {
     /// MCNP ZAID integer.
     #[getter]
     fn zaid(&self) -> u32 {
-        nuclei::dialects::to_zaid(self.inner)
+        nucleide_nuclei::dialects::to_zaid(self.inner)
     }
 
     /// zzllaaam form ("U-235").
     #[getter]
     fn zzllaaam(&self) -> String {
-        nuclei::dialects::zzllaaam(self.inner)
+        nucleide_nuclei::dialects::zzllaaam(self.inner)
     }
 
     /// Serpent-style name ("U-235").
     #[getter]
     fn serpent(&self) -> String {
-        nuclei::dialects::serpent(self.inner)
+        nucleide_nuclei::dialects::serpent(self.inner)
     }
 
     /// NIST-style name.
     #[getter]
     fn nist(&self) -> String {
-        nuclei::dialects::nist(self.inner)
+        nucleide_nuclei::dialects::nist(self.inner)
     }
 
     /// Cinder integer id.
     #[getter]
     fn cinder(&self) -> u32 {
-        nuclei::dialects::to_cinder(self.inner)
+        nucleide_nuclei::dialects::to_cinder(self.inner)
     }
 
     /// ALARA name ("u:235").
     #[getter]
     fn alara(&self) -> String {
-        nuclei::dialects::alara(self.inner)
+        nucleide_nuclei::dialects::alara(self.inner)
     }
 
     /// SZA integer.
     #[getter]
     fn sza(&self) -> u32 {
-        nuclei::dialects::to_sza(self.inner)
+        nucleide_nuclei::dialects::to_sza(self.inner)
     }
 
     /// FLUKA element-isotope name; raises ValueError if unavailable.
     fn fluka(&self) -> PyResult<&'static str> {
-        nuclei::dialects::id_to_fluka(self.inner).map_err(|e| PyValueError::new_err(e.to_string()))
+        nucleide_nuclei::dialects::id_to_fluka(self.inner)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Atomic mass in u (AME2020), or None if unknown.
     #[getter]
     fn mass(&self) -> Option<f64> {
-        nuclei::data::atomic_mass(self.inner.nucid())
+        nucleide_nuclei::data::atomic_mass(self.inner.nucid())
     }
 
     /// Natural abundance fraction, or None.
     #[getter]
     fn abundance(&self) -> Option<f64> {
-        nuclei::data::natural_abundance(self.inner.nucid())
+        nucleide_nuclei::data::natural_abundance(self.inner.nucid())
     }
 
     fn __repr__(&self) -> String {
@@ -143,7 +144,7 @@ impl PyNuclide {
 /// Parse a MCNP ZAID integer into a Nuclide.
 #[pyfunction]
 fn from_zaid(zaid: u32) -> PyResult<PyNuclide> {
-    nuclei::dialects::from_zaid(zaid)
+    nucleide_nuclei::dialects::from_zaid(zaid)
         .map(|inner| PyNuclide { inner })
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
@@ -162,19 +163,19 @@ fn lookup(key: &Bound<'_, PyAny>, f: impl Fn(u32) -> Option<f64>) -> PyResult<Op
 /// Atomic mass in u for a nucid integer or name string.
 #[pyfunction]
 fn atomic_mass(key: &Bound<'_, PyAny>) -> PyResult<Option<f64>> {
-    lookup(key, nuclei::data::atomic_mass)
+    lookup(key, nucleide_nuclei::data::atomic_mass)
 }
 
 /// Natural abundance fraction for a nucid integer or name string.
 #[pyfunction]
 fn natural_abundance(key: &Bound<'_, PyAny>) -> PyResult<Option<f64>> {
-    lookup(key, nuclei::data::natural_abundance)
+    lookup(key, nucleide_nuclei::data::natural_abundance)
 }
 
 /// A particle species with cross-code name translations.
 #[pyclass(name = "Particle")]
 struct PyParticle {
-    inner: nuclei::particles::ParticleId,
+    inner: nucleide_nuclei::particles::ParticleId,
 }
 
 #[pymethods]
@@ -183,10 +184,10 @@ impl PyParticle {
     #[new]
     fn new(spec: &Bound<'_, PyAny>) -> PyResult<Self> {
         let inner = if let Ok(pdc) = spec.extract::<i32>() {
-            nuclei::particles::ParticleId::from_pdc(pdc)
+            nucleide_nuclei::particles::ParticleId::from_pdc(pdc)
                 .ok_or_else(|| PyValueError::new_err(format!("unknown PDC code {pdc}")))?
         } else if let Ok(s) = spec.extract::<&str>() {
-            s.parse::<nuclei::particles::ParticleId>()
+            s.parse::<nucleide_nuclei::particles::ParticleId>()
                 .map_err(|e| PyValueError::new_err(e.to_string()))?
         } else {
             return Err(PyTypeError::new_err("expected str alias or int PDC"));
@@ -225,26 +226,26 @@ impl PyParticle {
 /// Resolve a reaction name/MT/id string to its numeric id.
 #[pyfunction]
 fn rxname_id(name: &str) -> PyResult<u32> {
-    nuclei::rxname::name_to_id(name).map_err(|e| PyValueError::new_err(e.to_string()))
+    nucleide_nuclei::rxname::name_to_id(name).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 /// Canonical short name for a reaction id.
 #[pyfunction]
 fn rxname_name(id: u32) -> Option<&'static str> {
-    nuclei::rxname::id_to_name(id)
+    nucleide_nuclei::rxname::id_to_name(id)
 }
 
 /// ENDF MT number for a reaction id (0 if none registered).
 #[pyfunction]
 fn rxname_mt(id: u32) -> i32 {
-    nuclei::rxname::id_to_mt(id)
+    nucleide_nuclei::rxname::id_to_mt(id)
 }
 
 // ---------------------------------------------------------------------------
 // MCNP file I/O
 // ---------------------------------------------------------------------------
 
-fn io_err(e: mcnp_io::xsdir::Error) -> PyErr {
+fn io_err(e: nucleide_mcnp_io::xsdir::Error) -> PyErr {
     PyValueError::new_err(e.to_string())
 }
 fn m_err<T>(r: Result<T, impl std::fmt::Display>) -> PyResult<T> {
@@ -254,7 +255,7 @@ fn m_err<T>(r: Result<T, impl std::fmt::Display>) -> PyResult<T> {
 /// One xsdir directory entry.
 #[pyclass(name = "XsdirTable")]
 struct PyXsdirTable {
-    inner: mcnp_io::xsdir::XsdirTable,
+    inner: nucleide_mcnp_io::xsdir::XsdirTable,
 }
 
 #[pymethods]
@@ -307,7 +308,7 @@ impl PyXsdirTable {
 /// Parsed xsdir index file.
 #[pyclass(name = "Xsdir")]
 struct PyXsdir {
-    inner: mcnp_io::xsdir::Xsdir,
+    inner: nucleide_mcnp_io::xsdir::Xsdir,
 }
 
 #[pymethods]
@@ -347,7 +348,7 @@ impl PyXsdir {
 /// Parse an MCNP xsdir file.
 #[pyfunction]
 fn read_xsdir(path: &str) -> PyResult<PyXsdir> {
-    mcnp_io::xsdir::Xsdir::from_file(path)
+    nucleide_mcnp_io::xsdir::Xsdir::from_file(path)
         .map(|inner| PyXsdir { inner })
         .map_err(io_err)
 }
@@ -355,7 +356,7 @@ fn read_xsdir(path: &str) -> PyResult<PyXsdir> {
 /// One fmesh4 tally from a meshtal file.
 #[pyclass(name = "MeshTally")]
 struct PyMeshTally {
-    inner: mcnp_io::meshtal::MeshTallyData,
+    inner: nucleide_mcnp_io::meshtal::MeshTallyData,
 }
 
 #[pymethods]
@@ -433,7 +434,7 @@ impl PyMeshTally {
 /// Parsed meshtal file.
 #[pyclass(name = "Meshtal")]
 struct PyMeshtal {
-    inner: mcnp_io::meshtal::Meshtal,
+    inner: nucleide_mcnp_io::meshtal::Meshtal,
 }
 
 #[pymethods]
@@ -468,13 +469,13 @@ impl PyMeshtal {
 /// Parse an MCNP meshtal file.
 #[pyfunction]
 fn read_meshtal(path: &str) -> PyResult<PyMeshtal> {
-    m_err(mcnp_io::meshtal::Meshtal::from_file(path).map(|inner| PyMeshtal { inner }))
+    m_err(nucleide_mcnp_io::meshtal::Meshtal::from_file(path).map(|inner| PyMeshtal { inner }))
 }
 
 /// Parsed WWINP weight-window file.
 #[pyclass(name = "Wwinp")]
 struct PyWwinp {
-    inner: mcnp_io::wwinp::Wwinp,
+    inner: nucleide_mcnp_io::wwinp::Wwinp,
 }
 
 #[pymethods]
@@ -531,13 +532,13 @@ impl PyWwinp {
 /// Parse an MCNP WWINP weight-window file.
 #[pyfunction]
 fn read_wwinp(path: &str) -> PyResult<PyWwinp> {
-    m_err(mcnp_io::wwinp::Wwinp::from_file(path).map(|inner| PyWwinp { inner }))
+    m_err(nucleide_mcnp_io::wwinp::Wwinp::from_file(path).map(|inner| PyWwinp { inner }))
 }
 
 /// Parsed MCTAL kcode data.
 #[pyclass(name = "Mctal")]
 struct PyMctal {
-    inner: mcnp_io::mctal::Mctal,
+    inner: nucleide_mcnp_io::mctal::Mctal,
 }
 
 #[pymethods]
@@ -624,13 +625,13 @@ impl PyMctal {
 /// Parse an MCNP MCTAL file (kcode subset, upstream parity).
 #[pyfunction]
 fn read_mctal(path: &str) -> PyResult<PyMctal> {
-    m_err(mcnp_io::mctal::Mctal::from_file(path).map(|inner| PyMctal { inner }))
+    m_err(nucleide_mcnp_io::mctal::Mctal::from_file(path).map(|inner| PyMctal { inner }))
 }
 
 /// Parsed SSW surface-source file.
 #[pyclass(name = "SurfSrc")]
 struct PySurfSrc {
-    inner: mcnp_io::surfsrc::SurfSrc,
+    inner: nucleide_mcnp_io::surfsrc::SurfSrc,
 }
 
 #[pymethods]
@@ -698,7 +699,7 @@ impl PySurfSrc {
 /// Read an MCNP SSW surface-source file (header eagerly; tracks on demand).
 #[pyfunction]
 fn read_ssw(path: &str) -> PyResult<PySurfSrc> {
-    mcnp_io::surfsrc::SurfSrc::open(path)
+    nucleide_mcnp_io::surfsrc::SurfSrc::open(path)
         .map(|inner| PySurfSrc { inner })
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
@@ -706,7 +707,7 @@ fn read_ssw(path: &str) -> PyResult<PySurfSrc> {
 /// Detected PTRAC layout: 0 = i4 little-endian, 1 = i8 little-endian.
 #[pyclass(name = "PtracFile")]
 struct PyPtracFile {
-    inner: mcnp_io::ptrac::PtracFile,
+    inner: nucleide_mcnp_io::ptrac::PtracFile,
 }
 
 #[pymethods]
@@ -719,8 +720,8 @@ impl PyPtracFile {
     #[getter]
     fn width_code(&self) -> u8 {
         match self.inner.format {
-            mcnp_io::ptrac::Format::I4LittleEndian => 0,
-            mcnp_io::ptrac::Format::I8LittleEndian => 1,
+            nucleide_mcnp_io::ptrac::Format::I4LittleEndian => 0,
+            nucleide_mcnp_io::ptrac::Format::I8LittleEndian => 1,
         }
     }
     /// Variable counts per event type as {nps,src,bnk,sur,col,ter}.
@@ -759,7 +760,7 @@ impl PyPtracFile {
 /// Read an MCNP PTRAC event file.
 #[pyfunction]
 fn read_ptrac(path: &str) -> PyResult<PyPtracFile> {
-    mcnp_io::ptrac::PtracFile::open(path)
+    nucleide_mcnp_io::ptrac::PtracFile::open(path)
         .map(|inner| PyPtracFile { inner })
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
@@ -771,7 +772,7 @@ fn read_ptrac(path: &str) -> PyResult<PyPtracFile> {
 /// A parsed depletion chain (XML format).
 #[pyclass(name = "Chain")]
 struct PyChain {
-    inner: std::sync::Arc<depletion::Chain>,
+    inner: std::sync::Arc<nucleide_depletion::Chain>,
 }
 
 #[pymethods]
@@ -790,7 +791,7 @@ impl PyChain {
 /// Parse a depletion-chain XML file.
 #[pyfunction]
 fn read_chain(path: &str) -> PyResult<PyChain> {
-    depletion::Chain::from_file(path)
+    nucleide_depletion::Chain::from_file(path)
         .map(|inner| PyChain {
             inner: std::sync::Arc::new(inner),
         })
@@ -803,7 +804,7 @@ type RateMap = BTreeMap<String, f64>;
 /// Pre-built depletion system for repeated CRAM solves.
 #[pyclass(name = "DepletionSystem")]
 struct PyDepletionSystem {
-    inner: std::sync::Arc<depletion::DepletionSystem>,
+    inner: std::sync::Arc<nucleide_depletion::DepletionSystem>,
 }
 
 #[pymethods]
@@ -817,7 +818,7 @@ impl PyDepletionSystem {
         order: u8,
     ) -> PyResult<BTreeMap<String, f64>> {
         let order = parse_order(order)?;
-        depletion::deplete(&self.inner, order, &n0, dt)
+        nucleide_depletion::deplete(&self.inner, order, &n0, dt)
             .map(|r| r.atoms)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -829,7 +830,7 @@ impl PyDepletionSystem {
     #[pyo3(signature = (n0, dt, order=48))]
     fn solve_vec(&self, n0: Vec<f64>, dt: f64, order: u8) -> PyResult<Vec<f64>> {
         let order = parse_order(order)?;
-        depletion::cram(&self.inner, order, &n0, dt)
+        nucleide_depletion::cram(&self.inner, order, &n0, dt)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 }
@@ -838,25 +839,28 @@ impl PyDepletionSystem {
 #[pyfunction]
 fn build_depletion_system(chain: &PyChain, rates: RateMap) -> PyResult<PyDepletionSystem> {
     let rs = split_rates(&rates, &chain.inner)?;
-    depletion::DepletionSystem::build((*chain.inner).clone(), &rs)
+    nucleide_depletion::DepletionSystem::build((*chain.inner).clone(), &rs)
         .map(|sys| PyDepletionSystem {
             inner: std::sync::Arc::new(sys),
         })
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-fn parse_order(order: u8) -> PyResult<depletion::Order> {
+fn parse_order(order: u8) -> PyResult<nucleide_depletion::Order> {
     match order {
-        16 => Ok(depletion::Order::Order16),
-        48 => Ok(depletion::Order::Order48),
+        16 => Ok(nucleide_depletion::Order::Order16),
+        48 => Ok(nucleide_depletion::Order::Order48),
         other => Err(PyValueError::new_err(format!(
             "unsupported CRAM order {other}"
         ))),
     }
 }
 
-fn split_rates(rates: &RateMap, chain: &depletion::Chain) -> PyResult<depletion::ReactionRates> {
-    let mut out = depletion::ReactionRates::new();
+fn split_rates(
+    rates: &RateMap,
+    chain: &nucleide_depletion::Chain,
+) -> PyResult<nucleide_depletion::ReactionRates> {
+    let mut out = nucleide_depletion::ReactionRates::new();
     for (key, v) in rates {
         let (nuc, rx) = key.split_once(':').ok_or_else(|| {
             PyValueError::new_err(format!("rate key `{key}` must be `Name:reaction`"))
@@ -884,8 +888,8 @@ fn deplete(
     order: u8,
 ) -> PyResult<BTreeMap<String, f64>> {
     let order = match order {
-        16 => depletion::Order::Order16,
-        48 => depletion::Order::Order48,
+        16 => nucleide_depletion::Order::Order16,
+        48 => nucleide_depletion::Order::Order48,
         other => {
             return Err(PyValueError::new_err(format!(
                 "unsupported CRAM order {other}"
@@ -893,9 +897,9 @@ fn deplete(
         }
     };
     let rates = split_rates(rates.as_ref().unwrap_or(&BTreeMap::new()), &chain.inner)?;
-    let sys = depletion::DepletionSystem::build((*chain.inner).clone(), &rates)
+    let sys = nucleide_depletion::DepletionSystem::build((*chain.inner).clone(), &rates)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    depletion::deplete(&sys, order, &n0, dt)
+    nucleide_depletion::deplete(&sys, order, &n0, dt)
         .map(|r| r.atoms)
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
@@ -910,9 +914,9 @@ fn deplete(
 fn read_serpent(path: &str, kind: &str) -> PyResult<Py<PyAny>> {
     let text = std::fs::read_to_string(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
     let table = match kind {
-        "res" => serpent_io::parse_res(&text),
-        "dep" => serpent_io::parse_dep(&text),
-        "det" => serpent_io::parse_det(&text),
+        "res" => nucleide_serpent_io::parse_res(&text),
+        "dep" => nucleide_serpent_io::parse_dep(&text),
+        "det" => nucleide_serpent_io::parse_det(&text),
         other => {
             return Err(PyValueError::new_err(format!(
                 "kind must be res|dep|det, got `{other}`"
@@ -920,20 +924,24 @@ fn read_serpent(path: &str, kind: &str) -> PyResult<Py<PyAny>> {
         }
     }
     .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    fn entry_to_py(py: Python<'_>, e: &serpent_io::Entry) -> Py<PyAny> {
-        use serpent_io::Entry as E;
+    fn entry_to_py(py: Python<'_>, e: &nucleide_serpent_io::Entry) -> Py<PyAny> {
+        use nucleide_serpent_io::Entry as E;
         match e {
-            E::Scalar(serpent_io::Value::Num(n)) => {
+            E::Scalar(nucleide_serpent_io::Value::Num(n)) => {
                 n.into_pyobject(py).unwrap().unbind().into_any()
             }
-            E::Scalar(serpent_io::Value::Str(s)) => {
+            E::Scalar(nucleide_serpent_io::Value::Str(s)) => {
                 s.into_pyobject(py).unwrap().unbind().into_any()
             }
             E::Vector(vs) => vs
                 .iter()
                 .map(|v| match v {
-                    serpent_io::Value::Num(n) => n.into_pyobject(py).unwrap().unbind().into_any(),
-                    serpent_io::Value::Str(s) => s.into_pyobject(py).unwrap().unbind().into_any(),
+                    nucleide_serpent_io::Value::Num(n) => {
+                        n.into_pyobject(py).unwrap().unbind().into_any()
+                    }
+                    nucleide_serpent_io::Value::Str(s) => {
+                        s.into_pyobject(py).unwrap().unbind().into_any()
+                    }
                 })
                 .collect::<Vec<_>>()
                 .into_pyobject(py)
@@ -962,7 +970,7 @@ fn read_serpent(path: &str, kind: &str) -> PyResult<Py<PyAny>> {
 /// One FLUKA USRBIN detector.
 #[pyclass(name = "UsrbinTally")]
 struct PyUsrbinTally {
-    inner: fluka_io::usrbin::UsrbinTally,
+    inner: nucleide_fluka_io::usrbin::UsrbinTally,
 }
 
 #[pymethods]
@@ -1017,7 +1025,7 @@ impl PyUsrbinTally {
 /// Parse all USRBIN tallies from a FLUKA .lis file.
 #[pyfunction]
 fn read_usrbin(path: &str) -> PyResult<Vec<PyUsrbinTally>> {
-    let tallies = fluka_io::usrbin::read_usrbin_file(path)
+    let tallies = nucleide_fluka_io::usrbin::read_usrbin_file(path)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(tallies
         .into_iter()
@@ -1028,7 +1036,7 @@ fn read_usrbin(path: &str) -> PyResult<Vec<PyUsrbinTally>> {
 /// MAGIC weight-window output.
 #[pyclass(name = "MagicOutput")]
 struct PyMagicOutput {
-    inner: vr_tools::magic::MagicOutput,
+    inner: nucleide_vr_tools::magic::MagicOutput,
 }
 
 #[pymethods]
@@ -1061,15 +1069,15 @@ impl PyMagicOutput {
 #[pyo3(signature = (tally, per_group=false, tolerance=0.5))]
 fn magic(tally: &PyMeshTally, per_group: bool, tolerance: f64) -> PyResult<PyMagicOutput> {
     let selection = if per_group {
-        vr_tools::magic::MagicSelection::PerGroup
+        nucleide_vr_tools::magic::MagicSelection::PerGroup
     } else {
-        vr_tools::magic::MagicSelection::Total
+        nucleide_vr_tools::magic::MagicSelection::Total
     };
-    let params = vr_tools::magic::MagicParams {
+    let params = nucleide_vr_tools::magic::MagicParams {
         tolerance,
         ..Default::default()
     };
-    vr_tools::magic::magic_with(&tally.inner, selection, params)
+    nucleide_vr_tools::magic::magic_with(&tally.inner, selection, params)
         .map(|inner| PyMagicOutput { inner })
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
@@ -1077,7 +1085,7 @@ fn magic(tally: &PyMeshTally, per_group: bool, tolerance: f64) -> PyResult<PyMag
 /// Walker alias table for discrete sampling.
 #[pyclass(name = "AliasTable")]
 struct PyAliasTable {
-    inner: vr_tools::sampling::AliasTable,
+    inner: nucleide_vr_tools::sampling::AliasTable,
 }
 
 #[pymethods]
@@ -1085,7 +1093,7 @@ impl PyAliasTable {
     /// Build from a probability density (normalized internally).
     #[new]
     fn new(pdf: Vec<f64>) -> PyResult<Self> {
-        vr_tools::sampling::AliasTable::new(&pdf)
+        nucleide_vr_tools::sampling::AliasTable::new(&pdf)
             .map(|inner| PyAliasTable { inner })
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -1105,7 +1113,7 @@ impl PyAliasTable {
 /// Mesh source sampler over a meshtal tally (ANALOG/UNIFORM/USER modes).
 #[pyclass(name = "MeshSourceSampler")]
 struct PyMeshSourceSampler {
-    inner: vr_tools::sampling::MeshSourceSampler,
+    inner: nucleide_vr_tools::sampling::MeshSourceSampler,
 }
 
 #[pymethods]
@@ -1120,16 +1128,16 @@ impl PyMeshSourceSampler {
             None
         };
         let m = match mode {
-            "analog" => vr_tools::sampling::Mode::Analog,
-            "uniform" => vr_tools::sampling::Mode::Uniform,
-            "user" => vr_tools::sampling::Mode::User,
+            "analog" => nucleide_vr_tools::sampling::Mode::Analog,
+            "uniform" => nucleide_vr_tools::sampling::Mode::Uniform,
+            "user" => nucleide_vr_tools::sampling::Mode::User,
             other => {
                 return Err(PyValueError::new_err(format!(
                     "mode must be analog|uniform|user, got `{other}`"
                 )))
             }
         };
-        vr_tools::sampling::MeshSourceSampler::new(&tally.inner, m, user.as_deref())
+        nucleide_vr_tools::sampling::MeshSourceSampler::new(&tally.inner, m, user.as_deref())
             .map(|inner| PyMeshSourceSampler { inner })
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -1156,12 +1164,12 @@ fn write_ssw(
     tracks: Option<Vec<BTreeMap<String, f64>>>,
 ) -> PyResult<()> {
     let header = ssw.inner.header.clone();
-    let track_data: Vec<mcnp_io::surfsrc::TrackData> = match tracks {
+    let track_data: Vec<nucleide_mcnp_io::surfsrc::TrackData> = match tracks {
         Some(dict_tracks) => dict_tracks
             .iter()
             .map(|d| {
                 let g = |k: &str| d.get(k).copied().unwrap_or(0.0);
-                let mut record = vec![0.0f64; mcnp_io::surfsrc::TrackData::RECORD_WIDTH];
+                let mut record = vec![0.0f64; nucleide_mcnp_io::surfsrc::TrackData::RECORD_WIDTH];
                 record[0] = g("nps");
                 record[1] = g("bitarray");
                 record[2] = g("wgt");
@@ -1173,7 +1181,7 @@ fn write_ssw(
                 record[8] = g("u");
                 record[9] = g("v");
                 record[10] = g("cs");
-                mcnp_io::surfsrc::TrackData::from_record(record)
+                nucleide_mcnp_io::surfsrc::TrackData::from_record(record)
             })
             .collect(),
         None => ssw
@@ -1182,7 +1190,7 @@ fn write_ssw(
             .map_err(|e| PyValueError::new_err(e.to_string()))?,
     };
     let mut f = std::fs::File::create(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
-    mcnp_io::surfsrc::write_to(&mut f, &header, &track_data)
+    nucleide_mcnp_io::surfsrc::write_to(&mut f, &header, &track_data)
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
@@ -1195,11 +1203,11 @@ fn mesh_to_geom(
     cell_materials: Vec<Option<(String, f64)>>,
     title_card: &str,
 ) -> String {
-    let opts = mcnp_io::deck::DeckOptions {
+    let opts = nucleide_mcnp_io::deck::DeckOptions {
         title_card: title_card.to_string(),
-        frac_type: mcnp_io::deck::FracType::Mass,
+        frac_type: nucleide_mcnp_io::deck::FracType::Mass,
     };
-    mcnp_io::deck::mesh_to_geom(&x_bounds, &y_bounds, &z_bounds, &cell_materials, &opts)
+    nucleide_mcnp_io::deck::mesh_to_geom(&x_bounds, &y_bounds, &z_bounds, &cell_materials, &opts)
 }
 
 // ---------------------------------------------------------------------------
@@ -1216,16 +1224,16 @@ fn mesh_to_geom(
 fn alara_parse_deck(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
     let owned = text.to_owned();
     let deck = py
-        .detach(move || alara_io::AlaraDeck::parse(&owned))
+        .detach(move || nucleide_alara_io::AlaraDeck::parse(&owned))
         .map_err(ala_err)?;
     Ok(deck_to_py(py, &deck))
 }
 
-fn ala_err(e: alara_io::Error) -> PyErr {
+fn ala_err(e: nucleide_alara_io::Error) -> PyErr {
     PyValueError::new_err(e.to_string())
 }
 
-fn deck_to_py(py: Python<'_>, deck: &alara_io::AlaraDeck) -> Py<PyAny> {
+fn deck_to_py(py: Python<'_>, deck: &nucleide_alara_io::AlaraDeck) -> Py<PyAny> {
     use pyo3::types::PyDict;
     let out = PyDict::new(py);
     let block_kinds: Vec<&str> = deck.block_kinds();
@@ -1293,7 +1301,7 @@ fn deck_to_py(py: Python<'_>, deck: &alara_io::AlaraDeck) -> Py<PyAny> {
     out.into_any().unbind()
 }
 
-fn mixture_to_py(py: Python<'_>, mix: &alara_io::deck::Mixture) -> Py<PyAny> {
+fn mixture_to_py(py: Python<'_>, mix: &nucleide_alara_io::deck::Mixture) -> Py<PyAny> {
     use pyo3::types::PyDict;
     let entries: Vec<Py<PyAny>> = mix
         .entries
@@ -1306,8 +1314,8 @@ fn mixture_to_py(py: Python<'_>, mix: &alara_io::deck::Mixture) -> Py<PyAny> {
     d.into_any().unbind()
 }
 
-fn mixture_entry_to_py(py: Python<'_>, entry: &alara_io::deck::MixtureEntry) -> Py<PyAny> {
-    use alara_io::deck::MixtureEntry as E;
+fn mixture_entry_to_py(py: Python<'_>, entry: &nucleide_alara_io::deck::MixtureEntry) -> Py<PyAny> {
+    use nucleide_alara_io::deck::MixtureEntry as E;
     use pyo3::types::PyDict;
     let d = PyDict::new(py);
     match entry {
@@ -1348,7 +1356,7 @@ fn mixture_entry_to_py(py: Python<'_>, entry: &alara_io::deck::MixtureEntry) -> 
     d.into_any().unbind()
 }
 
-fn fluxdef_to_py(py: Python<'_>, flux: &alara_io::deck::FluxDef) -> Py<PyAny> {
+fn fluxdef_to_py(py: Python<'_>, flux: &nucleide_alara_io::deck::FluxDef) -> Py<PyAny> {
     use pyo3::types::PyDict;
     let d = PyDict::new(py);
     d.set_item("name", &flux.name).ok();
@@ -1368,7 +1376,7 @@ fn alara_parse_flux(py: Python<'_>, text: &str, name: &str) -> PyResult<Py<PyAny
     let owned_text = text.to_owned();
     let owned_name = name.to_owned();
     let spectra = py
-        .detach(move || alara_io::FluxSpectra::parse(&owned_name, &owned_text))
+        .detach(move || nucleide_alara_io::FluxSpectra::parse(&owned_name, &owned_text))
         .map_err(ala_err)?;
     use pyo3::types::PyDict;
     let d = PyDict::new(py);
@@ -1398,7 +1406,7 @@ fn alara_parse_output(
     let owned_lbl = run_lbl.to_owned();
     let rows = py
         .detach(move || {
-            alara_io::output::ResponseFrame::parse(&owned_text, &owned_lbl).map(|f| f.rows)
+            nucleide_alara_io::output::ResponseFrame::parse(&owned_text, &owned_lbl).map(|f| f.rows)
         })
         .map_err(ala_err)?;
     Ok(rows
@@ -1540,8 +1548,8 @@ fn alara_expand_schedule(
 fn expand_deck_schedules(
     deck_text: &str,
     top: Option<&str>,
-) -> Result<Vec<alara_io::FlatStep>, String> {
-    let deck = alara_io::AlaraDeck::parse(deck_text).map_err(|e| e.to_string())?;
+) -> Result<Vec<nucleide_alara_io::FlatStep>, String> {
+    let deck = nucleide_alara_io::AlaraDeck::parse(deck_text).map_err(|e| e.to_string())?;
     let mut scheds = Vec::with_capacity(deck.schedules.len());
     for raw in &deck.schedules {
         let mut items = Vec::with_capacity(raw.items.len());
@@ -1551,20 +1559,20 @@ fn expand_deck_schedules(
                     .map_err(|m| format!("schedule `{}` line {}: {m}", raw.name, entry.line))?,
             );
         }
-        scheds.push(alara_io::schedule::ScheduleDef {
+        scheds.push(nucleide_alara_io::schedule::ScheduleDef {
             name: raw.name.clone(),
             items,
         });
     }
-    let histories: Vec<alara_io::schedule::PulseHistory> = deck
+    let histories: Vec<nucleide_alara_io::schedule::PulseHistory> = deck
         .pulse_histories
         .iter()
-        .map(|h| alara_io::schedule::PulseHistory {
+        .map(|h| nucleide_alara_io::schedule::PulseHistory {
             name: h.name.clone(),
             levels: h
                 .levels
                 .iter()
-                .map(|l| alara_io::schedule::PulseLevel {
+                .map(|l| nucleide_alara_io::schedule::PulseLevel {
                     count: l.pulses,
                     delay_s: l.delay_s,
                 })
@@ -1572,12 +1580,14 @@ fn expand_deck_schedules(
         })
         .collect();
     match top {
-        Some(name) => alara_io::expand_from(name, &scheds, &histories).map_err(|e| e.to_string()),
-        None => alara_io::expand(&scheds, &histories).map_err(|e| e.to_string()),
+        Some(name) => {
+            nucleide_alara_io::expand_from(name, &scheds, &histories).map_err(|e| e.to_string())
+        }
+        None => nucleide_alara_io::expand(&scheds, &histories).map_err(|e| e.to_string()),
     }
 }
 
-fn parse_deck_sched_item(tokens: &[String]) -> Result<alara_io::SchedItem, String> {
+fn parse_deck_sched_item(tokens: &[String]) -> Result<nucleide_alara_io::SchedItem, String> {
     match tokens {
         [op_text, op_unit, flux, history, delay_text, delay_unit] => {
             let op: f64 = op_text
@@ -1587,10 +1597,10 @@ fn parse_deck_sched_item(tokens: &[String]) -> Result<alara_io::SchedItem, Strin
                 .parse()
                 .map_err(|_| format!("expected delay, found `{delay_text}`"))?;
             let op_time_s =
-                alara_io::parse_time_to_seconds(op, op_unit).map_err(|e| e.to_string())?;
-            let delay_s =
-                alara_io::parse_time_to_seconds(delay, delay_unit).map_err(|e| e.to_string())?;
-            Ok(alara_io::SchedItem::Pulse {
+                nucleide_alara_io::parse_time_to_seconds(op, op_unit).map_err(|e| e.to_string())?;
+            let delay_s = nucleide_alara_io::parse_time_to_seconds(delay, delay_unit)
+                .map_err(|e| e.to_string())?;
+            Ok(nucleide_alara_io::SchedItem::Pulse {
                 op_time_s,
                 flux: flux.clone(),
                 history: history.clone(),
@@ -1601,9 +1611,9 @@ fn parse_deck_sched_item(tokens: &[String]) -> Result<alara_io::SchedItem, Strin
             let delay: f64 = delay_text
                 .parse()
                 .map_err(|_| format!("expected delay, found `{delay_text}`"))?;
-            let delay_s =
-                alara_io::parse_time_to_seconds(delay, delay_unit).map_err(|e| e.to_string())?;
-            Ok(alara_io::SchedItem::SubSchedule {
+            let delay_s = nucleide_alara_io::parse_time_to_seconds(delay, delay_unit)
+                .map_err(|e| e.to_string())?;
+            Ok(nucleide_alara_io::SchedItem::SubSchedule {
                 name: name.clone(),
                 history: history.clone(),
                 delay_s,
@@ -1623,25 +1633,25 @@ fn parse_deck_sched_item(tokens: &[String]) -> Result<alara_io::SchedItem, Strin
 /// Half-life [s] for a nucid integer or name string.
 #[pyfunction]
 fn half_life(key: &Bound<'_, PyAny>) -> PyResult<Option<f64>> {
-    lookup(key, nuclei::data::half_life)
+    lookup(key, nucleide_nuclei::data::half_life)
 }
 
 /// Decay constant lambda = ln2 / t_half [1/s].
 #[pyfunction]
 fn decay_constant(key: &Bound<'_, PyAny>) -> PyResult<Option<f64>> {
-    lookup(key, nuclei::data::decay_constant)
+    lookup(key, nucleide_nuclei::data::decay_constant)
 }
 
 /// Neutron-capture Q value computed from AME2020 masses [MeV].
 #[pyfunction]
 fn q_value_capture(key: &Bound<'_, PyAny>) -> PyResult<Option<f64>> {
-    lookup(key, nuclei::data::q_value_neutron_capture)
+    lookup(key, nucleide_nuclei::data::q_value_neutron_capture)
 }
 
 /// Alpha-decay Q value from AME2020 masses [MeV].
 #[pyfunction]
 fn q_value_alpha(key: &Bound<'_, PyAny>) -> PyResult<Option<f64>> {
-    lookup(key, nuclei::data::q_value_alpha)
+    lookup(key, nucleide_nuclei::data::q_value_alpha)
 }
 
 /// Parse MCNP material cards from an input deck.
@@ -1649,7 +1659,7 @@ fn q_value_alpha(key: &Bound<'_, PyAny>) -> PyResult<Option<f64>> {
 /// fraction_type: "atom"|"mass", density, comments}.
 #[pyfunction]
 fn read_inp(path: &str) -> PyResult<Vec<BTreeMap<String, Py<PyAny>>>> {
-    let mats = mcnp_io::inp::materials_from_file(path)
+    let mats = nucleide_mcnp_io::inp::materials_from_file(path)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Python::attach(|py| {
         Ok(mats
@@ -1672,8 +1682,8 @@ fn read_inp(path: &str) -> PyResult<Vec<BTreeMap<String, Py<PyAny>>>> {
                 d.insert(
                     "fraction_type".to_string(),
                     match m.fraction_type {
-                        mcnp_io::inp::FracKind::Atom => "atom",
-                        mcnp_io::inp::FracKind::Mass => "mass",
+                        nucleide_mcnp_io::inp::FracKind::Atom => "atom",
+                        nucleide_mcnp_io::inp::FracKind::Mass => "mass",
                     }
                     .into_pyobject(py)
                     .unwrap()
@@ -1699,10 +1709,10 @@ fn read_inp(path: &str) -> PyResult<Vec<BTreeMap<String, Py<PyAny>>>> {
     })
 }
 
-fn comp_to_material(comp: BTreeMap<String, f64>) -> PyResult<material::Material> {
-    let mut mat = material::Material::new();
+fn comp_to_material(comp: BTreeMap<String, f64>) -> PyResult<nucleide_material::Material> {
+    let mut mat = nucleide_material::Material::new();
     for (name, grams) in &comp {
-        let id = nuclei::NuclideId::from_name(name)
+        let id = nucleide_nuclei::NuclideId::from_name(name)
             .map_err(|e| PyValueError::new_err(format!("`{name}`: {e}")))?;
         mat.add_nuclide(id, *grams);
     }
@@ -1713,13 +1723,13 @@ fn comp_to_material(comp: BTreeMap<String, f64>) -> PyResult<material::Material>
 /// ({nuclide_name: atom_fraction}) using AME2020 masses + abundances.
 #[pyfunction]
 fn from_formula(formula: &str) -> PyResult<BTreeMap<String, f64>> {
-    use material::AbundanceProvider;
-    let parsed =
-        material::parse_formula(formula).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    use nucleide_material::AbundanceProvider;
+    let parsed = nucleide_material::parse_formula(formula)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     // Build a temporary element-count material then expand via abundances:
     let mut nat = Vec::new();
     for (z, count) in &parsed {
-        if let Some(isotopes) = material::NaturalAbundances.natural_isotopes(*z) {
+        if let Some(isotopes) = nucleide_material::NaturalAbundances.natural_isotopes(*z) {
             for (id, frac) in isotopes {
                 nat.push((id, frac * count));
             }
@@ -1741,9 +1751,9 @@ fn from_formula(formula: &str) -> PyResult<BTreeMap<String, f64>> {
 #[pyfunction]
 fn activity(comp: BTreeMap<String, f64>) -> PyResult<BTreeMap<String, f64>> {
     let mat = comp_to_material(comp)?;
-    let analytics = material::Analytics {
-        masses: &material::Ame2020,
-        decays: &material::ChainDecays,
+    let analytics = nucleide_material::Analytics {
+        masses: &nucleide_material::Ame2020,
+        decays: &nucleide_material::ChainDecays,
     };
     let per_nuc = mat
         .activity(&analytics)
@@ -1770,7 +1780,7 @@ fn to_xml(comp: BTreeMap<String, f64>, name: &str, density: f64, units: &str) ->
 /// Enrichment cascade with numeric multicomponent solving.
 #[pyclass(name = "Cascade")]
 struct PyCascade {
-    inner: std::sync::Mutex<enrichment::Cascade>,
+    inner: std::sync::Mutex<nucleide_enrichment::Cascade>,
 }
 
 #[pymethods]
@@ -1779,7 +1789,7 @@ impl PyCascade {
     #[staticmethod]
     fn default_uranium() -> Self {
         Self {
-            inner: std::sync::Mutex::new(enrichment::default_uranium_cascade()),
+            inner: std::sync::Mutex::new(nucleide_enrichment::default_uranium_cascade()),
         }
     }
 
@@ -1805,7 +1815,7 @@ impl PyCascade {
             let id = NuclideId::from_name(&name).map_err(wrap_nucid_err)?;
             feed.insert(id, frac);
         }
-        let casc = enrichment::Cascade {
+        let casc = nucleide_enrichment::Cascade {
             alpha,
             Mstar,
             j: NuclideId::from_nucid(j),
@@ -1815,9 +1825,9 @@ impl PyCascade {
             x_feed_j,
             x_prod_j,
             x_tail_j,
-            mat_feed: enrichment::Stream::with_total_mass(feed, 1.0),
-            mat_prod: enrichment::Stream::new(),
-            mat_tail: enrichment::Stream::new(),
+            mat_feed: nucleide_enrichment::Stream::with_total_mass(feed, 1.0),
+            mat_prod: nucleide_enrichment::Stream::new(),
+            mat_tail: nucleide_enrichment::Stream::new(),
             l_t_per_feed: 0.0,
             swu_per_feed: 0.0,
             swu_per_prod: 0.0,
@@ -1830,13 +1840,13 @@ impl PyCascade {
     /// Solve via the numeric fixed-point + secant scheme in place.
     #[pyo3(signature = (tolerance=None, max_iterations=None))]
     fn solve(&self, tolerance: Option<f64>, max_iterations: Option<u32>) -> PyResult<()> {
-        let tol = tolerance.unwrap_or(enrichment::DEFAULT_TOLERANCE);
-        let iters = max_iterations.unwrap_or(enrichment::DEFAULT_MAX_ITER);
+        let tol = tolerance.unwrap_or(nucleide_enrichment::DEFAULT_TOLERANCE);
+        let iters = max_iterations.unwrap_or(nucleide_enrichment::DEFAULT_MAX_ITER);
         let mut c = self
             .inner
             .lock()
             .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?;
-        *c = enrichment::solve_numeric(&c, tol, iters)
+        *c = nucleide_enrichment::solve_numeric(&c, tol, iters)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(())
     }
@@ -1848,13 +1858,13 @@ impl PyCascade {
         tolerance: Option<f64>,
         max_iterations: Option<u32>,
     ) -> PyResult<()> {
-        let tol = tolerance.unwrap_or(enrichment::DEFAULT_TOLERANCE);
-        let iters = max_iterations.unwrap_or(enrichment::DEFAULT_MAX_ITER);
+        let tol = tolerance.unwrap_or(nucleide_enrichment::DEFAULT_TOLERANCE);
+        let iters = max_iterations.unwrap_or(nucleide_enrichment::DEFAULT_MAX_ITER);
         let mut c = self
             .inner
             .lock()
             .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?;
-        *c = enrichment::multicomponent(&c, tol, iters)
+        *c = nucleide_enrichment::multicomponent(&c, tol, iters)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(())
     }
@@ -1941,7 +1951,7 @@ impl PyCascade {
     /// Separative work per product [kg SWU/kg] from the key assays.
     fn separative_work_per_product(&self) -> f64 {
         let c = self.inner.lock().unwrap();
-        enrichment::swu_per_prod(c.x_feed_j, c.x_prod_j, c.x_tail_j)
+        nucleide_enrichment::swu_per_prod(c.x_feed_j, c.x_prod_j, c.x_tail_j)
     }
 
     fn __repr__(&self) -> String {
@@ -1956,7 +1966,7 @@ impl PyCascade {
 /// PNNL/DOE Materials Compendium library (411 named materials).
 #[pyclass(name = "MaterialsCompendium")]
 struct PyMaterialsCompendium {
-    inner: material::MaterialsLibrary,
+    inner: nucleide_material::MaterialsLibrary,
 }
 
 #[pymethods]
@@ -1964,7 +1974,7 @@ impl PyMaterialsCompendium {
     /// Load from the official MaterialsCompendium.json.
     #[staticmethod]
     fn load(path: &str) -> PyResult<Self> {
-        material::MaterialsLibrary::from_file(path)
+        nucleide_material::MaterialsLibrary::from_file(path)
             .map(|inner| PyMaterialsCompendium { inner })
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -2053,12 +2063,12 @@ impl PyMaterialsCompendium {
 fn isotxs_parse(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
     let owned = text.to_owned();
     let lib = py
-        .detach(move || cccc_io::IsotxsLib::parse(&owned))
+        .detach(move || nucleide_cccc_io::IsotxsLib::parse(&owned))
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(isotxs_to_py(py, &lib))
 }
 
-fn isotxs_to_py(py: Python<'_>, lib: &cccc_io::IsotxsLib) -> Py<PyAny> {
+fn isotxs_to_py(py: Python<'_>, lib: &nucleide_cccc_io::IsotxsLib) -> Py<PyAny> {
     use pyo3::types::PyDict;
     let out = PyDict::new(py);
     let nuclides: Vec<Py<PyAny>> = lib
@@ -2086,9 +2096,9 @@ fn isotxs_to_py(py: Python<'_>, lib: &cccc_io::IsotxsLib) -> Py<PyAny> {
 #[pyo3(signature = (text, kind="rtflux"))]
 fn rtflux_parse(py: Python<'_>, text: &str, kind: &str) -> PyResult<Py<PyAny>> {
     let flux_kind = match kind.to_ascii_lowercase().as_str() {
-        "rtflux" => cccc_io::rtflux::FluxKind::Rtflux,
-        "atflux" => cccc_io::rtflux::FluxKind::Atflux,
-        "rzflux" => cccc_io::rtflux::FluxKind::Rzflux,
+        "rtflux" => nucleide_cccc_io::rtflux::FluxKind::Rtflux,
+        "atflux" => nucleide_cccc_io::rtflux::FluxKind::Atflux,
+        "rzflux" => nucleide_cccc_io::rtflux::FluxKind::Rzflux,
         other => {
             return Err(PyValueError::new_err(format!(
                 "kind must be rtflux|atflux|rzflux, got `{other}`"
@@ -2097,7 +2107,7 @@ fn rtflux_parse(py: Python<'_>, text: &str, kind: &str) -> PyResult<Py<PyAny>> {
     };
     let owned = text.to_owned();
     let flux = py
-        .detach(move || cccc_io::FluxFile::parse(flux_kind, &owned))
+        .detach(move || nucleide_cccc_io::FluxFile::parse(flux_kind, &owned))
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     use pyo3::types::PyDict;
     let d = PyDict::new(py);
@@ -2110,7 +2120,9 @@ fn rtflux_parse(py: Python<'_>, text: &str, kind: &str) -> PyResult<Py<PyAny>> {
     Ok(d.into_any().unbind())
 }
 
-fn partisn_deck_from_dict(deck: &Bound<'_, pyo3::types::PyDict>) -> PyResult<cccc_io::PartisnDeck> {
+fn partisn_deck_from_dict(
+    deck: &Bound<'_, pyo3::types::PyDict>,
+) -> PyResult<nucleide_cccc_io::PartisnDeck> {
     let title: String = match deck.get_item("title")? {
         Some(v) => v
             .extract()
@@ -2160,7 +2172,7 @@ fn partisn_deck_from_dict(deck: &Bound<'_, pyo3::types::PyDict>) -> PyResult<ccc
                 .map_err(|_| PyValueError::new_err("partisn zone `density` must be float"))?,
             None => return Err(PyValueError::new_err("partisn zone missing `density`")),
         };
-        zones.push(cccc_io::partisn::PartisnZone {
+        zones.push(nucleide_cccc_io::partisn::PartisnZone {
             id,
             material,
             isotxs_labels,
@@ -2175,7 +2187,7 @@ fn partisn_deck_from_dict(deck: &Bound<'_, pyo3::types::PyDict>) -> PyResult<ccc
         ),
         None => None,
     };
-    Ok(cccc_io::PartisnDeck {
+    Ok(nucleide_cccc_io::PartisnDeck {
         title,
         dim,
         zones,
@@ -2206,7 +2218,7 @@ fn partisn_validate(
     let rust_deck = partisn_deck_from_dict(deck)?;
     let owned = isotxs_text.to_owned();
     let lib = py
-        .detach(move || cccc_io::IsotxsLib::parse(&owned))
+        .detach(move || nucleide_cccc_io::IsotxsLib::parse(&owned))
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     rust_deck
         .validate(&lib)
@@ -2219,7 +2231,7 @@ fn partisn_validate(
 
 fn fispact_row_to_map(
     py: Python<'_>,
-    r: &alara_io::output::ResponseRow,
+    r: &nucleide_alara_io::output::ResponseRow,
 ) -> BTreeMap<String, Py<PyAny>> {
     let mut d = BTreeMap::new();
     d.insert(
@@ -2318,7 +2330,9 @@ fn fispact_parse_output(
     let owned_text = text.to_owned();
     let owned_lbl = run_lbl.to_owned();
     let rows = py
-        .detach(move || fispact_io::parse_to_frame(&owned_text, &owned_lbl).map(|f| f.rows))
+        .detach(move || {
+            nucleide_fispact_io::parse_to_frame(&owned_text, &owned_lbl).map(|f| f.rows)
+        })
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(rows.iter().map(|r| fispact_row_to_map(py, r)).collect())
 }
@@ -2336,7 +2350,7 @@ fn fispact_parse_output(
 fn origen_parse_tape5(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
     let owned = text.to_owned();
     let tape = py
-        .detach(move || origen_io::Tape5::parse(&owned))
+        .detach(move || nucleide_origen_io::Tape5::parse(&owned))
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     use pyo3::types::PyDict;
     let out = PyDict::new(py);
@@ -2384,7 +2398,7 @@ fn origen_parse_tape5(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
 fn origen_parse_tape6(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
     let owned = text.to_owned();
     let tape = py
-        .detach(move || origen_io::Tape6::parse(&owned))
+        .detach(move || nucleide_origen_io::Tape6::parse(&owned))
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     use pyo3::types::PyDict;
     let out = PyDict::new(py);
@@ -2411,7 +2425,7 @@ fn origen_parse_tape6(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
 fn origen_parse_tape9(py: Python<'_>, text: &str) -> PyResult<Vec<BTreeMap<String, Py<PyAny>>>> {
     let owned = text.to_owned();
     let entries = py
-        .detach(move || origen_io::Tape9Entry::parse(&owned))
+        .detach(move || nucleide_origen_io::Tape9Entry::parse(&owned))
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(entries
         .iter()
@@ -2439,7 +2453,7 @@ fn origen_parse_tape9(py: Python<'_>, text: &str) -> PyResult<Vec<BTreeMap<Strin
 // R2S workflow builder (thin glue over `r2s`; no transport/activation solve)
 // ---------------------------------------------------------------------------
 
-fn r2s_workflow_to_py(py: Python<'_>, workflow: &r2s::R2sWorkflow) -> Py<PyAny> {
+fn r2s_workflow_to_py(py: Python<'_>, workflow: &nucleide_r2s::R2sWorkflow) -> Py<PyAny> {
     use pyo3::types::PyDict;
     let out = PyDict::new(py);
     let steps: Vec<Py<PyAny>> = workflow
@@ -2458,7 +2472,9 @@ fn r2s_workflow_to_py(py: Python<'_>, workflow: &r2s::R2sWorkflow) -> Py<PyAny> 
     out.into_any().unbind()
 }
 
-fn r2s_workflow_from_dict(workflow: &Bound<'_, pyo3::types::PyDict>) -> PyResult<r2s::R2sWorkflow> {
+fn r2s_workflow_from_dict(
+    workflow: &Bound<'_, pyo3::types::PyDict>,
+) -> PyResult<nucleide_r2s::R2sWorkflow> {
     let steps_value = match workflow.get_item("steps")? {
         Some(v) => v,
         None => return Err(PyValueError::new_err("r2s workflow missing `steps`")),
@@ -2480,7 +2496,7 @@ fn r2s_workflow_from_dict(workflow: &Bound<'_, pyo3::types::PyDict>) -> PyResult
                 .map_err(|_| PyValueError::new_err("r2s step `flux` must be str"))?,
             None => return Err(PyValueError::new_err("r2s step missing `flux`")),
         };
-        steps.push(r2s::R2sStep { zone, flux });
+        steps.push(nucleide_r2s::R2sStep { zone, flux });
     }
     let cooling_s: Vec<f64> = match workflow.get_item("cooling_s")? {
         Some(v) => v.extract().map_err(|_| {
@@ -2494,7 +2510,7 @@ fn r2s_workflow_from_dict(workflow: &Bound<'_, pyo3::types::PyDict>) -> PyResult
             .map_err(|_| PyValueError::new_err("r2s workflow `top_schedule` must be str"))?,
         None => return Err(PyValueError::new_err("r2s workflow missing `top_schedule`")),
     };
-    Ok(r2s::R2sWorkflow {
+    Ok(nucleide_r2s::R2sWorkflow {
         steps,
         cooling_s,
         top_schedule,
@@ -2510,9 +2526,9 @@ fn r2s_from_deck(py: Python<'_>, deck_text: &str) -> PyResult<Py<PyAny>> {
     let owned = deck_text.to_owned();
     let workflow = py
         .detach(move || {
-            let deck = alara_io::AlaraDeck::parse(&owned)
-                .map_err(|e| r2s::Error::Invalid(e.to_string()))?;
-            r2s::R2sWorkflow::from_deck(&deck)
+            let deck = nucleide_alara_io::AlaraDeck::parse(&owned)
+                .map_err(|e| nucleide_r2s::Error::Invalid(e.to_string()))?;
+            nucleide_r2s::R2sWorkflow::from_deck(&deck)
         })
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(r2s_workflow_to_py(py, &workflow))
@@ -2531,7 +2547,7 @@ fn r2s_validate(
     let rust_workflow = r2s_workflow_from_dict(workflow)?;
     let owned = deck_text.to_owned();
     let deck = py
-        .detach(move || alara_io::AlaraDeck::parse(&owned))
+        .detach(move || nucleide_alara_io::AlaraDeck::parse(&owned))
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     rust_workflow
         .validate_against(&deck)
@@ -2553,9 +2569,9 @@ fn r2s_expand(
     let owned_top = top.map(str::to_owned);
     let steps = py
         .detach(move || {
-            let deck = alara_io::AlaraDeck::parse(&owned_text)
-                .map_err(|e| r2s::Error::Invalid(e.to_string()))?;
-            let mut workflow = r2s::R2sWorkflow::from_deck(&deck)?;
+            let deck = nucleide_alara_io::AlaraDeck::parse(&owned_text)
+                .map_err(|e| nucleide_r2s::Error::Invalid(e.to_string()))?;
+            let mut workflow = nucleide_r2s::R2sWorkflow::from_deck(&deck)?;
             if let Some(top) = owned_top {
                 workflow.top_schedule = top;
             }
@@ -2610,9 +2626,13 @@ fn r2s_assemble(
     let owned_zone = zone.to_owned();
     let source = py
         .detach(move || {
-            let frame = alara_io::output::ResponseFrame::parse(&owned_text, &owned_lbl)
-                .map_err(|e| r2s::Error::Invalid(e.to_string()))?;
-            Ok::<_, r2s::Error>(r2s::photon::assemble(&frame, &owned_zone, groups))
+            let frame = nucleide_alara_io::output::ResponseFrame::parse(&owned_text, &owned_lbl)
+                .map_err(|e| nucleide_r2s::Error::Invalid(e.to_string()))?;
+            Ok::<_, nucleide_r2s::Error>(nucleide_r2s::photon::assemble(
+                &frame,
+                &owned_zone,
+                groups,
+            ))
         })
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     use pyo3::types::PyDict;

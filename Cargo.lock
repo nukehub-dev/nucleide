@@ -12,15 +12,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "alara-io"
-version = "0.2.0"
-dependencies = [
- "nuclei",
- "serde",
- "thiserror 2.0.20",
-]
-
-[[package]]
 name = "anes"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -111,15 +102,6 @@ name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
-
-[[package]]
-name = "cccc-io"
-version = "0.2.0"
-dependencies = [
- "nuclei",
- "serde",
- "thiserror 2.0.20",
-]
 
 [[package]]
 name = "cfg-if"
@@ -259,18 +241,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6ca96b45ca70b8045e0462f191bd209fcb3c3bfe8dbfb1257ada54c4dd59169"
 
 [[package]]
-name = "depletion"
-version = "0.2.0"
-dependencies = [
- "criterion",
- "linalg",
- "nuclei",
- "num-complex",
- "roxmltree",
- "serde_json",
-]
-
-[[package]]
 name = "dyn-stack"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -300,14 +270,6 @@ name = "either"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
-
-[[package]]
-name = "enrichment"
-version = "0.2.0"
-dependencies = [
- "criterion",
- "nuclei",
-]
 
 [[package]]
 name = "enum-as-inner"
@@ -399,23 +361,6 @@ dependencies = [
  "num-traits",
  "pulp 0.18.22",
  "reborrow",
-]
-
-[[package]]
-name = "fispact-io"
-version = "0.2.0"
-dependencies = [
- "alara-io",
- "nuclei",
- "serde",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "fluka-io"
-version = "0.2.0"
-dependencies = [
- "nuclei",
 ]
 
 [[package]]
@@ -642,26 +587,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
-name = "linalg"
-version = "0.2.0"
-dependencies = [
- "faer",
- "num-complex",
- "roxmltree",
-]
-
-[[package]]
-name = "material"
-version = "0.2.0"
-dependencies = [
- "nuclei",
- "quick-xml",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
 name = "matrixcompare"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -676,16 +601,6 @@ name = "matrixcompare-core"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0bdabb30db18805d5290b3da7ceaccbddba795620b86c02145d688e04900a73"
-
-[[package]]
-name = "mcnp-io"
-version = "0.2.0"
-dependencies = [
- "binrw",
- "criterion",
- "nuclei",
- "winnow",
-]
 
 [[package]]
 name = "memchr"
@@ -764,50 +679,170 @@ dependencies = [
 ]
 
 [[package]]
-name = "nuclei"
+name = "nucleide-alara-io"
 version = "0.2.0"
 dependencies = [
- "criterion",
+ "nucleide-nuclei",
+ "serde",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
 name = "nucleide-bindings"
 version = "0.2.0"
 dependencies = [
- "alara-io",
- "cccc-io",
- "depletion",
- "enrichment",
- "fispact-io",
- "fluka-io",
- "material",
- "mcnp-io",
- "nuclei",
- "origen-io",
+ "nucleide-alara-io",
+ "nucleide-cccc-io",
+ "nucleide-depletion",
+ "nucleide-enrichment",
+ "nucleide-fispact-io",
+ "nucleide-fluka-io",
+ "nucleide-material",
+ "nucleide-mcnp-io",
+ "nucleide-nuclei",
+ "nucleide-origen-io",
+ "nucleide-r2s",
+ "nucleide-serpent-io",
+ "nucleide-vr-tools",
  "pyo3",
- "r2s",
- "serpent-io",
- "vr-tools",
+]
+
+[[package]]
+name = "nucleide-cccc-io"
+version = "0.2.0"
+dependencies = [
+ "nucleide-nuclei",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "nucleide-depletion"
+version = "0.2.0"
+dependencies = [
+ "criterion",
+ "nucleide-linalg",
+ "nucleide-nuclei",
+ "num-complex",
+ "roxmltree",
+ "serde_json",
+]
+
+[[package]]
+name = "nucleide-enrichment"
+version = "0.2.0"
+dependencies = [
+ "criterion",
+ "nucleide-nuclei",
+]
+
+[[package]]
+name = "nucleide-fispact-io"
+version = "0.2.0"
+dependencies = [
+ "nucleide-alara-io",
+ "nucleide-nuclei",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "nucleide-fluka-io"
+version = "0.2.0"
+dependencies = [
+ "nucleide-nuclei",
+]
+
+[[package]]
+name = "nucleide-linalg"
+version = "0.2.0"
+dependencies = [
+ "faer",
+ "num-complex",
+ "roxmltree",
+]
+
+[[package]]
+name = "nucleide-material"
+version = "0.2.0"
+dependencies = [
+ "nucleide-nuclei",
+ "quick-xml",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "nucleide-mcnp-io"
+version = "0.2.0"
+dependencies = [
+ "binrw",
+ "criterion",
+ "nucleide-nuclei",
+ "winnow",
+]
+
+[[package]]
+name = "nucleide-nuclei"
+version = "0.2.0"
+dependencies = [
+ "criterion",
+]
+
+[[package]]
+name = "nucleide-origen-io"
+version = "0.2.0"
+dependencies = [
+ "nucleide-nuclei",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "nucleide-r2s"
+version = "0.2.0"
+dependencies = [
+ "nucleide-alara-io",
+ "nucleide-depletion",
+ "nucleide-material",
+ "nucleide-mcnp-io",
+ "nucleide-nuclei",
+ "nucleide-vr-tools",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "nucleide-serpent-io"
+version = "0.2.0"
+
+[[package]]
+name = "nucleide-vr-tools"
+version = "0.2.0"
+dependencies = [
+ "criterion",
+ "nucleide-mcnp-io",
 ]
 
 [[package]]
 name = "nucleide-wasm"
 version = "0.2.0"
 dependencies = [
- "alara-io",
- "cccc-io",
- "depletion",
- "enrichment",
- "fispact-io",
  "js-sys",
- "linalg",
- "material",
- "mcnp-io",
- "nuclei",
+ "nucleide-alara-io",
+ "nucleide-cccc-io",
+ "nucleide-depletion",
+ "nucleide-enrichment",
+ "nucleide-fispact-io",
+ "nucleide-linalg",
+ "nucleide-material",
+ "nucleide-mcnp-io",
+ "nucleide-nuclei",
+ "nucleide-vr-tools",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
- "vr-tools",
  "wasm-bindgen",
 ]
 
@@ -842,15 +877,6 @@ name = "oorandom"
 version = "11.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
-
-[[package]]
-name = "origen-io"
-version = "0.2.0"
-dependencies = [
- "nuclei",
- "serde",
- "thiserror 2.0.20",
-]
 
 [[package]]
 name = "owo-colors"
@@ -1016,20 +1042,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "r2s"
-version = "0.2.0"
-dependencies = [
- "alara-io",
- "depletion",
- "material",
- "mcnp-io",
- "nuclei",
- "serde",
- "thiserror 2.0.20",
- "vr-tools",
-]
-
-[[package]]
 name = "raw-cpuid"
 version = "11.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1175,10 +1187,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serpent-io"
-version = "0.2.0"
-
-[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1298,14 +1306,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "vr-tools"
-version = "0.2.0"
-dependencies = [
- "criterion",
- "mcnp-io",
-]
 
 [[package]]
 name = "walkdir"

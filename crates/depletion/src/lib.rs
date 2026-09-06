@@ -176,7 +176,7 @@ mod tests {
     fn symbolic_reuse_matches_fresh() {
         let chain = Chain::from_xml(&xml_of(simple_chain())).unwrap();
         let sys = DepletionSystem::build(chain, &ReactionRates::new()).unwrap();
-        let sym = linalg::SymbolicLu::try_new(&sys.pattern).unwrap();
+        let sym = nucleide_linalg::SymbolicLu::try_new(&sys.pattern).unwrap();
         let n0 = vec![1.0e14, 5e13, 1e10];
         let a = crate::cram(&sys, Order::Order48, &n0, 2.0e5).unwrap();
         let b = crate::cram_with_symbolic(&sys, &sym, Order::Order48, &n0, 2.0e5).unwrap();

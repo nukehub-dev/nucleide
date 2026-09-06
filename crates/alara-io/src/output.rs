@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use crate::error::{Error, Result};
-use nuclei::NuclideId;
+use nucleide_nuclei::NuclideId;
 
 /// Geometric resolution of one ALARA output table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -134,7 +134,7 @@ impl ResponseRow {
     /// Resolve [`Self::nuclide`] to a canonical [`NuclideId`].
     ///
     /// Fails for `total`/`Other` aggregate rows, which name no nuclide.
-    pub fn nuclide_id(&self) -> std::result::Result<NuclideId, nuclei::Error> {
+    pub fn nuclide_id(&self) -> std::result::Result<NuclideId, nucleide_nuclei::Error> {
         NuclideId::from_name(&self.nuclide)
     }
 

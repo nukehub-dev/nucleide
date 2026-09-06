@@ -12,19 +12,19 @@
 //!   whitespace-separated floats; extra trailing columns (e.g. dose) are
 //!   ignored.
 //!
-//! Mapping to [`alara_io::output::ResponseRow`] (11 fields):
+//! Mapping to [`nucleide_alara_io::output::ResponseRow`] (11 fields):
 //! - `time_s` / `time_label`: converted seconds / `<value> <unit>` label that
 //!   preserves the file spelling of both tokens (e.g. `1.0 DAYS`).
 //! - `nuclide`: kept verbatim (`h-3`, `fe-55`, `total`); every name except
 //!   `total` (case-insensitive) is validated with
-//!   [`nuclei::NuclideId::from_name`], so lowercase-dash ALARA-style names
+//!   [`nucleide_nuclei::NuclideId::from_name`], so lowercase-dash ALARA-style names
 //!   resolve while typos fail.
 //! - `half_life_s`: always `-1.0`. The inventory table carries no half-life
 //!   column, so every row (including `total`) is marked unknown. This differs
 //!   from ALARA, where `-1.0` means stable and `0.0` marks `total` rows.
 //! - `run_lbl`: caller-supplied tag copied to every row.
 //! - `block` / `block_name` / `block_num`: FISPACT has no zone/interval
-//!   blocks, so every row uses [`alara_io::output::BlockKind::Material`] with
+//!   blocks, so every row uses [`nucleide_alara_io::output::BlockKind::Material`] with
 //!   name `"inventory"` and number `-1`. This mirrors the upstream
 //!   `alara_output_processing` FISPACT passthrough convention of `-1` block
 //!   fields, but keeps the typed enum instead of a raw `-1`.
@@ -45,8 +45,8 @@
 
 use std::path::Path;
 
-use alara_io::output::{BlockKind, ResponseFrame, ResponseRow, ResponseVar};
-use nuclei::NuclideId;
+use nucleide_alara_io::output::{BlockKind, ResponseFrame, ResponseRow, ResponseVar};
+use nucleide_nuclei::NuclideId;
 
 use crate::error::{Error, Result};
 

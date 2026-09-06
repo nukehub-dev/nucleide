@@ -3,11 +3,11 @@
 use std::collections::BTreeMap;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use enrichment::{
+use nucleide_enrichment::{
     default_uranium_cascade, multicomponent, solve_numeric, Cascade, Stream, DEFAULT_MAX_ITER,
     DEFAULT_TOLERANCE,
 };
-use nuclei::NuclideId;
+use nucleide_nuclei::NuclideId;
 
 fn vision_feed_cascade() -> Cascade {
     let mut orig = default_uranium_cascade();

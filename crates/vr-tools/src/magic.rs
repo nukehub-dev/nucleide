@@ -22,7 +22,7 @@
 //! would divide by zero; [`Error::ZeroMaxFlux`] is returned rather than
 //! emitting `inf`/`nan`.
 
-use mcnp_io::meshtal::{MeshTallyData, ParticleKind};
+use nucleide_mcnp_io::meshtal::{MeshTallyData, ParticleKind};
 
 use crate::Error;
 
@@ -315,8 +315,10 @@ mod tests {
 
     #[test]
     fn fixture_total_mode_matches_hand_computed_magic() {
-        let m = mcnp_io::meshtal::Meshtal::from_file(fixture("mcnp_meshtal_single_meshtal.txt"))
-            .unwrap();
+        let m = nucleide_mcnp_io::meshtal::Meshtal::from_file(fixture(
+            "mcnp_meshtal_single_meshtal.txt",
+        ))
+        .unwrap();
         let t = &m.tallies[&4];
         let out = magic(t).unwrap();
         assert_eq!(out.groups_per_ve, 1);
@@ -343,8 +345,10 @@ mod tests {
 
     #[test]
     fn fixture_group_mode_matches_hand_computed_magic() {
-        let m = mcnp_io::meshtal::Meshtal::from_file(fixture("mcnp_meshtal_single_meshtal.txt"))
-            .unwrap();
+        let m = nucleide_mcnp_io::meshtal::Meshtal::from_file(fixture(
+            "mcnp_meshtal_single_meshtal.txt",
+        ))
+        .unwrap();
         let t = &m.tallies[&4];
         let out = magic_with(t, MagicSelection::PerGroup, MagicParams::default()).unwrap();
         assert_eq!(out.groups_per_ve, 3);
@@ -378,8 +382,10 @@ mod tests {
 
     #[test]
     fn fixture_tight_tolerance_produces_null_values() {
-        let m = mcnp_io::meshtal::Meshtal::from_file(fixture("mcnp_meshtal_single_meshtal.txt"))
-            .unwrap();
+        let m = nucleide_mcnp_io::meshtal::Meshtal::from_file(fixture(
+            "mcnp_meshtal_single_meshtal.txt",
+        ))
+        .unwrap();
         let t = &m.tallies[&4];
         let out = magic_with(
             t,

@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use depletion::{
+use nucleide_depletion::{
     chain::{Chain, ChainNuclide, DecayMode, Reaction},
     matrix::{DepletionSystem, ReactionRates},
     Order,
@@ -169,17 +169,19 @@ fn bench_depletion(c: &mut Criterion) {
     });
 
     group.bench_function("cram16_solve", |b| {
-        b.iter(|| depletion::cram(&sys_ni, Order::Order16, &n0_ni, dt_ni).expect("cram16"))
+        b.iter(|| nucleide_depletion::cram(&sys_ni, Order::Order16, &n0_ni, dt_ni).expect("cram16"))
     });
 
     group.bench_function("cram48_solve", |b| {
-        b.iter(|| depletion::cram(&sys_ni, Order::Order48, &n0_ni, dt_ni).expect("cram48"))
+        b.iter(|| nucleide_depletion::cram(&sys_ni, Order::Order48, &n0_ni, dt_ni).expect("cram48"))
     });
 
     group.bench_function("deplete_end_to_end", |b| {
         let mut n0 = BTreeMap::new();
         n0.insert("Ni58".into(), 1e24);
-        b.iter(|| depletion::deplete(&sys_ni, Order::Order48, &n0, dt_ni).expect("deplete"))
+        b.iter(|| {
+            nucleide_depletion::deplete(&sys_ni, Order::Order48, &n0, dt_ni).expect("deplete")
+        })
     });
 
     group.finish();
@@ -199,7 +201,9 @@ fn bench_depletion(c: &mut Criterion) {
         b.iter(|| DepletionSystem::build(chain_syn.clone(), &rates_syn).expect("build synthetic"))
     });
     group_syn.bench_function("cram48_solve", |b| {
-        b.iter(|| depletion::cram(&sys_syn, Order::Order48, &n0_syn, dt_ni).expect("cram48 syn"))
+        b.iter(|| {
+            nucleide_depletion::cram(&sys_syn, Order::Order48, &n0_syn, dt_ni).expect("cram48 syn")
+        })
     });
     group_syn.finish();
 
