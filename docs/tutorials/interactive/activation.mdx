@@ -1,0 +1,44 @@
+---
+title: Activation
+description: Parse ALARA decks and output, FISPACT-II inventories, and R2S workflows in the browser.
+sidebar:
+  order: 7
+---
+
+The `alara-io` crate reads the text files the ALARA activation code consumes
+and produces: input decks, group fluxes, irradiation schedules, and
+activation-output listings. `fispact-io` parses FISPACT-II inventory tables
+into the same response-frame shape, and the `r2s` crate derives a rigorous
+two-step shutdown-dose-rate workflow from an ALARA deck. No activation solving
+happens here — transport and transmutation stay inside their respective codes.
+
+## ALARA input decks
+
+A deck is a sequence of blocks (`geometry`, `mixture`, `flux`, `schedule`,
+`pulsehistory`, `cooling`, …). The demo parses deck text into a JSON summary
+with block kinds, mixture compositions, flux definitions, cooling times, and
+raw schedule items.
+
+## Activation output
+
+ALARA output tables and FISPACT-II inventory listings both become response
+rows keyed by nuclide, cooling time, geometric block, and response variable
+(number density, specific activity, decay heat, …). Paste a listing snippet
+and pick the matching parser tab.
+
+## R2S workflow
+
+`r2s_from_deck` links each non-`void` `mat_loading` zone to its flux block,
+carries the deck cooling times and top schedule, and totals the expanded
+irradiation history — the starting point for coupling a neutron transport
+mesh to activation cases.
+
+## Try it
+
+<InteractiveDemo kind="activation" />
+
+## See also
+
+- Crate docs: [`crates/alara-io/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/alara-io/src/lib.rs)
+- Crate docs: [`crates/fispact-io/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/fispact-io/src/lib.rs)
+- Crate docs: [`crates/r2s/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/r2s/src/lib.rs)

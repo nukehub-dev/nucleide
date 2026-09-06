@@ -794,8 +794,11 @@ dependencies = [
 name = "nucleide-wasm"
 version = "0.1.0"
 dependencies = [
+ "alara-io",
+ "cccc-io",
  "depletion",
  "enrichment",
+ "fispact-io",
  "js-sys",
  "linalg",
  "material",

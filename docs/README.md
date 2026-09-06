@@ -30,6 +30,8 @@ license.
 | [Build materials](tutorials/build-materials.md) | Build materials from formulae, mix compositions, and export XML |
 | [Run depletion](tutorials/run-depletion.md) | Load a depletion chain and run a short CRAM solve |
 | [Enrichment cascade](tutorials/enrichment-cascade.md) | Set up and solve a multicomponent enrichment cascade |
+| [Activation analysis](tutorials/activation-analysis.md) | Read ALARA, FISPACT-II, and ORIGEN files and assemble an R2S workflow |
+| [Deterministic I/O](tutorials/deterministic-io.md) | Read ISOTXS and flux files and write PARTISN decks |
 | [Interactive tutorials](tutorials/interactive/index.mdx) | Run Nucleide in the browser through the WASM build |
 | [Interactive — nuclides](tutorials/interactive/nuclides.mdx) | Nuclide identifiers and nuclear data |
 | [Interactive — materials](tutorials/interactive/materials.mdx) | Formulas, fractions, mixing, and XML export |
@@ -37,6 +39,8 @@ license.
 | [Interactive — depletion](tutorials/interactive/depletion.mdx) | One-step CRAM depletion |
 | [Interactive — MCNP I/O](tutorials/interactive/mcnp-io.mdx) | Parse MCNP file snippets |
 | [Interactive — variance reduction](tutorials/interactive/variance-reduction.mdx) | MAGIC bounds and alias-table sampling |
+| [Interactive — activation](tutorials/interactive/activation.mdx) | ALARA decks/outputs, FISPACT, R2S workflows |
+| [Interactive — deterministic I/O](tutorials/interactive/deterministic.mdx) | ISOTXS fluxes and PARTISN decks |
 
 ### Theory
 

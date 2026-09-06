@@ -996,3 +996,401 @@ pub fn mesh_source_sample(
         weight: sample.weight,
     })
 }
+
+// ---------------------------------------------------------------------------
+// Activation (ALARA deck/output, FISPACT-II output, R2S workflow)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct AlaraMixtureJson {
+    name: String,
+    entries: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct AlaraFluxJson {
+    name: String,
+    file: String,
+    scale: f64,
+    skip: usize,
+    format: String,
+}
+
+#[derive(Serialize)]
+struct AlaraScheduleJson {
+    name: String,
+    items: Vec<Vec<String>>,
+}
+
+#[derive(Serialize)]
+struct AlaraDeckSummary {
+    block_kinds: Vec<String>,
+    mixtures: Vec<AlaraMixtureJson>,
+    fluxes: Vec<AlaraFluxJson>,
+    cooling_times_s: Vec<f64>,
+    schedules: Vec<AlaraScheduleJson>,
+}
+
+fn mixture_entry_text(entry: &alara_io::deck::MixtureEntry) -> String {
+    use alara_io::deck::MixtureEntry as E;
+    match entry {
+        E::Material {
+            name,
+            rel_density,
+            vol_fraction,
+        } => format!("material {name} {rel_density} {vol_fraction}"),
+        E::Element {
+            symbol,
+            rel_density,
+            vol_fraction,
+        } => format!("element {symbol} {rel_density} {vol_fraction}"),
+        E::Like {
+            mixture,
+            rel_density,
+        } => format!("like {mixture} {rel_density}"),
+        E::Target { target_kind, name } => format!("target {target_kind} {name}"),
+    }
+}
+
+/// Parse an ALARA input deck into a JSON summary.
+#[wasm_bindgen(js_name = parseAlaraDeck)]
+pub fn parse_alara_deck(text: &str) -> Result<JsValue, JsValue> {
+    let deck = alara_io::AlaraDeck::parse(text).map_err(js_err)?;
+    to_js(&AlaraDeckSummary {
+        block_kinds: deck
+            .block_kinds()
+            .iter()
+            .map(|kind| kind.to_string())
+            .collect(),
+        mixtures: deck
+            .mixtures
+            .iter()
+            .map(|mix| AlaraMixtureJson {
+                name: mix.name.clone(),
+                entries: mix.entries.iter().map(mixture_entry_text).collect(),
+            })
+            .collect(),
+        fluxes: deck
+            .fluxes
+            .iter()
+            .map(|flux| AlaraFluxJson {
+                name: flux.name.clone(),
+                file: flux.file.clone(),
+                scale: flux.scale,
+                skip: flux.skip,
+                format: flux.format.clone(),
+            })
+            .collect(),
+        cooling_times_s: deck
+            .cooling
+            .as_ref()
+            .map(|cooling| cooling.times_s.clone())
+            .unwrap_or_default(),
+        schedules: deck
+            .schedules
+            .iter()
+            .map(|schedule| AlaraScheduleJson {
+                name: schedule.name.clone(),
+                items: schedule
+                    .items
+                    .iter()
+                    .map(|item| item.tokens.clone())
+                    .collect(),
+            })
+            .collect(),
+    })
+}
+
+#[derive(Serialize)]
+struct ResponseRowJson {
+    time_s: f64,
+    time_label: String,
+    nuclide: String,
+    half_life_s: f64,
+    run_lbl: String,
+    block: String,
+    block_name: String,
+    block_num: i64,
+    variable: String,
+    var_unit: String,
+    value: f64,
+}
+
+fn response_row_json(row: &alara_io::output::ResponseRow) -> ResponseRowJson {
+    ResponseRowJson {
+        time_s: row.time_s,
+        time_label: row.time_label.clone(),
+        nuclide: row.nuclide.clone(),
+        half_life_s: row.half_life_s,
+        run_lbl: row.run_lbl.clone(),
+        block: row.block.as_str().to_string(),
+        block_name: row.block_name.clone(),
+        block_num: row.block_num,
+        variable: row.variable.as_str().to_string(),
+        var_unit: row.var_unit.clone(),
+        value: row.value,
+    }
+}
+
+fn distinct_sorted(values: impl Iterator<Item = String>) -> Vec<String> {
+    let set: std::collections::BTreeSet<String> = values.collect();
+    set.into_iter().collect()
+}
+
+#[derive(Serialize)]
+struct AlaraOutputSummary {
+    rows: Vec<ResponseRowJson>,
+    variables: Vec<String>,
+    blocks: Vec<String>,
+}
+
+/// Parse an ALARA activation-output listing into a JSON summary.
+#[wasm_bindgen(js_name = parseAlaraOutput)]
+pub fn parse_alara_output(text: &str, run_lbl: &str) -> Result<JsValue, JsValue> {
+    let frame = alara_io::output::ResponseFrame::parse(text, run_lbl).map_err(js_err)?;
+    to_js(&AlaraOutputSummary {
+        rows: frame.rows.iter().map(response_row_json).collect(),
+        variables: distinct_sorted(
+            frame
+                .rows
+                .iter()
+                .map(|row| row.variable.as_str().to_string()),
+        ),
+        blocks: distinct_sorted(frame.rows.iter().map(|row| row.block.as_str().to_string())),
+    })
+}
+
+#[derive(Serialize)]
+struct FispactOutputSummary {
+    rows: Vec<ResponseRowJson>,
+    variables: Vec<String>,
+}
+
+/// Parse a FISPACT-II inventory listing into a JSON summary.
+#[wasm_bindgen(js_name = parseFispactOutput)]
+pub fn parse_fispact_output(text: &str, run_lbl: &str) -> Result<JsValue, JsValue> {
+    let frame = fispact_io::parse_to_frame(text, run_lbl).map_err(js_err)?;
+    to_js(&FispactOutputSummary {
+        rows: frame.rows.iter().map(response_row_json).collect(),
+        variables: distinct_sorted(
+            frame
+                .rows
+                .iter()
+                .map(|row| row.variable.as_str().to_string()),
+        ),
+    })
+}
+
+#[derive(Serialize)]
+struct R2sStepJson {
+    zone: String,
+    flux: String,
+}
+
+#[derive(Serialize)]
+struct R2sSummary {
+    steps: Vec<R2sStepJson>,
+    cooling_s: Vec<f64>,
+    top_schedule: String,
+    total_s: f64,
+}
+
+/// Pick the flux block for `zone`: broadcast a lone flux, else match by name.
+///
+/// Mirrors `r2s::R2sWorkflow::from_deck`, which is not depended on here
+/// because the `r2s` crate enables the `depletion`/`rayon` feature that this
+/// `wasm32-unknown-unknown` build keeps disabled.
+fn r2s_resolve_flux(fluxes: &[alara_io::deck::FluxDef], zone: &str) -> Result<String, String> {
+    if fluxes.len() == 1 {
+        return Ok(fluxes[0].name.clone());
+    }
+    fluxes
+        .iter()
+        .find(|flux| flux.name == zone)
+        .map(|flux| flux.name.clone())
+        .ok_or_else(|| {
+            format!(
+                "zone `{zone}` matches no flux block ({} flux blocks, no name match)",
+                fluxes.len()
+            )
+        })
+}
+
+/// Top-schedule discovery mirroring `r2s::R2sWorkflow::from_deck`.
+fn r2s_top_schedule(deck: &alara_io::deck::AlaraDeck) -> Result<String, String> {
+    if deck.schedules.is_empty() {
+        return Err("deck defines no schedules".to_string());
+    }
+    if deck.schedules.len() == 1 {
+        return Ok(deck.schedules[0].name.clone());
+    }
+    let referenced: std::collections::HashSet<&str> = deck
+        .schedules
+        .iter()
+        .flat_map(|schedule| schedule.items.iter())
+        .filter(|item| item.tokens.len() == 4)
+        .map(|item| item.tokens[0].as_str())
+        .collect();
+    let tops: Vec<&str> = deck
+        .schedules
+        .iter()
+        .map(|schedule| schedule.name.as_str())
+        .filter(|name| !referenced.contains(name))
+        .collect();
+    match tops.as_slice() {
+        [top] => Ok((*top).to_string()),
+        [] => Err(
+            "no top-level schedule: every schedule is referenced (possible recursion)".to_string(),
+        ),
+        _ => Err(format!(
+            "ambiguous top-level schedules: {}",
+            tops.join(", ")
+        )),
+    }
+}
+
+/// Convert one raw deck schedule item (4- or 6-token form) for expansion.
+fn r2s_sched_item(tokens: &[String], line: usize) -> Result<alara_io::SchedItem, String> {
+    match tokens {
+        [op_text, op_unit, flux, history, delay_text, delay_unit] => {
+            let op: f64 = op_text
+                .parse()
+                .map_err(|_| format!("line {line}: expected operating time, found `{op_text}`"))?;
+            let delay: f64 = delay_text
+                .parse()
+                .map_err(|_| format!("line {line}: expected delay, found `{delay_text}`"))?;
+            Ok(alara_io::SchedItem::Pulse {
+                op_time_s: alara_io::parse_time_to_seconds(op, op_unit)
+                    .map_err(|e| e.to_string())?,
+                flux: flux.clone(),
+                history: history.clone(),
+                delay_s: alara_io::parse_time_to_seconds(delay, delay_unit)
+                    .map_err(|e| e.to_string())?,
+            })
+        }
+        [name, history, delay_text, delay_unit] => {
+            let delay: f64 = delay_text
+                .parse()
+                .map_err(|_| format!("line {line}: expected delay, found `{delay_text}`"))?;
+            Ok(alara_io::SchedItem::SubSchedule {
+                name: name.clone(),
+                history: history.clone(),
+                delay_s: alara_io::parse_time_to_seconds(delay, delay_unit)
+                    .map_err(|e| e.to_string())?,
+            })
+        }
+        _ => Err(format!(
+            "line {line}: expected 4- or 6-token schedule item, found {}",
+            tokens.join(" ")
+        )),
+    }
+}
+
+/// Derive an R2S workflow summary from an ALARA deck.
+#[wasm_bindgen(js_name = r2sFromDeck)]
+pub fn r2s_from_deck(text: &str) -> Result<JsValue, JsValue> {
+    let deck = alara_io::AlaraDeck::parse(text).map_err(js_err)?;
+    let loading = deck
+        .mat_loading
+        .as_ref()
+        .ok_or_else(|| js_err("deck defines no `mat_loading` block"))?;
+    let zones: Vec<&str> = loading
+        .entries
+        .iter()
+        .filter(|entry| !entry.mixture.eq_ignore_ascii_case("void"))
+        .map(|entry| entry.zone.as_str())
+        .collect();
+    if zones.is_empty() {
+        return Err(js_err("deck defines no non-`void` zones in `mat_loading`"));
+    }
+    if deck.fluxes.is_empty() {
+        return Err(js_err("deck defines no `flux` blocks"));
+    }
+    let steps: Vec<R2sStepJson> = zones
+        .iter()
+        .map(|zone| {
+            Ok(R2sStepJson {
+                zone: (*zone).to_string(),
+                flux: r2s_resolve_flux(&deck.fluxes, zone).map_err(js_err)?,
+            })
+        })
+        .collect::<Result<Vec<_>, JsValue>>()?;
+    let cooling_s = deck
+        .cooling
+        .as_ref()
+        .map(|cooling| cooling.times_s.clone())
+        .unwrap_or_default();
+    let top_schedule = r2s_top_schedule(&deck).map_err(js_err)?;
+
+    let mut schedules = Vec::with_capacity(deck.schedules.len());
+    for raw in &deck.schedules {
+        let mut items = Vec::with_capacity(raw.items.len());
+        for entry in &raw.items {
+            items.push(r2s_sched_item(&entry.tokens, entry.line).map_err(js_err)?);
+        }
+        schedules.push(alara_io::schedule::ScheduleDef {
+            name: raw.name.clone(),
+            items,
+        });
+    }
+    let histories: Vec<alara_io::schedule::PulseHistory> = deck
+        .pulse_histories
+        .iter()
+        .map(|history| alara_io::schedule::PulseHistory {
+            name: history.name.clone(),
+            levels: history
+                .levels
+                .iter()
+                .map(|level| alara_io::schedule::PulseLevel {
+                    count: level.pulses,
+                    delay_s: level.delay_s,
+                })
+                .collect(),
+        })
+        .collect();
+    let flat =
+        alara_io::schedule::expand_from(&top_schedule, &schedules, &histories).map_err(js_err)?;
+    to_js(&R2sSummary {
+        steps,
+        cooling_s,
+        top_schedule,
+        total_s: alara_io::total_time(&flat),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic transport (CCCC ISOTXS)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct IsotxsNuclideJson {
+    label: String,
+    zaid: String,
+    groups: usize,
+    total_xs: Vec<f64>,
+}
+
+#[derive(Serialize)]
+struct IsotxsSummary {
+    nuclides: Vec<IsotxsNuclideJson>,
+    groups: usize,
+}
+
+/// Parse an ISOTXS multigroup library into a JSON summary.
+#[wasm_bindgen(js_name = parseIsotxs)]
+pub fn parse_isotxs(text: &str) -> Result<JsValue, JsValue> {
+    let lib = cccc_io::IsotxsLib::parse(text).map_err(js_err)?;
+    to_js(&IsotxsSummary {
+        groups: lib.nuclides.first().map(|n| n.groups).unwrap_or(0),
+        nuclides: lib
+            .nuclides
+            .iter()
+            .map(|n| IsotxsNuclideJson {
+                label: n.label.clone(),
+                zaid: n.zaid.clone(),
+                groups: n.groups,
+                total_xs: n.total_xs.clone(),
+            })
+            .collect(),
+    })
+}

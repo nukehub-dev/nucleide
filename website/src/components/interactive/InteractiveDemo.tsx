@@ -5,6 +5,8 @@ import { CascadeSolver } from "./CascadeSolver";
 import { DepletionStep } from "./DepletionStep";
 import { McnpParser } from "./McnpParser";
 import { VrDemo } from "./VrDemo";
+import { ActivationDemo } from "./ActivationDemo";
+import { DeterministicDemo } from "./DeterministicDemo";
 
 interface InteractiveDemoProps {
   kind:
@@ -14,7 +16,9 @@ interface InteractiveDemoProps {
     | "enrichment"
     | "depletion"
     | "mcnp-io"
-    | "variance-reduction";
+    | "variance-reduction"
+    | "activation"
+    | "deterministic";
 }
 
 export function InteractiveDemo({ kind }: InteractiveDemoProps) {
@@ -33,6 +37,10 @@ export function InteractiveDemo({ kind }: InteractiveDemoProps) {
       return <McnpParser />;
     case "variance-reduction":
       return <VrDemo />;
+    case "activation":
+      return <ActivationDemo />;
+    case "deterministic":
+      return <DeterministicDemo />;
     default:
       return <div className="text-sm text-muted-foreground">Unknown demo kind: {kind}</div>;
   }

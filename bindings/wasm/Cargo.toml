@@ -24,6 +24,9 @@ material.workspace = true
 enrichment.workspace = true
 depletion = { workspace = true, default-features = false }
 mcnp-io.workspace = true
+alara-io.workspace = true
+cccc-io.workspace = true
+fispact-io.workspace = true
 vr-tools.workspace = true
 linalg = { workspace = true, default-features = false }
 

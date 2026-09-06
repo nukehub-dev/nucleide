@@ -32,9 +32,14 @@ half-lives), material construction, one-step burnup-matrix depletion with the
 Chebyshev Rational Approximation Method (CRAM) [@pusa2010cram; @pusa2016cram],
 multicomponent isotope enrichment cascades (MARC/SWU) [@wood1999marc], and
 variance-reduction utilities (MAGIC weight windows [@cooper2001magic] and
-alias-table mesh source sampling [@walker1977alias; @vose1991alias]).
+alias-table mesh source sampling [@walker1977alias; @vose1991alias]). It also
+provides activation-code interop (ALARA deck, flux, schedule, and output glue;
+FISPACT-II inventory tables; ORIGEN tape readers),
+deterministic-transport file glue (CCCC cross-section and flux readers with a
+PARTISN deck writer), and rigorous two-step shutdown-dose-rate (R2S) workflow
+orchestration.
 
-The core is written in Rust as a composable workspace of nine crates. A thin
+The core is written in Rust as a composable workspace of fourteen crates. A thin
 PyO3 layer exposes a typed Python API (wheels for Linux, macOS, and Windows via
 PyPI), and a `wasm-bindgen` build powers interactive tutorials that run
 entirely in the browser. Correctness is anchored by byte-exact golden fixtures,
@@ -62,11 +67,22 @@ complement to PyNE and OpenMC, not a competitor: it deliberately ports their
 well-validated algorithms and validates against them (see below), while
 omitting transport itself.
 
+The same file-format burden surrounds activation analysis and deterministic
+transport: ALARA, FISPACT-II, and ORIGEN inputs and listings, CCCC
+cross-section and flux files, and PARTISN decks are long-lived text formats
+with no shared reader, so fusion shutdown-dose-rate workflows stitch them
+together with ad hoc scripts [@pyne2014; @davis2011gvr]. Nucleide treats this
+glue as part of the same toolkit role: read-only interop and workflow
+orchestration around the physics codes, sharing nuclide identities and
+mesh-source machinery with the Monte Carlo side rather than reimplementing any
+solver.
+
 # Software design
 
 The Rust workspace enforces strict layering: capability crates (`nuclei`,
 `material`, `mcnp-io`, `serpent-io`, `fluka-io`, `vr-tools`, `enrichment`,
-`depletion`, `linalg`) never depend on the bindings; `bindings/python` and
+`depletion`, `linalg`, `alara-io`, `cccc-io`, `fispact-io`, `origen-io`,
+`r2s`) never depend on the bindings; `bindings/python` and
 `bindings/wasm` are thin facades with no business logic; the pure-Python
 package re-exports the compiled module behind `.pyi` stubs so the public API is
 fully typed and `mypy --strict` clean. Parsers reproduce legacy output
@@ -81,6 +97,15 @@ reference codes (invalid half-lives, duplicate reaction entries, malformed
 tallies). The enrichment solver adds a golden-section polish to the classic
 sign-tracking descent for the optimal mass separation factor $M^*$
 [@wood1999marc; @zeng2014cascade].
+
+The five newer crates are read-only glue and orchestration: they parse the
+text interfaces of their codes and repack them for downstream workflows, never
+reimplementing transport or activation solvers. ALARA and FISPACT-II results
+share one analysis shape (`ResponseFrame`), so activation summaries from
+either code feed the same downstream tooling. The WebAssembly build exposes
+the same glue, with interactive tutorials covering activation analysis and
+deterministic I/O alongside the existing depletion, enrichment, MAGIC, and
+file-parsing demos.
 
 # Validation and performance
 
@@ -115,6 +140,17 @@ for the exercised modules) and OpenMC 0.16.0:
   for PyNE; MAGIC weight-window generation runs in $\sim$0.6 µs versus
   $\sim$3.8 µs for an equivalent pure-Python implementation.
 
+Beyond the measured comparisons above, the harness also covers activation and
+deterministic I/O through `validation/activation_vs_refs.py`, described here
+as coverage rather than measured claims. The script checks the ALARA, CCCC,
+FISPACT-II, ORIGEN, and R2S readers against committed fixtures for
+self-consistency (row and variable counts, spot values, totals, PARTISN render
+and validate round-trips, and workflow smoke tests), plus container-only PyNE
+oracle probes where PyNE exposes a usable entry point, with every skip
+recorded loudly in the report. Committed results regenerate through the same
+container entry point as the rest of the harness (`run_container.sh`). No
+numeric agreement claims are made here.
+
 ![Per-nuclide final densities after one 30-day CRAM-48 step, Nucleide vs OpenMC, for the nickel activation chain (left) and the full CASL/VERA chain (right). Points lie on the identity line; the lower strips show the per-nuclide relative differences, all at the $10^{-15}$ level (maximum $8.3\times10^{-15}$ and $8.9\times10^{-15}$, respectively).](validation/figures/depletion_agreement.png)
 
 ![Mean wall times (log scale) for the CRAM-48 depletion solve, the multicomponent uranium enrichment solve, and MAGIC weight-window generation: Nucleide from Python, Nucleide native Rust (Criterion), and the reference codes.](validation/figures/timings.png)
@@ -123,9 +159,13 @@ for the exercised modules) and OpenMC 0.16.0:
 
 The documentation website (built with Astro, deployed to GitHub Pages) provides
 tutorials, an API reference, and theory pages deriving the implemented
-mathematics, plus six interactive browser tutorials powered by the WebAssembly
-build that let users run depletion, enrichment, MAGIC, and file-parsing
-examples with no installation.
+mathematics, plus eight interactive browser tutorials powered by the WebAssembly
+build that let users run depletion, enrichment, MAGIC, file-parsing,
+activation-analysis, and deterministic-transport examples with no installation.
+Two prose tutorials cover the new glue: activation analysis (ALARA,
+FISPACT-II, and ORIGEN files with an R2S workflow) and deterministic I/O
+(ISOTXS and flux files with PARTISN deck writing), each paired with a matching
+interactive demo.
 
 # Availability
 

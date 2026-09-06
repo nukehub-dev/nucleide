@@ -19,6 +19,10 @@ assumes you have already installed the project (see
 5. [Run depletion](run-depletion.md) — run a CRAM depletion solve.
 6. [Enrichment cascade](enrichment-cascade.md) — solve a multicomponent
    enrichment cascade.
+7. [Activation analysis](activation-analysis.md) — read ALARA, FISPACT-II,
+   and ORIGEN files and assemble an R2S workflow.
+8. [Deterministic I/O](deterministic-io.md) — read ISOTXS and flux files
+   and write PARTISN decks.
 
 ## Finding more examples
 

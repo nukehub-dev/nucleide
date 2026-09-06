@@ -1,0 +1,33 @@
+---
+title: Deterministic transport
+description: Parse ISOTXS multigroup libraries in the browser; RTFLUX and PARTISN via Python.
+sidebar:
+  order: 8
+---
+
+The `cccc-io` crate glues legacy deterministic-transport files: ISOTXS
+multigroup cross-section libraries, RTFLUX/ATFLUX/RZFLUX flux files, and a
+1D/2D/3D PARTISN input writer with ISOTXS nuclide mapping. No transport
+solving is performed here.
+
+## ISOTXS libraries
+
+An ISOTXS library declares its group count once (`ISOTXS <ngroups>`), then
+lists one `NUCLIDE <label> <zaid> <ngroups>` record plus total cross sections
+per nuclide. The demo below parses pasted library text into a JSON summary of
+nuclide labels, ZAIDs, and total cross sections per group.
+
+## Flux files and PARTISN decks
+
+RTFLUX/ATFLUX/RZFLUX point-flux files (`rtflux_parse`) and PARTISN deck
+rendering/validation (`partisn_render`, `partisn_validate`) need structured
+deck dicts rather than plain text, so they stay in the Python package — see
+the crate docs for the deck shape.
+
+## Try it
+
+<InteractiveDemo kind="deterministic" />
+
+## See also
+
+- Crate docs: [`crates/cccc-io/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/cccc-io/src/lib.rs)

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { loadWasmModule } from "../lib/wasm";
 
 // Load the wasm-pack generated module from the site root so it works both in
 // dev and production. Astro's BASE_URL may or may not end with a slash depending
@@ -7,6 +8,7 @@ const BASE = import.meta.env.BASE_URL.endsWith("/")
   ? import.meta.env.BASE_URL
   : `${import.meta.env.BASE_URL}/`;
 const WASM_URL = `${BASE}wasm/nucleide_wasm.js`;
+const WASM_BG_URL = `${BASE}wasm/nucleide_wasm_bg.wasm`;
 
 interface WasmMaterial {
   atomFractions: () => Record<string, number>;
@@ -60,9 +62,7 @@ export function WasmPlayground({ kind }: WasmPlaygroundProps) {
 
     async function load() {
       try {
-        const mod = (await import(/* @vite-ignore */ WASM_URL)) as WasmModule;
-        if (cancelled) return;
-        await mod.default();
+        const mod = await loadWasmModule<WasmModule>(WASM_URL, WASM_BG_URL);
         if (cancelled) return;
         wasmRef.current = mod;
         setReady(true);

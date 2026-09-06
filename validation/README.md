@@ -14,6 +14,7 @@ committed `results.md` holds the measured numbers that the paper quotes.
 | `magic_vs_pyne.py` | MAGIC weight-window generation vs PyNE (or equivalent formula when PyMOAB is missing) |
 | `nuclear_data_vs_refs.py` | Atomic masses, abundances, half-lives, name-dialect conversions vs PyNE/OpenMC |
 | `parsers_vs_refs.py` | Serpent/MCNP/FLUKA parser cross-validation vs serpentTools and PyNE oracles |
+| `activation_vs_refs.py` | ALARA/CCCC/FISPACT/ORIGEN/R2S I/O checks vs PyNE oracle probes + synthetic self-consistency |
 | `timings.py` | Coarse wall-time comparisons (Python overhead included) |
 | `make_figures.py` | Generates the paper figures in `figures/` from the JSON reports |
 | `common.py` | Shared helpers and `Report` class used by the comparison scripts |
@@ -121,6 +122,25 @@ oracles on the committed fixtures:
 - **FLUKA** — no working oracle: `pyne.fluka.Usrbin` needs PyMOAB and reads
   only binary USRBIN, while our fixtures are ASCII `.lis`. Skipped with an
   explicit note.
+
+## Activation oracle notes
+
+`activation_vs_refs.py` checks the `alara-io`, `cccc-io`, `fispact-io`,
+`origen-io` and `r2s` crates on committed `fixtures/` inputs:
+
+- **ALARA** — upstream sample decks/listings (`sample2`, `sample3`,
+  `sample2.out`, `fluxin2`) with a container-only `pyne.alara` deck block-set
+  probe (API-guarded: it compares block sets only where PyNE exposes a usable
+  deck entry point, and skips loudly otherwise).
+- **FISPACT / CCCC / ORIGEN / R2S** — no independent oracle exists (PyNE ships
+  no matching readers), so the synthetic fixtures are self-consistency checks:
+  row/variable counts, spot values, totals, plus PARTISN render/validate and
+  R2S workflow smoke tests.
+- Approximations recorded in the report: the uniform photon-group split in
+  `r2s_assemble` (total strength only), the FISPACT `half_life_s == -1.0`
+  missing-data sentinel, the CCCC text-analog subset (production files are
+  binary), and the ALARA year conventions (365.25 d in decks, 365 d in the
+  output listing) kept verbatim.
 
 ## Known limitations
 

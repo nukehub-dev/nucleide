@@ -19,6 +19,7 @@ SECTION_ORDER = [
     "magic",
     "nuclear_data",
     "parsers",
+    "activation",
     "timings",
 ]
 

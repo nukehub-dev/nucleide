@@ -63,14 +63,49 @@ const INTERACTIVE_PAGES = [
     output: "text=Groups per voxel:",
     chart: { selector: ".js-plotly-plot" },
   },
+  {
+    path: "tutorials/interactive/activation",
+    button: "Parse",
+    output: "text=inner_mix",
+    paste: `geometry rectangular
+mat_loading
+inner_zone inner_mix
+end
+mixture inner_mix
+material WATER 1.0 1.0
+end
+flux flux_1 data/fluxin1 1.0 1 default
+schedule 1_year
+1 y flux_1 steady_state 0 s
+end
+pulsehistory steady_state
+1 0 s
+end
+cooling
+1 d
+end`,
+  },
+  {
+    path: "tutorials/interactive/deterministic",
+    button: "Parse",
+    output: "text=U235",
+    paste: `ISOTXS 2
+NUCLIDE U235 92235 2
+1.1 2.2
+NUCLIDE PU239 94239 2
+4.4 5.5`,
+  },
 ];
 
-for (const { path, button, output, cell, chart } of INTERACTIVE_PAGES) {
+for (const { path, button, output, cell, chart, paste } of INTERACTIVE_PAGES) {
   test(`interactive demo: ${path}`, async ({ page }) => {
     await page.goto(path);
     await waitForWasmReady(page);
     await assertNoKatexErrors(page);
 
+    if (paste) {
+      await page.locator("textarea").first().fill(paste);
+    }
     await page.getByRole("button", { name: button }).click();
 
     await assertNoWasmError(page);

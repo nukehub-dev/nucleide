@@ -37,17 +37,17 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 - Criterion benchmarks for CRAM, cascade solving, and parser throughput
   (`crates/*/benches/`).
 - Cross-code validation harness against PyNE and OpenMC (`validation/`).
+- Activation-code I/O validation (`validation/activation_vs_refs.py`):
+  ALARA/CCCC/FISPACT/ORIGEN/R2S checks on committed fixtures vs PyNE oracle
+  probes + synthetic self-consistency.
 - Documentation website with interactive WASM tutorials (`website/`).
 
 ## Upcoming priorities
 
 - Stabilize the Rust public API across all crates.
-- Expand parser coverage and add more golden-byte fixtures (CCCC, FISPACT,
-  ORIGEN, and the scoped R2S workflow builder have landed; remaining:
-  validation harness extension).
 - Add ndarray/NumPy zero-copy bridges where it improves Python ergonomics.
-- Cut the first tagged release: `vX.Y.Z` tags publish Python wheels to PyPI
-  and workspace crates to crates.io.
+- Cut releases: `vX.Y.Z` tags publish Python wheels to PyPI and workspace
+  crates to crates.io.
 
 ## JOSS publication milestone (~6 months of public history)
 

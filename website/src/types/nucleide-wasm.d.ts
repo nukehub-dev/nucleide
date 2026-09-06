@@ -168,6 +168,81 @@ export interface SampledVoxelSummary {
   weight: number;
 }
 
+export interface AlaraMixtureJson {
+  name: string;
+  entries: string[];
+}
+
+export interface AlaraFluxJson {
+  name: string;
+  file: string;
+  scale: number;
+  skip: number;
+  format: string;
+}
+
+export interface AlaraScheduleJson {
+  name: string;
+  items: string[][];
+}
+
+export interface AlaraDeckSummary {
+  block_kinds: string[];
+  mixtures: AlaraMixtureJson[];
+  fluxes: AlaraFluxJson[];
+  cooling_times_s: number[];
+  schedules: AlaraScheduleJson[];
+}
+
+export interface ResponseRowJson {
+  time_s: number;
+  time_label: string;
+  nuclide: string;
+  half_life_s: number;
+  run_lbl: string;
+  block: string;
+  block_name: string;
+  block_num: number;
+  variable: string;
+  var_unit: string;
+  value: number;
+}
+
+export interface AlaraOutputSummary {
+  rows: ResponseRowJson[];
+  variables: string[];
+  blocks: string[];
+}
+
+export interface FispactOutputSummary {
+  rows: ResponseRowJson[];
+  variables: string[];
+}
+
+export interface R2sStepJson {
+  zone: string;
+  flux: string;
+}
+
+export interface R2sSummary {
+  steps: R2sStepJson[];
+  cooling_s: number[];
+  top_schedule: string;
+  total_s: number;
+}
+
+export interface IsotxsNuclideJson {
+  label: string;
+  zaid: string;
+  groups: number;
+  total_xs: number[];
+}
+
+export interface IsotxsSummary {
+  nuclides: IsotxsNuclideJson[];
+  groups: number;
+}
+
 export interface CompendiumEntryInfo {
   name: string;
   acronym: string[];
@@ -240,4 +315,9 @@ export interface WasmApi {
     r1: number,
     r2: number,
   ): SampledVoxelSummary;
+  parseAlaraDeck(text: string): AlaraDeckSummary;
+  parseAlaraOutput(text: string, runLbl: string): AlaraOutputSummary;
+  parseFispactOutput(text: string, runLbl: string): FispactOutputSummary;
+  r2sFromDeck(text: string): R2sSummary;
+  parseIsotxs(text: string): IsotxsSummary;
 }
