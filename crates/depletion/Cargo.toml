@@ -1,6 +1,6 @@
 [package]
 name = "depletion"
-description = "placeholder"
+description = "CRAM matrix exponential (orders 16/48), depletion-chain XML parsing"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -7,24 +7,28 @@ sidebar:
 Nucleide is a Cargo workspace. Each crate owns one capability area and exposes a
 thin, focused API.
 
-| Crate | Path | Responsibility |
-| --- | --- | --- |
-| `linalg` | `crates/linalg` | Isolation facade over the linear-algebra backend so numeric dependencies stay in one place |
-| `nuclei` | `crates/nuclei` | Canonical nucid representation, element tables, naming dialects (MCNP/Serpent/FLUKA/NIST/CINDER/ALARA/SZA), particles, reaction names |
-| `material` | `crates/material` | Compositions, mixing arithmetic, unit conversions, DOE/PNNL Materials Compendium loading, materials XML export |
-| `mcnp-io` | `crates/mcnp-io` | xsdir, meshtal, SSW/SURFSRC, PTRAC, WWINP, MCTAL readers; material extraction from input decks; mesh-to-geometry deck generation |
-| `serpent-io` | `crates/serpent-io` | `_res.m`, `_dep.m`, `_det.m` readers producing structured records |
-| `fluka-io` | `crates/fluka-io` | USRBIN tally reader, MATERIAL/COMPOUND card generation |
-| `alara-io` | `crates/alara-io` | ALARA deck/flux/libs/output/photon/schedule glue (NOT a solver) |
-| `cccc-io` | `crates/cccc-io` | ISOTXS/RTFLUX text-subset parsers + PARTISN deck writer (NOT a solver) |
-| `fispact-io` | `crates/fispact-io` | FISPACT-II inventory output parser reusing the ALARA response frame (output-only) |
-| `origen-io` | `crates/origen-io` | Scoped ORIGEN 2.2 TAPE5 input-echo, TAPE6 inventory, TAPE9 decay readers |
-| `r2s` | `crates/r2s` | Scoped R2S workflow builder: zone-to-flux linking, schedule expansion, uniform-split photon assembly |
-| `enrichment` | `crates/enrichment` | Multicomponent cascade solver (numeric), SWU closed-form helpers |
-| `depletion` | `crates/depletion` | CRAM matrix exponential (orders 16/48), depletion-chain XML parsing |
-| `vr-tools` | `crates/vr-tools` | MAGIC weight-window generation, mesh source sampling with alias tables |
-| `nucleide-bindings` | `bindings/python` | PyO3 extension module exposing the workspace to Python as `nucleide._internal` |
-| `nucleide-wasm` | `bindings/wasm` | `wasm-bindgen` crate powering the browser-based interactive tutorials |
+<!-- GEN:crate-table:START -->
+
+| Crate | Path | Responsibility | Depends on |
+| --- | --- | --- | --- |
+| `linalg` | `crates/linalg` | Isolation facade over the numeric backend (planned: faer) so the rest of the workspace never depends on it directly | - |
+| `nuclei` | `crates/nuclei` | Nuclide identification, naming conventions, and reaction names | - |
+| `material` | `crates/material` | Nuclear material compositions: mixing, conversions, materials XML export | `nuclei` |
+| `mcnp-io` | `crates/mcnp-io` | MCNP-family file I/O: xsdir, meshtal, SSW, PTRAC readers/writers | `nuclei` |
+| `serpent-io` | `crates/serpent-io` | Parsers for Serpent Monte Carlo MATLAB-style output files (\_res.m, \_dep.m, \_det.m) | - |
+| `fluka-io` | `crates/fluka-io` | FLUKA Monte Carlo interface: USRBIN tally reading and MATERIAL/COMPOUND card generation | `nuclei` |
+| `alara-io` | `crates/alara-io` | ALARA activation-code interop: input-deck, flux, schedule, and output glue (no solver) | `nuclei` |
+| `cccc-io` | `crates/cccc-io` | CCCC binary-standard readers (ISOTXS, RTFLUX/ATFLUX, RZFLUX) and PARTISN deck writer | `nuclei` |
+| `fispact-io` | `crates/fispact-io` | FISPACT-II output parser producing ALARA-compatible response frames (no solver) | `alara-io`, `nuclei` |
+| `origen-io` | `crates/origen-io` | ORIGEN 2.2 TAPE readers (scoped: TAPE5 input echo, TAPE6 output, TAPE9 decay constants) | `nuclei` |
+| `enrichment` | `crates/enrichment` | Multicomponent enrichment cascades and SWU analytics | `nuclei` |
+| `depletion` | `crates/depletion` | CRAM matrix exponential (orders 16/48), depletion-chain XML parsing | `linalg`, `nuclei` |
+| `vr-tools` | `crates/vr-tools` | MAGIC weight-window generation, mesh source sampling with alias tables | `mcnp-io` |
+| `r2s` | `crates/r2s` | Rigorous two-step (R2S) shutdown-dose-rate orchestration over mcnp-io, alara-io, and vr-tools | `alara-io`, `depletion`, `material`, `mcnp-io`, `nuclei`, `vr-tools` |
+| `nucleide-bindings` | `bindings/python` | PyO3 bindings exposing Nucleide to Python as nucleide.\_internal | `nuclei`, `material`, `mcnp-io`, `depletion`, `serpent-io`, `fluka-io`, `vr-tools`, `enrichment`, `alara-io`, `cccc-io`, `fispact-io`, `origen-io`, `r2s` |
+| `nucleide-wasm` | `bindings/wasm` | wasm-bindgen facade exposing Nucleide core capabilities to the browser | `nuclei`, `material`, `enrichment`, `depletion`, `mcnp-io`, `alara-io`, `cccc-io`, `fispact-io`, `vr-tools`, `linalg` |
+
+<!-- GEN:crate-table:END -->
 
 ## Dependency rules
 

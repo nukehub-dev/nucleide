@@ -1,6 +1,6 @@
 [package]
 name = "vr-tools"
-description = "placeholder"
+description = "MAGIC weight-window generation, mesh source sampling with alias tables"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

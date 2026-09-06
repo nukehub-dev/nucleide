@@ -10,6 +10,10 @@ on:
       - 'AGENTS.md'
       - '.github/workflows/docs.yml'
       - '.markdownlint-cli2.jsonc'
+      - 'scripts/gen-reference.py'
+      - 'python/nucleide/**'
+      - 'crates/*/Cargo.toml'
+      - 'bindings/*/Cargo.toml'
   pull_request:
     branches: [main]
     paths:
@@ -19,6 +23,10 @@ on:
       - 'AGENTS.md'
       - '.github/workflows/docs.yml'
       - '.markdownlint-cli2.jsonc'
+      - 'scripts/gen-reference.py'
+      - 'python/nucleide/**'
+      - 'crates/*/Cargo.toml'
+      - 'bindings/*/Cargo.toml'
   workflow_dispatch:
 
 permissions:
@@ -60,3 +68,18 @@ jobs:
             --exclude-path 'node_modules'
             -- '*.md' 'docs/**/*.md' 'docs/**/*.mdx'
           fail: true
+
+  reference-freshness:
+    name: Reference Freshness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+
+      - name: Check generated reference docs are fresh
+        run: python3 scripts/gen-reference.py --check
