@@ -1,14 +1,14 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "Nucleide: A Rust toolkit for nuclear-engineering data and workflow glue"
-version: 0.1.0
+version: 0.2.0
 authors:
   - family-names: Chowdhury
     given-names: Ahnaf Tahmid
     orcid: "https://orcid.org/0000-0003-1070-5576"
     affiliation: NukeHub
 repository-code: "https://github.com/nukehub-dev/nucleide"
-url: "https://nukehub-dev.github.io/nucleide"
+url: "https://nucleide.nukehub.org"
 license: BSD-2-Clause
 keywords:
   - nuclear engineering

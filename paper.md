@@ -28,8 +28,11 @@ Nucleide is a toolkit for the nuclear-engineering workflow *around* particle
 transport codes: reading and writing legacy code files (MCNP, Serpent, FLUKA),
 canonical nuclide identification across a dozen naming dialects, embedded
 nuclear reference data (AME2020 masses, IUPAC 2013 abundances, ENDF/B-VIII.0
-half-lives), material construction, one-step burnup-matrix depletion with the
-Chebyshev Rational Approximation Method (CRAM) [@pusa2010cram; @pusa2016cram],
+half-lives, plus ENDF/B and NIST-derived screening cross sections, neutron
+scattering lengths, and prompt decay energies), material construction,
+multi-step burnup-matrix depletion with the
+Chebyshev Rational Approximation Method (CRAM) [@pusa2010cram; @pusa2016cram]
+(Predictor/CECM/CF4 time integrators with activity and decay-heat observables),
 multicomponent isotope enrichment cascades (MARC/SWU) [@wood1999marc], and
 variance-reduction utilities (MAGIC weight windows [@cooper2001magic] and
 alias-table mesh source sampling [@walker1977alias; @vose1991alias]). It also
