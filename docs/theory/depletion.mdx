@@ -393,10 +393,10 @@ ENDF/B-VII.1 prompt-decay-energy table
 synthetic nuclides) — one evaluated table, no parallel hand-kept fallback.
 
 <Callout type="note" title="Python exposure">
-  `nucleide.depletion.deplete_series` currently exposes the predictor path
-  only (`integrator="predictor"`; any other name raises `ValueError`). The
-  per-step `decay_heat` maps use the same chain → table → `0.0` resolution
-  as the core, so they match `integrate` exactly. See the
+  `nucleide.depletion.deplete_series` wraps `integrate` with an `integrator`
+  argument (`"predictor"`, `"cecm"`, `"cf4"`). The per-step `decay_heat`
+  maps use the same chain → table → `0.0` resolution as the core, so they
+  match `integrate` exactly; the core `t = 0` row is omitted. See the
   [Run depletion tutorial](../tutorials/python/run-depletion.md).
 </Callout>
 

@@ -96,6 +96,27 @@ def test_series_invalid_integrator_raises(tmp_path: Path) -> None:
     chain = nucleide.depletion.read_chain(_write_chain(tmp_path))
     with pytest.raises(ValueError, match="unsupported integrator"):
         nucleide.depletion.deplete_series(chain, {"A": 1.0}, [1.0], integrator="corrector")
+    with pytest.raises(ValueError, match="dts must not be empty"):
+        nucleide.depletion.deplete_series(chain, {"A": 1.0}, [])
+    with pytest.raises(ValueError, match="unknown nuclide"):
+        nucleide.depletion.deplete_series(chain, {"Nope": 1.0}, [1.0])
+
+
+def test_series_integrators_agree(tmp_path: Path) -> None:
+    # Under prescribed rates CECM reproduces Predictor exactly (same matrix
+    # re-solved); CF4 composes two half-step solves (close, not identical).
+    chain = nucleide.depletion.read_chain(_write_chain(tmp_path))
+    n0 = {"A": 1e15, "B": 2e14}
+    dts = [1e5, 1e5]
+    ref = nucleide.depletion.deplete_series(chain, n0, dts, integrator="predictor")
+    cecm = nucleide.depletion.deplete_series(chain, n0, dts, integrator="CECM")
+    cf4 = nucleide.depletion.deplete_series(chain, n0, dts, integrator="cf4")
+    for step_ref, step_new in zip(ref["atoms"], cecm["atoms"], strict=True):
+        for name, value in step_ref.items():
+            assert step_new[name] == pytest.approx(value, rel=1e-12)
+    for step_ref, step_new in zip(ref["atoms"], cf4["atoms"], strict=True):
+        for name, value in step_ref.items():
+            assert step_new[name] == pytest.approx(value, rel=1e-6)
 
 
 def test_series_rates_list_length_mismatch_raises(tmp_path: Path) -> None:

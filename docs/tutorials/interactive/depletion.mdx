@@ -31,9 +31,22 @@ $$
 `deplete(chain, n0, dt, rates, order)` integrates over one time step `dt`. In
 production you would loop this call, update reaction rates from a transport
 solve, and accumulate burnup. The demo also offers a **Burnup curve** run that
-repeats the step and plots nuclide densities versus cumulative time.
+plots nuclide densities versus cumulative time, now backed by a single
+`depleteSeries` call with a selectable integrator.
 
 <InteractiveDemo kind="depletion" />
+
+## Multi-step series and decay heat
+
+`depleteSeries(chain, n0, dts, rates, integrator, order)` threads the core
+`integrate` driver over a list of step lengths with the same rates applied to
+every step. The integrator selector offers `predictor`, `cecm`, and `cf4`;
+the result carries `times` (starting at `t = 0` with the initial state as row
+0) plus per-node `atoms`, `activity` (Bq), and `decay_heat` (W) maps. The
+chart plots atom counts per nuclide with a toggleable total-decay-heat trace.
+For the scripted equivalent see the
+[Run depletion](../python/run-depletion.md) tutorial; for the integrator math
+and the decay-energy resolution see the [Depletion theory](../../theory/depletion.mdx).
 
 ## See also
 

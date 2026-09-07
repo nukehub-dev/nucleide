@@ -42,10 +42,10 @@ workspace crates from tags.
   fallback table is removed and `decay_energy_mev` resolves chain →
   ENDF/B-VII.1 table → `0.0`; new shared `decay_energies_by_name` helper.
 - Python API: `nucleide.depletion.deplete_series` — multi-step depletion
-  driver looping the single-step CRAM solver (predictor in the multi-step
-  sense; per-step `rates`/`rates_list`), returning `times`/`atoms`/`activity`/
+  driver over the core `integrate` series (`predictor`/`cecm`/`cf4`;
+  per-step `rates`/`rates_list`), returning `times`/`atoms`/`activity`/
   per-nuclide `decay_heat` maps through the shared resolver (identical to
-  core `integrate` heats).
+  core `integrate` heats; the core `t = 0` row is omitted).
 - Python API: `nucleide.nuclei` (`simple_xs`, `scattering_length`,
   `decay_energy`) and `nucleide.material` (`decay_heat`) thin wrappers over
   the vendored tables + material analytics.

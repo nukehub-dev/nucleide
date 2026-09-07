@@ -681,12 +681,41 @@ pub fn deplete(
     let n0: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(n0).map_err(js_err)?;
     let rates: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(rates).map_err(js_err)?;
 
-    let order = match order {
-        16 => nucleide_depletion::Order::Order16,
-        48 => nucleide_depletion::Order::Order48,
-        other => return Err(js_err(format!("unsupported CRAM order {other}"))),
-    };
+    let order = parse_cram_order(order)?;
+    let reaction_rates = parse_reaction_rates(chain, &rates)?;
 
+    let sys = nucleide_depletion::DepletionSystem::build((*chain.inner).clone(), &reaction_rates)
+        .map_err(js_err)?;
+    let result = nucleide_depletion::deplete(&sys, order, &n0, dt).map_err(js_err)?;
+    to_js(&result.atoms)
+}
+
+fn parse_cram_order(order: u8) -> Result<nucleide_depletion::Order, JsValue> {
+    match order {
+        16 => Ok(nucleide_depletion::Order::Order16),
+        48 => Ok(nucleide_depletion::Order::Order48),
+        other => Err(js_err(format!("unsupported CRAM order {other}"))),
+    }
+}
+
+fn parse_integrator(name: &str) -> Result<nucleide_depletion::Integrator, JsValue> {
+    if name.eq_ignore_ascii_case("predictor") {
+        Ok(nucleide_depletion::Integrator::Predictor)
+    } else if name.eq_ignore_ascii_case("cecm") {
+        Ok(nucleide_depletion::Integrator::Cecm)
+    } else if name.eq_ignore_ascii_case("cf4") {
+        Ok(nucleide_depletion::Integrator::Cf4)
+    } else {
+        Err(js_err(format!(
+            "unsupported integrator `{name}` (supported: predictor, cecm, cf4)"
+        )))
+    }
+}
+
+fn parse_reaction_rates(
+    chain: &WasmChain,
+    rates: &BTreeMap<String, f64>,
+) -> Result<nucleide_depletion::ReactionRates, JsValue> {
     let mut reaction_rates = nucleide_depletion::ReactionRates::new();
     for (key, v) in rates {
         let (nuc, rx) = key
@@ -699,13 +728,88 @@ pub fn deplete(
         reaction_rates
             .entry(idx)
             .or_default()
-            .insert(rx.to_string(), v);
+            .insert(rx.to_string(), *v);
+    }
+    Ok(reaction_rates)
+}
+
+#[derive(Serialize)]
+struct DepleteSeriesResult {
+    times: Vec<f64>,
+    atoms: Vec<BTreeMap<String, f64>>,
+    activity: Vec<BTreeMap<String, f64>>,
+    decay_heat: Vec<BTreeMap<String, f64>>,
+}
+
+/// Run a multi-step depletion series with activity and decay heat.
+///
+/// `n0` maps nuclide names to atom counts; `dts` is the list of step lengths
+/// [s]; `rates` maps `"Name:reaction"` strings to one-group rates [1/s] and
+/// applies unchanged to every step (one `Step` per `dt` with the same rates).
+/// `integrator` is `"predictor"`, `"cecm"`, or `"cf4"`; `order` is 16 or 48.
+///
+/// Returns `{ times, atoms, activity, decay_heat }` where `times` holds the
+/// cumulative nodes starting at `t = 0` (so every list has `dts.len() + 1`
+/// entries and row 0 echoes the initial state) and the other three are
+/// per-node maps keyed by nuclide name (`activity` in Bq, `decay_heat` in W).
+#[wasm_bindgen(js_name = depleteSeries)]
+pub fn deplete_series(
+    chain: &WasmChain,
+    n0: JsValue,
+    dts: JsValue,
+    rates: JsValue,
+    integrator: &str,
+    order: u8,
+) -> Result<JsValue, JsValue> {
+    let n0: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(n0).map_err(js_err)?;
+    let dts: Vec<f64> = serde_wasm_bindgen::from_value(dts).map_err(js_err)?;
+    let rates: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(rates).map_err(js_err)?;
+
+    let order = parse_cram_order(order)?;
+    let integrator = parse_integrator(integrator)?;
+    let reaction_rates = parse_reaction_rates(chain, &rates)?;
+
+    let mut n0_vec = vec![0.0; chain.inner.nuclides.len()];
+    for (name, value) in &n0 {
+        let idx = chain
+            .inner
+            .index_of(name)
+            .ok_or_else(|| js_err(format!("n0 has unknown nuclide `{name}`")))?;
+        n0_vec[idx] = *value;
     }
 
+    let steps: Vec<nucleide_depletion::Step> = dts
+        .iter()
+        .map(|dt| nucleide_depletion::Step::new(*dt, reaction_rates.clone()))
+        .collect();
     let sys = nucleide_depletion::DepletionSystem::build((*chain.inner).clone(), &reaction_rates)
         .map_err(js_err)?;
-    let result = nucleide_depletion::deplete(&sys, order, &n0, dt).map_err(js_err)?;
-    to_js(&result.atoms)
+    let series =
+        nucleide_depletion::integrate(&sys, &n0_vec, &steps, integrator, order).map_err(js_err)?;
+
+    let names: Vec<String> = chain
+        .inner
+        .nuclides
+        .iter()
+        .map(|nuc| nuc.name.clone())
+        .collect();
+    let key_rows = |rows: &[Vec<f64>]| -> Vec<BTreeMap<String, f64>> {
+        rows.iter()
+            .map(|row| {
+                names
+                    .iter()
+                    .cloned()
+                    .zip(row.iter().copied())
+                    .collect::<BTreeMap<String, f64>>()
+            })
+            .collect()
+    };
+    to_js(&DepleteSeriesResult {
+        times: series.times,
+        atoms: key_rows(&series.atoms),
+        activity: key_rows(&series.activity),
+        decay_heat: key_rows(&series.decay_heat),
+    })
 }
 
 // ---------------------------------------------------------------------------

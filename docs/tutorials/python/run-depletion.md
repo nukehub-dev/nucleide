@@ -47,10 +47,12 @@ print(out["activity"][0])  # Bq per nuclide (A = λN)
 ```
 
 Per-step rates use `rates` (every step) or `rates_list` (one entry per step,
-`None` for decay-only), keyed `"Name:reaction"` as in `deplete`. Only
-`integrator="predictor"` is exposed; per-nuclide `decay_heat` maps use the
-same chain → ENDF/B-VII.1 → `0.0` energy resolution as the core (synthetic
-nuclides report `0.0`). For the exact call shape see
+`None` for decay-only), keyed `"Name:reaction"` as in `deplete`. The
+`integrator` argument selects `"predictor"`, `"cecm"`, or `"cf4"` (same
+core series as Rust `integrate`, minus the `t = 0` row); per-nuclide
+`decay_heat` maps use the same chain → ENDF/B-VII.1 → `0.0` energy
+resolution as the core (synthetic nuclides report `0.0`). For the exact
+call shape see
 `deplete_series` in the
 [Python API](../../reference/python-api.mdx#nucleidedepletion) and
 `tests/test_03_depletion_series.py`.

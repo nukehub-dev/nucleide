@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useWasm } from "../../lib/wasm";
 import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
+import { Checkbox } from "@nukehub/docs-kit/components/ui/Checkbox";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
 import { Select } from "@nukehub/docs-kit/components/ui/Select";
@@ -28,6 +29,12 @@ const ORDER_OPTIONS = [
   { value: "48", label: "48" },
 ];
 
+const INTEGRATOR_OPTIONS = [
+  { value: "predictor", label: "predictor" },
+  { value: "cecm", label: "cecm" },
+  { value: "cf4", label: "cf4" },
+];
+
 const MAX_BURNUP_STEPS = 200;
 const DEFAULT_BURNUP_STEPS = 50;
 
@@ -37,6 +44,8 @@ export function DepletionStep() {
   const [n0Input, setN0Input] = useState("I135 1e15\nXe135 0\nCs135 0");
   const [dt, setDt] = useState(86400.0);
   const [order, setOrder] = useState<16 | 48>(48);
+  const [integrator, setIntegrator] = useState<"predictor" | "cecm" | "cf4">("predictor");
+  const [showHeat, setShowHeat] = useState(true);
   const [result, setResult] = useState<Record<string, number> | null>(null);
   const [burnupSteps, setBurnupSteps] = useState(DEFAULT_BURNUP_STEPS);
   const [burnup, setBurnup] = useState<BurnupCurve | null>(null);
@@ -89,30 +98,23 @@ export function DepletionStep() {
     setBurnupBusy(true);
     try {
       const chain = wasm.WasmChain.fromXml(xml);
-      let n = parseN0();
-      const times: number[] = [0];
-      const series: Record<string, number[]> = {};
-      for (const name of Object.keys(n)) {
-        series[name] = [n[name]];
-      }
-
-      for (let i = 1; i <= steps; i++) {
-        n = wasm.deplete(chain, n, dt, {}, order);
-        times.push(i * dt);
-        for (const [name, value] of Object.entries(n)) {
-          if (!series[name]) series[name] = [];
-          series[name].push(value);
+      const n0 = parseN0();
+      // One Step per dt with the same (here empty) rates; depleteSeries
+      // returns the t = 0 initial row plus one row per step.
+      const dts = Array(steps).fill(dt);
+      const series = wasm.depleteSeries(chain, n0, dts, {}, integrator, order);
+      const atomSeries: Record<string, number[]> = {};
+      for (const row of series.atoms) {
+        for (const [name, value] of Object.entries(row)) {
+          if (!atomSeries[name]) atomSeries[name] = [];
+          atomSeries[name].push(value);
         }
       }
+      const totalHeat = series.decay_heat.map((row) =>
+        Object.values(row).reduce((acc, v) => acc + v, 0),
+      );
 
-      // Align series length (new nuclides may appear mid-curve).
-      for (const values of Object.values(series)) {
-        while (values.length < times.length) {
-          values.push(0);
-        }
-      }
-
-      setBurnup({ times, series });
+      setBurnup({ times: series.times, series: atomSeries, totalHeat });
       setLocalError(null);
     } catch (e) {
       setLocalError(e instanceof Error ? e.message : String(e));
@@ -172,7 +174,7 @@ export function DepletionStep() {
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1">
               <Label>Time step (s)</Label>
               <Input
@@ -195,6 +197,18 @@ export function DepletionStep() {
                 }}
                 options={ORDER_OPTIONS}
                 className="min-w-[100px]"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Integrator</Label>
+              <Select
+                value={integrator}
+                onChange={(v) => {
+                  setIntegrator(v as "predictor" | "cecm" | "cf4");
+                  clearError();
+                }}
+                options={INTEGRATOR_OPTIONS}
+                className="min-w-[120px]"
               />
             </div>
           </div>
@@ -245,7 +259,14 @@ export function DepletionStep() {
             </table>
           )}
 
-          {burnup && <BurnupPlot burnup={burnup} />}
+          {burnup && (
+            <div className="space-y-2">
+              <Checkbox id="depletion-show-heat" checked={showHeat} onCheckedChange={setShowHeat}>
+                Show total decay heat (W)
+              </Checkbox>
+              <BurnupPlot burnup={burnup} showHeat={showHeat} />
+            </div>
+          )}
         </>
       )}
     </div>
@@ -255,16 +276,34 @@ export function DepletionStep() {
 interface BurnupCurve {
   times: number[];
   series: Record<string, number[]>;
+  totalHeat: number[];
 }
 
-function BurnupPlot({ burnup }: { burnup: BurnupCurve }) {
-  const traces = Object.entries(burnup.series).map(([name, values]) => ({
+function BurnupPlot({ burnup, showHeat }: { burnup: BurnupCurve; showHeat: boolean }) {
+  const traces: {
+    type: "scatter";
+    mode: "lines";
+    name: string;
+    x: number[];
+    y: number[];
+    yaxis?: string;
+  }[] = Object.entries(burnup.series).map(([name, values]) => ({
     type: "scatter" as const,
     mode: "lines" as const,
     name,
     x: burnup.times,
     y: values,
   }));
+  if (showHeat) {
+    traces.push({
+      type: "scatter",
+      mode: "lines",
+      name: "Total decay heat (W)",
+      x: burnup.times,
+      y: burnup.totalHeat,
+      yaxis: "y2",
+    });
+  }
   // Atom counts can span ten decades (hot I135/Xe135 vs trace products), so a
   // fixed decade tick still stacks labels. Step ticks to ~6 across the span.
   const positives = Object.values(burnup.series)
@@ -283,7 +322,13 @@ function BurnupPlot({ burnup }: { burnup: BurnupCurve }) {
       layout={{
         xaxis: { title: { text: "Time (s)" }, type: "linear" },
         yaxis: { title: { text: "Atom count" }, type: "log", dtick, tickformat: ".0e" },
-        margin: { t: 16, r: 16, b: 48, l: 64 },
+        yaxis2: {
+          title: { text: "Decay heat (W)" },
+          type: "log",
+          overlaying: "y",
+          side: "right",
+        },
+        margin: { t: 16, r: 64, b: 48, l: 64 },
         legend: { orientation: "h", y: -0.25 },
       }}
     />

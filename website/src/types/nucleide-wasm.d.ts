@@ -88,6 +88,13 @@ export interface WasmChain {
   nuclides(): string[];
 }
 
+export interface DepleteSeriesResult {
+  times: number[];
+  atoms: Record<string, number>[];
+  activity: Record<string, number>[];
+  decay_heat: Record<string, number>[];
+}
+
 export interface McnpMaterialJson {
   number: number;
   fractions: Record<string, number>;
@@ -296,6 +303,14 @@ export interface WasmApi {
     rates: Record<string, number>,
     order: number,
   ): Record<string, number>;
+  depleteSeries(
+    chain: WasmChain,
+    n0: Record<string, number>,
+    dts: number[],
+    rates: Record<string, number>,
+    integrator: string,
+    order: number,
+  ): DepleteSeriesResult;
   parseMcnpMaterials(text: string): McnpMaterialJson[];
   parseXsdir(text: string): XsdirSummary;
   parseMeshtal(text: string): MeshtalSummary;
