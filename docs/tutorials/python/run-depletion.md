@@ -57,6 +57,24 @@ call shape see
 [Python API](../../reference/python-api.mdx#nucleidedepletion) and
 `tests/test_03_depletion_series.py`.
 
+## Unit-aware inventories
+
+`Inventory` wraps atom counts with activity/mass/mole units over a chain,
+plus fractions, readable half-lives, arithmetic, and CSV round-trip:
+
+```python
+from nucleide.depletion import Inventory
+
+inv = Inventory(chain, {"Co60": 1.0}, units="Ci")
+aged = inv.decay(1.0, time_unit="y")
+print(aged.activities("Bq"), aged.masses("g"))
+print(inv.half_lives_readable())
+```
+
+`cumulative_decays` integrates decays over one step, and `progeny` /
+`branching_fraction` / `decay_mode` / `chain_edges` expose chain lineage
+as plain data (see `tests/test_inventory.py`).
+
 ## See also
 
 - [`crates/depletion/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/depletion/src/lib.rs)

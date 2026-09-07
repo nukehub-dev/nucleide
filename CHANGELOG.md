@@ -52,6 +52,33 @@ workspace crates from tags.
 - Python API: `MeshTally.to_list()` / `totals_list()` plain-copy helpers;
   the zero-copy NumPy bridge (`result_array()`) stays deferred — no `numpy`
   dependency introduced.
+- `nucleide-mcnp-io` full-deck round-trip (`crates/mcnp-io/src/cell.rs`,
+  `surf.rs`, `problem.rs`): typed cell/surface cards (CSG expressions with
+  `:` union, juxtaposition intersection, parentheses, `#` complement, `*`
+  reflecting markers; 40 surface kinds incl. macrobodies), `DeckProblem`
+  parse/edit/write with format-preserving write-back (byte-identical when
+  unedited; only touched cards re-render canonically) plus
+  `set_cell_density` / `set_cell_material`. Synthetic fixtures
+  `fixtures/mcnp/inp/deck_{minimal,macro,params}.txt` (no license needed).
+- `nucleide-depletion` unit-aware inventories (`crates/depletion/src/
+  inventory.rs`): `DecayInventory` over atom counts with activity/mass/mole
+  units (`Bq`…`Ci`, `g`/`kg`, `mol`, time in `s`/`m`/`h`/`d`/`y`),
+  fractions, readable half-lives, arithmetic, CSV round-trip, plus
+  `cumulative_decays` and chain observables (`progeny`,
+  `branching_fraction`, `decay_mode`, `chain_edges`).
+- `nucleide-nuclei` ARMI dialect bridge (`crates/nuclei/src/armi.rs`):
+  `armi_name_to_nucid` (`nU235`, ZAIDs, MCC3, AAAZZZS),
+  `nucid_to_armi_label`, `mcc3_to_nucid`.
+- `nucleide-material` composition checks (`crates/material/src/check.rs`):
+  `check_labels` (truncated-label collisions at DIF3D/MC2 6/8-char widths
+  across GNDS/ZAID/Serpent/ALARA/ARMI labels) and conservation `audit`
+  (non-positive totals, negative masses, duplicates, unknown masses).
+- Python API: `nucleide.mcnp.DeckProblem` (`parse_deck`/`read_deck`,
+  `dumps`, setters, cell/surf/data accessors), `nucleide.depletion.
+  Inventory` + `cumulative_decays`/`progeny`/`branching_fraction`/
+  `decay_mode`/`chain_edges`, `nucleide.nuclei.armi_to_nucid`/
+  `nucid_to_armi`/`mcc3_to_nucid`, `nucleide.material.check_labels`/
+  `audit_material`.
 
 ## [0.2.0] - 2026-09-06
 

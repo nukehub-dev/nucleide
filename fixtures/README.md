@@ -25,7 +25,7 @@ after adding fixtures (CI enforces freshness via `--check`).
 | `depletion/` | 4 | 37,843 bytes | depletion — Depletion-chain XML files (simple chains, Ni chain) |
 | `fispact/` | 1 | 1,058 bytes | fispact — Synthetic FISPACT-II-style inventory authored for Nucleide (no license needed) |
 | `fluka/` | 4 | 7,685 bytes | fluka — USRBIN `.lis` files (single/multiple/degenerate) + test input |
-| `mcnp/` | 20 | 468,802 bytes | mcnp — MCNP input decks, tallies, and binary-format oracles |
+| `mcnp/` | 23 | 469,583 bytes | mcnp — MCNP input decks, tallies, and binary-format oracles |
 | `origen/` | 3 | 681 bytes | origen — Synthetic ORIGEN TAPE samples authored for Nucleide (no license needed) |
 | `serpent/` | 6 | 653,120 bytes | serpent — Serpent 1 & 2 res/dep/det outputs |
 

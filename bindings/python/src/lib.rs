@@ -4,6 +4,7 @@
 //! stays usable without Python. Type stubs live in `python/nucleide/_internal.pyi`.
 
 use std::collections::BTreeMap;
+use std::str::FromStr;
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -2832,6 +2833,521 @@ fn decay_heat(comp: BTreeMap<String, f64>) -> PyResult<f64> {
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+// ---------------------------------------------------------------------------
+// 0.3.0 Tier 1: deck round-trip, decay inventories, ARMI dialects, checks
+// ---------------------------------------------------------------------------
+
+/// A parsed MCNP input deck with format-preserving write-back.
+#[pyclass(name = "DeckProblem")]
+struct PyDeckProblem {
+    inner: std::sync::Mutex<nucleide_mcnp_io::problem::DeckProblem>,
+}
+
+fn deck_cell_dict(cell: &nucleide_mcnp_io::cell::CellCard) -> BTreeMap<String, String> {
+    let mut d = BTreeMap::new();
+    d.insert("num".to_string(), cell.num.to_string());
+    d.insert("mat".to_string(), cell.mat.to_string());
+    d.insert(
+        "dens".to_string(),
+        cell.dens.map(|v| v.to_string()).unwrap_or_default(),
+    );
+    d.insert("geom".to_string(), cell.geom.render());
+    d.insert("params".to_string(), cell.params.join(" "));
+    d
+}
+
+#[pymethods]
+impl PyDeckProblem {
+    /// Parse a deck from text.
+    #[staticmethod]
+    fn loads(text: &str) -> PyResult<Self> {
+        nucleide_mcnp_io::problem::parse_deck(text)
+            .map(|inner| Self {
+                inner: std::sync::Mutex::new(inner),
+            })
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Message (first) line.
+    #[getter]
+    fn message(&self) -> String {
+        self.inner.lock().unwrap().message.clone()
+    }
+
+    /// Title card (second line).
+    #[getter]
+    fn title(&self) -> String {
+        self.inner.lock().unwrap().title.clone()
+    }
+
+    /// Cell cards as `{num, mat, dens, geom, params}` dicts (`dens` is `""`
+    /// for void cells).
+    #[getter]
+    fn cells(&self) -> Vec<BTreeMap<String, String>> {
+        self.inner
+            .lock()
+            .unwrap()
+            .cells
+            .iter()
+            .map(deck_cell_dict)
+            .collect()
+    }
+
+    /// Surface cards as `{num, reflecting, transform, kind, coeffs}` dicts
+    /// (`transform` is `""` when absent).
+    #[getter]
+    fn surfs(&self) -> Vec<BTreeMap<String, String>> {
+        self.inner
+            .lock()
+            .unwrap()
+            .surfs
+            .iter()
+            .map(|s| {
+                let mut d = BTreeMap::new();
+                d.insert("num".to_string(), s.num.to_string());
+                d.insert("reflecting".to_string(), s.reflecting.to_string());
+                d.insert(
+                    "transform".to_string(),
+                    s.transform.map(|v| v.to_string()).unwrap_or_default(),
+                );
+                d.insert("kind".to_string(), s.kind.keyword().to_string());
+                d.insert(
+                    "coeffs".to_string(),
+                    s.coeffs
+                        .iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+                d
+            })
+            .collect()
+    }
+
+    /// Material numbers in file order.
+    #[getter]
+    fn material_numbers(&self) -> Vec<u32> {
+        self.inner
+            .lock()
+            .unwrap()
+            .materials
+            .iter()
+            .map(|m| m.number)
+            .collect()
+    }
+
+    /// Data-card names in file order (`MODE`, `M1`, `KCODE`, ...).
+    #[getter]
+    fn data_names(&self) -> Vec<String> {
+        self.inner
+            .lock()
+            .unwrap()
+            .data
+            .iter()
+            .map(|d| d.name.clone())
+            .collect()
+    }
+
+    /// Serialize back to MCNP input text (byte-identical when unedited).
+    fn dumps(&self) -> String {
+        nucleide_mcnp_io::problem::write_deck(&self.inner.lock().unwrap())
+    }
+
+    /// Set a cell's density (re-renders that card canonically).
+    fn set_cell_density(&self, cell: u32, dens: f64) -> PyResult<()> {
+        self.inner
+            .lock()
+            .unwrap()
+            .set_cell_density(cell, dens)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Set a cell's material number (re-renders that card canonically).
+    fn set_cell_material(&self, cell: u32, mat: u32) -> PyResult<()> {
+        self.inner
+            .lock()
+            .unwrap()
+            .set_cell_material(cell, mat)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+}
+
+/// Parse an MCNP input deck file into a [`PyDeckProblem`].
+#[pyfunction]
+fn read_deck(path: &str) -> PyResult<PyDeckProblem> {
+    nucleide_mcnp_io::problem::parse_deck_file(path)
+        .map(|inner| PyDeckProblem {
+            inner: std::sync::Mutex::new(inner),
+        })
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Parse MCNP input deck text into a [`PyDeckProblem`].
+#[pyfunction]
+fn parse_deck(text: &str) -> PyResult<PyDeckProblem> {
+    PyDeckProblem::loads(text)
+}
+
+/// A unit-aware decay inventory over a depletion chain.
+#[pyclass(name = "Inventory")]
+struct PyInventory {
+    chain: std::sync::Arc<nucleide_depletion::Chain>,
+    atoms: BTreeMap<String, f64>,
+}
+
+fn inventory_sys(
+    chain: &nucleide_depletion::Chain,
+    rates: &RateMap,
+) -> PyResult<nucleide_depletion::DepletionSystem> {
+    let rs = split_rates(rates, chain)?;
+    nucleide_depletion::DepletionSystem::build(chain.clone(), &rs)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+fn parse_quantity_unit(unit: &str) -> PyResult<nucleide_depletion::QuantityUnit> {
+    nucleide_depletion::QuantityUnit::from_str(unit)
+        .map_err(|e| PyValueError::new_err(format!("{e:?}")))
+}
+
+#[pymethods]
+impl PyInventory {
+    /// Build from quantities in `units` (atom counts, `Bq`/`Ci` activity,
+    /// `g`/`kg` mass, `mol`, ... — see `QuantityUnit`).
+    #[new]
+    #[pyo3(signature = (chain, comp, units="atoms"))]
+    fn new(chain: &PyChain, comp: BTreeMap<String, f64>, units: &str) -> PyResult<Self> {
+        let unit = parse_quantity_unit(units)?;
+        let sys = inventory_sys(&chain.inner, &BTreeMap::new())?;
+        let inv = nucleide_depletion::DecayInventory::from_units(&comp, unit, &sys)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self {
+            chain: chain.inner.clone(),
+            atoms: inv.atoms,
+        })
+    }
+
+    /// Atom counts by nuclide name.
+    fn numbers(&self) -> BTreeMap<String, f64> {
+        self.atoms.clone()
+    }
+
+    /// Decay over `dt` in `time_unit` (`s`, `m`, `h`, `d`, `y`); optional
+    /// one-group `rates` (`"Name:reaction"` keys) and CRAM `order`.
+    #[pyo3(signature = (dt, time_unit="s", rates=None, order=48))]
+    fn decay(&self, dt: f64, time_unit: &str, rates: Option<RateMap>, order: u8) -> PyResult<Self> {
+        let order = parse_order(order)?;
+        let unit = nucleide_depletion::inventory::time_unit_from_str(time_unit)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let seconds = dt * unit.as_seconds();
+        let empty = BTreeMap::new();
+        let step_rates = rates.as_ref().unwrap_or(&empty);
+        let template = inventory_sys(&self.chain, step_rates)?;
+        // Route through the core series: predictor over one step equals the
+        // single CRAM solve, and rates/order stay honored.
+        let steps = vec![nucleide_depletion::Step::new(
+            seconds,
+            split_rates(step_rates, &self.chain)?,
+        )];
+        let series = nucleide_depletion::integrate(
+            &template,
+            &chain_vec(&self.chain, &self.atoms)?,
+            &steps,
+            nucleide_depletion::Integrator::Predictor,
+            order,
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let names: Vec<String> = self.chain.nuclides.iter().map(|n| n.name.clone()).collect();
+        let atoms = names
+            .iter()
+            .zip(series.atoms.last().cloned().unwrap_or_default())
+            .map(|(n, v)| (n.clone(), v))
+            .collect();
+        Ok(Self {
+            chain: self.chain.clone(),
+            atoms,
+        })
+    }
+
+    /// Activity per nuclide in `units`.
+    fn activities(&self, units: &str) -> PyResult<BTreeMap<String, f64>> {
+        let unit = parse_quantity_unit(units)?;
+        let sys = inventory_sys(&self.chain, &BTreeMap::new())?;
+        let inv = nucleide_depletion::DecayInventory {
+            atoms: self.atoms.clone(),
+        };
+        inv.activities(&sys, unit)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Mass per nuclide in `units`.
+    fn masses(&self, units: &str) -> PyResult<BTreeMap<String, f64>> {
+        let unit = parse_quantity_unit(units)?;
+        let inv = nucleide_depletion::DecayInventory {
+            atoms: self.atoms.clone(),
+        };
+        inv.masses(unit)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Moles per nuclide in `units`.
+    fn moles(&self, units: &str) -> PyResult<BTreeMap<String, f64>> {
+        let unit = parse_quantity_unit(units)?;
+        let inv = nucleide_depletion::DecayInventory {
+            atoms: self.atoms.clone(),
+        };
+        inv.moles(unit)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Activity fractions by nuclide name.
+    fn activity_fractions(&self) -> PyResult<BTreeMap<String, f64>> {
+        let sys = inventory_sys(&self.chain, &BTreeMap::new())?;
+        let inv = nucleide_depletion::DecayInventory {
+            atoms: self.atoms.clone(),
+        };
+        inv.activity_fractions(&sys)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Mass fractions by nuclide name.
+    fn mass_fractions(&self) -> PyResult<BTreeMap<String, f64>> {
+        let inv = nucleide_depletion::DecayInventory {
+            atoms: self.atoms.clone(),
+        };
+        inv.mass_fractions()
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Mole fractions by nuclide name.
+    fn mole_fractions(&self) -> BTreeMap<String, f64> {
+        nucleide_depletion::DecayInventory {
+            atoms: self.atoms.clone(),
+        }
+        .mole_fractions()
+    }
+
+    /// Human-readable half-lives (`"3.2 d"`, `"stable"`, `"unknown"`).
+    fn half_lives_readable(&self) -> BTreeMap<String, String> {
+        nucleide_depletion::DecayInventory {
+            atoms: self.atoms.clone(),
+        }
+        .half_lives_readable()
+    }
+
+    /// Add two inventories (atom counts sum).
+    fn add(&self, other: &Self) -> Self {
+        let a = nucleide_depletion::DecayInventory {
+            atoms: self.atoms.clone(),
+        };
+        let b = nucleide_depletion::DecayInventory {
+            atoms: other.atoms.clone(),
+        };
+        Self {
+            chain: self.chain.clone(),
+            atoms: a.add(&b).atoms,
+        }
+    }
+
+    /// Subtract (clamped at zero).
+    fn sub(&self, other: &Self) -> Self {
+        let a = nucleide_depletion::DecayInventory {
+            atoms: self.atoms.clone(),
+        };
+        let b = nucleide_depletion::DecayInventory {
+            atoms: other.atoms.clone(),
+        };
+        Self {
+            chain: self.chain.clone(),
+            atoms: a.sub(&b).atoms,
+        }
+    }
+
+    /// Scale by a scalar.
+    fn mul(&self, scalar: f64) -> Self {
+        let a = nucleide_depletion::DecayInventory {
+            atoms: self.atoms.clone(),
+        };
+        Self {
+            chain: self.chain.clone(),
+            atoms: a.mul(scalar).atoms,
+        }
+    }
+
+    /// Divide by a scalar.
+    fn div(&self, scalar: f64) -> Self {
+        let a = nucleide_depletion::DecayInventory {
+            atoms: self.atoms.clone(),
+        };
+        Self {
+            chain: self.chain.clone(),
+            atoms: a.div(scalar).atoms,
+        }
+    }
+
+    /// Serialize as `nuclide,atoms` CSV rows.
+    fn to_csv(&self) -> String {
+        nucleide_depletion::DecayInventory {
+            atoms: self.atoms.clone(),
+        }
+        .to_csv()
+    }
+
+    /// Parse `to_csv` output back into an inventory over `chain`.
+    #[staticmethod]
+    fn from_csv(chain: &PyChain, text: &str) -> PyResult<Self> {
+        // Validate names against the chain (core from_csv is chain-free).
+        let inv = nucleide_depletion::DecayInventory::from_csv(text)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        for name in inv.atoms.keys() {
+            if chain.inner.index_of(name).is_none() {
+                return Err(PyValueError::new_err(format!(
+                    "unknown nuclide `{name}` for this chain"
+                )));
+            }
+        }
+        Ok(Self {
+            chain: chain.inner.clone(),
+            atoms: inv.atoms,
+        })
+    }
+}
+
+/// Atom vector in chain order for an inventory map (unknown names error).
+fn chain_vec(
+    chain: &nucleide_depletion::Chain,
+    atoms: &BTreeMap<String, f64>,
+) -> PyResult<Vec<f64>> {
+    let mut vec = vec![0.0; chain.len()];
+    for (name, value) in atoms {
+        let idx = chain.index_of(name).ok_or_else(|| {
+            PyValueError::new_err(format!("unknown nuclide `{name}` for this chain"))
+        })?;
+        vec[idx] = *value;
+    }
+    Ok(vec)
+}
+
+/// Time-integrated decays per nuclide over one step (chain order → names).
+#[pyfunction]
+#[pyo3(signature = (chain, n0, dt, rates=None))]
+fn cumulative_decays(
+    chain: &PyChain,
+    n0: BTreeMap<String, f64>,
+    dt: f64,
+    rates: Option<RateMap>,
+) -> PyResult<BTreeMap<String, f64>> {
+    let empty = BTreeMap::new();
+    let sys = inventory_sys(&chain.inner, rates.as_ref().unwrap_or(&empty))?;
+    let vec = chain_vec(&chain.inner, &n0)?;
+    let out = nucleide_depletion::cumulative_decays(&sys, &vec, dt)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(chain
+        .inner
+        .nuclides
+        .iter()
+        .zip(out)
+        .map(|(nuc, v)| (nuc.name.clone(), v))
+        .collect())
+}
+
+/// `(child, branching_ratio, decay_mode)` triples for a chain nuclide.
+#[pyfunction]
+fn progeny(chain: &PyChain, name: &str) -> Vec<(String, f64, String)> {
+    nucleide_depletion::progeny(&chain.inner, name)
+}
+
+/// Branching fraction from parent to child, if the decay exists.
+#[pyfunction]
+fn branching_fraction(chain: &PyChain, parent: &str, child: &str) -> Option<f64> {
+    nucleide_depletion::branching_fraction(&chain.inner, parent, child)
+}
+
+/// Decay-mode label from parent to child, if the decay exists.
+#[pyfunction]
+fn decay_mode(chain: &PyChain, parent: &str, child: &str) -> Option<String> {
+    nucleide_depletion::decay_mode(&chain.inner, parent, child)
+}
+
+/// `(parent, child, branching_ratio, decay_mode)` edges of a chain.
+#[pyfunction]
+fn chain_edges(chain: &PyChain) -> Vec<(String, String, f64, String)> {
+    nucleide_depletion::chain_edges(&chain.inner)
+}
+
+/// Parse an ARMI nuclide label (`nU235`, `92235`, ...) into a [`PyNuclide`].
+#[pyfunction]
+fn armi_to_nucid(name: &str) -> PyResult<PyNuclide> {
+    nucleide_nuclei::armi::armi_name_to_nucid(name)
+        .map(|inner| PyNuclide { inner })
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Render a nuclide in ARMI database-label form.
+#[pyfunction]
+fn nucid_to_armi(nuclide: &PyNuclide) -> String {
+    nucleide_nuclei::armi::nucid_to_armi_label(nuclide.inner)
+}
+
+/// Parse an MCC3-style nuclide label into a [`PyNuclide`].
+#[pyfunction]
+fn mcc3_to_nucid(name: &str) -> PyResult<PyNuclide> {
+    nucleide_nuclei::armi::mcc3_to_nucid(name)
+        .map(|inner| PyNuclide { inner })
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Truncated-label collisions in a composition at DIF3D/MC2 widths.
+///
+/// `comp` maps nuclide names to grams; `widths` defaults to `[6, 8]`.
+/// Returns `[{truncated, width, members}]`.
+#[pyfunction]
+#[pyo3(signature = (comp, widths=None))]
+fn check_labels(
+    comp: BTreeMap<String, f64>,
+    widths: Option<Vec<usize>>,
+) -> PyResult<Vec<BTreeMap<String, Py<PyAny>>>> {
+    let mat = comp_to_material(comp)?;
+    let widths = widths.unwrap_or_else(|| nucleide_material::DEFAULT_WIDTHS.to_vec());
+    let collisions = nucleide_material::check_labels(&mat, &widths);
+    Python::attach(|py| {
+        Ok(collisions
+            .into_iter()
+            .map(|c| {
+                let mut d = BTreeMap::new();
+                d.insert(
+                    "truncated".to_string(),
+                    c.truncated.into_pyobject(py).unwrap().unbind().into_any(),
+                );
+                d.insert(
+                    "width".to_string(),
+                    c.width.into_pyobject(py).unwrap().unbind().into_any(),
+                );
+                let members: Vec<String> = c.members.iter().map(|id| id.to_name()).collect();
+                d.insert(
+                    "members".to_string(),
+                    members.into_pyobject(py).unwrap().unbind().into_any(),
+                );
+                d
+            })
+            .collect())
+    })
+}
+
+/// Conservation audit of a composition: `[{kind, detail}]` (empty = clean).
+#[pyfunction]
+fn audit_material(comp: BTreeMap<String, f64>) -> PyResult<Vec<BTreeMap<String, String>>> {
+    let mat = comp_to_material(comp)?;
+    Ok(nucleide_material::audit(&mat, &nucleide_material::Ame2020)
+        .into_iter()
+        .map(|issue| {
+            let mut d = BTreeMap::new();
+            d.insert("kind".to_string(), format!("{:?}", issue.kind));
+            d.insert("detail".to_string(), issue.detail);
+            d
+        })
+        .collect())
+}
+
 /// Python module entry point.
 #[pymodule]
 fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -2885,6 +3401,18 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(r2s_validate, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_expand, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_assemble, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_deck, m)?)?;
+    m.add_function(wrap_pyfunction!(read_deck, m)?)?;
+    m.add_function(wrap_pyfunction!(cumulative_decays, m)?)?;
+    m.add_function(wrap_pyfunction!(progeny, m)?)?;
+    m.add_function(wrap_pyfunction!(branching_fraction, m)?)?;
+    m.add_function(wrap_pyfunction!(decay_mode, m)?)?;
+    m.add_function(wrap_pyfunction!(chain_edges, m)?)?;
+    m.add_function(wrap_pyfunction!(armi_to_nucid, m)?)?;
+    m.add_function(wrap_pyfunction!(nucid_to_armi, m)?)?;
+    m.add_function(wrap_pyfunction!(mcc3_to_nucid, m)?)?;
+    m.add_function(wrap_pyfunction!(check_labels, m)?)?;
+    m.add_function(wrap_pyfunction!(audit_material, m)?)?;
     m.add_class::<PyNuclide>()?;
     m.add_class::<PyParticle>()?;
     m.add_class::<PyXsdir>()?;
@@ -2903,5 +3431,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyMeshSourceSampler>()?;
     m.add_class::<PyCascade>()?;
     m.add_class::<PyMaterialsCompendium>()?;
+    m.add_class::<PyDeckProblem>()?;
+    m.add_class::<PyInventory>()?;
     Ok(())
 }

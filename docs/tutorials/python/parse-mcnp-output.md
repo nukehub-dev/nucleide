@@ -56,6 +56,22 @@ from nucleide.mcnp import write_ssw
 write_ssw(ss, "path/to/output.ssw")
 ```
 
+## Input decks: parse, edit, write back
+
+`DeckProblem` parses a full input deck (message/title/cell/surface/data
+blocks) into typed cell/surface cards plus material and passthrough data
+cards, and writes it back byte-identical when unedited — only cards touched
+through the setters re-render canonically:
+
+```python
+from nucleide.mcnp import read_deck
+
+deck = read_deck("path/to/model.i")
+print(deck.title, [c["num"] for c in deck.cells])
+deck.set_cell_density(1, -10.0)
+open("path/to/model_edited.i", "w").write(deck.dumps())
+```
+
 ## Fixtures
 
 Golden-byte reference files live under `fixtures/mcnp/`. Tests assert that

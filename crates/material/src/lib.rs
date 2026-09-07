@@ -24,11 +24,13 @@
 //! assert!(atoms.is_err());
 //! ```
 
+mod check;
 mod compendium;
 mod expansion;
 mod material;
 mod xml;
 
+pub use check::{audit, check_labels, AuditIssue, AuditKind, Collision, DEFAULT_WIDTHS};
 pub use compendium::{
     CompendiumElement, CompendiumEntry, CompendiumIsotope, Error as CompendiumError,
     MaterialsLibrary,

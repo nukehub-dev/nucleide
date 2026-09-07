@@ -1,0 +1,15 @@
+Minimal pin-cell message
+Minimal pin-cell deck
+c -- cell cards --
+1 1 -10.0 -1 imp:n=1 $ fuel pin
+2 2 -1.0 1 -2 imp:n=1 $ coolant
+3 0 2 imp:n=0 $ outside world
+
+c -- surface cards --
+1 so 10.0
+2 so 11.0
+3 px 5.0
+
+mode n
+m1 92235 0.04 92238 0.96 $ enriched uranium
+m2 1001 2.0 8016 1.0 $ water

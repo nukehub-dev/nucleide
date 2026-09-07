@@ -1,6 +1,7 @@
 """MCNP file readers and writers (backed by the `nucleide-mcnp-io` crate)."""
 
 from nucleide._internal import (
+    DeckProblem,
     Mctal,
     Meshtal,
     MeshTally,
@@ -10,6 +11,8 @@ from nucleide._internal import (
     Xsdir,
     XsdirTable,
     mesh_to_geom,
+    parse_deck,
+    read_deck,
     read_inp,
     read_mctal,
     read_meshtal,
@@ -29,6 +32,7 @@ __all__ = [
     "Mctal",
     "SurfSrc",
     "PtracFile",
+    "DeckProblem",
     "read_xsdir",
     "read_meshtal",
     "read_wwinp",
@@ -37,5 +41,7 @@ __all__ = [
     "read_ptrac",
     "write_ssw",
     "read_inp",
+    "parse_deck",
+    "read_deck",
     "mesh_to_geom",
 ]
