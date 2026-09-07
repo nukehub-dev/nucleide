@@ -6,10 +6,15 @@
 
 pub mod chain;
 pub mod cram;
+pub mod integrate;
 pub mod matrix;
 
 pub use chain::{Chain, ChainNuclide, DecayMode, Error, FissionYields, Reaction};
 pub use cram::{cram, cram_with_symbolic, Order};
+pub use integrate::{
+    activity_vec, decay_constants, decay_energies_by_name, decay_energies_mev, decay_energy_mev,
+    decay_heat_vec, integrate, Integrator, Step, TimeSeries, EV_PER_MEV, MEV_TO_JOULE,
+};
 pub use matrix::{DepletionSystem, ReactionRates};
 
 use std::collections::BTreeMap;

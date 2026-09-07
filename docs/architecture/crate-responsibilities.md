@@ -24,14 +24,18 @@ Canonical nuclide identification. Owns:
 - Name parsing (`U235`, `Am242_m1`, `Ba137m`).
 - Naming dialects: MCNP ZAID, Serpent, FLUKA, NIST, CINDER, ALARA, SZA.
 - Particle registry and reaction-name registry (labels, MT mapping, hashes).
-- Physical data access: AME2020 masses, natural abundances, half-lives.
+- Physical data access: AME2020 masses, natural abundances, half-lives, plus
+  screening-level `simple_xs`, `scattering_length`, and `decay_energy_mev`
+  TSV tables.
 
 ## Capability crates
 
 ### `nucleide-material`
 
 Compositions, mixing arithmetic, unit conversions, DOE/PNNL Materials Compendium
-loading, and materials XML export. Depends on `nucleide-nuclei`.
+loading, and materials XML export. Radioanalytics (activity, decay heat) take
+injected `DecayProvider`/`DecayEnergyProvider` traits; `DecayEnergies` reads
+the screening-level `decay_energy.tsv` table. Depends on `nucleide-nuclei`.
 
 ### `nucleide-mcnp-io`
 
@@ -62,8 +66,9 @@ stays independent of `nucleide-material`.
 
 ### `nucleide-depletion`
 
-CRAM matrix exponential (orders 16 and 48) and depletion-chain XML parsing.
-Depends on `nucleide-linalg` and `nucleide-nuclei`.
+CRAM matrix exponential (orders 16 and 48), depletion-chain XML parsing, and
+multi-step `Integrator::{Predictor, Cecm, Cf4}` time series with
+activity/decay-heat output. Depends on `nucleide-linalg` and `nucleide-nuclei`.
 
 ### `nucleide-vr-tools`
 

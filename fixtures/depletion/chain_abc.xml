@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!-- Synthetic A -> B -> C sequential-decay chain for time-series tests.
+     A: lambda = 1e-6 /s (half life ln2/1e-6 s), decay energy 1 MeV.
+     B: lambda = 1e-5 /s (half life ln2/1e-5 s), decay energy 2 MeV.
+     C: stable, no decay energy (zero-heat behavior). -->
+<depletion_chain>
+  <nuclide name="A" half_life="6.931471805599453E+05" decay_energy="1000000.0">
+    <decay type="beta" target="B" branching_ratio="1.0"/>
+  </nuclide>
+  <nuclide name="B" half_life="6.931471805599453E+04" decay_energy="2000000.0">
+    <decay type="beta" target="C" branching_ratio="1.0"/>
+  </nuclide>
+  <nuclide name="C" reactions="0"/>
+</depletion_chain>

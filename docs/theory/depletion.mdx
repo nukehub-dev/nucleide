@@ -359,12 +359,54 @@ exercised in `crates/depletion/src/lib.rs` as `analytic_two_step_decay_cram48`.
   }}
 />
 
+## Time-series integrators
+
+For schedules with per-step rates, `crates/depletion/src/integrate.rs`
+chains single-step CRAM solves. Each `Step` carries a length `dt` in seconds
+plus prescribed one-group rates in the same layout as
+`DepletionSystem::build`; the matrix is rebuilt from each step's rates, so
+time-varying rates are handled exactly per step.
+
+`Integrator` selects the method: `Predictor` (one CRAM solve per step),
+`Cecm` (predictor plus a corrector re-solve from the step start with the
+averaged matrix), or `Cf4` (fourth-order commutator-free quasi-Magnus, two
+half-step CRAM solves). Because rates here are prescribed rather than
+recomputed from the predicted composition, the corrector matrix equals the
+predictor matrix and `Cecm` reproduces `Predictor` up to roundoff; the
+two-solve structure is kept so flux-coupled extensions can plug a recomputed
+matrix into the same code path. Under the same piecewise-constant
+reconstruction each `Cf4` stage is a half-step exponential, so its accuracy
+is at least as good as `Predictor` on the analytic test chain.
+
+Results come back as `TimeSeries` with one row per time node in
+chain-nuclide order (`times[0] == 0.0` echoes the initial state):
+
+- `times`: cumulative time nodes in seconds.
+- `atoms`: atom counts per node.
+- `activity`: $A_i = \lambda_i N_i$ in Bq, clamped at zero.
+- `decay_heat`: $H_i = \lambda_i N_i E_i$ in W, clamped at zero.
+
+Per-nuclide decay energies resolve chain-first: the chain's `decay_energy`
+attribute (eV converted to MeV) when positive and finite, else the
+ENDF/B-VII.1 prompt-decay-energy table
+(`nucleide_nuclei::data::decay_energy_mev_by_name`), else `0.0` (stable and
+synthetic nuclides) — one evaluated table, no parallel hand-kept fallback.
+
+<Callout type="note" title="Python exposure">
+  `nucleide.depletion.deplete_series` currently exposes the predictor path
+  only (`integrator="predictor"`; any other name raises `ValueError`). The
+  per-step `decay_heat` maps use the same chain → table → `0.0` resolution
+  as the core, so they match `integrate` exactly. See the
+  [Run depletion tutorial](../tutorials/python/run-depletion.md).
+</Callout>
+
 ## Assumptions and limitations
 
 - **One-group reaction rates**: CRAM in Nucleide uses a single scalar rate per
   reaction channel. Multigroup fluxes must be collapsed externally.
 - **Fixed cross sections over the step**: $\mathbf{A}$ is treated as constant
-  during $t$.
+  during $t$; multi-step schedules rebuild it from each step's prescribed
+  rates, with no flux renormalization between steps.
 - **Fission yields are single-energy**: the yield set at the lowest incident
   neutron energy is used, matching OpenMC's default.
 - **Decay branching ratios**: chains read from XML keep the file values
@@ -381,7 +423,9 @@ does not implement:
 
 - **Multi-step time integration**: OpenMC ships predictor-corrector
   integrators (CECM, CELI, CF4, EPCRK4, and their SI variants) that recompute
-  reaction rates between steps; Nucleide exposes a single constant-rate step.
+  reaction rates between steps; Nucleide's `Integrator::{Predictor, Cecm,
+  Cf4}` uses prescribed per-step rates, so `Cecm` currently degenerates to
+  `Predictor`.
 - **Substepping**: OpenMC's CRAM solver can subdivide a step while reusing the
   LU factorizations; Nucleide has no substep parameter.
 - **Transport-coupled depletion**: OpenMC normalizes tally reaction rates to

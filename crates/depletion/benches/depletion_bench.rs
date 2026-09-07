@@ -220,5 +220,33 @@ fn bench_depletion(c: &mut Criterion) {
     group_micro.finish();
 }
 
-criterion_group!(benches, bench_depletion);
+/// Multi-step time-series integrators over a mid-size synthetic chain.
+fn bench_integrate(c: &mut Criterion) {
+    use nucleide_depletion::integrate::{integrate, Integrator, Step};
+
+    let chain = synthetic_chain(50);
+    let rates = make_rates(&chain);
+    let sys = DepletionSystem::build(chain, &rates).expect("build integrate system");
+    let n0: Vec<f64> = (0..sys.chain.len())
+        .map(|i| if i == 2 { 1e24 } else { 0.0 })
+        .collect();
+    let steps: Vec<Step> = (0..8)
+        .map(|_| Step::new(3.24e5, rates.clone())) // 8 x 3.75 d
+        .collect();
+
+    let mut group = c.benchmark_group("depletion_integrate_50");
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(8));
+    for (name, integrator) in [
+        ("predictor", Integrator::Predictor),
+        ("cecm", Integrator::Cecm),
+        ("cf4", Integrator::Cf4),
+    ] {
+        group.bench_function(name, |b| {
+            b.iter(|| integrate(&sys, &n0, &steps, integrator, Order::Order16).expect("integrate"))
+        });
+    }
+    group.finish();
+}
+criterion_group!(benches, bench_depletion, bench_integrate);
 criterion_main!(benches);

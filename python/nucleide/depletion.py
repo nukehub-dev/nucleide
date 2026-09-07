@@ -5,6 +5,7 @@ from nucleide._internal import (
     DepletionSystem,
     build_depletion_system,
     deplete,
+    deplete_series,
     read_chain,
 )
 
@@ -14,4 +15,5 @@ __all__ = [
     "read_chain",
     "build_depletion_system",
     "deplete",
+    "deplete_series",
 ]

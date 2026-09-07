@@ -5,6 +5,7 @@ from nucleide._internal import (
     Particle,
     atomic_mass,
     decay_constant,
+    decay_energy,
     from_zaid,
     half_life,
     natural_abundance,
@@ -13,6 +14,8 @@ from nucleide._internal import (
     rxname_id,
     rxname_mt,
     rxname_name,
+    scattering_length,
+    simple_xs,
 )
 
 __all__ = [
@@ -28,4 +31,7 @@ __all__ = [
     "rxname_id",
     "rxname_name",
     "rxname_mt",
+    "simple_xs",
+    "scattering_length",
+    "decay_energy",
 ]

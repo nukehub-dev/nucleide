@@ -29,7 +29,7 @@ license.
 | [Python tutorials](tutorials/python/index.md) | Python tutorial index and suggested reading order |
 | [Parse MCNP output](tutorials/python/parse-mcnp-output.md) | Read xsdir, meshtal, MCTAL, WWINP, PTRAC, and SSW files |
 | [Build materials](tutorials/python/build-materials.md) | Build materials from formulae, mix compositions, and export XML |
-| [Run depletion](tutorials/python/run-depletion.md) | Load a depletion chain and run a short CRAM solve |
+| [Run depletion](tutorials/python/run-depletion.md) | Load a depletion chain and run single-step and multi-step CRAM solves |
 | [Enrichment cascade](tutorials/python/enrichment-cascade.md) | Set up and solve a multicomponent enrichment cascade |
 | [Activation analysis](tutorials/python/activation-analysis.md) | Read ALARA, FISPACT-II, and ORIGEN files and assemble an R2S workflow |
 | [Deterministic I/O](tutorials/python/deterministic-io.md) | Read ISOTXS and flux files and write PARTISN decks |
@@ -48,10 +48,10 @@ license.
 | Document | Purpose |
 | --- | --- |
 | [Theory](theory/index.mdx) | Theory index and suggested reading order |
-| [Depletion](theory/depletion.mdx) | Burnup matrices, the Bateman equation, and CRAM |
+| [Depletion](theory/depletion.mdx) | Burnup matrices, the Bateman equation, CRAM, and time-series integrators |
 | [Enrichment cascades](theory/enrichment.mdx) | MARC cascades, separation factors, and SWU |
 | [Variance reduction](theory/variance-reduction.mdx) | MAGIC weight windows and alias-table source sampling |
-| [Nuclear data](theory/nuclear-data.mdx) | Nuclide IDs, name dialects, masses, and half-lives |
+| [Nuclear data](theory/nuclear-data.mdx) | Nuclide IDs, name dialects, masses, half-lives, and screening data |
 
 ### Reference
 

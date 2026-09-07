@@ -48,6 +48,8 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 - Add ndarray/NumPy zero-copy bridges where it improves Python ergonomics.
 - Cut releases: `vX.Y.Z` tags publish Python wheels to PyPI and workspace
   crates to crates.io.
+- Expose the core `Integrator::{Cecm, Cf4}` variants through the Python
+  `deplete_series` driver (currently predictor-only).
 
 ## JOSS publication milestone (~6 months of public history)
 

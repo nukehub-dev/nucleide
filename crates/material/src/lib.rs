@@ -37,8 +37,9 @@ pub use expansion::{
     parse_formula, AbundanceProvider, FormulaError, FormulaResult, NaturalAbundances, NoAbundances,
 };
 pub use material::{
-    Ame2020, Analytics, AnalyticsError, ChainDecays, DecayProvider, MassProvider, Material,
-    NoDecay, NoMasses, AVOGADRO, GRAMS_PER_U,
+    Ame2020, Analytics, AnalyticsError, ChainDecays, DecayEnergies, DecayEnergyProvider,
+    DecayProvider, MassProvider, Material, NoDecay, NoDecayEnergies, NoMasses, AVOGADRO,
+    GRAMS_PER_U, MEV_TO_JOULES,
 };
 pub use xml::MaterialsDoc;
 

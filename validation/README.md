@@ -102,6 +102,13 @@ re-downloaded only if absent. `.cache/` is git-ignored — never commit the
 chain file. Everything else runs on committed inputs from `fixtures/` or this
 directory.
 
+The 0.3.0 oracle additions need no new downloads: `nuclear_data_vs_refs.py`
+reads PyNE's bundled `nuc_data.h5` (`/neutron/simple_xs` via
+`pyne.xs.data_source.SimpleDataSource`) in place, checks scattering lengths
+against hardcoded NIST NCNR anchors, and checks decay energies against
+hardcoded chain/ENDF-derived spot values; `depletion_vs_openmc.py` builds its
+synthetic A→B→C chain inline in a temp file (no new fixtures).
+
 ## Parser oracle notes
 
 `parsers_vs_refs.py` cross-checks Nucleide's readers against independent

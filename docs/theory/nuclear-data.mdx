@@ -133,7 +133,7 @@ Nucleide converts between several legacy code conventions.
 
 ## Data sources
 
-Nucleide embeds three reference tables at compile time and parses them lazily on
+Nucleide embeds six reference tables at compile time and parses them lazily on
 first access.
 
 ### Atomic masses
@@ -159,6 +159,66 @@ first access.
 - **Coverage**: 3,561 radionuclides; stable nuclides are absent.
 - **File**: `crates/nuclei/src/data/half_life.tsv`.
 - **Units**: seconds.
+
+### Simple cross sections
+
+Approximate total microscopic cross sections (`simple_xs` in
+`crates/nuclei/src/data.rs`, table `simple_xs_table`), returned as
+`(thermal, fast-14 MeV)` pairs:
+
+- **Source**: thermal (0.0253 eV) totals from NIST 2200 m/s bound
+  scattering/absorption converted to free-atom totals
+  (`xs·(A/(A+1))² + xs_a`); 14-MeV totals from ENDF/B-VII.1 MF3/MT1.
+  ENDF File 3 alone cannot supply thermal values inside resonance ranges
+  (it holds background only there), and resonance nuclides without a NIST
+  row (Cs-137, Co-60, I-135, Xe-135) plus isomers are absent by
+  construction.
+- **Coverage**: 241 nuclides; anything else returns `None`.
+- **File**: `crates/nuclei/src/data/simple_xs.tsv`.
+- **Units**: barns.
+- **Scope**: screening-level scoping only — never for transport or
+  safety calculations; use an evaluated library instead.
+
+See `simple_xs` in the [Python API](../reference/python-api.mdx#nucleidenuclei).
+
+### Neutron scattering lengths
+
+Bound scattering lengths (`scattering_length`, table
+`scattering_length_table`), returned as `(coherent, incoherent)` pairs:
+
+- **Source**: the NIST NCNR tabulation of Sears (1992) and its update
+  (complex absorbing lengths by real part; incoherent derived from the
+  spin-incoherent cross section where the table gives only σ).
+- **Coverage**: 267 nuclides (tabulated isotopes plus monoisotopic element
+  attributions); anything else returns `None`.
+- **File**: `crates/nuclei/src/data/scattering_lengths.tsv`.
+- **Units**: femtometres.
+- **Note**: the Python `scattering_length` accessor returns the coherent
+  element only; use the table lookup for the full pair.
+
+See `scattering_length` in the
+[Python API](../reference/python-api.mdx#nucleidenuclei).
+
+### Decay energies
+
+Mean *prompt* recoverable energy per decay (`decay_energy_mev`, table
+`decay_energy_table`):
+
+- **Source**: ENDF/B-VII.1 decay tapes (MF8/MT457 summary components,
+  paired uncertainties skipped; delayed-neutron kinetic energy included,
+  neutrinos never appear). Daughter gammas belong to the daughter row, so
+  chain codes must sum members (Cs-137 prompt ≈ 0.179 MeV; the 662 keV
+  line lives on Ba-137m).
+- **Coverage**: 3,557 nuclides with decay-heat data (every ENDF/B-VII.1
+  decay tape with a nonzero summary, all isomers included); stable
+  nuclides return `None`.
+- **File**: `crates/nuclei/src/data/decay_energy.tsv`.
+- **Units**: MeV per decay.
+- **Scope**: decay-heat estimates only — never for spectroscopy,
+  dose, or safety use.
+
+See `decay_energy` in the [Python API](../reference/python-api.mdx#nucleidenuclei);
+composition-level heat lives under `decay_heat` in `nucleide.material`.
 
 ## Derived quantities
 
@@ -214,14 +274,16 @@ embed:
 
 - **Decay schemes**: PyNE derives decay modes, branching ratios, state
   energies, and radiation spectra from ENSDF; OpenMC parses full decay modes
-  from ENDF files. Nucleide carries only half-lives.
+  from ENDF files. Nucleide carries half-lives plus mean prompt decay
+  energies (MeV per decay from ENDF/B-VII.1 MF8/MT457, not ENSDF).
 - **Fission product yields**: PyNE exposes WIMSD and NDS yield tables; OpenMC
   reads yields into depletion chains.
 - **Q-values and energy release**: PyNE's `q_val` and OpenMC's
   `FissionEnergyRelease` go beyond the capture/alpha formulas here.
-- **Reaction and scattering data**: cross sections, thermal S(α,β), and
-  scattering lengths are available in both codes but are outside Nucleide's
-  scope.
+- **Reaction and scattering data**: Nucleide carries only screening-level
+  totals (`simple_xs`) and bound scattering lengths; energy-dependent cross
+  sections, thermal S(α,β), and scattering kernels live in evaluated
+  libraries and in both codes but remain outside Nucleide's scope.
 - **Natural elements**: PyNE and OpenMC accept bare element symbols and
   compute atomic weights from abundances; Nucleide requires a mass number.
 - **Living references**: [NuDat 3](https://www.nndc.bnl.gov/nudat3/) and the

@@ -429,6 +429,20 @@ impl PyMeshTally {
     fn total_rel_error(&self) -> Vec<f64> {
         self.inner.total_rel_error.clone()
     }
+    /// Full results + relative errors as nested lists (plain copy).
+    ///
+    /// Zero-copy `result_array()` via NumPy stays deferred (see the Stream C
+    /// module note); use this until the ndarray/NumPy bridge lands.
+    fn to_list(&self) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
+        (self.inner.result.clone(), self.inner.rel_error.clone())
+    }
+    /// Per-cell energy-integrated totals + errors as flat lists (plain copy).
+    fn totals_list(&self) -> (Vec<f64>, Vec<f64>) {
+        (
+            self.inner.total_result.clone(),
+            self.inner.total_rel_error.clone(),
+        )
+    }
 }
 
 /// Parsed meshtal file.
@@ -2643,6 +2657,201 @@ fn r2s_assemble(
     Ok(out.into_any().unbind())
 }
 
+// ---------------------------------------------------------------------------
+// 0.3.0 series driver, data accessors, list helpers
+// ---------------------------------------------------------------------------
+//
+// Thin facade only (core tables and integrators live in `nucleide-nuclei` /
+// `nucleide-material` / `nucleide-depletion`; nothing duplicated here):
+//
+// - `deplete_series` loops the existing single-step `deplete` driver, so it
+//   works STANDALONE before the core `integrate` module is bound. `integrator`
+//   accepts `"predictor"` today (sequential CRAM steps, rates held constant
+//   within each step); any other name raises `ValueError` so the core
+//   `Integrator::{Cecm, Cf4}` variants can be claimed without silent changes.
+// - `simple_xs` / `scattering_length` / `decay_energy` / `decay_heat` are
+//   thin wrappers over the vendored TSV tables + material analytics.
+// - `MeshTally::to_list` / `totals_list` are plain-copy helpers. The zero-copy
+//   NumPy bridge (`result_array()`, roadmap "ndarray/NumPy zero-copy") stays
+//   DEFERRED: adding the `numpy` crate was judged too risky for this change
+//   (native build + abi3 version matching), so no `numpy` dependency is
+//   introduced here.
+
+/// Supported `deplete_series` integrators (Stream A owns new variants).
+fn parse_integrator(name: &str) -> PyResult<()> {
+    if name.eq_ignore_ascii_case("predictor") {
+        return Ok(());
+    }
+    Err(PyValueError::new_err(format!(
+        "unsupported integrator `{name}` (supported: predictor)"
+    )))
+}
+
+/// Activity [Bq] snapshot for an atom-count map: A = λ·N per nuclide.
+///
+/// Decay constants come from the chain's own half-lives first (so synthetic
+/// chains work), falling back to the `nucleide-nuclei` decay table by name;
+/// unknown/stable nuclides contribute 0.0. This mirrors the `activity`
+/// binding's decay-constant source without duplicating material analytics.
+fn series_activity(
+    chain: &nucleide_depletion::Chain,
+    atoms: &BTreeMap<String, f64>,
+) -> BTreeMap<String, f64> {
+    let lambdas: BTreeMap<&str, f64> = chain
+        .nuclides
+        .iter()
+        .map(|nuc| {
+            let lam = nuc
+                .half_life
+                .filter(|t| *t > 0.0 && t.is_finite())
+                .map(|t| std::f64::consts::LN_2 / t)
+                .or_else(|| nucleide_nuclei::data::decay_constant_by_name(&nuc.name))
+                .unwrap_or(0.0);
+            (nuc.name.as_str(), lam)
+        })
+        .collect();
+    atoms
+        .iter()
+        .map(|(name, n)| {
+            let a = lambdas.get(name.as_str()).copied().unwrap_or(0.0) * n;
+            (name.clone(), a)
+        })
+        .collect()
+}
+
+/// Solve a multi-step depletion series with sequential single-step CRAM.
+///
+/// Standalone driver: builds the depletion system from `chain` + per-step
+/// rates and threads atom counts forward with the existing `deplete` core
+/// (predictor in the multi-step sense: rates are held constant within each
+/// step). `rates` applies to every step; `rates_list` (one entry per `dt`,
+/// where `None` means "no rates for that step") overrides `rates` when given.
+/// Returns a dict with `times` (cumulative seconds), `atoms`, `activity`
+/// ([Bq] via decay constants), and `decay_heat` ([W] per nuclide via the
+/// shared chain → ENDF/B-VII.1 → 0.0 energy resolution, so it matches the
+/// core `integrate` heats exactly).
+#[pyfunction]
+#[pyo3(signature = (chain, n0, dts, rates=None, rates_list=None, integrator="predictor", order=48))]
+#[allow(clippy::too_many_arguments)]
+fn deplete_series(
+    chain: &PyChain,
+    n0: BTreeMap<String, f64>,
+    dts: Vec<f64>,
+    rates: Option<RateMap>,
+    rates_list: Option<Vec<Option<RateMap>>>,
+    integrator: &str,
+    order: u8,
+) -> PyResult<Py<PyAny>> {
+    parse_integrator(integrator)?;
+    let order = parse_order(order)?;
+    if let Some(list) = &rates_list {
+        if list.len() != dts.len() {
+            return Err(PyValueError::new_err(format!(
+                "rates_list has {} entries but dts has {}",
+                list.len(),
+                dts.len()
+            )));
+        }
+    }
+    let empty = BTreeMap::new();
+    // NOTE: plain (GIL held) loop by design: the `py.detach` GIL-release
+    // pattern used elsewhere needs `Send` closures, and per-step CRAM solves
+    // here are small. The core `integrate` module owns vectorized series;
+    // this driver stays as the thin compositional equivalent.
+    //
+    // Decay energies resolve once (chain-only, rate-independent) through the
+    // same helper the core uses, so per-step heats match `integrate` exactly.
+    let energies = nucleide_depletion::decay_energies_by_name(&chain.inner);
+    let mut current = n0;
+    let mut times = Vec::with_capacity(dts.len());
+    let mut atoms = Vec::with_capacity(dts.len());
+    let mut activity = Vec::with_capacity(dts.len());
+    let mut decay_heat = Vec::with_capacity(dts.len());
+    let mut t = 0.0;
+    for (i, dt) in dts.iter().enumerate() {
+        let step_rates = rates_list
+            .as_ref()
+            .and_then(|list| list[i].as_ref())
+            .or(rates.as_ref())
+            .unwrap_or(&empty);
+        let rs = split_rates(step_rates, &chain.inner)?;
+        let sys = nucleide_depletion::DepletionSystem::build((*chain.inner).clone(), &rs)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let res = nucleide_depletion::deplete(&sys, order, &current, *dt)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        t += dt;
+        current = res.atoms;
+        let step_activity = series_activity(&chain.inner, &current);
+        let step_heat: BTreeMap<String, f64> = step_activity
+            .iter()
+            .map(|(name, a)| {
+                let heat = a
+                    * energies.get(name).copied().unwrap_or(0.0)
+                    * nucleide_depletion::MEV_TO_JOULE;
+                (name.clone(), heat)
+            })
+            .collect();
+        times.push(t);
+        activity.push(step_activity);
+        decay_heat.push(step_heat);
+        atoms.push(current.clone());
+    }
+    Ok(Python::attach(|py| {
+        use pyo3::types::PyDict;
+        let out = PyDict::new(py);
+        out.set_item("times", &times).ok();
+        out.set_item("atoms", &atoms).ok();
+        out.set_item("activity", &activity).ok();
+        out.set_item("decay_heat", &decay_heat).ok();
+        out.into_any().unbind()
+    }))
+}
+
+/// Thermal/fast cross sections [barn] for a nuclide name.
+///
+/// Screening-level values from the `nucleide-nuclei` table (thermal 2200 m/s
+/// total + 14-MeV total); `None` for nuclides outside the table.
+#[pyfunction]
+fn simple_xs(name: &str) -> PyResult<Option<(f64, f64)>> {
+    NuclideId::from_name(name).map_err(wrap_nucid_err)?;
+    Ok(nucleide_nuclei::data::simple_xs_by_name(name))
+}
+
+/// Coherent scattering length [fm] for a nuclide name.
+///
+/// First element of the `nucleide-nuclei` (coherent, incoherent) pair;
+/// `None` for nuclides outside the table.
+#[pyfunction]
+fn scattering_length(name: &str) -> PyResult<Option<f64>> {
+    NuclideId::from_name(name).map_err(wrap_nucid_err)?;
+    Ok(nucleide_nuclei::data::scattering_length_by_name(name).map(|(b_coh, _)| b_coh))
+}
+
+/// Mean decay energy per disintegration [MeV] for a nuclide name.
+///
+/// Screening-level placeholder values (NOT ENSDF); `None` when unknown.
+#[pyfunction]
+fn decay_energy(name: &str) -> PyResult<Option<f64>> {
+    NuclideId::from_name(name).map_err(wrap_nucid_err)?;
+    Ok(nucleide_nuclei::data::decay_energy_mev_by_name(name))
+}
+
+/// Decay heat [W] of a composition dict ({nuclide name: grams}).
+///
+/// Screening-level estimate via `Material::total_decay_heat` (Ame2020 masses,
+/// ENDF/B-VIII.0 decay constants, placeholder decay energies). Errors when a
+/// nuclide lacks mass, decay, or energy data.
+#[pyfunction]
+fn decay_heat(comp: BTreeMap<String, f64>) -> PyResult<f64> {
+    let mat = comp_to_material(comp)?;
+    let analytics = nucleide_material::Analytics {
+        masses: &nucleide_material::Ame2020,
+        decays: &nucleide_material::ChainDecays,
+    };
+    mat.total_decay_heat(&analytics, &nucleide_material::DecayEnergies)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
 /// Python module entry point.
 #[pymodule]
 fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -2662,6 +2871,11 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(read_chain, m)?)?;
     m.add_function(wrap_pyfunction!(build_depletion_system, m)?)?;
     m.add_function(wrap_pyfunction!(deplete, m)?)?;
+    m.add_function(wrap_pyfunction!(deplete_series, m)?)?;
+    m.add_function(wrap_pyfunction!(simple_xs, m)?)?;
+    m.add_function(wrap_pyfunction!(scattering_length, m)?)?;
+    m.add_function(wrap_pyfunction!(decay_energy, m)?)?;
+    m.add_function(wrap_pyfunction!(decay_heat, m)?)?;
     m.add_function(wrap_pyfunction!(read_serpent, m)?)?;
     m.add_function(wrap_pyfunction!(read_usrbin, m)?)?;
     m.add_function(wrap_pyfunction!(magic, m)?)?;

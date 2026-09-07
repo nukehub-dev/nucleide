@@ -383,10 +383,15 @@ impl<'de> Deserialize<'de> for Material {
 // Radioanalytics
 //
 // Activity (and derived specific activity) computed from stored masses via a
-// [`DecayProvider`] plus the existing [`MassProvider`]. Proper decay heat
-// needs per-branch decay energies (mean beta/gamma/alpha energy release),
-// which no table currently provides; add `decay_heat` once a decay-energy
-// table lands in `nucleide_nuclei::data` — the plumbing here is exactly this module's.
+// [`DecayProvider`] plus the existing [`MassProvider`]. Decay heat
+// ([`Material::decay_heat`]) additionally needs mean recoverable decay
+// energies ([`DecayEnergyProvider`], backed by the placeholder
+// `decay_energy.tsv` table in `nucleide_nuclei::data`).
+//
+// Dose coefficients (EPA/GENII/DOE ingestion/inhalation/air-soil factors,
+// ICRP fluence-to-dose) have NO table yet, so `dose_estimate` stays a
+// documented deferral: there is deliberately no stub that could be mistaken
+// for a real dose calculation.
 // ---------------------------------------------------------------------------
 
 /// Avogadro constant, atoms per mole (exact, 2019 SI).
@@ -394,6 +399,9 @@ pub const AVOGADRO: f64 = 6.022_140_76e23;
 
 /// One unified atomic mass unit in grams (2022 CODATA).
 pub const GRAMS_PER_U: f64 = 1.660_539_068_92e-24;
+
+/// One MeV in joules (exact, 2019 SI: 1 eV = 1.602176634e-19 J).
+pub const MEV_TO_JOULES: f64 = 1.602_176_634e-13;
 
 /// Source of per-nuclide decay constants λ in inverse seconds.
 ///
@@ -461,9 +469,58 @@ pub enum AnalyticsError {
     /// No decay data was available for a requested nuclide.
     #[error("no decay data available for nuclide `{0}`")]
     MissingDecay(NuclideId),
+    /// No mean decay energy was available for a requested nuclide.
+    #[error("no decay energy available for nuclide `{0}`")]
+    MissingEnergy(NuclideId),
     /// An underlying composition failure (missing mass, degenerate total).
     #[error(transparent)]
     Core(#[from] crate::Error),
+}
+
+/// Source of per-nuclide mean recoverable decay energies in MeV per decay.
+///
+/// Like [`MassProvider`], injected as a trait so analytics never hard-depend
+/// on decay-energy data availability. Kept separate from [`DecayProvider`]
+/// (which supplies decay constants) so depletion callers can mix sources;
+/// `nucleide_nuclei::data::DecayData` implements this trait, giving Stream A
+/// a single provider for both without any material↔depletion coupling
+/// (material never depends on depletion; nuclei never depends on material).
+pub trait DecayEnergyProvider {
+    /// Mean recoverable energy per decay of the nuclide identified by raw
+    /// `nucid`, in MeV, or `None` if unknown (stable nuclides included).
+    fn decay_energy_mev(&self, nucid: u32) -> Option<f64>;
+}
+
+/// A [`DecayEnergyProvider`] that knows no decay energies.
+///
+/// Every lookup returns `None`, so heat calculations fail explicitly with
+/// [`AnalyticsError::MissingEnergy`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NoDecayEnergies;
+
+impl DecayEnergyProvider for NoDecayEnergies {
+    fn decay_energy_mev(&self, _nucid: u32) -> Option<f64> {
+        None
+    }
+}
+
+/// [`DecayEnergyProvider`] backed by the ENDF/B-VII.1 prompt-decay-energy
+/// table in `nucleide_nuclei::data` (mean-field evaluation values, generated
+/// by `scripts/gen-nuclear-data.py` — see the table docs before quoting
+/// heat numbers).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DecayEnergies;
+
+impl DecayEnergyProvider for DecayEnergies {
+    fn decay_energy_mev(&self, nucid: u32) -> Option<f64> {
+        nucleide_nuclei::data::decay_energy_mev(nucid)
+    }
+}
+
+impl DecayEnergyProvider for nucleide_nuclei::data::DecayData {
+    fn decay_energy_mev(&self, nucid: u32) -> Option<f64> {
+        nucleide_nuclei::data::decay_energy_mev(nucid)
+    }
 }
 
 impl Material {
@@ -510,6 +567,48 @@ impl Material {
             total_activity += value;
         }
         Ok(total_activity / total_mass)
+    }
+
+    /// Decay heat per nuclide, in watts: `P_i = A_i · E_i`.
+    ///
+    /// Activities come from [`Material::activity`] (masses via `analytics`,
+    /// decay constants via `analytics.decays`); mean recoverable energies
+    /// per decay come from `energies` in MeV, converted with
+    /// [`MEV_TO_JOULES`]. Energies are screening-level placeholders (see
+    /// [`DecayEnergies`]), so heat numbers are order-of-magnitude checks,
+    /// not calorimetry.
+    ///
+    /// Fails with [`AnalyticsError::MissingEnergy`] for nuclides without a
+    /// decay-energy row; otherwise identical error behavior to
+    /// [`Material::activity`].
+    pub fn decay_heat(
+        &self,
+        analytics: &Analytics<'_>,
+        energies: &impl DecayEnergyProvider,
+    ) -> Result<BTreeMap<NuclideId, f64>, AnalyticsError> {
+        let activities = self.activity(analytics)?;
+        let mut out = BTreeMap::new();
+        for (&id, &activity_bq) in &activities {
+            let mev = energies
+                .decay_energy_mev(id.nucid())
+                .ok_or(AnalyticsError::MissingEnergy(id))?;
+            out.insert(id, activity_bq * mev * MEV_TO_JOULES);
+        }
+        Ok(out)
+    }
+
+    /// Total decay heat of the whole material, in watts: the sum of
+    /// [`Material::decay_heat`]. Same error behavior.
+    pub fn total_decay_heat(
+        &self,
+        analytics: &Analytics<'_>,
+        energies: &impl DecayEnergyProvider,
+    ) -> Result<f64, AnalyticsError> {
+        let mut total = 0.0;
+        for value in self.decay_heat(analytics, energies)?.values() {
+            total += value;
+        }
+        Ok(total)
     }
 }
 
@@ -916,6 +1015,74 @@ mod radio_tests {
             Material::new().specific_activity(&empty),
             Err(AnalyticsError::Core(crate::Error::Degenerate))
         ));
+    }
+
+    #[test]
+    fn decay_heat_of_one_gram_co60_matches_hand_calculation() {
+        let mut mat = Material::new();
+        mat.add_nuclide(nid("Co60"), 1.0);
+
+        let analytics = Analytics {
+            masses: &Ame2020,
+            decays: &ChainDecays,
+        };
+        let heat = mat.decay_heat(&analytics, &DecayEnergies).unwrap();
+        let co60 = nid("Co60");
+
+        // P = A * E with E from the ENDF/B-VII.1 decay-energy table.
+        let activity: f64 = mat.activity(&analytics).unwrap()[&co60];
+        let e_mev = DecayEnergies.decay_energy_mev(co60.nucid()).unwrap();
+        let expected = activity * e_mev * MEV_TO_JOULES;
+        assert!((heat[&co60] - expected).abs() / expected < 1e-12);
+        // 1 g Co60 is ~40 TBq * ~4.2e-13 J ≈ ~17 W; sanity-band the units.
+        assert!(heat[&co60] > 5.0 && heat[&co60] < 50.0, "{}", heat[&co60]);
+
+        let total = mat.total_decay_heat(&analytics, &DecayEnergies).unwrap();
+        assert!((total - expected).abs() / expected < 1e-12);
+    }
+
+    #[test]
+    fn nuclei_decay_data_serves_as_energy_provider() {
+        // Stream A wiring: a single DecayData covers λ and MeV with no
+        // material<->depletion coupling.
+        let provider = nucleide_nuclei::data::DecayData;
+        assert_eq!(
+            DecayEnergies.decay_energy_mev(nid("Cs137").nucid()),
+            provider.decay_energy_mev(nid("Cs137").nucid())
+        );
+
+        let mut mat = Material::new();
+        mat.add_nuclide(nid("Cs137"), 2.0);
+        let analytics = Analytics {
+            masses: &Ame2020,
+            decays: &ChainDecays,
+        };
+        let via_facade = mat.total_decay_heat(&analytics, &provider).unwrap();
+        let via_struct = mat.total_decay_heat(&analytics, &DecayEnergies).unwrap();
+        assert!((via_facade - via_struct).abs() < 1e-18);
+    }
+
+    #[test]
+    fn decay_heat_missing_energy_errors() {
+        // Cf237 has a half-life (activity computes) but no ENDF decay tape,
+        // hence no decay-energy row.
+        let mut mat = Material::new();
+        mat.add_nuclide(nid("Cf237"), 1.0);
+        let analytics = Analytics {
+            masses: &Ame2020,
+            decays: &ChainDecays,
+        };
+        match mat.decay_heat(&analytics, &DecayEnergies).unwrap_err() {
+            AnalyticsError::MissingEnergy(id) => assert_eq!(id, nid("Cf237")),
+            other => panic!("{other:?}"),
+        }
+        // The explicit no-data provider fails on the first nuclide too.
+        let mut co = Material::new();
+        co.add_nuclide(nid("Co60"), 1.0);
+        match co.decay_heat(&analytics, &NoDecayEnergies).unwrap_err() {
+            AnalyticsError::MissingEnergy(id) => assert_eq!(id, nid("Co60")),
+            other => panic!("{other:?}"),
+        }
     }
 }
 

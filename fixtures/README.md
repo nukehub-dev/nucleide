@@ -22,7 +22,7 @@ after adding fixtures (CI enforces freshness via `--check`).
 | `alara/` | 10 | 97,611 bytes | alara — UW ALARA samples vendored verbatim (terms in `alara/LICENSE.ALARA`) |
 | `cccc/` | 2 | 285 bytes | cccc — Synthetic ISOTXS/RTFLUX samples authored for Nucleide (no license needed) |
 | `data/` | 2 | 7,859,273 bytes | data — DOE/PNNL Materials Compendium JSON (+ its license) |
-| `depletion/` | 3 | 37,177 bytes | depletion — Depletion-chain XML files (simple chains, Ni chain) |
+| `depletion/` | 4 | 37,843 bytes | depletion — Depletion-chain XML files (simple chains, Ni chain) |
 | `fispact/` | 1 | 1,058 bytes | fispact — Synthetic FISPACT-II-style inventory authored for Nucleide (no license needed) |
 | `fluka/` | 4 | 7,685 bytes | fluka — USRBIN `.lis` files (single/multiple/degenerate) + test input |
 | `mcnp/` | 20 | 468,802 bytes | mcnp — MCNP input decks, tallies, and binary-format oracles |
