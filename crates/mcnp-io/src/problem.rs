@@ -81,7 +81,7 @@ impl DeckProblem {
         self.cells
             .iter_mut()
             .find(|c| c.num == num)
-            .ok_or_else(|| Error::UnknownCell { cell: num })
+            .ok_or(Error::UnknownCell { cell: num })
     }
 
     /// Set a cell's density, re-rendering that card canonically.
