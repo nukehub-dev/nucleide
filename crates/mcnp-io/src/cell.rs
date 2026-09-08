@@ -141,11 +141,11 @@ pub fn parse_cell_line(logical: &str, lineno: usize) -> Result<CellCard, Error> 
         .next()
         .map(str::parse)
         .transpose()
-        .map_err(|_| Error::BadCard {
+        .map_err(|_| Error::BadGeometry {
             line: lineno,
             message: format!("invalid cell number in `{logical}`"),
         })?
-        .ok_or_else(|| Error::BadCard {
+        .ok_or_else(|| Error::BadGeometry {
             line: lineno,
             message: "empty cell card".to_string(),
         })?;
@@ -153,11 +153,11 @@ pub fn parse_cell_line(logical: &str, lineno: usize) -> Result<CellCard, Error> 
         .next()
         .map(str::parse)
         .transpose()
-        .map_err(|_| Error::BadCard {
+        .map_err(|_| Error::BadGeometry {
             line: lineno,
             message: format!("invalid cell material in `{logical}`"),
         })?
-        .ok_or_else(|| Error::BadCard {
+        .ok_or_else(|| Error::BadGeometry {
             line: lineno,
             message: format!("cell {num} is missing its material"),
         })?;
@@ -166,11 +166,11 @@ pub fn parse_cell_line(logical: &str, lineno: usize) -> Result<CellCard, Error> 
     let dens = if mat == 0 {
         None
     } else {
-        let token = rest.first().ok_or_else(|| Error::BadCard {
+        let token = rest.first().ok_or_else(|| Error::BadGeometry {
             line: lineno,
             message: format!("cell {num} is missing its density"),
         })?;
-        let dens: f64 = token.parse().map_err(|_| Error::BadCard {
+        let dens: f64 = token.parse().map_err(|_| Error::BadGeometry {
             line: lineno,
             message: format!("invalid cell density `{token}`"),
         })?;
@@ -240,7 +240,7 @@ fn parse_geom(tokens: &[&str], lineno: usize, cell: u32) -> Result<GeomExpr, Err
     };
     let expr = parser.parse_union()?;
     if parser.pos != tokens.len() {
-        return Err(Error::BadCard {
+        return Err(Error::BadGeometry {
             line: lineno,
             message: format!(
                 "trailing geometry token `{}` in cell {cell}",
@@ -286,7 +286,7 @@ impl<'a> GeomParser<'a> {
 
     fn parse_unary(&mut self) -> Result<GeomExpr, Error> {
         match self.peek() {
-            None => Err(Error::BadCard {
+            None => Err(Error::BadGeometry {
                 line: self.lineno,
                 message: format!("cell {} is missing geometry", self.cell),
             }),
@@ -298,14 +298,14 @@ impl<'a> GeomParser<'a> {
                         self.pos += 1;
                         Ok(expr)
                     }
-                    _ => Err(Error::BadCard {
+                    _ => Err(Error::BadGeometry {
                         line: self.lineno,
                         message: format!("unbalanced parenthesis in cell {}", self.cell),
                     }),
                 }
             }
             Some(tok) if tok.starts_with('#') => {
-                let num: i32 = tok[1..].parse().map_err(|_| Error::BadCard {
+                let num: i32 = tok[1..].parse().map_err(|_| Error::BadGeometry {
                     line: self.lineno,
                     message: format!("invalid cell complement `{tok}`"),
                 })?;
@@ -322,7 +322,7 @@ impl<'a> GeomParser<'a> {
                     Some(rest) => (true, rest),
                     None => (false, tok),
                 };
-                let surf: i32 = digits.parse().map_err(|_| Error::BadCard {
+                let surf: i32 = digits.parse().map_err(|_| Error::BadGeometry {
                     line: self.lineno,
                     message: format!("invalid geometry token `{tok}` in cell {}", self.cell),
                 })?;

@@ -51,7 +51,7 @@ class TestDeckModel:
         assert "1 1 -7 -1 imp:n=1" in deck.dumps()
         deck.set_cell_material(2, 1)
         assert deck.cells[1]["mat"] == "1"
-        with pytest.raises(ValueError, match="unknown cell"):
+        with pytest.raises(ValueError, match="no cell"):
             deck.set_cell_density(99, -1.0)
         with pytest.raises(ValueError):
             deck.set_cell_density(3, -1.0)  # void cell

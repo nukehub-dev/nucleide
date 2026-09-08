@@ -31,13 +31,13 @@ rebuilds the high-value subset in memory-safe Rust with one-command
 
 | Area | Capabilities |
 | --- | --- |
-| Nuclide core (`nucleide-nuclei`) | Canonical nucid representation, particle registry, reaction-name registry (labels, MT mapping, hashes), name-dialect conversions (ZZAAAMM, ZAID/MCNP, Serpent, FLUKA, NIST, CINDER, ALARA, SZA), AME2020 masses, natural abundances, half-lives |
-| Materials (`nucleide-material`) | Compositions, mixing arithmetic, unit conversions, DOE/PNNL Materials Compendium loading, materials XML export |
-| MCNP I/O (`nucleide-mcnp-io`) | xsdir, meshtal, SSW/SURFSRC, PTRAC, WWINP, MCTAL readers; material extraction from input decks; mesh-to-geometry deck generation |
+| Nuclide core (`nucleide-nuclei`) | Canonical nucid representation, particle registry, reaction-name registry (labels, MT mapping, hashes), name-dialect conversions (ZZAAAMM, ZAID/MCNP, Serpent, FLUKA, NIST, CINDER, ALARA, SZA, ARMI/MCC3), AME2020 masses, natural abundances, half-lives, screening cross sections / scattering lengths / prompt decay energies (generated from ENDF/B + NIST) |
+| Materials (`nucleide-material`) | Compositions, mixing arithmetic, unit conversions, DOE/PNNL Materials Compendium loading, materials XML export, activity/decay-heat analytics, label-collision checks and conservation audits |
+| MCNP I/O (`nucleide-mcnp-io`) | xsdir, meshtal, SSW/SURFSRC, PTRAC, WWINP, MCTAL readers; material extraction from input decks; full-deck parse/edit/write round-trip (cells, surfaces, materials); mesh-to-geometry deck generation |
 | Serpent I/O (`nucleide-serpent-io`) | `_res.m`, `_dep.m`, `_det.m` readers producing structured records |
 | FLUKA I/O (`nucleide-fluka-io`) | USRBIN tally reader, material/compound card generation |
 | ALARA I/O (`nucleide-alara-io`) | Deck/flux/matlib-elelib-WDR/output/photon/schedule-expansion glue; solver out of scope |
-| Depletion (`nucleide-depletion`) | CRAM (orders 16/48) matrix exponential, depletion-chain XML parsing |
+| Depletion (`nucleide-depletion`) | CRAM (orders 16/48) matrix exponential, depletion-chain XML parsing, Predictor/CECM/CF4 time-series integrators with activity/decay-heat observables, unit-aware decay inventories, cumulative decays and chain-lineage queries |
 | Enrichment (`nucleide-enrichment`) | Multicomponent cascade solver (numeric), SWU closed-form helpers |
 | Variance reduction (`nucleide-vr-tools`) | MAGIC weight-window generation, mesh source sampling with alias tables |
 | CCCC I/O (`nucleide-cccc-io`) | ISOTXS/RTFLUX text-subset parsers + PARTISN deck writer (no solver) |

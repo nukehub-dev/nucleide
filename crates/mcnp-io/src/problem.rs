@@ -12,6 +12,15 @@
 //! the trailing newline are canonicalized — author fixtures accordingly).
 //! Only cards touched through the setters are re-rendered canonically
 //! (single spaces, wrapped at 128 columns with five-space continuations).
+//!
+//! # Known limitations (clean errors, documented here)
+//!
+//! - `like n but` cell clones: rejected, model them explicitly instead.
+//! - Periodic-boundary surface markers: rejected, use plain types.
+//! - `read` includes are passthrough cards, never followed.
+//! - Tallies, sources, and kinetics cards are untyped [`DataCard`]s.
+//! - Vertical-bar `|` alternation is not MCNP syntax and is rejected
+//!   (use `:` unions).
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -72,23 +81,20 @@ impl DeckProblem {
         self.cells
             .iter_mut()
             .find(|c| c.num == num)
-            .ok_or_else(|| Error::BadCard {
-                line: 0,
-                message: format!("unknown cell {num}"),
-            })
+            .ok_or_else(|| Error::UnknownCell { cell: num })
     }
 
     /// Set a cell's density, re-rendering that card canonically.
     pub fn set_cell_density(&mut self, cell: u32, dens: f64) -> Result<(), Error> {
         if !dens.is_finite() {
-            return Err(Error::BadCard {
+            return Err(Error::BadGeometry {
                 line: 0,
                 message: format!("non-finite density {dens} for cell {cell}"),
             });
         }
         let target = self.cell_mut(cell)?;
         if target.mat == 0 {
-            return Err(Error::BadCard {
+            return Err(Error::BadGeometry {
                 line: 0,
                 message: format!("void cell {cell} takes no density"),
             });
@@ -185,7 +191,7 @@ fn render_cell(card: &CellCard) -> String {
 pub fn parse_deck(text: &str) -> Result<DeckProblem, Error> {
     let lines: Vec<&str> = text.lines().collect();
     if lines.len() < 2 {
-        return Err(Error::BadCard {
+        return Err(Error::BadGeometry {
             line: lines.len() + 1,
             message: "deck needs at least a message and a title line".to_string(),
         });
@@ -268,7 +274,7 @@ fn split_blocks<'a>(lines: &'a [&'a str]) -> Result<(Block<'a>, Block<'a>, Block
         }
     }
     if blanks.len() < 2 {
-        return Err(Error::BadCard {
+        return Err(Error::BadGeometry {
             line: lines.len() + 1,
             message: "deck needs blank-line separators between cell, surface, and data blocks"
                 .to_string(),

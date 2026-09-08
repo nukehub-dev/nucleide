@@ -229,7 +229,7 @@ pub fn parse_surfs(text: &str) -> Result<Vec<SurfCard>, Error> {
 /// Parse one logical surface-card line (continuations already joined).
 pub fn parse_surf_line(logical: &str, lineno: usize) -> Result<SurfCard, Error> {
     let mut tokens = logical.split_whitespace();
-    let first = tokens.next().ok_or_else(|| Error::BadCard {
+    let first = tokens.next().ok_or_else(|| Error::BadGeometry {
         line: lineno,
         message: "empty surface card".to_string(),
     })?;
@@ -237,13 +237,13 @@ pub fn parse_surf_line(logical: &str, lineno: usize) -> Result<SurfCard, Error> 
         Some(rest) => (true, rest),
         None => (false, first),
     };
-    let num: u32 = num_text.parse().map_err(|_| Error::BadCard {
+    let num: u32 = num_text.parse().map_err(|_| Error::BadGeometry {
         line: lineno,
         message: format!("invalid surface number `{first}`"),
     })?;
     let rest: Vec<&str> = tokens.collect();
     if rest.is_empty() {
-        return Err(Error::BadCard {
+        return Err(Error::BadGeometry {
             line: lineno,
             message: format!("surface {num} is missing its type"),
         });
@@ -252,31 +252,31 @@ pub fn parse_surf_line(logical: &str, lineno: usize) -> Result<SurfCard, Error> 
     let (transform, kind_token, coeff_tokens) = match SurfKind::from_keyword(rest[0]) {
         Some(_) => (None, rest[0], &rest[1..]),
         None => {
-            let transform: u32 = rest[0].parse().map_err(|_| Error::BadCard {
+            let transform: u32 = rest[0].parse().map_err(|_| Error::BadGeometry {
                 line: lineno,
                 message: format!("invalid surface type `{}` on surface {num}", rest[0]),
             })?;
-            let kind_token = *rest.get(1).ok_or_else(|| Error::BadCard {
+            let kind_token = *rest.get(1).ok_or_else(|| Error::BadGeometry {
                 line: lineno,
                 message: format!("surface {num} is missing its type"),
             })?;
             (Some(transform), kind_token, &rest[2..])
         }
     };
-    let kind = SurfKind::from_keyword(kind_token).ok_or_else(|| Error::BadCard {
+    let kind = SurfKind::from_keyword(kind_token).ok_or_else(|| Error::BadGeometry {
         line: lineno,
         message: format!("invalid surface type `{kind_token}` on surface {num}"),
     })?;
     let mut coeffs = Vec::with_capacity(coeff_tokens.len());
     for token in coeff_tokens {
-        coeffs.push(token.parse::<f64>().map_err(|_| Error::BadCard {
+        coeffs.push(token.parse::<f64>().map_err(|_| Error::BadGeometry {
             line: lineno,
             message: format!("invalid surface coefficient `{token}` on surface {num}"),
         })?);
     }
     if let Some(arity) = kind.arity() {
         if coeffs.len() != arity {
-            return Err(Error::BadCard {
+            return Err(Error::BadGeometry {
                 line: lineno,
                 message: format!(
                     "surface {num} type {} needs {arity} coefficients, found {}",

@@ -111,6 +111,19 @@ pub enum Error {
         /// The rejected zaid.
         zaid: u32,
     },
+    /// A cell, surface, or deck-structure card is malformed.
+    BadGeometry {
+        /// 1-based line number of the offending card (`0` for model-level
+        /// errors such as unknown cells in setter calls).
+        line: usize,
+        /// What was wrong.
+        message: String,
+    },
+    /// A setter references a cell number the deck does not contain.
+    UnknownCell {
+        /// The referenced cell number.
+        cell: u32,
+    },
 }
 
 impl fmt::Display for Error {
@@ -134,6 +147,12 @@ impl fmt::Display for Error {
                     f,
                     "uninterpretable zaid {zaid} on material card line {line}"
                 )
+            }
+            Error::BadGeometry { line, message } => {
+                write!(f, "bad geometry on line {line}: {message}")
+            }
+            Error::UnknownCell { cell } => {
+                write!(f, "deck has no cell {cell}")
             }
         }
     }
@@ -844,6 +863,11 @@ mod tests {
                 line: 3,
                 zaid: 50_003,
             },
+            Error::BadGeometry {
+                line: 3,
+                message: "why".to_string(),
+            },
+            Error::UnknownCell { cell: 7 },
         ];
         for e in cases {
             assert!(!e.to_string().is_empty());
