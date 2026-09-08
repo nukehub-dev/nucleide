@@ -216,8 +216,9 @@ must pass the E2E smoke tests (`npm run test:e2e:ci` from `website/`).
 Git tags of the form `vX.Y.Z` trigger `.github/workflows/release.yml`, which:
 
 1. Runs the canonical verify checks.
-2. Builds and publishes Python wheels for Linux, macOS, and Windows via
-   `maturin publish` using PyPI trusted publishing (OpenID Connect). Configure
+2. Builds Python wheels for Linux, macOS, and Windows (one abi3 build per
+   OS), then publishes wheels + sdist to PyPI exactly once via
+   `maturin upload` using PyPI trusted publishing (OpenID Connect). Configure
    the trusted publisher in PyPI with the repository owner/name, workflow
    `.github/workflows/release.yml`, and GitHub Environment `pypi`; create the
    matching `pypi` environment under Settings → Environments. No long-lived

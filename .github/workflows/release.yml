@@ -55,15 +55,45 @@ jobs:
         run: pytest tests/ -v
 
   wheels:
-    name: Build and publish wheels
+    name: Build wheels
     needs: verify
     runs-on: ${{ matrix.os }}
     if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
       matrix:
+        # abi3 produces one wheel per OS for all Python >= 3.10, so a single
+        # interpreter per OS is enough; every leg used to publish the same
+        # filenames and race each other on upload.
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.12']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --out dist
+
+      - name: Upload wheels artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.python-version }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  publish-pypi:
+    name: Publish wheels to PyPI
+    needs: wheels
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
       id-token: write
@@ -75,20 +105,31 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: '3.12'
 
-      - name: Build and publish wheels
-        uses: PyO3/maturin-action@v1
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Download wheels
+        uses: actions/download-artifact@v8
         with:
-          command: publish
-          args: --non-interactive --skip-existing --out dist
+          path: dist
+          merge-multiple: true
 
-      - name: Upload wheels artifact
+      - name: Build sdist and publish once
+        # Single uploader: every wheel filename is identical across
+        # interpreters (abi3), so publishing from each matrix leg raced on
+        # the same PyPI files and sporadically failed with 500s.
+        run: |
+          maturin sdist --out dist
+          maturin upload --non-interactive --skip-existing dist/*
+
+      - name: Upload published dist
         uses: actions/upload-artifact@v7
         with:
-          name: wheels-${{ matrix.os }}-${{ matrix.python-version }}
-          path: dist/*.whl
-          if-no-files-found: warn
+          name: pypi-dist
+          path: dist/*
+          if-no-files-found: error
 
   crates:
     name: Publish Rust crates
@@ -112,12 +153,41 @@ jobs:
           set -euo pipefail
           for crate in nucleide-linalg nucleide-nuclei nucleide-material nucleide-mcnp-io nucleide-serpent-io nucleide-fluka-io nucleide-enrichment nucleide-depletion nucleide-vr-tools nucleide-alara-io nucleide-cccc-io nucleide-fispact-io nucleide-origen-io nucleide-r2s nucleide-bindings; do
             echo "--- cargo publish -p $crate ---"
-            cargo publish -p "$crate"
+            attempt=1
+            while true; do
+              if out=$(cargo publish -p "$crate" 2>&1); then
+                echo "$out"
+                break
+              fi
+              echo "$out"
+              # Re-runs must tolerate crates published by an earlier attempt.
+              case "$out" in
+                *"already uploaded"*|*"already exists"*)
+                  echo "$crate already published; continuing."
+                  break
+                  ;;
+              esac
+              # crates.io throttles first-time crate names; back off and retry.
+              case "$out" in
+                *"429"*|*"Too Many Requests"*)
+                  if [ "$attempt" -ge 6 ]; then
+                    echo "still rate-limited after $attempt attempts; giving up."
+                    exit 1
+                  fi
+                  echo "rate-limited; waiting 300s (attempt $attempt/6)."
+                  sleep 300
+                  attempt=$((attempt + 1))
+                  ;;
+                *)
+                  exit 1
+                  ;;
+              esac
+            done
           done
 
   github-release:
     name: Create GitHub release
-    needs: wheels
+    needs: publish-pypi
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -126,11 +196,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Download wheels
+      - name: Download published dist
         uses: actions/download-artifact@v8
         with:
+          name: pypi-dist
           path: artifacts
-          merge-multiple: true
 
       - name: List artifacts
         run: ls -lah artifacts/
