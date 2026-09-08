@@ -102,3 +102,34 @@ impl std::error::Error for Error {}
 
 /// Crate-local result alias.
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::Error;
+
+    #[test]
+    fn error_display_covers_all_variants() {
+        let id = nucleide_nuclei::NuclideId::from_nucid(922_350_000);
+        let cases: Vec<(Error, &str)> = vec![
+            (
+                Error::NoConvergence { iterations: 42 },
+                "did not converge in 42",
+            ),
+            (Error::IterationNaN, "non-finite values"),
+            (
+                Error::BadComposition {
+                    detail: "empty feed".into(),
+                },
+                "empty feed",
+            ),
+            (Error::MissingMass(id), "no atomic mass"),
+        ];
+        for (err, needle) in cases {
+            assert!(
+                format!("{err}").contains(needle),
+                "display of {err:?} should contain {needle:?}"
+            );
+            let _: &dyn std::error::Error = &err;
+        }
+    }
+}

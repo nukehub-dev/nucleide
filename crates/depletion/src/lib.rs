@@ -546,6 +546,497 @@ mod tests {
         assert!((dense[1][0].re - 3e-7).abs() < 1e-18);
     }
 
+    #[test]
+    fn coverage_chain_error_display_and_accessors() {
+        // chain.rs Display arms (Io/Xml/UnknownNuclide/BadStructure/InvalidHalfLife).
+        let errs = vec![
+            (Error::Io("missing.xml: not found".into()), "io error"),
+            (Error::Xml("bad float".into()), "XML error"),
+            (
+                Error::UnknownNuclide {
+                    name: "X".into(),
+                    context: "decay target",
+                },
+                "unknown nuclide `X`",
+            ),
+            (Error::BadStructure("nope".into()), "malformed chain"),
+            (
+                Error::InvalidHalfLife {
+                    name: "A".into(),
+                    value: -1.0,
+                },
+                "invalid half-life",
+            ),
+        ];
+        for (e, needle) in errs {
+            assert!(format!("{e}").contains(needle), "{e:?}");
+            let _: &dyn std::error::Error = &e;
+        }
+
+        // len / is_empty / index_of.
+        let chain = simple_chain();
+        assert_eq!(chain.len(), 3);
+        assert!(!chain.is_empty());
+        assert_eq!(chain.index_of("A"), Some(0));
+        assert_eq!(chain.index_of("Nope"), None);
+        let empty = Chain::from_nuclides(vec![]).unwrap();
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn coverage_chain_from_xml_rejections() {
+        // Wrong root.
+        assert!(matches!(
+            Chain::from_xml("<wrong/>"),
+            Err(Error::BadStructure(_))
+        ));
+        // Unparseable XML.
+        assert!(matches!(
+            Chain::from_xml("<depletion_chain>"),
+            Err(Error::Xml(_))
+        ));
+        // Empty chain.
+        assert!(matches!(
+            Chain::from_xml("<depletion_chain></depletion_chain>"),
+            Err(Error::BadStructure(_))
+        ));
+        // Duplicate nuclide.
+        let dup = r#"<depletion_chain>
+  <nuclide name="A"/><nuclide name="A"/>
+</depletion_chain>"#;
+        assert!(matches!(Chain::from_xml(dup), Err(Error::BadStructure(_))));
+        // Missing required attribute (nuclide name).
+        let no_name = r#"<depletion_chain><nuclide/></depletion_chain>"#;
+        assert!(matches!(Chain::from_xml(no_name), Err(Error::Xml(_))));
+        // Bad float for half-life.
+        let bad_float = r#"<depletion_chain><nuclide name="A" half_life="abc"/></depletion_chain>"#;
+        assert!(matches!(Chain::from_xml(bad_float), Err(Error::Xml(_))));
+        // Bad branching_ratio float on decay.
+        let bad_br = r#"<depletion_chain><nuclide name="A">
+  <decay type="beta" target="B" branching_ratio="abc"/>
+</nuclide><nuclide name="B"/></depletion_chain>"#;
+        assert!(matches!(Chain::from_xml(bad_br), Err(Error::Xml(_))));
+        // Bad Q float on reaction.
+        let bad_q = r#"<depletion_chain><nuclide name="A">
+  <reaction type="(n,gamma)" target="B" Q="abc"/>
+</nuclide><nuclide name="B"/></depletion_chain>"#;
+        assert!(matches!(Chain::from_xml(bad_q), Err(Error::Xml(_))));
+        // Fission yields products/data length mismatch.
+        let mismatch = r#"<depletion_chain><nuclide name="U235">
+  <reaction type="fission" Q="2.0e8"/>
+  <neutron_fission_yields>
+    <energies>0.0253</energies>
+    <fission_yields energy="0.0253"><products>A B</products><data>0.1</data></fission_yields>
+  </neutron_fission_yields>
+</nuclide></depletion_chain>"#;
+        assert!(matches!(
+            Chain::from_xml(mismatch),
+            Err(Error::BadStructure(_))
+        ));
+        // Fission yields missing <energies>.
+        let no_energies = r#"<depletion_chain><nuclide name="U235">
+  <neutron_fission_yields>
+    <fission_yields energy="0.0253"><products>A</products><data>0.1</data></fission_yields>
+  </neutron_fission_yields>
+</nuclide></depletion_chain>"#;
+        assert!(matches!(
+            Chain::from_xml(no_energies),
+            Err(Error::BadStructure(_))
+        ));
+        // Missing file maps to Io.
+        assert!(matches!(
+            Chain::from_file("/nonexistent/path/chain.xml"),
+            Err(Error::Io(_))
+        ));
+    }
+
+    #[test]
+    fn coverage_chain_parent_cycle_errors() {
+        // A borrows from B, B borrows from A: hop cap trips.
+        let xml = r#"<depletion_chain>
+  <nuclide name="A"><neutron_fission_yields parent="B"/></nuclide>
+  <nuclide name="B"><neutron_fission_yields parent="A"/></nuclide>
+</depletion_chain>"#;
+        assert!(matches!(Chain::from_xml(xml), Err(Error::BadStructure(_))));
+    }
+
+    #[test]
+    fn coverage_chain_normalize_largest_second() {
+        // Largest branch is second: exercises the max_idx update arm.
+        let a = ChainNuclide {
+            name: "A".into(),
+            half_life: Some(std::f64::consts::LN_2 / 1e-6),
+            decay_modes: vec![
+                DecayMode {
+                    kind: "beta".into(),
+                    target: "B".into(),
+                    branching_ratio: 0.2,
+                },
+                DecayMode {
+                    kind: "beta".into(),
+                    target: "C".into(),
+                    branching_ratio: 0.4,
+                },
+            ],
+            ..Default::default()
+        };
+        let chain = Chain::from_nuclides(vec![a]).unwrap();
+        let sum: f64 = chain.nuclides[0]
+            .decay_modes
+            .iter()
+            .map(|m| m.branching_ratio)
+            .sum();
+        assert!((sum - 1.0).abs() < 1e-12);
+        // Second (largest) branch absorbed the correction: 0.4 + 0.4 = 0.8.
+        assert!((chain.nuclides[0].decay_modes[1].branching_ratio - 0.8).abs() < 1e-12);
+    }
+
+    #[test]
+    fn coverage_matrix_decay_edge_cases() {
+        // Zero-branch decay entry is skipped (paired with a 1.0 branch so
+        // from_nuclides renormalization leaves the zero branch untouched).
+        let a = ChainNuclide {
+            name: "A".into(),
+            half_life: Some(std::f64::consts::LN_2 / 1e-6),
+            decay_modes: vec![
+                DecayMode {
+                    kind: "beta".into(),
+                    target: "B".into(),
+                    branching_ratio: 0.0,
+                },
+                DecayMode {
+                    kind: "beta".into(),
+                    target: "C".into(),
+                    branching_ratio: 1.0,
+                },
+            ],
+            ..Default::default()
+        };
+        let b = ChainNuclide {
+            name: "B".into(),
+            ..Default::default()
+        };
+        let c = ChainNuclide {
+            name: "C".into(),
+            ..Default::default()
+        };
+        let sys = DepletionSystem::build(
+            Chain::from_nuclides(vec![a, b, c]).unwrap(),
+            &ReactionRates::new(),
+        )
+        .unwrap();
+        let dense = sys.matrix_for_dt(1.0).unwrap().to_dense();
+        assert!(dense[1][0].re.abs() < 1e-18);
+        assert!((dense[2][0].re - 1e-6).abs() < 1e-18);
+
+        // Unknown decay target errors.
+        let a = ChainNuclide {
+            name: "A".into(),
+            half_life: Some(std::f64::consts::LN_2 / 1e-6),
+            decay_modes: vec![DecayMode {
+                kind: "beta".into(),
+                target: "Missing".into(),
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        assert!(matches!(
+            DepletionSystem::build(
+                Chain::from_nuclides(vec![a]).unwrap(),
+                &ReactionRates::new()
+            ),
+            Err(Error::UnknownNuclide { .. })
+        ));
+
+        // Spontaneous fission daughter is skipped (no gain), alpha without
+        // He4 and proton without H1 exercise the missing-light-nuclide arms.
+        let a = ChainNuclide {
+            name: "A".into(),
+            half_life: Some(std::f64::consts::LN_2 / 1e-6),
+            decay_modes: vec![
+                DecayMode {
+                    kind: "sf".into(),
+                    target: "B".into(),
+                    branching_ratio: 0.5,
+                },
+                DecayMode {
+                    kind: "alpha".into(),
+                    target: "B".into(),
+                    branching_ratio: 0.25,
+                },
+                DecayMode {
+                    kind: "p".into(),
+                    target: "B".into(),
+                    branching_ratio: 0.25,
+                },
+            ],
+            ..Default::default()
+        };
+        let b = ChainNuclide {
+            name: "B".into(),
+            ..Default::default()
+        };
+        let sys = DepletionSystem::build(
+            Chain::from_nuclides(vec![a, b]).unwrap(),
+            &ReactionRates::new(),
+        )
+        .unwrap();
+        let dense = sys.matrix_for_dt(1.0).unwrap().to_dense();
+        // Only the two non-sf daughters contribute: 0.5 * lambda total.
+        assert!((dense[1][0].re - 0.5e-6).abs() < 1e-18);
+    }
+
+    #[test]
+    fn coverage_matrix_fission_and_reaction_edges() {
+        // Zero fission yield is skipped.
+        let u = ChainNuclide {
+            name: "U235".into(),
+            reactions: vec![Reaction {
+                kind: "fission".into(),
+                target: None,
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            neutron_fission_yields: vec![FissionYields {
+                energy: 0.0253,
+                products: [("I135".to_string(), 0.0)].into_iter().collect(),
+            }],
+            ..Default::default()
+        };
+        let i = ChainNuclide {
+            name: "I135".into(),
+            ..Default::default()
+        };
+        let mut rates = ReactionRates::new();
+        rates
+            .entry(0usize)
+            .or_default()
+            .insert("fission".to_string(), 1e-5);
+        let sys =
+            DepletionSystem::build(Chain::from_nuclides(vec![u, i]).unwrap(), &rates).unwrap();
+        let dense = sys.matrix_for_dt(1.0).unwrap().to_dense();
+        assert!(dense[1][0].re.abs() < 1e-18);
+
+        // Unknown fission-yield product errors.
+        let u = ChainNuclide {
+            name: "U235".into(),
+            reactions: vec![Reaction {
+                kind: "fission".into(),
+                target: None,
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            neutron_fission_yields: vec![FissionYields {
+                energy: 0.0253,
+                products: [("Missing".to_string(), 0.5)].into_iter().collect(),
+            }],
+            ..Default::default()
+        };
+        assert!(matches!(
+            DepletionSystem::build(Chain::from_nuclides(vec![u]).unwrap(), &rates),
+            Err(Error::UnknownNuclide { .. })
+        ));
+
+        // Yield-less fission with explicit target behaves as transmutation.
+        let u = ChainNuclide {
+            name: "U235".into(),
+            reactions: vec![Reaction {
+                kind: "fission".into(),
+                target: Some("I135".into()),
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let i = ChainNuclide {
+            name: "I135".into(),
+            ..Default::default()
+        };
+        let sys =
+            DepletionSystem::build(Chain::from_nuclides(vec![u, i]).unwrap(), &rates).unwrap();
+        let dense = sys.matrix_for_dt(1.0).unwrap().to_dense();
+        assert!((dense[1][0].re - 1e-5).abs() < 1e-18);
+
+        // Yield-less fission with unknown target errors.
+        let u = ChainNuclide {
+            name: "U235".into(),
+            reactions: vec![Reaction {
+                kind: "fission".into(),
+                target: Some("Missing".into()),
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        assert!(matches!(
+            DepletionSystem::build(Chain::from_nuclides(vec![u]).unwrap(), &rates),
+            Err(Error::UnknownNuclide { .. })
+        ));
+
+        // Unknown reaction target errors; unknown reaction kind yields no
+        // secondaries (covers the `_ => &[]` arm) and missing light nuclide
+        // covers the `index_of -> None` arm.
+        let a = ChainNuclide {
+            name: "A".into(),
+            reactions: vec![Reaction {
+                kind: "(n,gamma)".into(),
+                target: Some("Missing".into()),
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let mut rates2 = ReactionRates::new();
+        rates2
+            .entry(0usize)
+            .or_default()
+            .insert("(n,gamma)".to_string(), 1e-5);
+        assert!(matches!(
+            DepletionSystem::build(Chain::from_nuclides(vec![a]).unwrap(), &rates2),
+            Err(Error::UnknownNuclide { .. })
+        ));
+
+        let a = ChainNuclide {
+            name: "A".into(),
+            reactions: vec![Reaction {
+                kind: "(n,weird)".into(),
+                target: Some("B".into()),
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let b = ChainNuclide {
+            name: "B".into(),
+            ..Default::default()
+        };
+        let sys = DepletionSystem::build(Chain::from_nuclides(vec![a, b]).unwrap(), &rates2);
+        // rates2 has no "(n,weird)" entry, so the channel contributes zero.
+        assert!(sys.is_ok());
+
+        // (n,a) without He4 in the chain: secondary lookup misses cleanly.
+        let a = ChainNuclide {
+            name: "A".into(),
+            reactions: vec![Reaction {
+                kind: "(n,a)".into(),
+                target: Some("B".into()),
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let b = ChainNuclide {
+            name: "B".into(),
+            ..Default::default()
+        };
+        let mut rates3 = ReactionRates::new();
+        rates3
+            .entry(0usize)
+            .or_default()
+            .insert("(n,a)".to_string(), 1e-5);
+        let sys =
+            DepletionSystem::build(Chain::from_nuclides(vec![a, b]).unwrap(), &rates3).unwrap();
+        let dense = sys.matrix_for_dt(1.0).unwrap().to_dense();
+        assert!((dense[1][0].re - 1e-5).abs() < 1e-18);
+    }
+
+    #[test]
+    fn coverage_matrix_helpers_debug_shift() {
+        let chain = simple_chain();
+        let sys = DepletionSystem::build(chain, &ReactionRates::new()).unwrap();
+        // shifted_values wrapper, diagonal entries, Debug impl.
+        let vals = sys.shifted_values(1.0, nucleide_linalg::C64_ZERO);
+        assert_eq!(vals.len(), sys.entries.len());
+        assert_eq!(sys.diagonal_entries().len(), sys.chain.len());
+        let dbg = format!("{sys:?}");
+        assert!(dbg.contains("DepletionSystem"));
+        // deplete() unknown-n0 errors.
+        let mut n0 = BTreeMap::new();
+        n0.insert("Missing".to_string(), 1.0);
+        assert!(crate::deplete(&sys, crate::Order::Order16, &n0, 1.0).is_err());
+    }
+
+    #[test]
+    fn coverage_matrix_remaining_arms() {
+        // Non-nuclide top-level element is skipped (chain.rs `continue`).
+        let xml = r#"<depletion_chain>
+  <source>metadata ignored</source>
+  <nuclide name="A"/>
+</depletion_chain>"#;
+        assert_eq!(Chain::from_xml(xml).unwrap().len(), 1);
+
+        // Bad reaction branching_ratio float.
+        let bad = r#"<depletion_chain><nuclide name="A">
+  <reaction type="(n,gamma)" target="B" branching_ratio="abc"/>
+</nuclide><nuclide name="B"/></depletion_chain>"#;
+        assert!(matches!(Chain::from_xml(bad), Err(Error::Xml(_))));
+
+        // Fission with no yields and no target: pure loss, no gain.
+        let u = ChainNuclide {
+            name: "U235".into(),
+            reactions: vec![Reaction {
+                kind: "fission".into(),
+                target: None,
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let mut rates = ReactionRates::new();
+        rates
+            .entry(0usize)
+            .or_default()
+            .insert("fission".to_string(), 1e-5);
+        let sys = DepletionSystem::build(Chain::from_nuclides(vec![u]).unwrap(), &rates).unwrap();
+        let dense = sys.matrix_for_dt(1.0).unwrap().to_dense();
+        assert!((dense[0][0].re + 1e-5).abs() < 1e-18);
+
+        // Target-None reaction with nonzero rate covers the `None` arm.
+        let a = ChainNuclide {
+            name: "A".into(),
+            reactions: vec![Reaction {
+                kind: "(n,gamma)".into(),
+                target: None,
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let mut rates = ReactionRates::new();
+        rates
+            .entry(0usize)
+            .or_default()
+            .insert("(n,gamma)".to_string(), 2e-5);
+        let sys = DepletionSystem::build(Chain::from_nuclides(vec![a]).unwrap(), &rates).unwrap();
+        let dense = sys.matrix_for_dt(1.0).unwrap().to_dense();
+        assert!((dense[0][0].re + 2e-5).abs() < 1e-18);
+
+        // Unknown reaction kind with nonzero rate covers `_ => &[]`.
+        let a = ChainNuclide {
+            name: "A".into(),
+            reactions: vec![Reaction {
+                kind: "(n,weird)".into(),
+                target: Some("B".into()),
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let b = ChainNuclide {
+            name: "B".into(),
+            ..Default::default()
+        };
+        let mut rates = ReactionRates::new();
+        rates
+            .entry(0usize)
+            .or_default()
+            .insert("(n,weird)".to_string(), 3e-5);
+        let sys =
+            DepletionSystem::build(Chain::from_nuclides(vec![a, b]).unwrap(), &rates).unwrap();
+        let dense = sys.matrix_for_dt(1.0).unwrap().to_dense();
+        assert!((dense[1][0].re - 3e-5).abs() < 1e-18);
+    }
+
     // helper: serialize Chain back to minimal XML so build() gets owned data
     fn xml_of(chain: Chain) -> String {
         let mut s = String::from("<depletion_chain>\n");

@@ -66,3 +66,55 @@ impl std::fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+#[cfg(test)]
+mod tests {
+    use super::Error;
+
+    #[test]
+    fn error_display_covers_all_variants() {
+        let cases: Vec<(Error, &str)> = vec![
+            (Error::EmptyTally, "no volume elements"),
+            (
+                Error::LengthMismatch {
+                    expected: 3,
+                    got: 5,
+                },
+                "expected 3, got 5",
+            ),
+            (Error::ZeroMaxFlux { energy_group: 2 }, "energy group 2"),
+            (Error::EmptyPdf, "at least one value"),
+            (
+                Error::NegativePdf {
+                    index: 1,
+                    value: -0.5,
+                },
+                "pdf[1]",
+            ),
+            (Error::NonFinitePdf { index: 0 }, "pdf[0]"),
+            (Error::ZeroSumPdf, "sums to zero"),
+            (
+                Error::NegativeTally {
+                    index: 4,
+                    value: -1.0,
+                },
+                "index 4",
+            ),
+            (
+                Error::NonFiniteTally {
+                    field: "flux",
+                    index: 7,
+                },
+                "flux[7]",
+            ),
+        ];
+        for (err, needle) in cases {
+            assert!(
+                format!("{err}").contains(needle),
+                "display of {err:?} should contain {needle:?}"
+            );
+            // Ensure the std::error::Error impl is linked.
+            let _: &dyn std::error::Error = &err;
+        }
+    }
+}
