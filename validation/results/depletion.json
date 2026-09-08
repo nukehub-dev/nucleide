@@ -3,10 +3,10 @@
   "name": "depletion",
   "title": "Depletion (`depletion_vs_openmc.py`)",
   "environment": {
-    "date": "2026-08-29",
+    "date": "2026-09-08",
     "python": "3.12.14",
-    "platform": "Linux-7.1.9-arch1-2-x86_64-with-glibc2.39",
-    "nucleide": "0.1.0",
+    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
+    "nucleide": "0.3.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
@@ -35,7 +35,7 @@
     },
     {
       "kind": "prose",
-      "text": "Differences are relative to OpenMC's own CRAM-48 solver on the same patched\nchain file."
+      "text": "Differences are relative to OpenMC's own CRAM-48 solver on the same patched chain file."
     },
     {
       "kind": "heading",
@@ -68,6 +68,95 @@
           "Cs-135",
           "9.946437e-16",
           "2.841839e-16"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Predictor time-series convergence (synthetic A->B->C)"
+    },
+    {
+      "kind": "prose",
+      "text": "Predictor `deplete_series` (sequential CRAM-48 steps) on a synthetic A->B->C pure-decay chain built inline in a temp file (no fixtures: A: 1e-6 /s, B: 1e-5 /s, C: stable; five 2e4 s steps from 1e15 atoms of A) vs the analytic Bateman solution at every time node."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Step",
+        "Time (s)",
+        "Max rel diff vs Bateman",
+        "Atom-conservation rel err"
+      ],
+      "rows": [
+        [
+          "1",
+          "2.000000e+04",
+          "2.808255e-14",
+          "1.125000e-15"
+        ],
+        [
+          "2",
+          "4.000000e+04",
+          "1.070023e-14",
+          "3.375000e-15"
+        ],
+        [
+          "3",
+          "6.000000e+04",
+          "8.040842e-15",
+          "5.125000e-15"
+        ],
+        [
+          "4",
+          "8.000000e+04",
+          "7.568664e-15",
+          "6.000000e-15"
+        ],
+        [
+          "5",
+          "1.000000e+05",
+          "1.034314e-14",
+          "8.125000e-15"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Activity and decay-heat channels"
+    },
+    {
+      "kind": "prose",
+      "text": "Activity is A = \u03bb\u00b7N per nuclide (C is stable, so exactly 0.0). The synthetic A/B/C nuclides carry no decay-energy data, so the heat channel resolves to 0.0 \u2014 the documented zero-heat behavior (the check asserts that resolution, not nonzero values)."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Check",
+        "Value",
+        "Tolerance"
+      ],
+      "rows": [
+        [
+          "A/B activity self-consistency (max rel)",
+          "0.000000e+00",
+          "1.0e-09"
+        ],
+        [
+          "B activity vs Bateman (max rel)",
+          "8.991348e-15",
+          "1.0e-06"
+        ],
+        [
+          "C activity (max abs, Bq)",
+          "0.000000e+00",
+          "0.0"
+        ],
+        [
+          "Decay heat (max abs, W)",
+          "0.000000e+00",
+          "0.0"
         ]
       ]
     }

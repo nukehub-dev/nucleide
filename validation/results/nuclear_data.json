@@ -3,10 +3,10 @@
   "name": "nuclear_data",
   "title": "Nuclear data (`nuclear_data_vs_refs.py`)",
   "environment": {
-    "date": "2026-08-29",
+    "date": "2026-09-08",
     "python": "3.12.14",
-    "platform": "Linux-7.1.9-arch1-2-x86_64-with-glibc2.39",
-    "nucleide": "0.1.0",
+    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
+    "nucleide": "0.3.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
@@ -94,6 +94,266 @@
     {
       "kind": "prose",
       "text": "All conversions (alara, cinder, nist, nucid, serpent, sza, zaid, zzaaam) had a\nmaximum relative/absolute difference of **0.000000e+00**."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Screening cross sections (`simple_xs`) vs PyNE `nuc_data.h5`"
+    },
+    {
+      "kind": "prose",
+      "text": "Nucleide thermal (0.0253 eV) and 14-MeV total cross sections vs PyNE's KAERI-anchored `SimpleDataSource` totals (`/neutron/simple_xs` in the `nuc_data.h5` bundled with PyNE, read in place \u2014 no download). Thermal is the source's first group point, fast the last (14 MeV)."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Nuclide",
+        "Nucleide th (b)",
+        "PyNE th (b)",
+        "Rel diff th",
+        "Nucleide fast (b)",
+        "PyNE fast (b)",
+        "Rel diff fast"
+      ],
+      "rows": [
+        [
+          "H1",
+          "2.084010e+01",
+          "2.081000e+01",
+          "1.444331e-03",
+          "6.871440e-01",
+          "6.920000e-01",
+          "7.017341e-03"
+        ],
+        [
+          "B10",
+          "3.837560e+03",
+          "3.840000e+03",
+          "6.354167e-04",
+          "1.467600e+00",
+          "1.467000e+00",
+          "4.088307e-04"
+        ],
+        [
+          "O16",
+          "3.748860e+00",
+          "3.780000e+00",
+          "8.238095e-03",
+          "1.592150e+00",
+          "1.611000e+00",
+          "1.170081e-02"
+        ],
+        [
+          "Fe56",
+          "1.457800e+01",
+          "1.528000e+01",
+          "4.594241e-02",
+          "2.599800e+00",
+          "2.574000e+00",
+          "9.923840e-03"
+        ],
+        [
+          "Co59",
+          "4.259490e+01",
+          "4.319000e+01",
+          "1.377865e-02",
+          "2.707980e+00",
+          "2.653000e+00",
+          "2.030296e-02"
+        ],
+        [
+          "U235",
+          "6.947820e+02",
+          "6.982000e+02",
+          "4.895445e-03",
+          "5.830690e+00",
+          "5.865000e+00",
+          "5.849957e-03"
+        ],
+        [
+          "U238",
+          "1.147690e+01",
+          "1.209000e+01",
+          "5.071133e-02",
+          "5.858250e+00",
+          "5.805000e+00",
+          "9.089745e-03"
+        ],
+        [
+          "Pu239",
+          "1.024940e+03",
+          "1.026000e+03",
+          "1.033138e-03",
+          "5.869800e+00",
+          "5.990000e+00",
+          "2.006678e-02"
+        ],
+        [
+          "Pb208",
+          "1.123220e+01",
+          "1.148000e+01",
+          "2.158537e-02",
+          "5.385000e+00",
+          "5.360000e+00",
+          "4.642526e-03"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED simple_xs: C12: Nucleide has no simple_xs entry."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Bound coherent scattering lengths vs NIST anchors"
+    },
+    {
+      "kind": "prose",
+      "text": "Nucleide `scattering_length` (coherent, fm) vs the NIST NCNR bound coherent lengths (Sears, Neutron News 3(3), 1992) that `scattering_lengths.tsv` copies exactly \u2014 hence the tight tolerance."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Nuclide",
+        "Nucleide (fm)",
+        "NIST (fm)",
+        "Abs diff (fm)"
+      ],
+      "rows": [
+        [
+          "H1",
+          "-3.740600e+00",
+          "-3.740600e+00",
+          "0.000000e+00"
+        ],
+        [
+          "H2",
+          "6.671000e+00",
+          "6.671000e+00",
+          "0.000000e+00"
+        ],
+        [
+          "C12",
+          "6.651100e+00",
+          "6.651100e+00",
+          "0.000000e+00"
+        ],
+        [
+          "O16",
+          "5.803000e+00",
+          "5.803000e+00",
+          "0.000000e+00"
+        ],
+        [
+          "Fe56",
+          "9.940000e+00",
+          "9.940000e+00",
+          "0.000000e+00"
+        ],
+        [
+          "U238",
+          "8.402000e+00",
+          "8.402000e+00",
+          "0.000000e+00"
+        ],
+        [
+          "Pb208",
+          "9.500000e+00",
+          "9.500000e+00",
+          "0.000000e+00"
+        ],
+        [
+          "B10",
+          "-1.000000e-01",
+          "-1.000000e-01",
+          "0.000000e+00"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Decay energies vs chain/ENDF-derived spot values (screening-level)"
+    },
+    {
+      "kind": "prose",
+      "text": "Nucleide `decay_energy` (mean recoverable MeV per decay) vs chain/ENDF-derived spot values within a loose 20% screening band: these placeholder heat values are NOT ENSDF evaluations \u2014 never for spectroscopy, dose, or safety use."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Nuclide",
+        "Nucleide (MeV)",
+        "Spot (MeV)",
+        "Rel diff"
+      ],
+      "rows": [
+        [
+          "H3",
+          "5.690000e-03",
+          "5.690000e-03",
+          "0.000000e+00"
+        ],
+        [
+          "Co60",
+          "2.600610e+00",
+          "2.600610e+00",
+          "0.000000e+00"
+        ],
+        [
+          "Sr90",
+          "1.958000e-01",
+          "1.958000e-01",
+          "0.000000e+00"
+        ],
+        [
+          "I131",
+          "5.734380e-01",
+          "5.734380e-01",
+          "0.000000e+00"
+        ],
+        [
+          "Xe135",
+          "5.679800e-01",
+          "5.679800e-01",
+          "0.000000e+00"
+        ],
+        [
+          "Cs137",
+          "1.794480e-01",
+          "1.794480e-01",
+          "0.000000e+00"
+        ],
+        [
+          "Ba137_m1",
+          "6.613970e-01",
+          "6.613970e-01",
+          "0.000000e+00"
+        ],
+        [
+          "U235",
+          "4.619190e+00",
+          "4.619190e+00",
+          "0.000000e+00"
+        ],
+        [
+          "Pu239",
+          "5.243260e+00",
+          "5.243260e+00",
+          "0.000000e+00"
+        ],
+        [
+          "Am241",
+          "5.627990e+00",
+          "5.627990e+00",
+          "0.000000e+00"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Stable Fe56 correctly resolves to None (no decay-energy entry)."
     }
   ]
 }

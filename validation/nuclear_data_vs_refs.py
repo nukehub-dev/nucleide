@@ -271,8 +271,10 @@ def _pyne_simple_xs_lookup(src, name: str) -> tuple[float, float]:
             continue
         vals = [float(v) for v in list(data)]
         if len(vals) >= 2 and any(v > 0 for v in vals):
-            # Source group structure is (thermal 2.53e-8 MeV, 1 MeV, 14 MeV).
-            return vals[0], vals[-1]
+            # Source group structure is descending energy: the first point
+            # is 14 MeV and the last is thermal (2.53e-8 MeV), so thermal
+            # is vals[-1] and fast-14 is vals[0].
+            return vals[-1], vals[0]
         reasons.append(f"{rx}: empty response")
     raise SkipCheck(f"no total channel for {name} ({'; '.join(reasons)}).")
 

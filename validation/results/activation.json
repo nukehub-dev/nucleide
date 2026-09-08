@@ -1,0 +1,638 @@
+{
+  "schema": 1,
+  "name": "activation",
+  "title": "Activation I/O (`activation_vs_refs.py`)",
+  "environment": {
+    "date": "2026-09-08",
+    "python": "3.12.14",
+    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
+    "nucleide": "0.3.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "text": "Nucleide's activation-code readers (alara-io, cccc-io, fispact-io, origen-io)\nand the r2s workflow builder are checked against committed fixtures.\nIndependent-oracle status: the ALARA deck block set has a container-only\n`pyne.alara` probe below; FISPACT, CCCC, ORIGEN and R2S fixtures are\nsynthetic self-consistency checks with no independent oracle. Skipped\ncomparisons are listed explicitly; none is silent."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "ALARA decks"
+    },
+    {
+      "kind": "prose",
+      "text": "Nucleide `alara_parse_deck` run on `fixtures/alara/decks/sample2` and `sample3`.\nExpected values are the committed deck contents (upstream ALARA sample inputs).\nRe-parse stability re-parses the same text and requires an identical result\n(no deck serializer exists, so this is parse determinism rather than a\nwrite/read round-trip)."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Fixture",
+        "Check",
+        "Expected",
+        "Observed",
+        "Status"
+      ],
+      "rows": [
+        [
+          "sample2",
+          "block count",
+          "15",
+          "15",
+          "PASS"
+        ],
+        [
+          "sample2",
+          "block order",
+          "upstream order",
+          "match",
+          "PASS"
+        ],
+        [
+          "sample2",
+          "geometry",
+          "rectangular",
+          "rectangular",
+          "PASS"
+        ],
+        [
+          "sample2",
+          "mixtures",
+          "inner_mix[3], outer_mix[2]",
+          "['Li', 'FLiBe', 'WATER'], ['WATER', 'C1020']",
+          "PASS"
+        ],
+        [
+          "sample2",
+          "flux entry",
+          "flux_1 data/fluxin1 scale 1.0 skip 1",
+          "flux_1 data/fluxin1 scale 1.0 skip 1",
+          "PASS"
+        ],
+        [
+          "sample2",
+          "cooling count",
+          "4",
+          "4",
+          "PASS"
+        ],
+        [
+          "sample2",
+          "cooling 1 d",
+          "86400 s",
+          "8.640000e+04",
+          "PASS"
+        ],
+        [
+          "sample2",
+          "output resolution",
+          "interval",
+          "interval",
+          "PASS"
+        ],
+        [
+          "sample2",
+          "truncation",
+          "1e-07",
+          "1.000000e-07",
+          "PASS"
+        ],
+        [
+          "sample3",
+          "block count/order",
+          "15, upstream order",
+          "15",
+          "PASS"
+        ],
+        [
+          "sample3",
+          "geometry",
+          "cylindrical",
+          "cylindrical",
+          "PASS"
+        ],
+        [
+          "sample3",
+          "mixtures",
+          "inner_mix[3] (CONC, b4c, ni), outer_mix[1] (fe)",
+          "['CONC', 'b4c', 'ni'], ['fe']",
+          "PASS"
+        ],
+        [
+          "sample3",
+          "flux entry",
+          "flux_1 data/fluxin2 scale 1e6 skip 0",
+          "flux_1 data/fluxin2 scale 1000000.0 skip 0",
+          "PASS"
+        ],
+        [
+          "sample3",
+          "cooling times",
+          "[1, 86400, 60, 31557600] s",
+          "1.000000e+00, 8.640000e+04, 6.000000e+01, 3.155760e+07",
+          "PASS"
+        ],
+        [
+          "sample3",
+          "output resolution",
+          "zone",
+          "zone",
+          "PASS"
+        ],
+        [
+          "sample3",
+          "truncation",
+          "1e-08",
+          "1.000000e-08",
+          "PASS"
+        ],
+        [
+          "sample2",
+          "re-parse stability",
+          "identical",
+          "identical",
+          "PASS"
+        ],
+        [
+          "sample3",
+          "re-parse stability",
+          "identical",
+          "identical",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Cooling `1 m` in sample3 reads as 60 s (minute convention), and the deck year is\n365.25 d (31557600 s); the output file below uses a 365 d year instead \u2014\nboth conventions are preserved verbatim, not reconciled."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "ALARA group fluxes"
+    },
+    {
+      "kind": "prose",
+      "text": "`alara_parse_flux` run on `fixtures/alara/flux/fluxin2` (3 intervals x 175\ngroups) and `fluxin_zeros` (1 interval x 175 groups of exact zeros). Flux\nfiles carry no energy grid; the 175-group FENDL binning is implied by position."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Fixture",
+        "Check",
+        "Expected",
+        "Observed",
+        "Status"
+      ],
+      "rows": [
+        [
+          "fluxin2",
+          "shape",
+          "3 x 175",
+          "3 x 175",
+          "PASS"
+        ],
+        [
+          "fluxin2",
+          "interval lengths",
+          "all 175",
+          "175,175,175",
+          "PASS"
+        ],
+        [
+          "fluxin2",
+          "total == sum(totals)",
+          "4.177384e+15",
+          "4.177384e+15",
+          "PASS"
+        ],
+        [
+          "fluxin2",
+          "leading groups zero",
+          "[0, 0, 0]",
+          "[0.0, 0.0, 0.0]",
+          "PASS"
+        ],
+        [
+          "fluxin_zeros",
+          "shape/total",
+          "1 x 175, total 0",
+          "1 x 175, total 0.0",
+          "PASS"
+        ],
+        [
+          "fluxin2",
+          "re-parse stability",
+          "identical",
+          "identical",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "ALARA output"
+    },
+    {
+      "kind": "prose",
+      "text": "`alara_parse_output` run on `fixtures/alara/output/sample2.out` (upstream ALARA\nlisting, run label `sample2`)."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Fixture",
+        "Check",
+        "Expected",
+        "Observed",
+        "Status"
+      ],
+      "rows": [
+        [
+          "sample2.out",
+          "row count",
+          "2838",
+          "2838",
+          "PASS"
+        ],
+        [
+          "sample2.out",
+          "response variables (2)",
+          "{Number Density, Specific Activity}",
+          "['Number Density', 'Specific Activity']",
+          "PASS"
+        ],
+        [
+          "sample2.out",
+          "time columns (6)",
+          "[-1.0, 0.0, 86400.0, 8640000.0, 31536000.0, 3153600000.0]",
+          "[-1.0, 0.0, 86400.0, 8640000.0, 31536000.0, 3153600000.0]",
+          "PASS"
+        ],
+        [
+          "sample2.out",
+          "block kinds",
+          "{Interval}",
+          "{'Interval'}",
+          "PASS"
+        ],
+        [
+          "sample2.out",
+          "zones",
+          "{(1, inner_zone), (2, outer_zone)}",
+          "[(1, 'inner_zone'), (2, 'outer_zone')]",
+          "PASS"
+        ],
+        [
+          "sample2.out",
+          "total rows",
+          "24",
+          "24",
+          "PASS"
+        ],
+        [
+          "sample2.out",
+          "h-1 spot value",
+          "6.6354e21 atoms/cm3",
+          "6.635400e+21",
+          "PASS"
+        ],
+        [
+          "sample2.out",
+          "re-parse stability",
+          "identical",
+          "identical",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "`time_s == -1.0` marks the pre-irradiation column and `half_life_s == -1.0` marks\nstable nuclides and `total` rows (sentinel, not a measurement). The output\n1 y column is 31536000 s (365 d), while the deck cools for 31557600 s\n(365.25 d); both are kept verbatim."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "FISPACT inventory"
+    },
+    {
+      "kind": "prose",
+      "text": "`fispact_parse_output` run on the synthetic `fixtures/fispact/inventory.fis`\n(authored for nucleide; not FISPACT-II output). No independent oracle\nreader exists, so this is self-consistency against committed values."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Fixture",
+        "Check",
+        "Expected",
+        "Observed",
+        "Status"
+      ],
+      "rows": [
+        [
+          "inventory.fis",
+          "row count",
+          "36",
+          "36",
+          "PASS"
+        ],
+        [
+          "inventory.fis",
+          "variables (3)",
+          "{Number Density, Specific Activity, Total Decay Heat}",
+          "['Number Density', 'Specific Activity', 'Total Decay Heat']",
+          "PASS"
+        ],
+        [
+          "inventory.fis",
+          "time columns (3)",
+          "[0.0, 86400.0, 31536000.0]",
+          "[0.0, 86400.0, 31536000.0]",
+          "PASS"
+        ],
+        [
+          "inventory.fis",
+          "h-3 atoms @ 1 d",
+          "9.99e19",
+          "9.990000e+19",
+          "PASS"
+        ],
+        [
+          "inventory.fis",
+          "total rows",
+          "9",
+          "9",
+          "PASS"
+        ],
+        [
+          "inventory.fis",
+          "half-life sentinel",
+          "all -1.0",
+          "[-1.0]",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "The fixture carries no half-life column, so every row records `half_life_s ==\n-1.0` (missing-data sentinel, not a measurement). The extra DOSE column in\nthe second cooling step is ignored by the parser, and the third step uses the\n365-day year factor."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "CCCC libraries and PARTISN deck"
+    },
+    {
+      "kind": "prose",
+      "text": "`isotxs_parse`/`rtflux_parse` run on the synthetic `fixtures/cccc/*_sample`\nfiles, plus a PARTISN render/validate round-trip on a two-zone slab deck.\nNo independent oracle reader exists, so this is self-consistency against\ncommitted values."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Fixture",
+        "Check",
+        "Expected",
+        "Observed",
+        "Status"
+      ],
+      "rows": [
+        [
+          "isotxs_sample",
+          "nuclides",
+          "[U235, PU239]",
+          "['U235', 'PU239']",
+          "PASS"
+        ],
+        [
+          "isotxs_sample",
+          "U235 total xs",
+          "[1.1, 2.2, 3.3]",
+          "[1.1, 2.2, 3.3]",
+          "PASS"
+        ],
+        [
+          "isotxs_sample",
+          "PU239 total xs",
+          "[4.4, 5.5, 6.6]",
+          "[4.4, 5.5, 6.6]",
+          "PASS"
+        ],
+        [
+          "rtflux_sample",
+          "kind/groups/points",
+          "RTFLUX 3 groups 2 points",
+          "RTFLUX 3 groups 2 points",
+          "PASS"
+        ],
+        [
+          "rtflux_sample",
+          "total",
+          "21.0",
+          "2.100000e+01",
+          "PASS"
+        ],
+        [
+          "partisn",
+          "rendered keywords",
+          "DIM/ZONE/MATERIAL/SOURCE/END",
+          "present",
+          "PASS"
+        ],
+        [
+          "partisn",
+          "validate vs isotxs",
+          "OK",
+          "OK",
+          "PASS"
+        ],
+        [
+          "partisn",
+          "dangling label rejected",
+          "ValueError",
+          "ValueError",
+          "PASS"
+        ],
+        [
+          "partisn",
+          "re-render stability",
+          "identical",
+          "identical",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "The fixtures cover the documented text-analog subset only; production CCCC\nfiles are binary. `partisn_validate` maps deck zone labels against the ISOTXS\nlibrary and rejects unmapped labels."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "ORIGEN TAPEs"
+    },
+    {
+      "kind": "prose",
+      "text": "`origen_parse_tape5/6/9` run on the synthetic `fixtures/origen/tape*_sample`\nfiles (simplified input echoes, not real ORIGEN output). No independent\noracle reader exists, so this is self-consistency against committed values."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Fixture",
+        "Check",
+        "Expected",
+        "Observed",
+        "Status"
+      ],
+      "rows": [
+        [
+          "tape5_sample",
+          "titles",
+          "2",
+          "['SYNTHETIC PWR PIN - TAPE5 SAMPLE', 'CASE 1 - BASE DEPLETION']",
+          "PASS"
+        ],
+        [
+          "tape5_sample",
+          "irradiation steps",
+          "[(3e13, 100 d), (0, 30 d)]",
+          "[(30000000000000.0, 100.0), (0.0, 30.0)]",
+          "PASS"
+        ],
+        [
+          "tape5_sample",
+          "materials",
+          "fuel[3], clad[1]",
+          "fuel[3],clad[1]",
+          "PASS"
+        ],
+        [
+          "tape6_sample",
+          "record count",
+          "4",
+          "4",
+          "PASS"
+        ],
+        [
+          "tape6_sample",
+          "total == sum(records)",
+          "3.896383e+10",
+          "3.896383e+10",
+          "PASS"
+        ],
+        [
+          "tape9_sample",
+          "entry count",
+          "5",
+          "5",
+          "PASS"
+        ],
+        [
+          "tape9_sample",
+          "decay constants",
+          "U235 3.1209e-17, Cs137 7.3217e-10, Co60 4.1674e-09",
+          "U235 3.120900e-17, Cs137 7.321700e-10, Co60 4.167400e-09",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "R2S workflow"
+    },
+    {
+      "kind": "prose",
+      "text": "`r2s_from_deck`/`r2s_expand`/`r2s_validate` run on `fixtures/alara/decks/sample2`;\n`r2s_assemble` runs on `fixtures/alara/output/sample2.out`. Smoke tests on\ncommitted fixtures; no independent oracle exists."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Fixture",
+        "Check",
+        "Expected",
+        "Observed",
+        "Status"
+      ],
+      "rows": [
+        [
+          "sample2 deck",
+          "workflow steps",
+          "[inner_zone x flux_1, outer_zone x flux_1]",
+          "[{'zone': 'inner_zone', 'flux': 'flux_1'}, {'zone': 'outer_zone', 'flux': 'flux_1'}]",
+          "PASS"
+        ],
+        [
+          "sample2 deck",
+          "top schedule",
+          "1_year",
+          "1_year",
+          "PASS"
+        ],
+        [
+          "sample2 deck",
+          "cooling entries",
+          "4, first 86400 s",
+          "4, first 8.640000e+04",
+          "PASS"
+        ],
+        [
+          "sample2 deck",
+          "expanded total",
+          "31557600 s (1 ALARA year)",
+          "3.155760e+07",
+          "PASS"
+        ],
+        [
+          "sample2 deck",
+          "workflow validates",
+          "OK",
+          "OK",
+          "PASS"
+        ],
+        [
+          "sample2.out",
+          "assemble groups",
+          "4 uniform quarters",
+          "1.968918e+12, 1.968918e+12, 1.968918e+12, 1.968918e+12",
+          "PASS"
+        ],
+        [
+          "sample2.out",
+          "assemble unknown zone",
+          "total 0",
+          "-0.000000e+00",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Both zones share one flux (no void-only step is synthesized), and the expanded\nschedule totals one ALARA year of 365.25 d (31557600 s). Photon assembly\nsums zone `SpecificActivity` and splits the total uniformly over the\nrequested groups: the total shutdown strength is preserved, while real decay\nphotons follow the nuclide- and energy-dependent `.photonSrc` lines."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "PyNE oracle probes (container-only)"
+    },
+    {
+      "kind": "prose",
+      "text": "`pyne.alara` is importable; public names: HAVE_PYMOAB, Material, Mesh, MeshError, N_A, QA_warn, SimpleDataSource, alara, anum, basestring, branch_ratio, collections, collectionsAbc, cram, decay_children, decay_const, from_atom_frac, get_alara_lib, irradiation_blocks, mesh_to_fluxin, mesh_to_geom, np, nucname, num_density_to_mesh, open, os, photon_source_hdf5_to_mesh, photon_source_to_hdf5, phtn_src_energy_bounds, print_function, re, read_decay_times, record_to_geom, response_hdf5_to_mesh, response_strings, response_to_hdf5, responses_output_zone, serpent, str_to_unicode, tb, to_sec, warn, znum."
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED: the pyne.alara parse result is not an ALARA block set (entries fall outside the deck block\nvocabulary), so the deck block-set comparison did not run."
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED: `pyne.origen` is not importable (No module named 'pyne.origen'); PyNE ships no matching\nreader, so the corresponding fixtures remain synthetic self-consistency checks."
+    },
+    {
+      "kind": "prose",
+      "text": "`pyne.fispact` is unexpectedly importable; no comparison is defined for it yet."
+    },
+    {
+      "kind": "prose",
+      "text": "`pyne.cccc` is unexpectedly importable; no comparison is defined for it yet."
+    }
+  ]
+}

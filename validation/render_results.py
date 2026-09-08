@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -70,6 +71,22 @@ def render_table(headers: list[str], rows: list[list[str]]) -> list[str]:
     return lines
 
 
+def _wrap_prose(text: str, width: int = 100) -> list[str]:
+    """Word-wrap prose paragraphs so results.md stays markdownlint-clean.
+
+    Cosmetic only: numbers live in tables (exempt from line-length) and are
+    never altered here. Existing short lines (including the scripts'
+    hand-wrapped paragraphs and blank separators) pass through untouched.
+    """
+    lines: list[str] = []
+    for paragraph in text.split("\n"):
+        if len(paragraph) <= width:
+            lines.append(paragraph)
+        else:
+            lines.extend(textwrap.wrap(paragraph, width=width) or [""])
+    return lines
+
+
 def render_section(section: dict[str, Any]) -> list[str]:
     """Render one report section to Markdown lines."""
     lines: list[str] = []
@@ -78,7 +95,7 @@ def render_section(section: dict[str, Any]) -> list[str]:
         prefix = "#" * section["level"]
         lines.append(f"{prefix} {section['text']}")
     elif kind == "prose":
-        lines.append(section["text"])
+        lines.extend(_wrap_prose(section["text"]))
     elif kind == "table":
         lines.extend(render_table(section["headers"], section["rows"]))
     return lines

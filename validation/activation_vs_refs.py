@@ -63,6 +63,11 @@ EXPECTED_BLOCKS = [
     "truncation",
 ]
 
+# ALARA input-deck block vocabulary: the pyne.alara oracle probe below is
+# heuristic (it tries whatever entry point exists), so a result is only
+# comparable when every key/entry is a plausible deck block name.
+_KNOWN_BLOCKS = frozenset(EXPECTED_BLOCKS)
+
 _REAL_ENVIRONMENT = common.environment
 
 
@@ -957,10 +962,32 @@ def _compare_pyne_alara(report: Report, pyne_alara: Any) -> None:
             )
             return
         if isinstance(parsed, dict):
-            pyne_blocks: Any = sorted(str(k) for k in parsed)
+            keys = [str(k) for k in parsed]
+            if any(k.lower() not in _KNOWN_BLOCKS for k in keys):
+                report.prose(
+                    _note(
+                        "SKIPPED: the pyne.alara parse result is not an ALARA"
+                        " block set (keys fall outside the deck block"
+                        " vocabulary), so the deck block-set comparison did"
+                        " not run."
+                    )
+                )
+                return
+            pyne_blocks: Any = sorted(keys)
             expected: Any = sorted(nuc_blocks)
         elif isinstance(parsed, list):
-            pyne_blocks = sorted(str(v) for v in parsed)
+            vals = [str(v) for v in parsed]
+            if any(v.lower() not in _KNOWN_BLOCKS for v in vals):
+                report.prose(
+                    _note(
+                        "SKIPPED: the pyne.alara parse result is not an ALARA"
+                        " block set (entries fall outside the deck block"
+                        " vocabulary), so the deck block-set comparison did"
+                        " not run."
+                    )
+                )
+                return
+            pyne_blocks = sorted(vals)
             expected = sorted(nuc_blocks)
         else:
             report.prose(
