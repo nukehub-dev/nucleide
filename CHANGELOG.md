@@ -13,6 +13,17 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Added
+
+- `nucleide-emit` single-material emission (`crates/emit/`): one `Material`
+  renders through five code dialects — MCNP `m` cards (mass fractions,
+  configurable xs suffix), Serpent `mat` cards, FLUKA `COMPOUND` cards,
+  ALARA `mixture` blocks, single-zone PARTISN decks — plus a mass-drift
+  report (`emit_drift`) with per-nuclide drop reasons and re-parse
+  verification where readers exist (MCNP, ALARA).
+- Python API: `nucleide.emit.emit_cards` / `emit_drift_table` thin wrappers
+  over the new crate.
+
 ## [0.3.0] - 2026-09-08
 
 ### Added

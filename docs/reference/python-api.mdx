@@ -60,6 +60,9 @@ re-exports its symbols from `nucleide._internal`:
 - [<span class="ref-pill"><code>nucleide.r2s</code></span>](#nucleider2s)
   — Rigorous two-step (R2S) shutdown-dose-rate orchestration · [<span class="ref-pill"><code>nucleide-r2s</code></span>](../architecture/crate-responsibilities.md#nucleide-r2s)
 
+- [<span class="ref-pill"><code>nucleide.emit</code></span>](#nucleideemit)
+  — Single-material emission to legacy transport-code cards · [<span class="ref-pill"><code>nucleide-emit</code></span>](../architecture/crate-responsibilities.md#nucleide-emit)
+
 - [<span class="ref-pill"><code>nucleide.data</code></span>](#nucleidedata)
   — Download Nucleide data files pinned to a release tag, branch, or commit. · pure Python
 
@@ -525,6 +528,28 @@ Backing crate: [`nucleide-r2s`](../architecture/crate-responsibilities.md#nuclei
   (alias of `r2s_assemble`)
 
 {/*GEN:module-r2s:END*/}
+
+## `nucleide.emit`
+
+{/*GEN:module-emit:START*/}
+
+Backing crate: [`nucleide-emit`](../architecture/crate-responsibilities.md#nucleide-emit) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/emit)
+
+
+- [`emit_cards`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L484):
+
+  ```python
+  emit_cards(comp: dict[str, float], name: str, density: float | None = None, mcnp_number: int = 1, xs_suffix: str = '80c', fluka_fid: int = 1, partisn_zone: int = 1) -> dict[str, str]
+  ```
+
+
+- [`emit_drift_table`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L493):
+
+  ```python
+  emit_drift_table(comp: dict[str, float], name: str, density: float | None = None, mcnp_number: int = 1, xs_suffix: str = '80c', fluka_fid: int = 1, partisn_zone: int = 1) -> list[dict[str, Any]]
+  ```
+
+{/*GEN:module-emit:END*/}
 
 ## `nucleide.data`
 

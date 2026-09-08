@@ -3348,6 +3348,151 @@ fn audit_material(comp: BTreeMap<String, f64>) -> PyResult<Vec<BTreeMap<String, 
         .collect())
 }
 
+/// Emit one composition through all five code dialects (MCNP, Serpent, FLUKA,
+/// ALARA, PARTISN). Returns `{code: card_text}`.
+///
+/// `comp` maps nuclide names to grams; `density` is mass density [g/cm³] for
+/// dialects that need one (falls back to none — Serpent/FLUKA/PARTISN error
+/// without it).
+#[pyfunction]
+#[pyo3(signature = (comp, name, density=None, mcnp_number=1, xs_suffix="80c", fluka_fid=1, partisn_zone=1))]
+#[allow(clippy::too_many_arguments)]
+fn emit_cards(
+    comp: BTreeMap<String, f64>,
+    name: &str,
+    density: Option<f64>,
+    mcnp_number: u32,
+    xs_suffix: &str,
+    fluka_fid: u32,
+    partisn_zone: u32,
+) -> PyResult<BTreeMap<String, String>> {
+    let (emitted, _) = emit_drift_inner(
+        comp,
+        name,
+        density,
+        mcnp_number,
+        xs_suffix,
+        fluka_fid,
+        partisn_zone,
+    )?;
+    Ok(emitted
+        .into_iter()
+        .map(|e| (e.code.to_string(), e.text))
+        .collect())
+}
+
+/// Mass-drift report for one composition across all five code dialects.
+/// Returns `[{code, mass_in, mass_out, rel_drift, dropped: [{nuclide, mass,
+/// reason}], reparsed}]`.
+#[pyfunction]
+#[pyo3(signature = (comp, name, density=None, mcnp_number=1, xs_suffix="80c", fluka_fid=1, partisn_zone=1))]
+#[allow(clippy::too_many_arguments)]
+fn emit_drift_table(
+    comp: BTreeMap<String, f64>,
+    name: &str,
+    density: Option<f64>,
+    mcnp_number: u32,
+    xs_suffix: &str,
+    fluka_fid: u32,
+    partisn_zone: u32,
+) -> PyResult<Vec<BTreeMap<String, Py<PyAny>>>> {
+    let (_, table) = emit_drift_inner(
+        comp,
+        name,
+        density,
+        mcnp_number,
+        xs_suffix,
+        fluka_fid,
+        partisn_zone,
+    )?;
+    Python::attach(|py| {
+        Ok(table
+            .rows
+            .into_iter()
+            .map(|r| {
+                let mut d = BTreeMap::new();
+                d.insert(
+                    "code".to_string(),
+                    r.code
+                        .to_string()
+                        .into_pyobject(py)
+                        .unwrap()
+                        .unbind()
+                        .into_any(),
+                );
+                d.insert(
+                    "mass_in".to_string(),
+                    r.mass_in.into_pyobject(py).unwrap().unbind().into_any(),
+                );
+                d.insert(
+                    "mass_out".to_string(),
+                    r.mass_out.into_pyobject(py).unwrap().unbind().into_any(),
+                );
+                d.insert(
+                    "rel_drift".to_string(),
+                    r.rel_drift.into_pyobject(py).unwrap().unbind().into_any(),
+                );
+                let dropped: Vec<BTreeMap<String, Py<PyAny>>> = r
+                    .dropped
+                    .into_iter()
+                    .map(|x| {
+                        let mut dd = BTreeMap::new();
+                        dd.insert(
+                            "nuclide".to_string(),
+                            x.id.to_name()
+                                .into_pyobject(py)
+                                .unwrap()
+                                .unbind()
+                                .into_any(),
+                        );
+                        dd.insert(
+                            "mass".to_string(),
+                            x.mass.into_pyobject(py).unwrap().unbind().into_any(),
+                        );
+                        dd.insert(
+                            "reason".to_string(),
+                            x.reason.into_pyobject(py).unwrap().unbind().into_any(),
+                        );
+                        dd
+                    })
+                    .collect();
+                d.insert(
+                    "dropped".to_string(),
+                    dropped.into_pyobject(py).unwrap().unbind().into_any(),
+                );
+                d.insert(
+                    "reparsed".to_string(),
+                    pyo3::types::PyBool::new(py, r.reparsed)
+                        .to_owned()
+                        .into_any()
+                        .unbind(),
+                );
+                d
+            })
+            .collect())
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_drift_inner(
+    comp: BTreeMap<String, f64>,
+    name: &str,
+    density: Option<f64>,
+    mcnp_number: u32,
+    xs_suffix: &str,
+    fluka_fid: u32,
+    partisn_zone: u32,
+) -> PyResult<(Vec<nucleide_emit::Emitted>, nucleide_emit::DriftTable)> {
+    let mut mat = comp_to_material(comp)?;
+    mat.set_density(density);
+    let mut opts = nucleide_emit::EmitOptions::new(name);
+    opts.mcnp_number = mcnp_number;
+    opts.xs_suffix = xs_suffix.to_string();
+    opts.fluka_fid = fluka_fid;
+    opts.partisn_zone = partisn_zone;
+    nucleide_emit::emit_drift(&mat, &opts).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
 /// Python module entry point.
 #[pymodule]
 fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -3413,6 +3558,8 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(mcc3_to_nucid, m)?)?;
     m.add_function(wrap_pyfunction!(check_labels, m)?)?;
     m.add_function(wrap_pyfunction!(audit_material, m)?)?;
+    m.add_function(wrap_pyfunction!(emit_cards, m)?)?;
+    m.add_function(wrap_pyfunction!(emit_drift_table, m)?)?;
     m.add_class::<PyNuclide>()?;
     m.add_class::<PyParticle>()?;
     m.add_class::<PyXsdir>()?;

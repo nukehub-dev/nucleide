@@ -21,6 +21,7 @@ SECTION_ORDER = [
     "nuclear_data",
     "parsers",
     "activation",
+    "emit",
     "timings",
 ]
 

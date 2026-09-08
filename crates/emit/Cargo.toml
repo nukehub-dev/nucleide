@@ -1,0 +1,18 @@
+[package]
+name = "nucleide-emit"
+description = "Single-material emission to MCNP/Serpent/FLUKA/ALARA/PARTISN cards plus mass-drift reports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nucleide-nuclei.workspace = true
+nucleide-material.workspace = true
+nucleide-mcnp-io.workspace = true
+nucleide-serpent-io.workspace = true
+nucleide-fluka-io.workspace = true
+nucleide-alara-io.workspace = true
+nucleide-cccc-io.workspace = true
+thiserror.workspace = true

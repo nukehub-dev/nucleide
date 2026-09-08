@@ -253,6 +253,7 @@ Use `scripts/bump-version.sh X.Y.Z` to bump the workspace version and stamp
 
 ## Child NAD Index
 
+- `crates/emit/AGENTS.md` — five-emitter card emission + mass-drift contracts.
 - `website/AGENTS.md` — website build, preview, sync, and E2E test workflow.
 - `validation/AGENTS.md` — cross-code validation harness workflow and the
   generated-results contract.

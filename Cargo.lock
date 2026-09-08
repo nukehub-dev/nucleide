@@ -694,6 +694,7 @@ dependencies = [
  "nucleide-alara-io",
  "nucleide-cccc-io",
  "nucleide-depletion",
+ "nucleide-emit",
  "nucleide-enrichment",
  "nucleide-fispact-io",
  "nucleide-fluka-io",
@@ -726,6 +727,20 @@ dependencies = [
  "num-complex",
  "roxmltree",
  "serde_json",
+]
+
+[[package]]
+name = "nucleide-emit"
+version = "0.3.0"
+dependencies = [
+ "nucleide-alara-io",
+ "nucleide-cccc-io",
+ "nucleide-fluka-io",
+ "nucleide-material",
+ "nucleide-mcnp-io",
+ "nucleide-nuclei",
+ "nucleide-serpent-io",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

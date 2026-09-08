@@ -103,6 +103,12 @@ Depends on `nucleide-alara-io`, `nucleide-mcnp-io`, `nucleide-vr-tools`, `nuclei
 codes. The uniform split preserves only the total shutdown strength until
 group-wise emission data is wired through per nuclide.
 
+### `nucleide-emit`
+
+Single-material emission to MCNP/Serpent/FLUKA/ALARA/PARTISN cards plus a
+mass-drift report. Pure glue: depends on `nucleide-material` and the five
+`*-io` crates, never the reverse, and never on bindings.
+
 ## Binding crates
 
 ### `nucleide-bindings`
@@ -144,4 +150,5 @@ When publishing to crates.io, publish in dependency order:
 12. `nucleide-fispact-io`
 13. `nucleide-origen-io`
 14. `nucleide-r2s`
-15. `nucleide-bindings`
+15. `nucleide-emit`
+16. `nucleide-bindings`

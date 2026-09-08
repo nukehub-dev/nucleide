@@ -92,6 +92,7 @@ CRATE_ORDER = [
     "nucleide-depletion",
     "nucleide-vr-tools",
     "nucleide-r2s",
+    "nucleide-emit",
     "nucleide-bindings",
     "nucleide-wasm",
 ]
@@ -110,6 +111,7 @@ MODULE_ORDER = [
     "fispact",
     "origen",
     "r2s",
+    "emit",
     "data",
 ]
 

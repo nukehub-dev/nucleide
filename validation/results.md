@@ -544,16 +544,33 @@ reader, so the corresponding fixtures remain synthetic self-consistency checks.
 
 `pyne.cccc` is unexpectedly importable; no comparison is defined for it yet.
 
-## 8. Timings (`timings.py`)
+## 8. Emission drift (`emit_vs_self.py`)
+
+Self-consistency oracle for `nucleide.emit` (no external code offers this comparison). Uranium metal
+must emit losslessly on all five dialects; the FLUKA O16 gap is asserted as reported drift.
+
+| Code    | Mass out (g) | Rel drift    | Dropped | Reparsed | Status |
+|---------|--------------|--------------|---------|----------|--------|
+| MCNP    | 1.000000e+02 | 0.000000e+00 | 0       | True     | PASS   |
+| Serpent | 1.000000e+02 | 0.000000e+00 | 0       | False    | PASS   |
+| FLUKA   | 1.000000e+02 | 0.000000e+00 | 0       | False    | PASS   |
+| ALARA   | 1.000000e+02 | 0.000000e+00 | 0       | True     | PASS   |
+| PARTISN | 1.000000e+02 | 0.000000e+00 | 0       | False    | PASS   |
+
+Re-parse verified dialects: ALARA, MCNP.
+
+Water-like mix: FLUKA accounts 1.000000e+00 of 3.0 g with 1 dropped nuclide(s).
+
+## 9. Timings (`timings.py`)
 
 Mean wall time over 20 repeats. The CRAM comparison now times **only the solve
 step** on pre-built systems/matrices.
 
 | Operation                                             | Nucleide       | Reference code                              |
 |-------------------------------------------------------|----------------|---------------------------------------------|
-| CRAM-48 solve (`chain_ni.xml`)                        | 1.380312e-04 s | OpenMC CRAM48: 2.979526e-03 s               |
-| Default uranium enrichment solve                      | 1.094688e-04 s | PyNE multicomponent: 5.459966e-03 s         |
-| MAGIC total-mode solve (synthetic tally)              | 7.313500e-07 s | PyNE-equivalent pure Python: 3.933250e-06 s |
+| CRAM-48 solve (`chain_ni.xml`)                        | 1.587412e-04 s | OpenMC CRAM48: 3.021879e-03 s               |
+| Default uranium enrichment solve                      | 1.102348e-04 s | PyNE multicomponent: 5.779270e-03 s         |
+| MAGIC total-mode solve (synthetic tally)              | 5.657496e-07 s | PyNE-equivalent pure Python: 3.914950e-06 s |
 | Native Rust CRAM-48 solve (Criterion, no Python)      | 7.675881e-05 s | —                                           |
 | Native Rust deplete end-to-end (Criterion, no Python) | 7.858313e-05 s | —                                           |
 

@@ -151,7 +151,7 @@ jobs:
       - name: Publish workspace crates
         run: |
           set -euo pipefail
-          for crate in nucleide-linalg nucleide-nuclei nucleide-material nucleide-mcnp-io nucleide-serpent-io nucleide-fluka-io nucleide-enrichment nucleide-depletion nucleide-vr-tools nucleide-alara-io nucleide-cccc-io nucleide-fispact-io nucleide-origen-io nucleide-r2s nucleide-bindings; do
+          for crate in nucleide-linalg nucleide-nuclei nucleide-material nucleide-mcnp-io nucleide-serpent-io nucleide-fluka-io nucleide-enrichment nucleide-depletion nucleide-vr-tools nucleide-alara-io nucleide-cccc-io nucleide-fispact-io nucleide-origen-io nucleide-r2s nucleide-emit nucleide-bindings; do
             echo "--- cargo publish -p $crate ---"
             attempt=1
             while true; do

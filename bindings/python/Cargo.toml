@@ -26,3 +26,4 @@ nucleide-cccc-io.workspace = true
 nucleide-fispact-io.workspace = true
 nucleide-origen-io.workspace = true
 nucleide-r2s.workspace = true
+nucleide-emit.workspace = true

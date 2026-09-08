@@ -25,18 +25,18 @@
       "rows": [
         [
           "CRAM-48 solve (`chain_ni.xml`)",
-          "1.380312e-04 s",
-          "OpenMC CRAM48: 2.979526e-03 s"
+          "1.587412e-04 s",
+          "OpenMC CRAM48: 3.021879e-03 s"
         ],
         [
           "Default uranium enrichment solve",
-          "1.094688e-04 s",
-          "PyNE multicomponent: 5.459966e-03 s"
+          "1.102348e-04 s",
+          "PyNE multicomponent: 5.779270e-03 s"
         ],
         [
           "MAGIC total-mode solve (synthetic tally)",
-          "7.313500e-07 s",
-          "PyNE-equivalent pure Python: 3.933250e-06 s"
+          "5.657496e-07 s",
+          "PyNE-equivalent pure Python: 3.914950e-06 s"
         ],
         [
           "Native Rust CRAM-48 solve (Criterion, no Python)",

@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "name": "emit",
+  "title": "Emission drift (`emit_vs_self.py`)",
+  "environment": {
+    "date": "2026-09-08",
+    "python": "3.12.14",
+    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
+    "nucleide": "0.3.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "text": "Self-consistency oracle for `nucleide.emit` (no external code offers this comparison). Uranium metal must emit losslessly on all five dialects; the FLUKA O16 gap is asserted as reported drift."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Code",
+        "Mass out (g)",
+        "Rel drift",
+        "Dropped",
+        "Reparsed",
+        "Status"
+      ],
+      "rows": [
+        [
+          "MCNP",
+          "1.000000e+02",
+          "0.000000e+00",
+          "0",
+          "True",
+          "PASS"
+        ],
+        [
+          "Serpent",
+          "1.000000e+02",
+          "0.000000e+00",
+          "0",
+          "False",
+          "PASS"
+        ],
+        [
+          "FLUKA",
+          "1.000000e+02",
+          "0.000000e+00",
+          "0",
+          "False",
+          "PASS"
+        ],
+        [
+          "ALARA",
+          "1.000000e+02",
+          "0.000000e+00",
+          "0",
+          "True",
+          "PASS"
+        ],
+        [
+          "PARTISN",
+          "1.000000e+02",
+          "0.000000e+00",
+          "0",
+          "False",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Re-parse verified dialects: ALARA, MCNP."
+    },
+    {
+      "kind": "prose",
+      "text": "Water-like mix: FLUKA accounts 1.000000e+00 of 3.0 g with 1 dropped nuclide(s)."
+    }
+  ]
+}

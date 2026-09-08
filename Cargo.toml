@@ -15,6 +15,7 @@ members = [
     "crates/fispact-io",
     "crates/origen-io",
     "crates/r2s",
+    "crates/emit",
     "bindings/python",
     "bindings/wasm",
 ]
@@ -42,6 +43,7 @@ nucleide-cccc-io = { path = "crates/cccc-io", version = "0.3.0" }
 nucleide-fispact-io = { path = "crates/fispact-io", version = "0.3.0" }
 nucleide-origen-io = { path = "crates/origen-io", version = "0.3.0" }
 nucleide-r2s = { path = "crates/r2s", version = "0.3.0" }
+nucleide-emit = { path = "crates/emit", version = "0.3.0" }
 
 # --- planned stack (enabled per-crate as features land) ---
 # abi3-py310: one wheel per platform serves all Python >= 3.10
