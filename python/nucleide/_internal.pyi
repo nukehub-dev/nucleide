@@ -487,6 +487,7 @@ def emit_cards(
     density: float | None = None,
     mcnp_number: int = 1,
     xs_suffix: str = "80c",
+    serpent_lib: str = "03c",
     fluka_fid: int = 1,
     partisn_zone: int = 1,
 ) -> dict[str, str]: ...
@@ -496,6 +497,7 @@ def emit_drift_table(
     density: float | None = None,
     mcnp_number: int = 1,
     xs_suffix: str = "80c",
+    serpent_lib: str = "03c",
     fluka_fid: int = 1,
     partisn_zone: int = 1,
 ) -> list[dict[str, Any]]: ...

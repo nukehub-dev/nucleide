@@ -33,6 +33,7 @@ license.
 | [Enrichment cascade](tutorials/python/enrichment-cascade.md) | Set up and solve a multicomponent enrichment cascade |
 | [Activation analysis](tutorials/python/activation-analysis.md) | Read ALARA, FISPACT-II, and ORIGEN files and assemble an R2S workflow |
 | [Deterministic I/O](tutorials/python/deterministic-io.md) | Read ISOTXS and flux files and write PARTISN decks |
+| [Emit code cards](tutorials/python/emit-cards.md) | Render one material to MCNP, Serpent, FLUKA, ALARA, and PARTISN cards |
 | [Interactive tutorials](tutorials/interactive/index.mdx) | Run Nucleide in the browser through the WASM build |
 | [Interactive — nuclides](tutorials/interactive/nuclides.mdx) | Nuclide identifiers and nuclear data |
 | [Interactive — materials](tutorials/interactive/materials.mdx) | Formulas, fractions, mixing, and XML export |

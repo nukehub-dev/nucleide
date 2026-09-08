@@ -2,12 +2,15 @@
 //!
 //! Mass density is emitted negative and mass fractions are emitted negative,
 //! per the Serpent convention (negative `dens` selects g/cm³, negative
-//! fractions select mass fractions). One nuclide per line. Serpent has no
-//! material reader in this workspace, so drift is analytic
+//! fractions select mass fractions; Serpent normalises automatically).
+//! Nuclides use `{zaid}.{lib}` identifiers (e.g. `92235.03c`), matching the
+//! official examples — bare names do not resolve against an `acelib` table.
+//! One nuclide per line; Serpent cards need no continuation markers. Serpent
+//! has no material reader in this workspace, so drift is analytic
 //! ([`Emitted::reparsed`] is always false).
 
 use nucleide_material::Material;
-use nucleide_nuclei::dialects;
+use nucleide_nuclei::dialects::to_zaid;
 
 use crate::{Code, EmitOptions, Emitted, Error, Result};
 
@@ -18,7 +21,7 @@ pub fn emit_serpent(mat: &Material, opts: &EmitOptions) -> Result<Emitted> {
     let mut accounted = Vec::with_capacity(fracs.len());
     let mut text = format!("mat {} {}\n", opts.name, -density);
     for (id, w) in &fracs {
-        text.push_str(&format!("  {} {}\n", dialects::serpent(*id), -w));
+        text.push_str(&format!("  {}.{} {}\n", to_zaid(*id), opts.serpent_lib, -w));
         accounted.push((*id, mat.comp.get(id).copied().unwrap_or(0.0)));
     }
     Ok(Emitted {
@@ -43,8 +46,8 @@ mod tests {
         let opts = EmitOptions::new("leu").with_density(10.0);
         let out = emit_serpent(&mat, &opts).unwrap();
         assert!(out.text.starts_with("mat leu -10\n"));
-        assert!(out.text.contains("U-235 -0.05"));
-        assert!(out.text.contains("U-238 -0.95"));
+        assert!(out.text.contains("92235.03c -0.05"));
+        assert!(out.text.contains("92238.03c -0.95"));
         assert!(!out.reparsed);
         assert!((out.mass_out() - 100.0).abs() < 1e-12);
     }

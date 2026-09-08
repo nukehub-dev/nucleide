@@ -87,6 +87,8 @@ pub struct EmitOptions {
     /// Mass density [g/cm³] for dialects that need one (Serpent, FLUKA,
     /// PARTISN). Falls back to [`Material::density`]; errors when absent.
     pub density: Option<f64>,
+    /// Serpent cross-section library suffix (`03c` renders `92235.03c`).
+    pub serpent_lib: String,
     /// FLUKA material index number.
     pub fluka_fid: u32,
     /// PARTISN zone id for the single emitted zone.
@@ -101,6 +103,7 @@ impl EmitOptions {
             mcnp_number: 1,
             xs_suffix: "80c".to_string(),
             density: None,
+            serpent_lib: "03c".to_string(),
             fluka_fid: 1,
             partisn_zone: 1,
         }

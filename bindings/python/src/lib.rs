@@ -3355,7 +3355,7 @@ fn audit_material(comp: BTreeMap<String, f64>) -> PyResult<Vec<BTreeMap<String, 
 /// dialects that need one (falls back to none — Serpent/FLUKA/PARTISN error
 /// without it).
 #[pyfunction]
-#[pyo3(signature = (comp, name, density=None, mcnp_number=1, xs_suffix="80c", fluka_fid=1, partisn_zone=1))]
+#[pyo3(signature = (comp, name, density=None, mcnp_number=1, xs_suffix="80c", serpent_lib="03c", fluka_fid=1, partisn_zone=1))]
 #[allow(clippy::too_many_arguments)]
 fn emit_cards(
     comp: BTreeMap<String, f64>,
@@ -3363,6 +3363,7 @@ fn emit_cards(
     density: Option<f64>,
     mcnp_number: u32,
     xs_suffix: &str,
+    serpent_lib: &str,
     fluka_fid: u32,
     partisn_zone: u32,
 ) -> PyResult<BTreeMap<String, String>> {
@@ -3372,6 +3373,7 @@ fn emit_cards(
         density,
         mcnp_number,
         xs_suffix,
+        serpent_lib,
         fluka_fid,
         partisn_zone,
     )?;
@@ -3385,7 +3387,7 @@ fn emit_cards(
 /// Returns `[{code, mass_in, mass_out, rel_drift, dropped: [{nuclide, mass,
 /// reason}], reparsed}]`.
 #[pyfunction]
-#[pyo3(signature = (comp, name, density=None, mcnp_number=1, xs_suffix="80c", fluka_fid=1, partisn_zone=1))]
+#[pyo3(signature = (comp, name, density=None, mcnp_number=1, xs_suffix="80c", serpent_lib="03c", fluka_fid=1, partisn_zone=1))]
 #[allow(clippy::too_many_arguments)]
 fn emit_drift_table(
     comp: BTreeMap<String, f64>,
@@ -3393,6 +3395,7 @@ fn emit_drift_table(
     density: Option<f64>,
     mcnp_number: u32,
     xs_suffix: &str,
+    serpent_lib: &str,
     fluka_fid: u32,
     partisn_zone: u32,
 ) -> PyResult<Vec<BTreeMap<String, Py<PyAny>>>> {
@@ -3402,6 +3405,7 @@ fn emit_drift_table(
         density,
         mcnp_number,
         xs_suffix,
+        serpent_lib,
         fluka_fid,
         partisn_zone,
     )?;
@@ -3480,6 +3484,7 @@ fn emit_drift_inner(
     density: Option<f64>,
     mcnp_number: u32,
     xs_suffix: &str,
+    serpent_lib: &str,
     fluka_fid: u32,
     partisn_zone: u32,
 ) -> PyResult<(Vec<nucleide_emit::Emitted>, nucleide_emit::DriftTable)> {
@@ -3488,6 +3493,7 @@ fn emit_drift_inner(
     let mut opts = nucleide_emit::EmitOptions::new(name);
     opts.mcnp_number = mcnp_number;
     opts.xs_suffix = xs_suffix.to_string();
+    opts.serpent_lib = serpent_lib.to_string();
     opts.fluka_fid = fluka_fid;
     opts.partisn_zone = partisn_zone;
     nucleide_emit::emit_drift(&mat, &opts).map_err(|e| PyValueError::new_err(e.to_string()))

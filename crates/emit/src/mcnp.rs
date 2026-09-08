@@ -11,8 +11,10 @@ use nucleide_nuclei::{dialects::to_zaid, NuclideId};
 
 use crate::{Code, EmitOptions, Emitted, Error, Result};
 
-/// Pairs of `(zaid, fraction)` per card line.
-const PAIRS_PER_LINE: usize = 4;
+/// Hard MCNP line-length cap: 128 columns for MCNP 6.2+ (80 for older
+/// releases), per LA-UR-18-20808 §2.6.2. Lines are packed greedily and never
+/// exceed this width.
+const MAX_LINE_LEN: usize = 128;
 
 /// Emit `mat` as an MCNP material card.
 pub fn emit_mcnp(mat: &Material, opts: &EmitOptions) -> Result<Emitted> {
@@ -27,13 +29,15 @@ pub fn emit_mcnp(mat: &Material, opts: &EmitOptions) -> Result<Emitted> {
     }
 
     let mut text = format!("m{}", opts.mcnp_number);
-    for (i, chunk) in pairs.chunks(PAIRS_PER_LINE).enumerate() {
-        if i > 0 {
+    let mut line_len = text.len();
+    for (zaid, frac) in &pairs {
+        let piece = format!(" {zaid}.{} {frac}", opts.xs_suffix);
+        if line_len + piece.len() > MAX_LINE_LEN {
             text.push_str("\n     ");
+            line_len = 5;
         }
-        for (zaid, frac) in chunk {
-            text.push_str(&format!(" {zaid}.{} {frac}", opts.xs_suffix));
-        }
+        text.push_str(&piece);
+        line_len += piece.len();
     }
     text.push('\n');
 
@@ -115,6 +119,27 @@ mod tests {
         assert!(out.reparsed);
         assert!(out.dropped.is_empty());
         assert!((out.mass_out() - 200.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn mcnp_long_cards_wrap_within_128_columns() {
+        let mut mat = Material::new();
+        for (i, name) in [
+            "U235", "U238", "Pu239", "Pu240", "Pu241", "O16", "H1", "B10",
+        ]
+        .iter()
+        .enumerate()
+        {
+            mat.add_nuclide(NuclideId::from_name(name).unwrap(), (i + 1) as f64);
+        }
+        let opts = EmitOptions::new("many");
+        let out = emit_mcnp(&mat, &opts).unwrap();
+        assert!(out.text.lines().count() > 1);
+        for line in out.text.lines() {
+            assert!(line.len() <= 128, "{line:?}");
+        }
+        assert!(out.reparsed);
+        assert!((out.mass_out() - 36.0).abs() < 1e-12);
     }
 
     #[test]

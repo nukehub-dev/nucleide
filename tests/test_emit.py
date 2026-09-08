@@ -14,7 +14,7 @@ def test_emit_cards_five_codes() -> None:
     assert cards["MCNP"].startswith("m1 ")
     assert "92235.80c" in cards["MCNP"]
     assert cards["Serpent"].startswith("mat umetal -19.1\n")
-    assert "U-235 -0.05" in cards["Serpent"]
+    assert "92235.03c -0.05" in cards["Serpent"]
     assert "COMPOUND" in cards["FLUKA"]
     assert "235-U" in cards["FLUKA"]
     assert cards["ALARA"].startswith("mixture umetal\n")

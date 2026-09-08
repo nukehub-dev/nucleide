@@ -17,9 +17,11 @@ Owns `crates/emit/src/` (one module per dialect plus shared
 
 - Dialect conventions (deviations are bugs, not style):
   - MCNP: `m<number>` card, `{zaid}.{xs_suffix}` ids (default `80c`),
-    negative mass fractions, 4 pairs per line, 5-blank continuation indent.
-  - Serpent: `mat <name> <-density>` with negative per-nuclide mass
-    fractions, one nuclide per line.
+    negative mass fractions, greedy packing within the 128-column cap
+    (LA-UR-18-20808 §2.6.2), 5-blank continuation indent.
+  - Serpent: `mat <name> <-density>` with `{zaid}.{lib}` ids (default
+    `03c`) and negative per-nuclide mass fractions, one nuclide per line
+    (no continuation markers needed).
   - FLUKA: whole material as one `COMPOUND` card with mass fractions via
     existing `compound_str`; nuclides without a table name/mass are
     `dropped`, never fatal.

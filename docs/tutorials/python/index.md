@@ -19,3 +19,5 @@ and assumes you have already installed the project (see
    and ORIGEN files and assemble an R2S workflow.
 6. [Deterministic I/O](deterministic-io.md) — read ISOTXS and flux files
    and write PARTISN decks.
+7. [Emit code cards](emit-cards.md) — render one material to MCNP, Serpent,
+   FLUKA, ALARA, and PARTISN cards with a mass-drift report.

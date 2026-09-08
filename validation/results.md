@@ -568,9 +568,9 @@ step** on pre-built systems/matrices.
 
 | Operation                                             | Nucleide       | Reference code                              |
 |-------------------------------------------------------|----------------|---------------------------------------------|
-| CRAM-48 solve (`chain_ni.xml`)                        | 1.587412e-04 s | OpenMC CRAM48: 3.021879e-03 s               |
-| Default uranium enrichment solve                      | 1.102348e-04 s | PyNE multicomponent: 5.779270e-03 s         |
-| MAGIC total-mode solve (synthetic tally)              | 5.657496e-07 s | PyNE-equivalent pure Python: 3.914950e-06 s |
+| CRAM-48 solve (`chain_ni.xml`)                        | 1.346853e-04 s | OpenMC CRAM48: 3.114705e-03 s               |
+| Default uranium enrichment solve                      | 1.080135e-04 s | PyNE multicomponent: 5.759992e-03 s         |
+| MAGIC total-mode solve (synthetic tally)              | 5.875504e-07 s | PyNE-equivalent pure Python: 3.970350e-06 s |
 | Native Rust CRAM-48 solve (Criterion, no Python)      | 7.675881e-05 s | —                                           |
 | Native Rust deplete end-to-end (Criterion, no Python) | 7.858313e-05 s | —                                           |
 
