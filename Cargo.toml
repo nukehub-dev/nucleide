@@ -20,7 +20,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "BSD-2-Clause"
 repository = "https://github.com/nukehub-dev/nucleide"
@@ -28,20 +28,20 @@ rust-version = "1.83"
 
 [workspace.dependencies]
 # --- internal crates ---
-nucleide-nuclei = { path = "crates/nuclei", version = "0.2.0" }
-nucleide-material = { path = "crates/material", version = "0.2.0" }
-nucleide-linalg = { path = "crates/linalg", version = "0.2.0", default-features = false }
-nucleide-mcnp-io = { path = "crates/mcnp-io", version = "0.2.0" }
-nucleide-serpent-io = { path = "crates/serpent-io", version = "0.2.0" }
-nucleide-fluka-io = { path = "crates/fluka-io", version = "0.2.0" }
-nucleide-vr-tools = { path = "crates/vr-tools", version = "0.2.0" }
-nucleide-enrichment = { path = "crates/enrichment", version = "0.2.0" }
-nucleide-depletion = { path = "crates/depletion", version = "0.2.0", default-features = false }
-nucleide-alara-io = { path = "crates/alara-io", version = "0.2.0" }
-nucleide-cccc-io = { path = "crates/cccc-io", version = "0.2.0" }
-nucleide-fispact-io = { path = "crates/fispact-io", version = "0.2.0" }
-nucleide-origen-io = { path = "crates/origen-io", version = "0.2.0" }
-nucleide-r2s = { path = "crates/r2s", version = "0.2.0" }
+nucleide-nuclei = { path = "crates/nuclei", version = "0.3.0" }
+nucleide-material = { path = "crates/material", version = "0.3.0" }
+nucleide-linalg = { path = "crates/linalg", version = "0.3.0", default-features = false }
+nucleide-mcnp-io = { path = "crates/mcnp-io", version = "0.3.0" }
+nucleide-serpent-io = { path = "crates/serpent-io", version = "0.3.0" }
+nucleide-fluka-io = { path = "crates/fluka-io", version = "0.3.0" }
+nucleide-vr-tools = { path = "crates/vr-tools", version = "0.3.0" }
+nucleide-enrichment = { path = "crates/enrichment", version = "0.3.0" }
+nucleide-depletion = { path = "crates/depletion", version = "0.3.0", default-features = false }
+nucleide-alara-io = { path = "crates/alara-io", version = "0.3.0" }
+nucleide-cccc-io = { path = "crates/cccc-io", version = "0.3.0" }
+nucleide-fispact-io = { path = "crates/fispact-io", version = "0.3.0" }
+nucleide-origen-io = { path = "crates/origen-io", version = "0.3.0" }
+nucleide-r2s = { path = "crates/r2s", version = "0.3.0" }
 
 # --- planned stack (enabled per-crate as features land) ---
 # abi3-py310: one wheel per platform serves all Python >= 3.10

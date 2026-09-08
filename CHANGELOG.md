@@ -13,6 +13,8 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-08
+
 ### Added
 
 - `nucleide-depletion` time-series integrators (`crates/depletion/src/integrate.rs`):
