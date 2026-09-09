@@ -239,6 +239,61 @@ def _heat_total(entry) -> float:
     return float(entry)
 
 
+def run_bateman_crosscheck() -> dict:
+    """Cross-check Bateman/HP fast path vs CRAM-48 on A -> B -> C.
+
+    In-memory only (synthetic chain from `_write_abc_chain`, no fixtures):
+    single-step `deplete` with `method="bateman"` / `"bateman_hp"` at
+    ``dt = 1e5`` s vs CRAM-48 and vs the analytic Bateman solution, plus a
+    Predictor `deplete_series` band check. Returns the worst relative
+    differences and the atom-conservation errors.
+    """
+    path = _write_abc_chain()
+    try:
+        chain = nucleide.depletion.read_chain(path)
+        n0 = {"A": ABC_N0, "B": 0.0, "C": 0.0}
+        dt = 1.0e5
+        ref = nucleide.depletion.deplete(chain, n0, dt, order=48)
+        want = _abc_bateman(dt)
+        series_ref = nucleide.depletion.deplete_series(
+            chain, n0, list(ABC_DTS), integrator="predictor", order=48
+        )
+        out: dict[str, float] = {}
+        for method in ("bateman", "bateman_hp"):
+            got = nucleide.depletion.deplete(chain, n0, dt, method=method)
+            series = nucleide.depletion.deplete_series(
+                chain, n0, list(ABC_DTS), integrator="predictor", method=method
+            )
+            vs_cram = max(abs(got[n] - ref[n]) / max(abs(ref[n]), 1.0) for n in ("A", "B", "C"))
+            vs_analytic = max(
+                abs(got[n] - want[n]) / max(abs(want[n]), 1.0) for n in ("A", "B", "C")
+            )
+            total = sum(got.values())
+            cons = abs(total - ABC_N0) / ABC_N0
+            t = 0.0
+            series_band = 0.0
+            for step, (row, ref_row) in enumerate(
+                zip(series["atoms"], series_ref["atoms"], strict=True)
+            ):
+                t += ABC_DTS[step]
+                bat = _abc_bateman(t)
+                series_band = max(
+                    series_band,
+                    max(abs(row[n] - bat[n]) / max(abs(bat[n]), 1.0) for n in "ABC"),
+                    max(
+                        abs(row[n] - ref_row[n]) / max(abs(ref_row[n]), 1.0)
+                        for n in ("A", "B", "C")
+                    ),
+                )
+            out[f"{method}_vs_cram"] = vs_cram
+            out[f"{method}_vs_analytic"] = vs_analytic
+            out[f"{method}_cons"] = cons
+            out[f"{method}_series_band"] = series_band
+        return out
+    finally:
+        os.unlink(path)
+
+
 def run_predictor_series() -> dict:
     """Run Predictor `deplete_series` on A -> B -> C; check vs Bateman.
 
@@ -361,6 +416,7 @@ def main() -> int:
         )
 
     series = run_predictor_series()
+    bateman = run_bateman_crosscheck()
     report.heading("Predictor time-series convergence (synthetic A->B->C)")
     report.prose(
         "Predictor `deplete_series` (sequential CRAM-48 steps) on a synthetic"
@@ -395,6 +451,41 @@ def main() -> int:
         f" cons_max={fmt(series['cons_max'])} act_self={fmt(series['act_self'])}"
         f" act_bateman={fmt(series['act_bateman'])} heat={fmt(series['heat'])}"
     )
+    print(
+        "bateman cross-check:"
+        f" std_vs_cram={fmt(bateman['bateman_vs_cram'])}"
+        f" hp_vs_cram={fmt(bateman['bateman_hp_vs_cram'])}"
+        f" std_series={fmt(bateman['bateman_series_band'])}"
+        f" hp_series={fmt(bateman['bateman_hp_series_band'])}"
+    )
+
+    report.heading("Bateman-vs-CRAM cross-check (synthetic A->B->C)")
+    report.prose(
+        "Analytic Bateman fast path (`method='bateman'` / `'bateman_hp'`) on"
+        " the same synthetic A->B->C pure-decay chain built inline in a temp"
+        " file (no fixtures): single-step `deplete` at dt = 1e5 s vs CRAM-48"
+        " and vs the analytic solution, plus a Predictor `deplete_series`"
+        " band check (max vs Bateman analytic and vs CRAM-48 at every node)."
+    )
+    report.table(
+        ["Method", "Vs CRAM-48", "Vs analytic", "Conservation", "Series band"],
+        [
+            [
+                "bateman",
+                fmt(bateman["bateman_vs_cram"]),
+                fmt(bateman["bateman_vs_analytic"]),
+                fmt(bateman["bateman_cons"]),
+                fmt(bateman["bateman_series_band"]),
+            ],
+            [
+                "bateman_hp",
+                fmt(bateman["bateman_hp_vs_cram"]),
+                fmt(bateman["bateman_hp_vs_analytic"]),
+                fmt(bateman["bateman_hp_cons"]),
+                fmt(bateman["bateman_hp_series_band"]),
+            ],
+        ],
+    )
 
     emit_report(report)
 
@@ -417,6 +508,13 @@ def main() -> int:
     if series["act_c"] != 0.0 or series["heat"] != 0.0:
         print("FAIL: stable-nuclide activity or zero-heat resolution broken", file=sys.stderr)
         return 1
+    for key, value in bateman.items():
+        if (key.endswith("_vs_cram") or key.endswith("_series_band")) and value > 1.0e-6:
+            print(f"FAIL: Bateman cross-check {key} beyond 1e-6", file=sys.stderr)
+            return 1
+        if (key.endswith("_vs_analytic") or key.endswith("_cons")) and value > 1.0e-8:
+            print(f"FAIL: Bateman cross-check {key} beyond 1e-8", file=sys.stderr)
+            return 1
     return 0
 
 

@@ -49,6 +49,17 @@ references:
     date: "2021"
     type: article
     doi: "10.1016/j.anucene.2020.107989"
+  - id: amaku-2010
+    title: "Decay chain differential equations: solution through matrix algebra"
+    url: https://doi.org/10.1016/j.cpc.2009.08.020
+    authors: ["M. Amaku", "P. R. Pascholati", "V. R. Vanin"]
+    source: Computer Physics Communications
+    journal: Computer Physics Communications
+    volume: "181"
+    pages: "21–23"
+    date: "2010"
+    type: article
+    doi: "10.1016/j.cpc.2009.08.020"
   - id: nucleide-depletion
     title: Nucleide depletion implementation
     url: https://github.com/nukehub-dev/nucleide/tree/main/crates/depletion
@@ -235,6 +246,79 @@ cheaper; CRAM-48 is the production default.
 The CRAM-16 scaling constant is
 $\alpha_0 = 2.124853710495224 \times 10^{-16}$.
 
+## Analytic Bateman fast path
+
+For decay-only chains the burnup matrix is lower-triangular $\mathbf{\Lambda}$
+and the depletion equation admits a closed form (Bateman, *Proc. Cambridge
+Philos. Soc.* 15 (1910), 423–427):
+
+$$
+\frac{d\mathbf{N}}{dt} = \mathbf{\Lambda}\,\mathbf{N},
+\qquad
+\Lambda_{jj} = -\lambda_j,
+\qquad
+\Lambda_{ij} = b_{j \to i}\,\lambda_j \;\; (i > j),
+\qquad
+\lambda_j = \frac{\ln 2}{t_{1/2,j}},
+$$
+
+with $\lambda_j = 0$ for stable nuclides. $\mathbf{\Lambda}$ is assembled from
+the same decay data as $\mathbf{A}$ (spontaneous-fission daughters skipped,
+$\mathrm{He\text{-}4}$/$\mathrm{H\text{-}1}$ secondaries from alpha/proton
+decay included).
+
+When the diagonal entries are distinct and the chain is acyclic, the
+eigendecomposition $\mathbf{\Lambda} = \mathbf{C}\,\mathbf{D}\,\mathbf{C}^{-1}$
+with $\mathbf{D} = \mathrm{diag}(-\lambda)$ has the unit-diagonal recursion
+(Amaku–Pascholati–Vanin)<Citation id="amaku-2010" />
+
+$$
+C_{ii} = 1,
+\qquad
+C_{ij} = \sum_{k=j}^{i-1} \frac{\Lambda_{ik}\,C_{kj}}{\Lambda_{jj} - \Lambda_{ii}}
+\;\; (i > j),
+$$
+
+$$
+C^{-1}_{ii} = 1,
+\qquad
+C^{-1}_{ij} = -\sum_{k=j}^{i-1} C_{ik}\,C^{-1}_{kj}
+\;\; (i > j),
+$$
+
+$$
+\mathbf{N}(t) = \mathbf{C}\,\mathrm{diag}(e^{-\lambda t})\,\mathbf{C}^{-1}\,\mathbf{N}_0.
+$$
+
+$\mathbf{C}$/$\mathbf{C}^{-1}$ are time-independent, so Nucleide builds them
+once per chain (`BatemanCache` in `crates/depletion/src/bateman.rs`,
+generated at runtime from the crate's own chain data) and reuses them across
+timesteps; each solve is two triangular matvecs. The single-chain Bateman sum
+is the special case of this form for a linear chain, and the two/three-nuclide
+$A \to B \to C$ formulas in the worked example above drop out directly.
+
+Two precision variants share the cache: `bateman` (plain accumulation) and
+`bateman_hp` (f64-careful summation only — per-row terms sorted by magnitude
+and summed with Neumaier compensation, plus `exp_m1` forms for small
+$\lambda t$; no extended-precision types, no new dependencies). On a
+synthetic 10-order-spread chain (year-scale parent, microsecond-scale
+progeny) the HP variant beats-or-matches standard summation while both
+conserve atoms to $10^{-8}$.
+
+<Callout type="note" title="Fast-path limits (D1–D4)">
+  The dispatcher falls back to CRAM-48 — never an error — when the closed
+  form does not apply: (D1) near-equal decay constants with a live coupling
+  path ($|\lambda_j - \lambda_i| \le 10^{-12}\max$, uncoupled pairs such as
+  two stables take the limit form $C_{ij} = 0$ instead); (D2) cyclic or
+  out-of-order decay topology (any gain above the diagonal); (D3) stable
+  nuclides ($\lambda = 0$, handled inline via $e^0 = 1$ limit forms);
+  (D4) reactions or fission active (assembled matrix differs from the
+  pure-decay reconstruction). A zero timestep returns the input exactly.
+  Select the kernel with `method="cram16"`, `"cram48"`, `"bateman"`, or
+  `"bateman_hp"` on `deplete`, `deplete_series`, `DepletionSystem.solve`,
+  and `Inventory.decay` (default `"cram48"`).
+</Callout>
+
 ## Algorithm flow
 
 <Mermaid
@@ -366,17 +450,21 @@ chains single-step CRAM solves. Each `Step` carries a length `dt` in seconds
 plus prescribed one-group rates in the same layout as
 `DepletionSystem::build`; the matrix is rebuilt from each step's rates, so
 time-varying rates are handled exactly per step.
-
 `Integrator` selects the method: `Predictor` (one CRAM solve per step),
 `Cecm` (predictor plus a corrector re-solve from the step start with the
 averaged matrix), or `Cf4` (fourth-order commutator-free quasi-Magnus, two
-half-step CRAM solves). Because rates here are prescribed rather than
-recomputed from the predicted composition, the corrector matrix equals the
-predictor matrix and `Cecm` reproduces `Predictor` up to roundoff; the
-two-solve structure is kept so flux-coupled extensions can plug a recomputed
-matrix into the same code path. Under the same piecewise-constant
-reconstruction each `Cf4` stage is a half-step exponential, so its accuracy
-is at least as good as `Predictor` on the analytic test chain.
+half-step CRAM solves). Each step's exponential additionally honors the
+`Method` kernel: `Cram` runs the CRAM order named above, while
+`Bateman`/`BatemanHp` evaluate the analytic closed form per step (steps with
+live rates fall back to CRAM-48; CF4 stages scale the timestep rather than
+the matrix so per-stage systems stay in decay form). Because rates here are
+prescribed rather than recomputed from the predicted composition, the
+corrector matrix equals the predictor matrix and `Cecm` reproduces
+`Predictor` up to roundoff; the two-solve structure is kept so flux-coupled
+extensions can plug a recomputed matrix into the same code path. Under the
+same piecewise-constant reconstruction each `Cf4` stage is a half-step
+exponential, so its accuracy is at least as good as `Predictor` on the
+analytic test chain.
 
 Results come back as `TimeSeries` with one row per time node in
 chain-nuclide order (`times[0] == 0.0` echoes the initial state):
@@ -394,7 +482,9 @@ synthetic nuclides) — one evaluated table, no parallel hand-kept fallback.
 
 <Callout type="note" title="Python exposure">
   `nucleide.depletion.deplete_series` wraps `integrate` with an `integrator`
-  argument (`"predictor"`, `"cecm"`, `"cf4"`). The per-step `decay_heat`
+  argument (`"predictor"`, `"cecm"`, `"cf4"`) and a `method` argument
+  (`"cram16"`, `"cram48"`, `"bateman"`, `"bateman_hp"`; an explicitly
+  non-default `method` overrides `order`). The per-step `decay_heat`
   maps use the same chain → table → `0.0` resolution as the core, so they
   match `integrate` exactly; the core `t = 0` row is omitted. See the
   [Run depletion tutorial](../tutorials/python/run-depletion.md).
@@ -413,8 +503,11 @@ synthetic nuclides) — one evaluated table, no parallel hand-kept fallback.
   verbatim; only programmatically built chains are renormalized (the largest
   branch is adjusted so the modes sum to exactly 1.0).
 - **Stable nuclides have zero diagonal**: they act as sinks in the chain.
+  The Bateman fast path handles them through limit forms ($e^0 = 1$).
 - **CRAM order**: order-16 is adequate for short, simple chains; order-48 is
-  recommended for production burnup matrices.
+  recommended for production burnup matrices. Pure-decay chains may use the
+  `bateman`/`bateman_hp` closed form instead (same `method=` selector;
+  automatic CRAM-48 fallback outside decay-only triangular topology).
 
 ## Related work beyond Nucleide
 
@@ -440,3 +533,8 @@ does not implement:
   transmutation tree by density tolerance; Nucleide uses a fixed chain.
 - **Krylov subspace methods**: an alternative to CRAM for the Bateman
   equations; see Josey et al. (2017)<Citation id="josey-2017" />.
+- **Precomputed decay datasets**: the `radioactivedecay` package ships
+  precomputed decay matrices for fast lookup; Nucleide's `BatemanCache`
+  follows the same time-independent-cache idea but generates the
+  eigendecomposition at runtime from its own chain data (clean-room
+  textbook implementation, no vendored data).

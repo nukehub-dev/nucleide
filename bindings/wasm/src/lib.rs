@@ -665,11 +665,14 @@ impl WasmChain {
     }
 }
 
-/// Run one CRAM depletion step.
+/// Run one depletion step (CRAM or the analytic Bateman fast path).
 ///
 /// `n0` is a JS object mapping nuclide names to atom counts. `rates` is a JS
 /// object mapping `"Name:reaction"` strings to one-group rates [1/s]. `order`
-/// is 16 or 48.
+/// is 16 or 48. `method` is an optional solver spelling (`"cram16"`,
+/// `"cram48"`, `"bateman"`, `"bateman_hp"`, default `"cram48"`); an
+/// explicitly non-default `method` overrides `order`. Bateman arms fall back
+/// to CRAM-48 on non-decay systems.
 #[wasm_bindgen]
 pub fn deplete(
     chain: &WasmChain,
@@ -677,16 +680,17 @@ pub fn deplete(
     dt: f64,
     rates: JsValue,
     order: u8,
+    method: Option<String>,
 ) -> Result<JsValue, JsValue> {
     let n0: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(n0).map_err(js_err)?;
     let rates: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(rates).map_err(js_err)?;
 
-    let order = parse_cram_order(order)?;
+    let method = resolve_method(order, method.as_deref())?;
     let reaction_rates = parse_reaction_rates(chain, &rates)?;
 
     let sys = nucleide_depletion::DepletionSystem::build((*chain.inner).clone(), &reaction_rates)
         .map_err(js_err)?;
-    let result = nucleide_depletion::deplete(&sys, order, &n0, dt).map_err(js_err)?;
+    let result = nucleide_depletion::deplete_with_method(&sys, method, &n0, dt).map_err(js_err)?;
     to_js(&result.atoms)
 }
 
@@ -695,6 +699,27 @@ fn parse_cram_order(order: u8) -> Result<nucleide_depletion::Order, JsValue> {
         16 => Ok(nucleide_depletion::Order::Order16),
         48 => Ok(nucleide_depletion::Order::Order48),
         other => Err(js_err(format!("unsupported CRAM order {other}"))),
+    }
+}
+
+/// Parse a solver `method` spelling; mirrors the Python `parse_method`.
+fn parse_method(name: &str) -> Result<nucleide_depletion::Method, JsValue> {
+    name.parse().map_err(js_err)
+}
+
+/// Resolve legacy `order` plus optional `method` into a core `Method`
+/// (non-default `method` wins; absent/default defers to `order`).
+fn resolve_method(order: u8, method: Option<&str>) -> Result<nucleide_depletion::Method, JsValue> {
+    match method {
+        None => parse_cram_order(order).map(nucleide_depletion::Method::Cram),
+        Some(name) => {
+            let parsed = parse_method(name)?;
+            if parsed == nucleide_depletion::Method::default_cram() {
+                parse_cram_order(order).map(nucleide_depletion::Method::Cram)
+            } else {
+                Ok(parsed)
+            }
+        }
     }
 }
 
@@ -746,7 +771,10 @@ struct DepleteSeriesResult {
 /// `n0` maps nuclide names to atom counts; `dts` is the list of step lengths
 /// [s]; `rates` maps `"Name:reaction"` strings to one-group rates [1/s] and
 /// applies unchanged to every step (one `Step` per `dt` with the same rates).
-/// `integrator` is `"predictor"`, `"cecm"`, or `"cf4"`; `order` is 16 or 48.
+/// `integrator` is `"predictor"`, `"cecm"`, or `"cf4"`; `order` is 16 or 48;
+/// `method` is an optional solver spelling (`"cram16"`, `"cram48"`,
+/// `"bateman"`, `"bateman_hp"`) that overrides `order` when non-default.
+/// Bateman steps with live rates fall back to CRAM-48.
 ///
 /// Returns `{ times, atoms, activity, decay_heat }` where `times` holds the
 /// cumulative nodes starting at `t = 0` (so every list has `dts.len() + 1`
@@ -760,12 +788,13 @@ pub fn deplete_series(
     rates: JsValue,
     integrator: &str,
     order: u8,
+    method: Option<String>,
 ) -> Result<JsValue, JsValue> {
     let n0: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(n0).map_err(js_err)?;
     let dts: Vec<f64> = serde_wasm_bindgen::from_value(dts).map_err(js_err)?;
     let rates: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(rates).map_err(js_err)?;
 
-    let order = parse_cram_order(order)?;
+    let method = resolve_method(order, method.as_deref())?;
     let integrator = parse_integrator(integrator)?;
     let reaction_rates = parse_reaction_rates(chain, &rates)?;
 
@@ -785,7 +814,8 @@ pub fn deplete_series(
     let sys = nucleide_depletion::DepletionSystem::build((*chain.inner).clone(), &reaction_rates)
         .map_err(js_err)?;
     let series =
-        nucleide_depletion::integrate(&sys, &n0_vec, &steps, integrator, order).map_err(js_err)?;
+        nucleide_depletion::integrate_with_method(&sys, &n0_vec, &steps, integrator, method)
+            .map_err(js_err)?;
 
     let names: Vec<String> = chain
         .inner

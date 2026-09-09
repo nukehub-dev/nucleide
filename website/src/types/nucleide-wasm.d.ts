@@ -302,6 +302,7 @@ export interface WasmApi {
     dt: number,
     rates: Record<string, number>,
     order: number,
+    method?: string,
   ): Record<string, number>;
   depleteSeries(
     chain: WasmChain,
@@ -310,6 +311,7 @@ export interface WasmApi {
     rates: Record<string, number>,
     integrator: string,
     order: number,
+    method?: string,
   ): DepleteSeriesResult;
   parseMcnpMaterials(text: string): McnpMaterialJson[];
   parseXsdir(text: string): XsdirSummary;

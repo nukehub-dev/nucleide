@@ -825,15 +825,23 @@ struct PyDepletionSystem {
 #[pymethods]
 impl PyDepletionSystem {
     /// Solve one depletion step with the pre-built system.
-    #[pyo3(signature = (n0, dt, order=48))]
+    ///
+    /// `order` selects the CRAM order (16 or 48); `method` selects the
+    /// solver kernel (`"cram16"`, `"cram48"`, `"bateman"`, `"bateman_hp"`,
+    /// default `"cram48"`). An explicitly non-default `method` overrides
+    /// `order`; the default `method` defers to `order` for backwards
+    /// compatibility. `Bateman` arms fall back to CRAM-48 on non-decay
+    /// systems.
+    #[pyo3(signature = (n0, dt, order=48, method="cram48"))]
     fn solve(
         &self,
         n0: BTreeMap<String, f64>,
         dt: f64,
         order: u8,
+        method: &str,
     ) -> PyResult<BTreeMap<String, f64>> {
-        let order = parse_order(order)?;
-        nucleide_depletion::deplete(&self.inner, order, &n0, dt)
+        let method = resolve_method(order, method)?;
+        nucleide_depletion::deplete_with_method(&self.inner, method, &n0, dt)
             .map(|r| r.atoms)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -842,10 +850,11 @@ impl PyDepletionSystem {
     ///
     /// `n0` and the returned vector are in chain index order; this avoids the
     /// name-to-index mapping overhead of `solve()` for tight timing loops.
-    #[pyo3(signature = (n0, dt, order=48))]
-    fn solve_vec(&self, n0: Vec<f64>, dt: f64, order: u8) -> PyResult<Vec<f64>> {
-        let order = parse_order(order)?;
-        nucleide_depletion::cram(&self.inner, order, &n0, dt)
+    /// `method` behaves as in [`PyDepletionSystem::solve`].
+    #[pyo3(signature = (n0, dt, order=48, method="cram48"))]
+    fn solve_vec(&self, n0: Vec<f64>, dt: f64, order: u8, method: &str) -> PyResult<Vec<f64>> {
+        let method = resolve_method(order, method)?;
+        nucleide_depletion::solve_with_method(&self.inner, method, &n0, dt)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 }
@@ -871,6 +880,25 @@ fn parse_order(order: u8) -> PyResult<nucleide_depletion::Order> {
     }
 }
 
+/// Parse a solver `method=` spelling (`"cram16"`, `"cram48"`, `"bateman"`,
+/// `"bateman_hp"`; case-insensitive, `-`/`_` interchangeable).
+fn parse_method(name: &str) -> PyResult<nucleide_depletion::Method> {
+    name.parse().map_err(|e: String| PyValueError::new_err(e))
+}
+
+/// Resolve the legacy `order` (16|48) plus `method=` into a core [`Method`].
+///
+/// An explicitly non-default `method` wins; the default `"cram48"` defers to
+/// `order` so existing `order=16` calls keep working unchanged.
+fn resolve_method(order: u8, method: &str) -> PyResult<nucleide_depletion::Method> {
+    let parsed = parse_method(method)?;
+    if parsed == nucleide_depletion::Method::default_cram() {
+        parse_order(order).map(nucleide_depletion::Method::Cram)
+    } else {
+        Ok(parsed)
+    }
+}
+
 fn split_rates(
     rates: &RateMap,
     chain: &nucleide_depletion::Chain,
@@ -888,33 +916,30 @@ fn split_rates(
     Ok(out)
 }
 
-/// Solve one depletion step with IPF CRAM.
+/// Solve one depletion step with IPF CRAM or the analytic Bateman fast path.
 ///
 /// `n0` maps nuclide names to initial atom counts; `rates` maps
 /// `"Name:(n,gamma)"`-style keys to one-group rates [1/s]; `dt` is the step
-/// length in seconds; `order` is 16 or 48.
+/// length in seconds; `order` is 16 or 48; `method` selects the solver
+/// kernel (`"cram16"`, `"cram48"`, `"bateman"`, `"bateman_hp"`, default
+/// `"cram48"` — an explicitly non-default `method` overrides `order`).
+/// `Bateman` arms fall back to CRAM-48 on non-decay systems (rates on,
+/// cyclic topology, near-degenerate half-lives).
 #[pyfunction]
-#[pyo3(signature = (chain, n0, dt, rates=None, order=48))]
+#[pyo3(signature = (chain, n0, dt, rates=None, order=48, method="cram48"))]
 fn deplete(
     chain: &PyChain,
     n0: BTreeMap<String, f64>,
     dt: f64,
     rates: Option<RateMap>,
     order: u8,
+    method: &str,
 ) -> PyResult<BTreeMap<String, f64>> {
-    let order = match order {
-        16 => nucleide_depletion::Order::Order16,
-        48 => nucleide_depletion::Order::Order48,
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "unsupported CRAM order {other}"
-            )))
-        }
-    };
+    let method = resolve_method(order, method)?;
     let rates = split_rates(rates.as_ref().unwrap_or(&BTreeMap::new()), &chain.inner)?;
     let sys = nucleide_depletion::DepletionSystem::build((*chain.inner).clone(), &rates)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    nucleide_depletion::deplete(&sys, order, &n0, dt)
+    nucleide_depletion::deplete_with_method(&sys, method, &n0, dt)
         .map(|r| r.atoms)
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
@@ -2696,13 +2721,16 @@ fn parse_integrator(name: &str) -> PyResult<nucleide_depletion::Integrator> {
 ///
 /// Thin wrapper over `nucleide_depletion::integrate`: one [`Step`] per `dt`
 /// (per-step `rates`/`rates_list`, `None` meaning decay-only), `n0` keyed by
-/// nuclide name. Returns a dict with `times` (cumulative seconds, one entry
-/// per step — the core `t = 0` initial row is omitted so `atoms[k]`
-/// matches a single `deplete` call over `dts[k]`), `atoms`, `activity`
-/// ([Bq]), and `decay_heat` ([W] per nuclide via the shared chain →
-/// ENDF/B-VII.1 → 0.0 energy resolution).
+/// nuclide name. `method` selects the solver kernel (`"cram16"`,
+/// `"cram48"`, `"bateman"`, `"bateman_hp"`, default `"cram48"` — an
+/// explicitly non-default `method` overrides `order`; Bateman steps with
+/// live rates fall back to CRAM-48). Returns a dict with `times`
+/// (cumulative seconds, one entry per step — the core `t = 0` initial row is
+/// omitted so `atoms[k]` matches a single `deplete` call over `dts[k]`),
+/// `atoms`, `activity` ([Bq]), and `decay_heat` ([W] per nuclide via the
+/// shared chain → ENDF/B-VII.1 → 0.0 energy resolution).
 #[pyfunction]
-#[pyo3(signature = (chain, n0, dts, rates=None, rates_list=None, integrator="predictor", order=48))]
+#[pyo3(signature = (chain, n0, dts, rates=None, rates_list=None, integrator="predictor", order=48, method="cram48"))]
 #[allow(clippy::too_many_arguments)]
 fn deplete_series(
     chain: &PyChain,
@@ -2712,10 +2740,11 @@ fn deplete_series(
     rates_list: Option<Vec<Option<RateMap>>>,
     integrator: &str,
     order: u8,
+    method: &str,
 ) -> PyResult<Py<PyAny>> {
     use nucleide_depletion::{DepletionSystem, ReactionRates, Step};
     let integrator = parse_integrator(integrator)?;
-    let order = parse_order(order)?;
+    let method = resolve_method(order, method)?;
     if let Some(list) = &rates_list {
         if list.len() != dts.len() {
             return Err(PyValueError::new_err(format!(
@@ -2753,8 +2782,9 @@ fn deplete_series(
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     // NOTE: plain (GIL held) call by design, matching the other CRAM
     // bindings; batch sizes here are small.
-    let series = nucleide_depletion::integrate(&template, &n0_vec, &steps, integrator, order)
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let series =
+        nucleide_depletion::integrate_with_method(&template, &n0_vec, &steps, integrator, method)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let names: Vec<&str> = template
         .chain
         .nuclides
@@ -3396,10 +3426,21 @@ impl PyInventory {
     }
 
     /// Decay over `dt` in `time_unit` (`s`, `m`, `h`, `d`, `y`); optional
-    /// one-group `rates` (`"Name:reaction"` keys) and CRAM `order`.
-    #[pyo3(signature = (dt, time_unit="s", rates=None, order=48))]
-    fn decay(&self, dt: f64, time_unit: &str, rates: Option<RateMap>, order: u8) -> PyResult<Self> {
-        let order = parse_order(order)?;
+    /// one-group `rates` (`"Name:reaction"` keys), CRAM `order`, and solver
+    /// `method` (`"cram16"`, `"cram48"`, `"bateman"`, `"bateman_hp"`,
+    /// default `"cram48"` — an explicitly non-default `method` overrides
+    /// `order`). Unlike the decay-only core inventory, this honors `rates`;
+    /// a Bateman `method` with live rates falls back to CRAM-48.
+    #[pyo3(signature = (dt, time_unit="s", rates=None, order=48, method="cram48"))]
+    fn decay(
+        &self,
+        dt: f64,
+        time_unit: &str,
+        rates: Option<RateMap>,
+        order: u8,
+        method: &str,
+    ) -> PyResult<Self> {
+        let method = resolve_method(order, method)?;
         let unit = nucleide_depletion::inventory::time_unit_from_str(time_unit)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         let seconds = dt * unit.as_seconds();
@@ -3407,17 +3448,17 @@ impl PyInventory {
         let step_rates = rates.as_ref().unwrap_or(&empty);
         let template = inventory_sys(&self.chain, step_rates)?;
         // Route through the core series: predictor over one step equals the
-        // single CRAM solve, and rates/order stay honored.
+        // single-kernel solve, and rates/method stay honored.
         let steps = vec![nucleide_depletion::Step::new(
             seconds,
             split_rates(step_rates, &self.chain)?,
         )];
-        let series = nucleide_depletion::integrate(
+        let series = nucleide_depletion::integrate_with_method(
             &template,
             &chain_vec(&self.chain, &self.atoms)?,
             &steps,
             nucleide_depletion::Integrator::Predictor,
-            order,
+            method,
         )
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
         let names: Vec<String> = self.chain.nuclides.iter().map(|n| n.name.clone()).collect();

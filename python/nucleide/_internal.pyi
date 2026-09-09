@@ -214,9 +214,13 @@ class Chain:
 
 @final
 class DepletionSystem:
-    """Pre-built depletion system for repeated CRAM solves."""
-    def solve(self, n0: dict[str, float], dt: float, order: int = 48) -> dict[str, float]: ...
-    def solve_vec(self, n0: list[float], dt: float, order: int = 48) -> list[float]: ...
+    """Pre-built depletion system for repeated CRAM/Bateman solves."""
+    def solve(
+        self, n0: dict[str, float], dt: float, order: int = 48, method: str = "cram48"
+    ) -> dict[str, float]: ...
+    def solve_vec(
+        self, n0: list[float], dt: float, order: int = 48, method: str = "cram48"
+    ) -> list[float]: ...
 
 @final
 class Cascade:
@@ -393,6 +397,7 @@ def deplete(
     dt: float,
     rates: dict[str, float] | None = None,
     order: int = 48,
+    method: str = "cram48",
 ) -> dict[str, float]: ...
 def deplete_series(
     chain: Chain,
@@ -402,6 +407,7 @@ def deplete_series(
     rates_list: list[dict[str, float] | None] | None = None,
     integrator: str = "predictor",
     order: int = 48,
+    method: str = "cram48",
 ) -> dict[str, Any]: ...
 def isotxs_parse(text: str) -> dict[str, Any]: ...
 def rtflux_parse(text: str, kind: str = "rtflux") -> dict[str, Any]: ...
@@ -470,6 +476,7 @@ class Inventory:
         time_unit: str = "s",
         rates: dict[str, float] | None = None,
         order: int = 48,
+        method: str = "cram48",
     ) -> Inventory: ...
     def activities(self, units: str) -> dict[str, float]: ...
     def masses(self, units: str) -> dict[str, float]: ...

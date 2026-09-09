@@ -4,17 +4,22 @@
 //! - chain files use the depletion-chain XML format (see [`chain`])
 //! - backend is `faer` sparse LU with symbolic reuse, behind the `linalg` facade
 
+pub mod bateman;
 pub mod chain;
 pub mod cram;
 pub mod integrate;
 pub mod inventory;
 pub mod matrix;
 
+pub use bateman::{
+    solve_with_method, solve_with_method_symbolic, BatemanCache, FallbackReason, Method,
+};
 pub use chain::{Chain, ChainNuclide, DecayMode, Error, FissionYields, Reaction};
 pub use cram::{cram, cram_with_symbolic, Order};
 pub use integrate::{
     activity_vec, decay_constants, decay_energies_by_name, decay_energies_mev, decay_energy_mev,
-    decay_heat_vec, integrate, Integrator, Step, TimeSeries, EV_PER_MEV, MEV_TO_JOULE,
+    decay_heat_vec, integrate, integrate_with_method, Integrator, Step, TimeSeries, EV_PER_MEV,
+    MEV_TO_JOULE,
 };
 pub use inventory::{
     branching_fraction, chain_edges, cumulative_decays, decay_mode, progeny, time_unit_from_str,
@@ -34,11 +39,15 @@ pub struct DepletionResult {
 
 /// Convenience driver: build the system, solve one step, key results by name.
 ///
+/// `method` selects the solver; [`Method::Cram`] runs IPF CRAM while
+/// [`Method::Bateman`]/[`Method::BatemanHp`] run the analytic closed form
+/// (falling back to CRAM-48 on non-decay systems — see [`bateman`]).
+///
 /// Returns [`DepletionResult`] so callers can diff/serialize without
 /// touching indices.
-pub fn deplete(
+pub fn deplete_with_method(
     sys: &DepletionSystem,
-    order: Order,
+    method: Method,
     n0: &BTreeMap<String, f64>,
     dt: f64,
 ) -> Result<DepletionResult, Error> {
@@ -54,8 +63,8 @@ pub fn deplete(
             })?;
         n0_vec[idx] = *value;
     }
-    let final_vec =
-        cram(sys, order, &n0_vec, dt).map_err(|e| Error::BadStructure(e.to_string()))?;
+    let final_vec = solve_with_method(sys, method, &n0_vec, dt)
+        .map_err(|e| Error::BadStructure(e.to_string()))?;
     let atoms: BTreeMap<String, f64> = sys
         .chain
         .nuclides
@@ -64,6 +73,19 @@ pub fn deplete(
         .map(|(nuc, v)| (nuc.name.clone(), v))
         .collect();
     Ok(DepletionResult { atoms })
+}
+
+/// Convenience driver with the historical default (CRAM-48).
+///
+/// Thin shim over [`deplete_with_method`] keeping the pre-`Method` call
+/// shape; new code should pass an explicit [`Method`].
+pub fn deplete(
+    sys: &DepletionSystem,
+    order: Order,
+    n0: &BTreeMap<String, f64>,
+    dt: f64,
+) -> Result<DepletionResult, Error> {
+    deplete_with_method(sys, Method::Cram(order), n0, dt)
 }
 
 #[cfg(test)]

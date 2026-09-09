@@ -50,6 +50,7 @@
 //! A single evaluated table is the only source of truth — there is no
 //! parallel hand-kept fallback. No HDF5 dependencies are involved.
 
+use crate::bateman::Method;
 use crate::chain::{Chain, ChainNuclide, Error};
 use crate::cram::Order;
 use crate::matrix::{DepletionSystem, ReactionRates};
@@ -218,18 +219,22 @@ const CF4_A12: f64 = -0.038_675_134_594_812_87; // 1/4 - sqrt(3)/6
 ///
 /// `sys` supplies the chain template (its baked rates are *not* used; each
 /// step's [`Step::rates`] rebuilds the matrix, so time-varying rates are
-/// handled exactly per step). `n0` is in chain order. Returns the full
-/// [`TimeSeries`] including the `t = 0` initial row.
+/// handled exactly per step). `n0` is in chain order. `method` selects the
+/// exponential kernel: [`Method::Cram`] runs IPF CRAM, [`Method::Bateman`] /
+/// [`Method::BatemanHp`] run the analytic closed form per step (steps whose
+/// matrix carries reaction/fission contributions fall back to CRAM-48 —
+/// Bateman is a decay-only fast path). Returns the full [`TimeSeries`]
+/// including the `t = 0` initial row.
 ///
 /// Errors on dimension mismatch, non-positive/non-finite step lengths, or
-/// CRAM backend failures (mapped to [`Error::BadStructure`], matching
+/// backend failures (mapped to [`Error::BadStructure`], matching
 /// [`crate::deplete`]).
-pub fn integrate(
+pub fn integrate_with_method(
     sys: &DepletionSystem,
     n0: &[f64],
     steps: &[Step],
     integrator: Integrator,
-    order: Order,
+    method: Method,
 ) -> Result<TimeSeries, Error> {
     if n0.len() != sys.chain.len() {
         return Err(Error::BadStructure(format!(
@@ -261,7 +266,7 @@ pub fn integrate(
     let mut n = n0.to_vec();
     let mut t = 0.0;
     for step in steps {
-        n = advance(sys, &n, step, integrator, order)?;
+        n = advance(sys, &n, step, integrator, method)?;
         t += step.dt;
         times.push(t);
         activity.push(activity_vec(sys, &n));
@@ -277,15 +282,67 @@ pub fn integrate(
     })
 }
 
+/// Integrate with the historical CRAM-order selector.
+///
+/// Thin shim over [`integrate_with_method`] keeping the pre-`Method` call
+/// shape; new code should pass an explicit [`Method`].
+pub fn integrate(
+    sys: &DepletionSystem,
+    n0: &[f64],
+    steps: &[Step],
+    integrator: Integrator,
+    order: Order,
+) -> Result<TimeSeries, Error> {
+    integrate_with_method(sys, n0, steps, integrator, Method::Cram(order))
+}
+
 /// Advance one step with the chosen integrator.
 fn advance(
     sys: &DepletionSystem,
     n: &[f64],
     step: &Step,
     integrator: Integrator,
-    order: Order,
+    method: Method,
 ) -> Result<Vec<f64>, Error> {
     let mat = || DepletionSystem::build(sys.chain.clone(), &step.rates);
+    let solve = |s: &DepletionSystem, v: &[f64], dt: f64| {
+        crate::solve_with_method(s, method, v, dt).map_err(|e| Error::BadStructure(e.to_string()))
+    };
+    match method {
+        Method::Cram(order) => advance_cram(n, step, integrator, order, &mat),
+        Method::Bateman | Method::BatemanHp => {
+            // Same integrator structure, but each exponential runs through
+            // the method dispatcher (Bateman steps with live rates fall back
+            // to CRAM-48 inside `solve_with_method`). CF4 stages scale the
+            // timestep rather than the matrix so the per-stage system stays
+            // in decay reconstruction form.
+            let sys_k = mat()?;
+            match integrator {
+                Integrator::Predictor => solve(&sys_k, n, step.dt),
+                Integrator::Cecm => {
+                    let _pred = solve(&sys_k, n, step.dt)?;
+                    solve(&sys_k, n, step.dt)
+                }
+                Integrator::Cf4 => {
+                    let s1 = CF4_A11 + CF4_A12;
+                    let s2 = CF4_A12 + CF4_A11;
+                    let n1 = solve(&sys_k, n, s1 * step.dt)?;
+                    solve(&sys_k, &n1, s2 * step.dt)
+                }
+            }
+        }
+    }
+}
+
+/// Advance one step through the CRAM kernel (preserves the historical
+/// scaled-matrix CF4 staging exactly).
+fn advance_cram(
+    n: &[f64],
+    step: &Step,
+    integrator: Integrator,
+    order: Order,
+    mat: &dyn Fn() -> Result<DepletionSystem, Error>,
+) -> Result<Vec<f64>, Error> {
     match integrator {
         Integrator::Predictor => {
             let sys_k = mat()?;
@@ -472,6 +529,94 @@ mod tests {
         // Dimension mismatch also fails.
         let steps = constant_steps(1.0, 1);
         assert!(integrate(&sys, &[1.0], &steps, Integrator::Predictor, Order::Order48).is_err());
+    }
+
+    #[test]
+    fn bateman_series_matches_predictor_band() {
+        use crate::bateman::Method;
+        let sys = DepletionSystem::build(abc_chain(), &ReactionRates::new()).unwrap();
+        let n0 = vec![1.0e15, 0.0, 0.0];
+        let steps = constant_steps(2.0e4, 5);
+        let cref = integrate_with_method(
+            &sys,
+            &n0,
+            &steps,
+            Integrator::Predictor,
+            Method::default_cram(),
+        )
+        .unwrap();
+        for method in [Method::Bateman, Method::BatemanHp] {
+            let ts =
+                integrate_with_method(&sys, &n0, &steps, Integrator::Predictor, method).unwrap();
+            assert_eq!(ts.times, cref.times);
+            for (k, (row, ref_row)) in ts.atoms.iter().zip(&cref.atoms).enumerate() {
+                for (g, c) in row.iter().zip(ref_row) {
+                    assert!((g - c).abs() / c.max(1e-30) < 1e-6, "node {k}: {g} vs {c}");
+                }
+                let want = bateman(n0[0], ts.times[k]);
+                assert!(max_rel_err(row, &want) < 1e-6, "node {k}");
+                let total: f64 = row.iter().sum();
+                assert!((total - n0[0]).abs() / n0[0] < 1e-8, "node {k}");
+            }
+        }
+    }
+
+    #[test]
+    fn bateman_series_with_rates_falls_back_to_cram() {
+        use crate::bateman::Method;
+        // Capture channel on A with a live rate: Bateman steps must
+        // reproduce the CRAM series exactly (fallback inside the kernel).
+        let a = ChainNuclide {
+            name: "A".into(),
+            half_life: Some(std::f64::consts::LN_2 / L1),
+            decay_modes: vec![DecayMode {
+                kind: "beta".into(),
+                target: "B".into(),
+                branching_ratio: 1.0,
+            }],
+            reactions: vec![crate::chain::Reaction {
+                kind: "(n,gamma)".into(),
+                target: Some("B".into()),
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let b = ChainNuclide {
+            name: "B".into(),
+            half_life: Some(std::f64::consts::LN_2 / L2),
+            decay_modes: vec![DecayMode {
+                kind: "beta".into(),
+                target: "C".into(),
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let c = ChainNuclide {
+            name: "C".into(),
+            ..Default::default()
+        };
+        let chain = Chain::from_nuclides(vec![a, b, c]).unwrap();
+        let sys = DepletionSystem::build(chain, &ReactionRates::new()).unwrap();
+        let mut rates = ReactionRates::new();
+        rates
+            .entry(0usize)
+            .or_default()
+            .insert("(n,gamma)".to_string(), 1e-7);
+        let steps: Vec<Step> = (0..3).map(|_| Step::new(2.0e4, rates.clone())).collect();
+        let n0 = vec![1.0e15, 0.0, 0.0];
+        let cref = integrate_with_method(
+            &sys,
+            &n0,
+            &steps,
+            Integrator::Predictor,
+            Method::default_cram(),
+        )
+        .unwrap();
+        let got =
+            integrate_with_method(&sys, &n0, &steps, Integrator::Predictor, Method::BatemanHp)
+                .unwrap();
+        assert_eq!(got.atoms, cref.atoms);
     }
 
     #[test]

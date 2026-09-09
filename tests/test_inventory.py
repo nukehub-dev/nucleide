@@ -82,6 +82,16 @@ def test_cumulative_and_progeny(tmp_path: Path) -> None:
     assert ("B", "C", 1.0, "beta") in edges
 
 
+def test_decay_with_method_matches_cram(tmp_path: Path) -> None:
+    chain = nucleide.depletion.read_chain(_chain(tmp_path, CHAIN_ABC, "abc.xml"))
+    inv = nucleide.depletion.Inventory(chain, {"A": 1e15})
+    ref = inv.decay(1e5, time_unit="s")
+    for method in ("bateman", "bateman_hp"):
+        out = inv.decay(1e5, time_unit="s", method=method)
+        for nuc in ("A", "B", "C"):
+            assert out.numbers()[nuc] == pytest.approx(ref.numbers()[nuc], rel=1e-8)
+
+
 def test_error_paths(tmp_path: Path) -> None:
     chain = nucleide.depletion.read_chain(_chain(tmp_path, CHAIN_ABC, "abc.xml"))
     # Atom counts store verbatim; chain membership is enforced at solve time.

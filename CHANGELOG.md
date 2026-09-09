@@ -15,6 +15,30 @@ workspace crates from tags.
 
 ### Added
 
+- `nucleide-depletion` analytic Bateman decay fast path
+  (`crates/depletion/src/bateman.rs`): cached `C`/`C⁻¹` eigendecomposition
+  closed form (Bateman 1910; Amaku–Pascholati–Vanin CPC 181 (2010)) for
+  decay-only lower-triangular chains, generated at runtime from the crate's
+  own chain data, plus an f64-careful `BatemanHp` variant (magnitude-sorted
+  terms, Neumaier compensation, `exp_m1` for small `λt`; no new
+  dependencies). New `Method::{Cram(Order), Bateman, BatemanHp}` selector
+  (`"cram16"`/`"cram48"`/`"bateman"`/`"bateman_hp"`) threading
+  `deplete_with_method` / `integrate_with_method` /
+  `DecayInventory::decay_with_method` (existing `Order`-based entry points
+  stay as CRAM shims; `dt == 0.0` returns the input exactly). Non-decay
+  systems fall back to CRAM-48 inside the dispatcher: near-degenerate
+  half-lives (`1e-12` relative gap with a live coupling path), cyclic or
+  out-of-order topology, and reactions/fission on; stable nuclides use limit
+  forms inline.
+- Python API: `method=` on `nucleide.depletion.deplete` / `deplete_series` /
+  `DepletionSystem.solve` / `solve_vec` / `Inventory.decay` (default
+  `"cram48"`; an explicitly non-default `method` overrides `order`).
+  WASM `deplete` / `depleteSeries` gain an optional trailing `method`.
+- `validation/depletion_vs_openmc.py`: in-memory Bateman-vs-CRAM-48
+  cross-check column (single-step vs CRAM-48 within `1e-6`, vs analytic
+  within `1e-8`, series band within `1e-6`); committed results untouched,
+  container rerun deferred.
+
 - `nucleide-mcnp-io` L3 semantic objects (`crates/mcnp-io/src/semantic.rs`):
   typed `MODE` (37 particle shorthands, default `{N}`), `TRn` cards
   (degrees flag, 3-entry displacement, 5–9 entry rotation, main-to-aux flag,

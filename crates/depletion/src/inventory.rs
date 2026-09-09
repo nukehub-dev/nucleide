@@ -373,13 +373,20 @@ impl DecayInventory {
         Ok(Self { atoms })
     }
 
-    /// Decay the inventory by `dt` in `unit` with a single CRAM-48 solve.
+    /// Decay the inventory by `dt` in `unit` with an explicit [`Method`].
     ///
     /// The solve is decay-only: the system is rebuilt from `sys.chain` with
-    /// empty reaction rates. Result covers all chain nuclides (missing
+    /// empty reaction rates, so [`Method::Bateman`]/[`Method::BatemanHp`]
+    /// stay on the fast path here. Result covers all chain nuclides (missing
     /// inputs start at zero); inventory names absent from the chain are an
     /// error.
-    pub fn decay(&self, sys: &DepletionSystem, dt: f64, unit: TimeUnit) -> Result<Self, Error> {
+    pub fn decay_with_method(
+        &self,
+        sys: &DepletionSystem,
+        dt: f64,
+        unit: TimeUnit,
+        method: crate::bateman::Method,
+    ) -> Result<Self, Error> {
         if !dt.is_finite() || dt <= 0.0 {
             return Err(Error::BadStructure(format!("invalid timestep dt: {dt}")));
         }
@@ -401,7 +408,7 @@ impl DecayInventory {
             require_finite_nonnegative(name, *value)?;
             n0[idx] = *value;
         }
-        let solved = crate::cram(&decay_sys, crate::Order::Order48, &n0, dt_s)
+        let solved = crate::solve_with_method(&decay_sys, method, &n0, dt_s)
             .map_err(|e| Error::BadStructure(e.to_string()))?;
         Ok(Self {
             atoms: decay_sys
@@ -412,6 +419,24 @@ impl DecayInventory {
                 .map(|(nuc, v)| (nuc.name.clone(), v))
                 .collect(),
         })
+    }
+
+    /// Decay the inventory by `dt` in `unit` with a single CRAM-48 solve.
+    ///
+    /// Thin shim over [`DecayInventory::decay_with_method`] keeping the
+    /// pre-`Method` call shape; new code should pass an explicit [`Method`].
+    ///
+    /// The solve is decay-only: the system is rebuilt from `sys.chain` with
+    /// empty reaction rates. Result covers all chain nuclides (missing
+    /// inputs start at zero); inventory names absent from the chain are an
+    /// error.
+    pub fn decay(&self, sys: &DepletionSystem, dt: f64, unit: TimeUnit) -> Result<Self, Error> {
+        self.decay_with_method(
+            sys,
+            dt,
+            unit,
+            crate::bateman::Method::Cram(crate::Order::Order48),
+        )
     }
 
     /// Activity per nuclide in `unit` (must be an activity unit).
@@ -953,6 +978,29 @@ mod tests {
         // Time-unit plumbing: 1 day == 86400 s.
         let out_d = inv.decay(&sys, dt / 86_400.0, TimeUnit::Days).unwrap();
         assert!((out_d.atoms["A"] - na).abs() / na < 1e-8);
+    }
+
+    #[test]
+    fn decay_with_method_matches_cram() {
+        use crate::bateman::Method;
+        let sys = DepletionSystem::build(abc_chain(), &ReactionRates::new()).unwrap();
+        let inv = DecayInventory::from_atoms(&map(&[("A", 1.0e15)])).unwrap();
+        let dt = 1.0e5;
+        let cref = inv.decay(&sys, dt, TimeUnit::Seconds).unwrap();
+        for method in [Method::Bateman, Method::BatemanHp] {
+            let got = inv
+                .decay_with_method(&sys, dt, TimeUnit::Seconds, method)
+                .unwrap();
+            for name in ["A", "B", "C"] {
+                let rel = (got.atoms[name] - cref.atoms[name]).abs() / cref.atoms[name].max(1e-30);
+                assert!(
+                    rel < 1e-8,
+                    "{name}: {} vs {}",
+                    got.atoms[name],
+                    cref.atoms[name]
+                );
+            }
+        }
     }
 
     #[test]
