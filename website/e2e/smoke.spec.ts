@@ -95,6 +95,11 @@ NUCLIDE U235 92235 2
 NUCLIDE PU239 94239 2
 4.4 5.5`,
   },
+  {
+    path: "tutorials/interactive/deck-editor",
+    button: "Parse",
+    output: "text=Cell 1",
+  },
 ];
 
 for (const { path, button, output, cell, chart, paste } of INTERACTIVE_PAGES) {

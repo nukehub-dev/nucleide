@@ -88,6 +88,129 @@ export interface WasmChain {
   nuclides(): string[];
 }
 
+export interface DeckCellJson {
+  num: number;
+  mat: number;
+  dens?: number;
+  geom: string;
+  params: string[];
+}
+
+export interface DeckSurfJson {
+  num: number;
+  reflecting: boolean;
+  transform?: number;
+  periodic?: number;
+  kind: string;
+  coeffs: number[];
+}
+
+export interface ModeJson {
+  particles: string[];
+}
+
+export interface TransformJson {
+  number: number;
+  displacement: [number, number, number];
+  rotation: number[];
+  inDegrees: boolean;
+  mainToAux: boolean;
+  hidden: boolean;
+}
+
+export interface UniverseJson {
+  number: number;
+  cells: number[];
+  notTruncated: number[];
+}
+
+export interface LatticeJson {
+  cell: number;
+  lattice: number;
+}
+
+export interface FillJson {
+  cell: number;
+  kind: "single" | "matrix";
+  universe?: number;
+  minIndex?: [number, number, number];
+  maxIndex?: [number, number, number];
+  universes?: (number | null)[];
+  transform?: number;
+  hiddenTransform?: number[];
+  inDegrees: boolean;
+}
+
+export interface ImportanceJson {
+  cell: number;
+  particle: string;
+  value: number;
+}
+
+export interface VolumeJson {
+  cell: number;
+  volume: number;
+}
+
+export interface TallyJson {
+  number: number;
+  type: number;
+  particles: string[];
+  entries: string[];
+  fm?: string[];
+  eBins?: string[];
+}
+
+export interface WasmDeckProblem {
+  dumps(): string;
+  message: string;
+  title: string;
+  cells(): DeckCellJson[];
+  surfs(): DeckSurfJson[];
+  materialNumbers(): number[];
+  dataNames(): string[];
+  mode(): ModeJson;
+  transforms(): TransformJson[];
+  universes(): UniverseJson[];
+  lattices(): LatticeJson[];
+  fills(): FillJson[];
+  importances(): ImportanceJson[];
+  volumes(): VolumeJson[];
+  tallies(): TallyJson[];
+  cellInventory(): Record<number, number>;
+  validate(): void;
+  validationNotes(): string[];
+  setCellDensity(cell: number, dens: number): void;
+  setCellMaterial(cell: number, mat: number): void;
+  setMode(particles: string[]): void;
+  setCellUniverse(cell: number, universe: number, notTruncated?: boolean): void;
+  setCellLattice(cell: number, lattice?: number): void;
+  setCellFill(cell: number, universe: number): void;
+}
+
+export interface WasmInventory {
+  numbers(): Record<string, number>;
+  decay(
+    dt: number,
+    timeUnit?: string,
+    rates?: Record<string, number>,
+    order?: number,
+    method?: string,
+  ): WasmInventory;
+  activities(units: string): Record<string, number>;
+  masses(units: string): Record<string, number>;
+  moles(units: string): Record<string, number>;
+  activityFractions(): Record<string, number>;
+  massFractions(): Record<string, number>;
+  moleFractions(): Record<string, number>;
+  halfLivesReadable(): Record<string, string>;
+  add(other: WasmInventory): WasmInventory;
+  sub(other: WasmInventory): WasmInventory;
+  mul(s: number): WasmInventory;
+  div(s: number): WasmInventory;
+  toCsv(): string;
+}
+
 export interface DepleteSeriesResult {
   times: number[];
   atoms: Record<string, number>[];
@@ -287,6 +410,23 @@ export interface WasmApi {
   WasmChain: {
     fromXml(xml: string): WasmChain;
   };
+  WasmDeckProblem: {
+    fromText(text: string): WasmDeckProblem;
+  };
+  WasmInventory: {
+    new (chain: WasmChain, comp: Record<string, number>, units?: string): WasmInventory;
+    fromCsv(chain: WasmChain, text: string): WasmInventory;
+  };
+  cumulativeDecays(
+    chain: WasmChain,
+    n0: Record<string, number>,
+    dt: number,
+    rates?: Record<string, number>,
+  ): Record<string, number>;
+  progeny(chain: WasmChain, name: string): [string, number, string][];
+  branchingFraction(chain: WasmChain, parent: string, child: string): number | undefined;
+  decayMode(chain: WasmChain, parent: string, child: string): string | undefined;
+  chainEdges(chain: WasmChain): [string, string, number, string][];
   WasmMaterialsCompendium: {
     fromJson(text: string): WasmMaterialsCompendium;
   };

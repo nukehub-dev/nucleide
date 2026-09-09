@@ -22,7 +22,8 @@ Parent-level Rust/Python/verification rules remain in the root `AGENTS.md`.
 - **Runtime data**: `fixtures/` is the source of truth for data files the
   interactive tutorials load at runtime. `npm run sync-data` stages them into
   the git-ignored `website/public/data/`: the Materials Compendium is minified;
-  sample MCNP meshtal/xsdir files and the simple depletion chain are copied
+  sample MCNP meshtal/xsdir files, MCNP deck_minimal/deck_l3 samples, and
+  the simple depletion chain are copied
   verbatim. It runs automatically via `predev`/`prebuild`.
 - **Shared UI**: `@nukehub/docs-kit` provides layout, navigation, and
   markdown-negotiation integration. The dynamic favicon is customized through

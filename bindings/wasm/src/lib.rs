@@ -686,7 +686,7 @@ pub fn deplete(
     let rates: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(rates).map_err(js_err)?;
 
     let method = resolve_method(order, method.as_deref())?;
-    let reaction_rates = parse_reaction_rates(chain, &rates)?;
+    let reaction_rates = parse_reaction_rates(&chain.inner, &rates)?;
 
     let sys = nucleide_depletion::DepletionSystem::build((*chain.inner).clone(), &reaction_rates)
         .map_err(js_err)?;
@@ -738,7 +738,7 @@ fn parse_integrator(name: &str) -> Result<nucleide_depletion::Integrator, JsValu
 }
 
 fn parse_reaction_rates(
-    chain: &WasmChain,
+    chain: &nucleide_depletion::Chain,
     rates: &BTreeMap<String, f64>,
 ) -> Result<nucleide_depletion::ReactionRates, JsValue> {
     let mut reaction_rates = nucleide_depletion::ReactionRates::new();
@@ -747,7 +747,6 @@ fn parse_reaction_rates(
             .split_once(':')
             .ok_or_else(|| js_err(format!("rate key `{key}` must be `Name:reaction`")))?;
         let idx = chain
-            .inner
             .index_of(nuc)
             .ok_or_else(|| js_err(format!("rate for unknown nuclide `{nuc}`")))?;
         reaction_rates
@@ -796,7 +795,7 @@ pub fn deplete_series(
 
     let method = resolve_method(order, method.as_deref())?;
     let integrator = parse_integrator(integrator)?;
-    let reaction_rates = parse_reaction_rates(chain, &rates)?;
+    let reaction_rates = parse_reaction_rates(&chain.inner, &rates)?;
 
     let mut n0_vec = vec![0.0; chain.inner.nuclides.len()];
     for (name, value) in &n0 {
@@ -1532,4 +1531,713 @@ pub fn parse_isotxs(text: &str) -> Result<JsValue, JsValue> {
             })
             .collect(),
     })
+}
+
+// ---------------------------------------------------------------------------
+// MCNP full-deck problem
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct DeckCellJson {
+    num: u32,
+    mat: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dens: Option<f64>,
+    geom: String,
+    params: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct DeckSurfJson {
+    num: u32,
+    reflecting: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transform: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    periodic: Option<u32>,
+    kind: String,
+    coeffs: Vec<f64>,
+}
+
+#[derive(Serialize)]
+struct ModeJson {
+    particles: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct TransformJson {
+    number: u32,
+    displacement: [f64; 3],
+    rotation: Vec<f64>,
+    #[serde(rename = "inDegrees")]
+    in_degrees: bool,
+    #[serde(rename = "mainToAux")]
+    main_to_aux: bool,
+    hidden: bool,
+}
+
+#[derive(Serialize)]
+struct UniverseJson {
+    number: u32,
+    cells: Vec<u32>,
+    #[serde(rename = "notTruncated")]
+    not_truncated: Vec<u32>,
+}
+
+#[derive(Serialize)]
+struct LatticeJson {
+    cell: u32,
+    lattice: u8,
+}
+
+#[derive(Serialize)]
+struct FillJson {
+    cell: u32,
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    universe: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "minIndex")]
+    min_index: Option<[i32; 3]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "maxIndex")]
+    max_index: Option<[i32; 3]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    universes: Option<Vec<Option<u32>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transform: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "hiddenTransform")]
+    hidden_transform: Option<Vec<f64>>,
+    #[serde(rename = "inDegrees")]
+    in_degrees: bool,
+}
+
+#[derive(Serialize)]
+struct ImportanceJson {
+    cell: u32,
+    particle: String,
+    value: f64,
+}
+
+#[derive(Serialize)]
+struct VolumeJson {
+    cell: u32,
+    volume: f64,
+}
+
+#[derive(Serialize)]
+struct TallyJson {
+    number: u32,
+    #[serde(rename = "type")]
+    tally_type: u8,
+    particles: Vec<String>,
+    entries: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fm: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "eBins")]
+    e_bins: Option<Vec<String>>,
+}
+
+/// A parsed MCNP input deck with format-preserving write-back.
+///
+/// Thin facade over [`nucleide_mcnp_io::problem::DeckProblem`]: text in via
+/// [`parse_deck`](nucleide_mcnp_io::problem::parse_deck), text out via
+/// [`dumps`](nucleide_mcnp_io::problem::DeckProblem::dumps). There is no
+/// file-reading entry point (no filesystem in the browser).
+#[wasm_bindgen]
+pub struct WasmDeckProblem {
+    inner: nucleide_mcnp_io::problem::DeckProblem,
+}
+
+#[wasm_bindgen]
+impl WasmDeckProblem {
+    /// Parse a deck from its text.
+    #[wasm_bindgen(js_name = fromText)]
+    pub fn from_text(text: &str) -> Result<WasmDeckProblem, JsValue> {
+        nucleide_mcnp_io::problem::parse_deck(text)
+            .map(|inner| WasmDeckProblem { inner })
+            .map_err(js_err)
+    }
+
+    /// Serialize back to MCNP input text (byte-identical when unedited).
+    pub fn dumps(&self) -> String {
+        self.inner.dumps()
+    }
+
+    /// Message (first) line.
+    #[wasm_bindgen(getter)]
+    pub fn message(&self) -> String {
+        self.inner.message.clone()
+    }
+
+    /// Title card (second line).
+    #[wasm_bindgen(getter)]
+    pub fn title(&self) -> String {
+        self.inner.title.clone()
+    }
+
+    /// Cell cards (`dens` is absent for void cells).
+    pub fn cells(&self) -> Result<JsValue, JsValue> {
+        let out: Vec<DeckCellJson> = self
+            .inner
+            .cells
+            .iter()
+            .map(|c| DeckCellJson {
+                num: c.num,
+                mat: c.mat,
+                dens: c.dens,
+                geom: c.geom.render(),
+                params: c.params.clone(),
+            })
+            .collect();
+        to_js(&out)
+    }
+
+    /// Surface cards (`transform`/`periodic` are absent when not present).
+    pub fn surfs(&self) -> Result<JsValue, JsValue> {
+        let out: Vec<DeckSurfJson> = self
+            .inner
+            .surfs
+            .iter()
+            .map(|s| DeckSurfJson {
+                num: s.num,
+                reflecting: s.reflecting,
+                transform: s.transform,
+                periodic: s.periodic,
+                kind: s.kind.keyword().to_string(),
+                coeffs: s.coeffs.clone(),
+            })
+            .collect();
+        to_js(&out)
+    }
+
+    /// Material numbers in file order.
+    #[wasm_bindgen(js_name = materialNumbers)]
+    pub fn material_numbers(&self) -> Vec<u32> {
+        self.inner.materials.iter().map(|m| m.number).collect()
+    }
+
+    /// Data-card names in file order (`MODE`, `M1`, `KCODE`, ...).
+    #[wasm_bindgen(js_name = dataNames)]
+    pub fn data_names(&self) -> Vec<String> {
+        self.inner.data.iter().map(|d| d.name.clone()).collect()
+    }
+
+    /// Typed `MODE` card.
+    pub fn mode(&self) -> Result<JsValue, JsValue> {
+        let mode = self.inner.mode().map_err(js_err)?;
+        to_js(&ModeJson {
+            particles: mode.particles,
+        })
+    }
+
+    /// Typed `TRn` cards in file order.
+    pub fn transforms(&self) -> Result<JsValue, JsValue> {
+        let out: Vec<TransformJson> = self
+            .inner
+            .transforms()
+            .map_err(js_err)?
+            .into_iter()
+            .map(|t| TransformJson {
+                number: t.number,
+                displacement: t.displacement,
+                rotation: t.rotation,
+                in_degrees: t.is_in_degrees,
+                main_to_aux: t.is_main_to_aux,
+                hidden: t.hidden,
+            })
+            .collect();
+        to_js(&out)
+    }
+
+    /// Auto-created universes (from cell/data `U` usage, including 0).
+    pub fn universes(&self) -> Result<JsValue, JsValue> {
+        let out: Vec<UniverseJson> = self
+            .inner
+            .universes()
+            .map_err(js_err)?
+            .into_iter()
+            .map(|u| UniverseJson {
+                number: u.number,
+                cells: u.cells,
+                not_truncated: u.not_truncated,
+            })
+            .collect();
+        to_js(&out)
+    }
+
+    /// Cell `LAT` assignments in file order.
+    pub fn lattices(&self) -> Result<JsValue, JsValue> {
+        let out: Vec<LatticeJson> = self
+            .inner
+            .lattices()
+            .map_err(js_err)?
+            .into_iter()
+            .map(|l| LatticeJson {
+                cell: l.cell,
+                lattice: l.lattice,
+            })
+            .collect();
+        to_js(&out)
+    }
+
+    /// Cell `FILL` assignments in file order (`kind` is `single` or
+    /// `matrix`; matrix empties are `null`).
+    pub fn fills(&self) -> Result<JsValue, JsValue> {
+        use nucleide_mcnp_io::semantic::{FillTarget, FillTransform};
+        let out: Vec<FillJson> = self
+            .inner
+            .fills()
+            .map_err(js_err)?
+            .into_iter()
+            .map(|f| {
+                let mut json = FillJson {
+                    cell: f.cell,
+                    kind: String::new(),
+                    universe: None,
+                    min_index: None,
+                    max_index: None,
+                    universes: None,
+                    transform: None,
+                    hidden_transform: None,
+                    in_degrees: f.in_degrees,
+                };
+                match &f.target {
+                    FillTarget::Single(u) => {
+                        json.kind = "single".to_string();
+                        json.universe = Some(*u);
+                    }
+                    FillTarget::Matrix {
+                        min_index,
+                        max_index,
+                        universes,
+                    } => {
+                        json.kind = "matrix".to_string();
+                        json.min_index = Some(*min_index);
+                        json.max_index = Some(*max_index);
+                        json.universes = Some(universes.clone());
+                    }
+                }
+                match &f.transform {
+                    None => {}
+                    Some(FillTransform::Reference(n)) => {
+                        json.transform = Some(*n);
+                    }
+                    Some(FillTransform::Hidden(t)) => {
+                        let mut coords: Vec<f64> = t.displacement.to_vec();
+                        coords.extend(t.rotation.iter().copied());
+                        json.hidden_transform = Some(coords);
+                    }
+                }
+                json
+            })
+            .collect();
+        to_js(&out)
+    }
+
+    /// Cell importance entries in file order.
+    pub fn importances(&self) -> Result<JsValue, JsValue> {
+        let out: Vec<ImportanceJson> = self
+            .inner
+            .importances()
+            .map_err(js_err)?
+            .into_iter()
+            .map(|v| ImportanceJson {
+                cell: v.cell,
+                particle: v.particle,
+                value: v.value,
+            })
+            .collect();
+        to_js(&out)
+    }
+
+    /// Manual cell volumes in file order.
+    pub fn volumes(&self) -> Result<JsValue, JsValue> {
+        let out: Vec<VolumeJson> = self
+            .inner
+            .volumes()
+            .map_err(js_err)?
+            .into_iter()
+            .map(|v| VolumeJson {
+                cell: v.cell,
+                volume: v.volume,
+            })
+            .collect();
+        to_js(&out)
+    }
+
+    /// Typed tallies (`Fn` with grouped `FMn`/`En`) in number order.
+    pub fn tallies(&self) -> Result<JsValue, JsValue> {
+        let out: Vec<TallyJson> = self
+            .inner
+            .tallies()
+            .map_err(js_err)?
+            .into_iter()
+            .map(|t| TallyJson {
+                number: t.number,
+                tally_type: t.tally_type,
+                particles: t.particles,
+                entries: t.entries,
+                fm: t.fm,
+                e_bins: t.e_bins,
+            })
+            .collect();
+        to_js(&out)
+    }
+
+    /// Cell inventory: `cell -> material` map in file order.
+    #[wasm_bindgen(js_name = cellInventory)]
+    pub fn cell_inventory(&self) -> Result<JsValue, JsValue> {
+        // Keys as strings: serde-wasm-bindgen maps need string keys to
+        // become plain JS objects (JS object keys are strings anyway).
+        let inv: BTreeMap<String, u32> = nucleide_mcnp_io::problem::cell_inventory(&self.inner)
+            .into_iter()
+            .map(|(cell, mat)| (cell.to_string(), mat))
+            .collect();
+        to_js(&inv)
+    }
+
+    /// Validate every L3 semantic rule (throws on error).
+    pub fn validate(&self) -> Result<(), JsValue> {
+        self.inner.validate().map_err(js_err)
+    }
+
+    /// Non-fatal validation notes (particle/mode mismatches, not errors).
+    #[wasm_bindgen(js_name = validationNotes)]
+    pub fn validation_notes(&self) -> Vec<String> {
+        self.inner.validation_notes()
+    }
+
+    /// Set a cell's density, re-rendering that card canonically.
+    #[wasm_bindgen(js_name = setCellDensity)]
+    pub fn set_cell_density(&mut self, cell: u32, dens: f64) -> Result<(), JsValue> {
+        self.inner.set_cell_density(cell, dens).map_err(js_err)
+    }
+
+    /// Set a cell's material number, re-rendering that card canonically.
+    #[wasm_bindgen(js_name = setCellMaterial)]
+    pub fn set_cell_material(&mut self, cell: u32, mat: u32) -> Result<(), JsValue> {
+        self.inner.set_cell_material(cell, mat).map_err(js_err)
+    }
+
+    /// Set the `MODE` card particles, re-rendering that card canonically
+    /// (appending one when absent).
+    #[wasm_bindgen(js_name = setMode)]
+    pub fn set_mode(&mut self, particles: Vec<String>) -> Result<(), JsValue> {
+        self.inner.set_mode(particles).map_err(js_err)
+    }
+
+    /// Set a cell's universe (`notTruncated` writes `U=-n`).
+    #[wasm_bindgen(js_name = setCellUniverse)]
+    pub fn set_cell_universe(
+        &mut self,
+        cell: u32,
+        universe: u32,
+        not_truncated: Option<bool>,
+    ) -> Result<(), JsValue> {
+        self.inner
+            .set_cell_universe(cell, universe, not_truncated.unwrap_or(false))
+            .map_err(js_err)
+    }
+
+    /// Set (`1`/`2`) or clear (`undefined`) a cell's lattice.
+    #[wasm_bindgen(js_name = setCellLattice)]
+    pub fn set_cell_lattice(&mut self, cell: u32, lattice: Option<u8>) -> Result<(), JsValue> {
+        self.inner.set_cell_lattice(cell, lattice).map_err(js_err)
+    }
+
+    /// Set a cell's fill to a single universe.
+    #[wasm_bindgen(js_name = setCellFill)]
+    pub fn set_cell_fill(&mut self, cell: u32, universe: u32) -> Result<(), JsValue> {
+        self.inner.set_cell_fill(cell, universe).map_err(js_err)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Decay inventory
+// ---------------------------------------------------------------------------
+
+fn inventory_system(
+    chain: &nucleide_depletion::Chain,
+    rates: &nucleide_depletion::ReactionRates,
+) -> Result<nucleide_depletion::DepletionSystem, JsValue> {
+    nucleide_depletion::DepletionSystem::build(chain.clone(), rates).map_err(js_err)
+}
+
+fn inventory_atoms(
+    chain: &nucleide_depletion::Chain,
+    atoms: &BTreeMap<String, f64>,
+) -> Result<Vec<f64>, JsValue> {
+    let mut vec = vec![0.0; chain.len()];
+    for (name, value) in atoms {
+        let idx = chain
+            .index_of(name)
+            .ok_or_else(|| js_err(format!("unknown nuclide `{name}` for this chain")))?;
+        vec[idx] = *value;
+    }
+    Ok(vec)
+}
+
+/// A unit-aware decay inventory over a depletion chain.
+///
+/// Thin facade over [`nucleide_depletion::DecayInventory`]: quantities convert
+/// through [`QuantityUnit`](nucleide_depletion::QuantityUnit) on entry and on
+/// exit, and [`decay`](WasmInventory::decay) routes through the core series
+/// driver (predictor over one step) so reaction rates and the solver
+/// `method` stay honored exactly like the Python `Inventory.decay`.
+#[wasm_bindgen]
+pub struct WasmInventory {
+    chain: std::sync::Arc<nucleide_depletion::Chain>,
+    inner: nucleide_depletion::DecayInventory,
+}
+
+#[wasm_bindgen]
+impl WasmInventory {
+    /// Build from quantities in `units` (default `"atoms"`; `Bq`/`Ci`
+    /// activity, `g`/`kg` mass, `mol`, ... — see `QuantityUnit`).
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        chain: &WasmChain,
+        comp: JsValue,
+        units: Option<String>,
+    ) -> Result<WasmInventory, JsValue> {
+        let comp: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(comp).map_err(js_err)?;
+        let unit = units
+            .as_deref()
+            .unwrap_or("atoms")
+            .parse::<nucleide_depletion::QuantityUnit>()
+            .map_err(js_err)?;
+        let sys = inventory_system(&chain.inner, &nucleide_depletion::ReactionRates::new())?;
+        let inner =
+            nucleide_depletion::DecayInventory::from_units(&comp, unit, &sys).map_err(js_err)?;
+        Ok(WasmInventory {
+            chain: chain.inner.clone(),
+            inner,
+        })
+    }
+
+    /// Parse [`to_csv`](WasmInventory::to_csv) output back into an inventory
+    /// over `chain` (names outside the chain are an error).
+    #[wasm_bindgen(js_name = fromCsv)]
+    pub fn from_csv(chain: &WasmChain, text: &str) -> Result<WasmInventory, JsValue> {
+        let inner = nucleide_depletion::DecayInventory::from_csv(text).map_err(js_err)?;
+        for name in inner.atoms.keys() {
+            if chain.inner.index_of(name).is_none() {
+                return Err(js_err(format!("unknown nuclide `{name}` for this chain")));
+            }
+        }
+        Ok(WasmInventory {
+            chain: chain.inner.clone(),
+            inner,
+        })
+    }
+
+    /// Atom counts by nuclide name.
+    pub fn numbers(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.numbers())
+    }
+
+    /// Decay over `dt` in `time_unit` (default `"s"`); optional one-group
+    /// `rates` (`"Name:reaction"` keys), CRAM `order` (default 48), and
+    /// solver `method` (`"cram16"`, `"cram48"`, `"bateman"`, `"bateman_hp"`,
+    /// default `"cram48"` — an explicitly non-default `method` overrides
+    /// `order`). Unlike the decay-only core, this honors `rates`; a Bateman
+    /// `method` with live rates falls back to CRAM-48.
+    pub fn decay(
+        &self,
+        dt: f64,
+        time_unit: Option<String>,
+        rates: JsValue,
+        order: Option<u8>,
+        method: Option<String>,
+    ) -> Result<WasmInventory, JsValue> {
+        let method = resolve_method(order.unwrap_or(48), method.as_deref())?;
+        let unit = nucleide_depletion::time_unit_from_str(time_unit.as_deref().unwrap_or("s"))
+            .map_err(js_err)?;
+        let rate_map: BTreeMap<String, f64> = if rates.is_undefined() || rates.is_null() {
+            BTreeMap::new()
+        } else {
+            serde_wasm_bindgen::from_value(rates).map_err(js_err)?
+        };
+        let reaction_rates = parse_reaction_rates(&self.chain, &rate_map)?;
+        let template = inventory_system(&self.chain, &reaction_rates)?;
+        let seconds = dt * unit.as_seconds();
+        let steps = vec![nucleide_depletion::Step::new(
+            seconds,
+            reaction_rates.clone(),
+        )];
+        let series = nucleide_depletion::integrate_with_method(
+            &template,
+            &inventory_atoms(&self.chain, &self.inner.atoms)?,
+            &steps,
+            nucleide_depletion::Integrator::Predictor,
+            method,
+        )
+        .map_err(js_err)?;
+        let names: Vec<String> = self.chain.nuclides.iter().map(|n| n.name.clone()).collect();
+        let atoms = names
+            .iter()
+            .zip(series.atoms.last().cloned().unwrap_or_default())
+            .map(|(n, v)| (n.clone(), v))
+            .collect();
+        Ok(WasmInventory {
+            chain: self.chain.clone(),
+            inner: nucleide_depletion::DecayInventory { atoms },
+        })
+    }
+
+    /// Activity per nuclide in `units`.
+    pub fn activities(&self, units: &str) -> Result<JsValue, JsValue> {
+        let unit = units
+            .parse::<nucleide_depletion::QuantityUnit>()
+            .map_err(js_err)?;
+        let sys = inventory_system(&self.chain, &nucleide_depletion::ReactionRates::new())?;
+        to_js(&self.inner.activities(&sys, unit).map_err(js_err)?)
+    }
+
+    /// Mass per nuclide in `units`.
+    pub fn masses(&self, units: &str) -> Result<JsValue, JsValue> {
+        let unit = units
+            .parse::<nucleide_depletion::QuantityUnit>()
+            .map_err(js_err)?;
+        to_js(&self.inner.masses(unit).map_err(js_err)?)
+    }
+
+    /// Moles per nuclide in `units`.
+    pub fn moles(&self, units: &str) -> Result<JsValue, JsValue> {
+        let unit = units
+            .parse::<nucleide_depletion::QuantityUnit>()
+            .map_err(js_err)?;
+        to_js(&self.inner.moles(unit).map_err(js_err)?)
+    }
+
+    /// Fraction of total activity per nuclide.
+    #[wasm_bindgen(js_name = activityFractions)]
+    pub fn activity_fractions(&self) -> Result<JsValue, JsValue> {
+        let sys = inventory_system(&self.chain, &nucleide_depletion::ReactionRates::new())?;
+        to_js(&self.inner.activity_fractions(&sys).map_err(js_err)?)
+    }
+
+    /// Fraction of total mass per nuclide.
+    #[wasm_bindgen(js_name = massFractions)]
+    pub fn mass_fractions(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.mass_fractions().map_err(js_err)?)
+    }
+
+    /// Fraction of total atoms per nuclide (mole fractions).
+    #[wasm_bindgen(js_name = moleFractions)]
+    pub fn mole_fractions(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.mole_fractions())
+    }
+
+    /// Human-readable half-lives (`"3.2 d"`, `"stable"`, `"unknown"`).
+    #[wasm_bindgen(js_name = halfLivesReadable)]
+    pub fn half_lives_readable(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.half_lives_readable())
+    }
+
+    /// Add two inventories (atom counts sum).
+    pub fn add(&self, other: &WasmInventory) -> WasmInventory {
+        WasmInventory {
+            chain: self.chain.clone(),
+            inner: self.inner.add(&other.inner),
+        }
+    }
+
+    /// Subtract (clamped at zero).
+    pub fn sub(&self, other: &WasmInventory) -> WasmInventory {
+        WasmInventory {
+            chain: self.chain.clone(),
+            inner: self.inner.sub(&other.inner),
+        }
+    }
+
+    /// Scale all counts by `s`.
+    pub fn mul(&self, s: f64) -> WasmInventory {
+        WasmInventory {
+            chain: self.chain.clone(),
+            inner: self.inner.mul(s),
+        }
+    }
+
+    /// Divide all counts by `s`.
+    pub fn div(&self, s: f64) -> WasmInventory {
+        WasmInventory {
+            chain: self.chain.clone(),
+            inner: self.inner.div(s),
+        }
+    }
+
+    /// Serialize as `nuclide,quantity,unit` CSV rows (atom counts).
+    #[wasm_bindgen(js_name = toCsv)]
+    pub fn to_csv(&self) -> String {
+        self.inner.to_csv()
+    }
+}
+
+/// Time-integrated decays per nuclide over one step, keyed by name.
+///
+/// Diagonal Bateman integral over `[0, dt]` (stable nuclides report `0.0`);
+/// optional one-group `rates` select the depletion system.
+#[wasm_bindgen(js_name = cumulativeDecays)]
+pub fn cumulative_decays(
+    chain: &WasmChain,
+    n0: JsValue,
+    dt: f64,
+    rates: JsValue,
+) -> Result<JsValue, JsValue> {
+    let n0: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(n0).map_err(js_err)?;
+    let rate_map: BTreeMap<String, f64> = if rates.is_undefined() || rates.is_null() {
+        BTreeMap::new()
+    } else {
+        serde_wasm_bindgen::from_value(rates).map_err(js_err)?
+    };
+    let sys = inventory_system(
+        &chain.inner,
+        &parse_reaction_rates(&chain.inner, &rate_map)?,
+    )?;
+    let vec = inventory_atoms(&chain.inner, &n0)?;
+    let out = nucleide_depletion::cumulative_decays(&sys, &vec, dt).map_err(js_err)?;
+    let keyed: BTreeMap<String, f64> = chain
+        .inner
+        .nuclides
+        .iter()
+        .zip(out)
+        .map(|(nuc, v)| (nuc.name.clone(), v))
+        .collect();
+    to_js(&keyed)
+}
+
+/// `(child, branching_ratio, decay_mode)` triples for a chain nuclide
+/// (empty when the name is unknown).
+pub fn progeny(chain: &WasmChain, name: &str) -> Result<JsValue, JsValue> {
+    to_js(&nucleide_depletion::progeny(&chain.inner, name))
+}
+
+/// Branching fraction from parent to child (`undefined` when absent).
+#[wasm_bindgen(js_name = branchingFraction)]
+pub fn branching_fraction(
+    chain: &WasmChain,
+    parent: &str,
+    child: &str,
+) -> Result<Option<f64>, JsValue> {
+    Ok(nucleide_depletion::branching_fraction(
+        &chain.inner,
+        parent,
+        child,
+    ))
+}
+
+/// Decay-mode label from parent to child (`undefined` when absent).
+#[wasm_bindgen(js_name = decayMode)]
+pub fn decay_mode(chain: &WasmChain, parent: &str, child: &str) -> Result<Option<String>, JsValue> {
+    Ok(nucleide_depletion::decay_mode(&chain.inner, parent, child))
+}
+
+/// `(parent, child, branching_ratio, decay_mode)` edges of a chain.
+#[wasm_bindgen(js_name = chainEdges)]
+pub fn chain_edges(chain: &WasmChain) -> Result<JsValue, JsValue> {
+    to_js(&nucleide_depletion::chain_edges(&chain.inner))
 }

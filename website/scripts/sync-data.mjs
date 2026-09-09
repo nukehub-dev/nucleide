@@ -37,7 +37,17 @@ await copyFile(
   path.join(dst, "chain_simple.xml"),
 );
 
+// MCNP full-deck samples consumed by the deck-editor tutorial.
+await copyFile(
+  path.join(fixturesRoot, "mcnp", "inp", "deck_minimal.txt"),
+  path.join(dst, "deck_minimal.txt"),
+);
+await copyFile(
+  path.join(fixturesRoot, "mcnp", "inp", "deck_l3.txt"),
+  path.join(dst, "deck_l3.txt"),
+);
+
 console.log(
   `sync-data: staged MaterialsCompendium.json (${(minified.length / 1e6).toFixed(1)} MB) + LICENSE, ` +
-    `meshtal_sample.txt, xsdir_sample.txt, chain_simple.xml`,
+    `meshtal_sample.txt, xsdir_sample.txt, chain_simple.xml, deck_minimal.txt, deck_l3.txt`,
 );

@@ -1,0 +1,33 @@
+---
+title: Deck Editor
+description: Parse, validate, and edit full MCNP decks plus unit-aware decay inventories in the browser.
+sidebar:
+  order: 9
+---
+
+The `mcnp-io` crate parses whole MCNP input decks into a `DeckProblem` that
+round-trips byte-identical when unedited and re-renders single cards
+canonically after edits. The `depletion` crate layers a unit-aware
+`DecayInventory` over a depletion chain for decay, activity/mass/mole
+conversions, and chain-topology queries. Both run in the browser below through
+the WASM `WasmDeckProblem` and `WasmInventory` bindings (text strings only —
+there is no filesystem access, so decks load from text, never from files).
+
+## Try it
+
+Paste a deck (or load the synthetic L3 lattice sample) and press **Parse**.
+The demo shows the cell table, the cell→material inventory map, material and
+L3 counts, and the validation verdict. Edit a cell's density, material,
+universe, lattice, or fill, or change the `MODE` card, and the re-rendered
+deck text updates below. `✓ valid` means every L3 semantic rule passes;
+bulleted notes are particle/mode mismatches, which are warnings rather than
+errors.
+
+<InteractiveDemo kind="deck-editor" />
+
+## See also
+
+- Tutorial: [Parse MCNP output](../python/parse-mcnp-output.md)
+- Tutorial: [Run depletion](../python/run-depletion.md)
+- Demo: [MCNP I/O](mcnp-io.mdx)
+- Crate docs: [`crates/mcnp-io/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/mcnp-io/src/lib.rs)

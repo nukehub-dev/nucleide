@@ -83,6 +83,23 @@ workspace crates from tags.
 - Python API: `nucleide.nuclei.dose_factor` and
   `nucleide.material.dose_per_g` thin wrappers over the vendored tables +
   material analytics.
+- WASM `WasmDeckProblem` (`bindings/wasm/src/lib.rs`) + `deck-editor` demo
+  (`website/src/components/interactive/DeckEditor.tsx`,
+  `docs/tutorials/interactive/deck-editor.mdx`): `fromText` deck parsing
+  (text only, no filesystem in the browser), typed `cells`/`surfs`/`mode`/
+  `transforms`/`universes`/`lattices`/`fills`/`importances`/`volumes`/
+  `tallies` views, `materialNumbers`/`dataNames`, `cellInventory`
+  (cell→material map), `validate`/`validationNotes`, and `setCellDensity`/
+  `setCellMaterial`/`setMode`/`setCellUniverse`/`setCellLattice`/
+  `setCellFill` setters over the existing Tier 1 `DeckProblem` API.
+  `WasmInventory` over the existing `DecayInventory` API (`units` default
+  `"atoms"`, `decay` honoring rates + solver `method` via the predictor
+  single-step, `activities`/`masses`/`moles`, fractions, `halfLivesReadable`,
+  `add`/`sub`/`mul`/`div`, `toCsv`/`fromCsv`) plus `cumulativeDecays`/
+  `progeny`/`branchingFraction`/`decayMode`/`chainEdges` free functions.
+  The demo parses the inline synthetic `deck_minimal.txt`, fetches the
+  synthetic `deck_l3.txt` sample staged by `sync-data.mjs`, edits cells
+  through the setters, and shows validation plus byte-identical `dumps`.
 
 ## [0.3.0] - 2026-09-08
 
