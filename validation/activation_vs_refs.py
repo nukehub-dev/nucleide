@@ -14,7 +14,8 @@ Comparisons run on committed `fixtures/` inputs with in-memory patching only
 - CCCC synthetic ISOTXS/RTFLUX plus a PARTISN render/validate round-trip.
 - ORIGEN synthetic TAPE5/TAPE6/TAPE9 echoes plus activity totals.
 - R2S `from_deck` workflow on the sample2 deck plus validate/assemble smoke
-  tests.
+  tests, and a synthetic dict-in snapshot (`r2s_from_snapshot`) with one
+  broadcast flux and one void zone.
 
 Independent oracles exist only where PyNE ships a matching reader (the
 `pyne.alara` deck probe below, container-only and API-guarded); everything
@@ -907,6 +908,50 @@ def r2s_section(report: Report) -> None:
             _check(_close(missing["total"], 0.0, 1e-12)),
         ]
     )
+    snapshot = {
+        "zones": [
+            {
+                "id": "B0120-005",
+                "volume_cm3": 1200.0,
+                "composition": {"U235": 1.0e-3, "nU238": 2.0e-2},
+            },
+            {"id": "B0120-006", "volume_cm3": 800.0, "composition": {}},
+        ],
+        "flux_defs": [{"name": "snap_flux", "file": "data/flux", "scale": 1.0}],
+        "cooling_s": [86_400.0],
+    }
+    bundle = nucleide.r2s.r2s_from_snapshot(snapshot)
+    snap_workflow = bundle["workflow"]
+    rows.append(
+        [
+            "synthetic snapshot",
+            "void zone skipped",
+            "[B0120-005 x snap_flux]",
+            str(snap_workflow["steps"]),
+            _check(snap_workflow["steps"] == [{"zone": "B0120-005", "flux": "snap_flux"}]),
+        ]
+    )
+    try:
+        nucleide.r2s.r2s_validate(snap_workflow, bundle["deck"])
+        snap_valid = True
+    except Exception:
+        snap_valid = False
+    snap_steps = nucleide.r2s.r2s_expand(bundle["deck"])
+    snap_total = sum(s["duration_s"] for s in snap_steps)
+    rows.append(
+        [
+            "synthetic snapshot",
+            "deck validates, expands",
+            "OK, 86400 s",
+            f"{'OK' if snap_valid else 'RAISED'}, {fmt(snap_total)}",
+            _check(
+                snap_valid
+                and len(snap_steps) == 1
+                and _close(snap_total, 86_400.0)
+                and len(bundle["decks"]) == 1
+            ),
+        ]
+    )
     report.table(["Fixture", "Check", "Expected", "Observed", "Status"], rows)
     report.prose(
         "Both zones share one flux (no void-only step is synthesized), and the"
@@ -914,6 +959,9 @@ def r2s_section(report: Report) -> None:
         " assembly\nsums zone `SpecificActivity` and splits the total uniformly over the"
         "\nrequested groups: the total shutdown strength is preserved, while real"
         " decay\nphotons follow the nuclide- and energy-dependent `.photonSrc` lines."
+        " The\nsynthetic snapshot rows cover the dict-in adapter (no ARMI files:"
+        " one\nbroadcast flux, one void zone skipped, template deck validating and"
+        "\nexpanding to a single 86400 s step)."
     )
 
 

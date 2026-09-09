@@ -104,12 +104,25 @@ workspace crates from tags.
   `setCellFill` setters over the existing Tier 1 `DeckProblem` API.
   `WasmInventory` over the existing `DecayInventory` API (`units` default
   `"atoms"`, `decay` honoring rates + solver `method` via the predictor
-  single-step, `activities`/`masses`/`moles`, fractions, `halfLivesReadable`,
-  `add`/`sub`/`mul`/`div`, `toCsv`/`fromCsv`) plus `cumulativeDecays`/
-  `progeny`/`branchingFraction`/`decayMode`/`chainEdges` free functions.
-  The demo parses the inline synthetic `deck_minimal.txt`, fetches the
-  synthetic `deck_l3.txt` sample staged by `sync-data.mjs`, edits cells
-  through the setters, and shows validation plus byte-identical `dumps`.
+   single-step, `activities`/`masses`/`moles`, fractions, `halfLivesReadable`,
+   `add`/`sub`/`mul`/`div`, `toCsv`/`fromCsv`) plus `cumulativeDecays`/
+   `progeny`/`branchingFraction`/`decayMode`/`chainEdges` free functions.
+   The demo parses the inline synthetic `deck_minimal.txt`, fetches the
+   synthetic `deck_l3.txt` sample staged by `sync-data.mjs`, edits cells
+   through the setters, and shows validation plus byte-identical `dumps`.
+- `nucleide-r2s` ARMI DB-snapshot adapter (`crates/r2s/src/snapshot.rs`):
+  `deck_from_snapshot` / `R2sWorkflow::from_snapshot` /
+  `snapshot_workflow` build a validated volumes-method ALARA template deck
+  from versionless caller-dumped dicts (opaque zone ids 1:1 from block
+  names, 1:1 zone→mixture with atoms/barn-cm number densities as element
+  `vol_fraction`, caller-supplied fluxes/cooling/schedule; empty
+  compositions map to `void` and are skipped). Dict-in only: no HDF5
+  dependency, no ARMI layout versioning mirrored, synthetic test data only.
+  Composition keys follow the emit ARMI-input rule (post-expansion nuclide
+  keys; elemental keys, bare `AM242`, and unknown names are errors).
+- Python API: `nucleide.r2s.r2s_from_snapshot` thin wrapper returning
+  `{workflow, deck, decks}` (workflow summary, canonical template deck,
+  one deck per step).
 
 ## [0.3.0] - 2026-09-08
 

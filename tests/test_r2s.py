@@ -1,6 +1,7 @@
 """Integration tests for the R2S workflow builder against ALARA fixtures."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -79,6 +80,88 @@ class TestExpand:
     def test_unknown_top_raises(self) -> None:
         with pytest.raises(ValueError):
             nucleide.r2s.r2s_expand(read_fixture("decks", "sample2"), top="missing")
+
+
+class TestFromSnapshot:
+    @staticmethod
+    def snapshot(**overrides: Any) -> dict[str, Any]:
+        base: dict[str, Any] = {
+            "zones": [
+                {
+                    "id": "B0120-005",
+                    "volume_cm3": 1200.0,
+                    "zbottom_cm": 0.0,
+                    "ztop_cm": 10.0,
+                    "material": "fuel",
+                    "xs_type": "A",
+                    "temperature_C": 600.0,
+                    "composition": {"U235": 1.0e-3, "nU238": 2.0e-2},
+                },
+                {
+                    "id": "B0120-006",
+                    "volume_cm3": 800.0,
+                    "composition": {"PU239": 5.0e-4},
+                },
+            ],
+            "flux_defs": [{"name": "snap_flux", "file": "data/flux", "scale": 1.0}],
+            "cooling_s": [86_400.0],
+        }
+        base.update(overrides)
+        return base
+
+    def test_broadcast_workflow_and_decks(self) -> None:
+        bundle = nucleide.r2s.r2s_from_snapshot(self.snapshot())
+        workflow = bundle["workflow"]
+        assert workflow["steps"] == [
+            {"zone": "B0120-005", "flux": "snap_flux"},
+            {"zone": "B0120-006", "flux": "snap_flux"},
+        ]
+        assert workflow["cooling_s"] == pytest.approx([86_400.0])
+        assert workflow["top_schedule"] == "snap_schedule"
+        assert "mixture mix_B0120-005" in bundle["deck"]
+        assert len(bundle["decks"]) == 2
+        # Template deck validates and expands through the existing machinery.
+        nucleide.r2s.r2s_validate(workflow, bundle["deck"])
+        steps = nucleide.r2s.r2s_expand(bundle["deck"])
+        assert len(steps) == 1
+        assert steps[0]["duration_s"] == pytest.approx(86_400.0)
+
+    def test_alias(self) -> None:
+        assert nucleide.r2s.from_snapshot is nucleide.r2s.r2s_from_snapshot
+
+    def test_void_zone_skipped(self) -> None:
+        snap = self.snapshot()
+        snap["zones"][1]["composition"] = {}
+        bundle = nucleide.r2s.r2s_from_snapshot(snap)
+        assert bundle["workflow"]["steps"] == [{"zone": "B0120-005", "flux": "snap_flux"}]
+        assert len(bundle["decks"]) == 1
+
+    def test_name_matched_fluxes(self) -> None:
+        snap = self.snapshot(
+            flux_defs=[
+                {"name": "B0120-005", "file": "data/f1", "scale": 1.0},
+                {"name": "B0120-006", "file": "data/f2", "scale": 2.0},
+            ]
+        )
+        bundle = nucleide.r2s.r2s_from_snapshot(snap)
+        assert bundle["workflow"]["steps"] == [
+            {"zone": "B0120-005", "flux": "B0120-005"},
+            {"zone": "B0120-006", "flux": "B0120-006"},
+        ]
+
+    def test_empty_zones_raises(self) -> None:
+        with pytest.raises(ValueError):
+            nucleide.r2s.r2s_from_snapshot(self.snapshot(zones=[]))
+
+    def test_unknown_composition_key_raises(self) -> None:
+        snap = self.snapshot()
+        snap["zones"][0]["composition"] = {"DUMP1": 1.0e-3}
+        with pytest.raises(ValueError, match="DUMP1"):
+            nucleide.r2s.r2s_from_snapshot(snap)
+
+    def test_empty_cooling_raises(self) -> None:
+        with pytest.raises(ValueError):
+            nucleide.r2s.r2s_from_snapshot(self.snapshot(cooling_s=[]))
 
 
 class TestAssemble:

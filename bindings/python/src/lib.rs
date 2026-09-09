@@ -2683,6 +2683,166 @@ fn r2s_assemble(
     Ok(out.into_any().unbind())
 }
 
+fn snapshot_dict_str(
+    zone: &Bound<'_, pyo3::types::PyDict>,
+    key: &str,
+    what: &str,
+) -> PyResult<String> {
+    match zone.get_item(key)? {
+        Some(v) => v
+            .extract()
+            .map_err(|_| PyValueError::new_err(format!("snapshot {what} `{key}` must be str"))),
+        None => Err(PyValueError::new_err(format!(
+            "snapshot {what} missing `{key}`"
+        ))),
+    }
+}
+
+fn snapshot_dict_opt_str(
+    zone: &Bound<'_, pyo3::types::PyDict>,
+    key: &str,
+    what: &str,
+) -> PyResult<Option<String>> {
+    match zone.get_item(key)? {
+        Some(v) if v.is_none() => Ok(None),
+        Some(v) => v
+            .extract::<String>()
+            .map(Some)
+            .map_err(|_| PyValueError::new_err(format!("snapshot {what} `{key}` must be str"))),
+        None => Ok(None),
+    }
+}
+
+fn snapshot_dict_f64(
+    zone: &Bound<'_, pyo3::types::PyDict>,
+    key: &str,
+    what: &str,
+) -> PyResult<f64> {
+    match zone.get_item(key)? {
+        Some(v) => v
+            .extract()
+            .map_err(|_| PyValueError::new_err(format!("snapshot {what} `{key}` must be float"))),
+        None => Err(PyValueError::new_err(format!(
+            "snapshot {what} missing `{key}`"
+        ))),
+    }
+}
+
+fn snapshot_dict_opt_f64(
+    zone: &Bound<'_, pyo3::types::PyDict>,
+    key: &str,
+    what: &str,
+) -> PyResult<Option<f64>> {
+    match zone.get_item(key)? {
+        Some(v) if v.is_none() => Ok(None),
+        Some(v) => v
+            .extract::<f64>()
+            .map(Some)
+            .map_err(|_| PyValueError::new_err(format!("snapshot {what} `{key}` must be float"))),
+        None => Ok(None),
+    }
+}
+
+fn snapshot_zone_from_dict(
+    zone: &Bound<'_, pyo3::types::PyDict>,
+) -> PyResult<nucleide_r2s::snapshot::SnapshotZone> {
+    let id = snapshot_dict_str(zone, "id", "zone")?;
+    let volume_cm3 = snapshot_dict_f64(zone, "volume_cm3", "zone")?;
+    let composition: BTreeMap<String, f64> = match zone.get_item("composition")? {
+        Some(v) => v.extract().map_err(|_| {
+            PyValueError::new_err("snapshot zone `composition` must be a dict of str to float")
+        })?,
+        None => return Err(PyValueError::new_err("snapshot zone missing `composition`")),
+    };
+    Ok(nucleide_r2s::snapshot::SnapshotZone {
+        zone: id,
+        volume_cm3,
+        zbottom_cm: snapshot_dict_opt_f64(zone, "zbottom_cm", "zone")?,
+        ztop_cm: snapshot_dict_opt_f64(zone, "ztop_cm", "zone")?,
+        material: snapshot_dict_opt_str(zone, "material", "zone")?,
+        xs_type: snapshot_dict_opt_str(zone, "xs_type", "zone")?,
+        temperature_c: snapshot_dict_opt_f64(zone, "temperature_C", "zone")?,
+        composition: composition.into_iter().collect(),
+        flux_name: snapshot_dict_opt_str(zone, "flux", "zone")?,
+    })
+}
+
+fn snapshot_input_from_dict(
+    snapshot: &Bound<'_, pyo3::types::PyDict>,
+) -> PyResult<nucleide_r2s::snapshot::SnapshotInput> {
+    let zone_dicts: Vec<Bound<'_, pyo3::types::PyDict>> = match snapshot.get_item("zones")? {
+        Some(v) => v
+            .extract()
+            .map_err(|_| PyValueError::new_err("snapshot `zones` must be a list of dicts"))?,
+        None => return Err(PyValueError::new_err("snapshot missing `zones`")),
+    };
+    let mut zones = Vec::with_capacity(zone_dicts.len());
+    for z in &zone_dicts {
+        zones.push(snapshot_zone_from_dict(z)?);
+    }
+    let flux_dicts: Vec<Bound<'_, pyo3::types::PyDict>> = match snapshot.get_item("flux_defs")? {
+        Some(v) => v
+            .extract()
+            .map_err(|_| PyValueError::new_err("snapshot `flux_defs` must be a list of dicts"))?,
+        None => return Err(PyValueError::new_err("snapshot missing `flux_defs`")),
+    };
+    let mut flux_defs = Vec::with_capacity(flux_dicts.len());
+    for f in &flux_dicts {
+        flux_defs.push(nucleide_r2s::snapshot::SnapshotFluxDef {
+            name: snapshot_dict_str(f, "name", "flux")?,
+            file: snapshot_dict_str(f, "file", "flux")?,
+            scale: snapshot_dict_f64(f, "scale", "flux")?,
+        });
+    }
+    let cooling_s: Vec<f64> = match snapshot.get_item("cooling_s")? {
+        Some(v) => v
+            .extract()
+            .map_err(|_| PyValueError::new_err("snapshot `cooling_s` must be a list of float"))?,
+        None => return Err(PyValueError::new_err("snapshot missing `cooling_s`")),
+    };
+    Ok(nucleide_r2s::snapshot::SnapshotInput {
+        zones,
+        flux_defs,
+        cooling_s,
+        schedule_text: snapshot_dict_opt_str(snapshot, "schedule_text", "snapshot")?,
+        output: snapshot_dict_opt_str(snapshot, "output", "snapshot")?,
+    })
+}
+
+/// Build an R2S workflow bundle from a versionless ARMI DB snapshot dict.
+///
+/// `snapshot` mirrors `nucleide_r2s::snapshot::SnapshotInput`: `zones` (list
+/// of `{id, volume_cm3, composition: {ARMI-name: ndens}}` with optional
+/// `zbottom_cm`/`ztop_cm`/`material`/`xs_type`/`temperature_C`/`flux`),
+/// `flux_defs` (list of `{name, file, scale}`), `cooling_s` (list[float]),
+/// plus optional `schedule_text` and `output`. Returns `{workflow, deck,
+/// decks}`: the workflow summary (same shape as `r2s_from_deck`), the
+/// canonical template deck text, and one canonical deck text per step.
+///
+/// Composition keys follow the emit ARMI-input rule (post-expansion nuclide
+/// keys; elemental keys, bare `AM242`, and unknown names are `ValueError`s);
+/// densities are atoms/barn-cm. Empty `cooling_s` is a `ValueError` via
+/// workflow validation. Raises `ValueError` on any invalid input or dangling
+/// cross-reference.
+#[pyfunction]
+fn r2s_from_snapshot(
+    py: Python<'_>,
+    snapshot: &Bound<'_, pyo3::types::PyDict>,
+) -> PyResult<Py<PyAny>> {
+    let input = snapshot_input_from_dict(snapshot)?;
+    let (workflow, template, decks) = py
+        .detach(move || nucleide_r2s::snapshot::snapshot_workflow(&input))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    out.set_item("workflow", r2s_workflow_to_py(py, &workflow))
+        .ok();
+    out.set_item("deck", template.to_string()).ok();
+    let deck_texts: Vec<String> = decks.iter().map(ToString::to_string).collect();
+    out.set_item("decks", deck_texts).ok();
+    Ok(out.into_any().unbind())
+}
+
 // ---------------------------------------------------------------------------
 // 0.3.0 series driver, data accessors, list helpers
 // ---------------------------------------------------------------------------
@@ -4074,6 +4234,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(origen_parse_tape6, m)?)?;
     m.add_function(wrap_pyfunction!(origen_parse_tape9, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_from_deck, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_from_snapshot, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_validate, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_expand, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_assemble, m)?)?;

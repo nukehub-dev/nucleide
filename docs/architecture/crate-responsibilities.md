@@ -98,7 +98,11 @@ workspace crates; burnup driving stays inside ORIGEN.
 
 Scoped rigorous two-step (R2S) workflow builder: zone-to-flux linking from
 ALARA decks, schedule expansion, and uniform-split photon-source assembly.
-Depends on `nucleide-alara-io`, `nucleide-mcnp-io`, `nucleide-vr-tools`, `nucleide-material`, `nucleide-depletion`, and
+Also owns the versionless ARMI DB-snapshot → deck adapter (`snapshot.rs`):
+dict-in only, no HDF5, no ARMI layout versioning, opaque zone ids,
+volumes-method decks with per-zone mixtures carrying atoms/barn-cm number
+densities. Depends on `nucleide-alara-io`, `nucleide-mcnp-io`,
+`nucleide-vr-tools`, `nucleide-material`, `nucleide-depletion`, and
 `nucleide-nuclei`; transport and activation solving stay inside their respective
 codes. The uniform split preserves only the total shutdown strength until
 group-wise emission data is wired through per nuclide.

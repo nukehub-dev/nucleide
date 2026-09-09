@@ -8,8 +8,12 @@
 
 pub mod error;
 pub mod photon;
+pub mod snapshot;
 pub mod workflow;
 
 pub use error::{Error, Result};
 pub use photon::ZonePhotonSource;
+pub use snapshot::{
+    deck_from_snapshot, snapshot_workflow, SnapshotFluxDef, SnapshotInput, SnapshotZone,
+};
 pub use workflow::{R2sStep, R2sWorkflow};

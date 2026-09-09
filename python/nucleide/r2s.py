@@ -17,21 +17,25 @@ from nucleide._internal import (
     r2s_assemble,
     r2s_expand,
     r2s_from_deck,
+    r2s_from_snapshot,
     r2s_validate,
 )
 
 # Short aliases for the workflow-builder summaries.
 from_deck = r2s_from_deck
+from_snapshot = r2s_from_snapshot
 validate = r2s_validate
 expand = r2s_expand
 assemble = r2s_assemble
 
 __all__ = [
     "r2s_from_deck",
+    "r2s_from_snapshot",
     "r2s_validate",
     "r2s_expand",
     "r2s_assemble",
     "from_deck",
+    "from_snapshot",
     "validate",
     "expand",
     "assemble",
