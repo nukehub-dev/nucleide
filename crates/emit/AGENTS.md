@@ -36,6 +36,10 @@ Owns `crates/emit/src/` (one module per dialect plus shared
 - Density rule: Serpent/FLUKA/PARTISN require mass density
   (`EmitOptions::density` overrides `Material::density`, else
   `MissingDensity`); MCNP/ALARA cards carry none.
+- ARMI input rule: `armi::from_armi_mass_fracs` accepts only post-expansion
+  nuclide keys resolved through the nuclei ARMI bridge; elemental keys, bare
+  `AM242`, and negative/non-finite masses are caller errors, never expanded
+  or guessed here.
 - Synthetic fixtures only; golden strings live in unit tests, not files.
 
 ## Work Guidance

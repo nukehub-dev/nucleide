@@ -532,4 +532,24 @@ def emit_drift_table(
     fluka_fid: int = 1,
     partisn_zone: int = 1,
 ) -> list[dict[str, Any]]: ...
+def emit_armi_cards(
+    comp: dict[str, float],
+    name: str,
+    density: float | None = None,
+    mcnp_number: int = 1,
+    xs_suffix: str = "80c",
+    serpent_lib: str = "03c",
+    fluka_fid: int = 1,
+    partisn_zone: int = 1,
+) -> dict[str, str]: ...
+def emit_armi_drift_table(
+    comp: dict[str, float],
+    name: str,
+    density: float | None = None,
+    mcnp_number: int = 1,
+    xs_suffix: str = "80c",
+    serpent_lib: str = "03c",
+    fluka_fid: int = 1,
+    partisn_zone: int = 1,
+) -> list[dict[str, Any]]: ...
 def version() -> str: ...

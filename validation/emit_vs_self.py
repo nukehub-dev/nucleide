@@ -74,6 +74,13 @@ def main() -> int:
         "FLUKA O16 gap reported as drift",
     )
 
+    armi_cards = emit.emit_armi_cards({"nU235": 5.0, "nU238": 95.0}, "umetal", density=19.1)
+    gnds_cards = emit.emit_cards({"U235": 5.0, "U238": 95.0}, "umetal", density=19.1)
+    report.prose("ARMI database keys (`nU235`) emit the same five cards as GNDS names.")
+    _check(armi_cards == gnds_cards, "ARMI keys emit identical cards vs GNDS baseline")
+    armi_table = emit.emit_armi_drift_table({"nU235": 5.0, "nU238": 95.0}, "umetal", density=19.1)
+    _check(armi_table == table, "ARMI keys report row-identical drift vs GNDS baseline")
+
     report.emit()
 
     if FAILURES:

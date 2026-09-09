@@ -68,6 +68,16 @@ workspace crates from tags.
   (MCNP, ALARA).
 - Python API: `nucleide.emit.emit_cards` / `emit_drift_table` thin wrappers
   over the new crate.
+- `nucleide-emit` ARMI blueprint bridge (`crates/emit/src/armi.rs`):
+  `from_armi_mass_fracs` builds a `Material` from ARMI-side post-expansion
+  mass-fraction keys (database names, bare names, ZAIDs-as-strings, AAAZZZS
+  ids, unambiguous MC2-3 labels via the nuclei bridge) for unchanged
+  MCNP/Serpent/FLUKA/ALARA/PARTISN emission. One-way, dict-in only:
+  elemental keys (caller passes expanded `massFrac`), number fractions,
+  enrichment shorthands, `balance`, and temperatures stay caller-resolved;
+  bare `AM242` is rejected (pass `AM242M`/`AM242G` explicitly).
+- Python API: `nucleide.emit.emit_armi_cards` / `emit_armi_drift_table`
+  thin wrappers over the bridge.
 - `nucleide-nuclei` dose factors (`crates/nuclei/src/data/dose_factors.tsv`,
   1,116 rows: 93 folded nuclides × 4 pathways × 3 sources from the BSD-3
   PyNE `dbgen/dosefactors*.csv` tables, HNF-SD-WM-TI-707 Rev.1 / HNF-5636

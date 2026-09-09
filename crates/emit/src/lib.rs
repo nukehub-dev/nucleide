@@ -32,6 +32,7 @@
 //! ```
 
 pub mod alara;
+pub mod armi;
 pub mod fluka;
 pub mod mcnp;
 pub mod partisn;
@@ -224,6 +225,16 @@ pub enum Error {
     /// FLUKA naming failure.
     #[error(transparent)]
     Fluka(#[from] nucleide_fluka_io::material::Error),
+    /// An ARMI mass-fraction key (or its value) was rejected by the v1
+    /// caller-side rules in [`armi`]: elemental keys, bare `AM242`, and
+    /// negative/non-finite masses are caller errors.
+    #[error("invalid ARMI key `{key}`: {reason}")]
+    ArmiKey {
+        /// The offending ARMI-side key.
+        key: String,
+        /// Why it was rejected (expand-first, disambiguation, value range).
+        reason: String,
+    },
 }
 
 /// Crate-local result alias.
