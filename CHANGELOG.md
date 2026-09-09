@@ -123,6 +123,14 @@ workspace crates from tags.
 - Python API: `nucleide.r2s.r2s_from_snapshot` thin wrapper returning
   `{workflow, deck, decks}` (workflow summary, canonical template deck,
   one deck per step).
+- Interactive `mcnp-io` demo (`website/src/components/interactive/McnpParser.tsx`,
+  `docs/tutorials/interactive/mcnp-io.mdx`): the xsdir histogram now pairs the
+  existing per-element table-count bar with a table-count bar by library suffix
+  and an AWR-distribution histogram over the staged `xsdir_sample.txt`.
+- Interactive `variance-reduction` demo
+  (`website/src/components/interactive/VrDemo.tsx`,
+  `docs/tutorials/interactive/variance-reduction.mdx`): the MAGIC energy
+  upper-bound step line (`hv` shape, log energy axis) gains a group-count title.
 
 ## [0.3.0] - 2026-09-08
 

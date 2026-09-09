@@ -55,13 +55,16 @@ const INTERACTIVE_PAGES = [
     path: "tutorials/interactive/mcnp-io",
     button: "Parse",
     output: "text=Material 1",
-    chart: { actions: ["meshtal", "Load sample meshtal", "Parse"], selector: ".js-plotly-plot" },
+    chart: {
+      actions: ["meshtal", "Load sample meshtal", "Parse", "xsdir", "Load sample xsdir", "Parse"],
+      selector: ".js-plotly-plot",
+    },
   },
   {
     path: "tutorials/interactive/variance-reduction",
     button: "Generate MAGIC bounds",
     output: "text=Groups per voxel:",
-    chart: { selector: ".js-plotly-plot" },
+    chart: { button: "Generate MAGIC bounds", selector: ".js-plotly-plot" },
   },
   {
     path: "tutorials/interactive/activation",

@@ -390,30 +390,69 @@ function MeshtalHeatmap({ tallies }: { tallies: Record<string, MeshTallySummary>
 function XsdirHistogram({ tables }: { tables: XsdirTableJson[] }) {
   if (tables.length === 0) return null;
   const byElement: Record<string, number> = {};
+  const bySuffix: Record<string, number> = {};
   for (const t of tables) {
     const z = parseInt(t.zaid.slice(0, -3), 10) || 0;
     const key = z > 0 ? elementSymbol(z) : "other";
     byElement[key] = (byElement[key] ?? 0) + 1;
+    const suffix = t.name.slice(-1).toLowerCase() || "other";
+    bySuffix[suffix] = (bySuffix[suffix] ?? 0) + 1;
   }
   const labels = Object.keys(byElement).sort((a, b) => byElement[b] - byElement[a]);
   const counts = labels.map((k) => byElement[k]);
+  const suffixLabels = Object.keys(bySuffix).sort((a, b) => bySuffix[b] - bySuffix[a]);
+  const suffixCounts = suffixLabels.map((k) => bySuffix[k]);
+  const awrs = tables.map((t) => t.awr).filter((v) => Number.isFinite(v));
 
   return (
-    <Plotly
-      aspect="video"
-      data={[
-        {
-          type: "bar",
-          x: labels,
-          y: counts,
-        },
-      ]}
-      layout={{
-        xaxis: { title: { text: "Element" } },
-        yaxis: { title: { text: "Table count" } },
-        margin: { t: 16, r: 16, b: 48, l: 48 },
-      }}
-    />
+    <div className="space-y-2">
+      <Plotly
+        aspect="video"
+        data={[
+          {
+            type: "bar",
+            x: labels,
+            y: counts,
+          },
+        ]}
+        layout={{
+          xaxis: { title: { text: "Element" } },
+          yaxis: { title: { text: "Table count" } },
+          margin: { t: 16, r: 16, b: 48, l: 48 },
+        }}
+      />
+      <Plotly
+        aspect="video"
+        data={[
+          {
+            type: "bar",
+            x: suffixLabels,
+            y: suffixCounts,
+          },
+        ]}
+        layout={{
+          xaxis: { title: { text: "Library suffix" } },
+          yaxis: { title: { text: "Table count" } },
+          margin: { t: 16, r: 16, b: 48, l: 48 },
+          title: { text: `Tables by library suffix (${tables.length} total)` },
+        }}
+      />
+      <Plotly
+        aspect="video"
+        data={[
+          {
+            type: "histogram",
+            x: awrs,
+          },
+        ]}
+        layout={{
+          xaxis: { title: { text: "AWR" } },
+          yaxis: { title: { text: "Count" } },
+          margin: { t: 16, r: 16, b: 48, l: 48 },
+          title: { text: "AWR distribution" },
+        }}
+      />
+    </div>
   );
 }
 

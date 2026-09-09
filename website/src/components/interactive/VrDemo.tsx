@@ -253,6 +253,7 @@ function MagicBoundsChart({ magic }: { magic: MagicSummary }) {
         },
       ]}
       layout={{
+        title: { text: `Energy upper bounds (${n} group${n === 1 ? "" : "s"})` },
         xaxis: {
           title: { text: "Energy group" },
           range: [-0.5, Math.max(n - 0.5, 0.5)],
