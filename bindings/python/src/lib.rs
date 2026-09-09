@@ -2941,8 +2941,8 @@ impl PyDeckProblem {
             .collect()
     }
 
-    /// Surface cards as `{num, reflecting, transform, kind, coeffs}` dicts
-    /// (`transform` is `""` when absent).
+    /// Surface cards as `{num, reflecting, transform, periodic, kind, coeffs}`
+    /// dicts (`transform`/`periodic` are `""` when absent).
     #[getter]
     fn surfs(&self) -> Vec<BTreeMap<String, String>> {
         self.inner
@@ -2957,6 +2957,10 @@ impl PyDeckProblem {
                 d.insert(
                     "transform".to_string(),
                     s.transform.map(|v| v.to_string()).unwrap_or_default(),
+                );
+                d.insert(
+                    "periodic".to_string(),
+                    s.periodic.map(|v| v.to_string()).unwrap_or_default(),
                 );
                 d.insert("kind".to_string(), s.kind.keyword().to_string());
                 d.insert(
@@ -3016,6 +3020,318 @@ impl PyDeckProblem {
             .lock()
             .unwrap()
             .set_cell_material(cell, mat)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Typed `MODE` card as `{particles}` (`particles` is space-joined).
+    #[getter]
+    fn mode(&self) -> PyResult<BTreeMap<String, String>> {
+        let mode = self
+            .inner
+            .lock()
+            .unwrap()
+            .mode()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let mut d = BTreeMap::new();
+        d.insert("particles".to_string(), mode.particles.join(" "));
+        Ok(d)
+    }
+
+    /// Typed `TRn` cards as `{number, displacement, rotation, in_degrees,
+    /// main_to_aux, hidden}` dicts (vectors are space-joined).
+    #[getter]
+    fn transforms(&self) -> PyResult<Vec<BTreeMap<String, String>>> {
+        let transforms = self
+            .inner
+            .lock()
+            .unwrap()
+            .transforms()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(transforms
+            .iter()
+            .map(|t| {
+                let mut d = BTreeMap::new();
+                d.insert("number".to_string(), t.number.to_string());
+                d.insert(
+                    "displacement".to_string(),
+                    t.displacement
+                        .iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+                d.insert(
+                    "rotation".to_string(),
+                    t.rotation
+                        .iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+                d.insert("in_degrees".to_string(), t.is_in_degrees.to_string());
+                d.insert("main_to_aux".to_string(), t.is_main_to_aux.to_string());
+                d.insert("hidden".to_string(), t.hidden.to_string());
+                d
+            })
+            .collect())
+    }
+
+    /// Auto-created universes as `{number, cells, not_truncated}` dicts
+    /// (cell lists are space-joined).
+    #[getter]
+    fn universes(&self) -> PyResult<Vec<BTreeMap<String, String>>> {
+        let universes = self
+            .inner
+            .lock()
+            .unwrap()
+            .universes()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(universes
+            .iter()
+            .map(|u| {
+                let mut d = BTreeMap::new();
+                d.insert("number".to_string(), u.number.to_string());
+                d.insert(
+                    "cells".to_string(),
+                    u.cells
+                        .iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+                d.insert(
+                    "not_truncated".to_string(),
+                    u.not_truncated
+                        .iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+                d
+            })
+            .collect())
+    }
+
+    /// Cell `LAT` assignments as `{cell, lattice}` dicts.
+    #[getter]
+    fn lattices(&self) -> PyResult<Vec<BTreeMap<String, String>>> {
+        let lattices = self
+            .inner
+            .lock()
+            .unwrap()
+            .lattices()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(lattices
+            .iter()
+            .map(|l| {
+                let mut d = BTreeMap::new();
+                d.insert("cell".to_string(), l.cell.to_string());
+                d.insert("lattice".to_string(), l.lattice.to_string());
+                d
+            })
+            .collect())
+    }
+
+    /// Cell `FILL` assignments as `{cell, kind, universe, min_index,
+    /// max_index, universes, transform, hidden_transform, in_degrees}` dicts
+    /// (`kind` is `single` or `matrix`; matrix empties render as `-`).
+    #[getter]
+    fn fills(&self) -> PyResult<Vec<BTreeMap<String, String>>> {
+        use nucleide_mcnp_io::semantic::{FillTarget, FillTransform};
+        let fills = self
+            .inner
+            .lock()
+            .unwrap()
+            .fills()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(fills
+            .iter()
+            .map(|f| {
+                let mut d = BTreeMap::new();
+                d.insert("cell".to_string(), f.cell.to_string());
+                match &f.target {
+                    FillTarget::Single(u) => {
+                        d.insert("kind".to_string(), "single".to_string());
+                        d.insert("universe".to_string(), u.to_string());
+                        d.insert("min_index".to_string(), String::new());
+                        d.insert("max_index".to_string(), String::new());
+                        d.insert("universes".to_string(), String::new());
+                    }
+                    FillTarget::Matrix {
+                        min_index,
+                        max_index,
+                        universes,
+                    } => {
+                        d.insert("kind".to_string(), "matrix".to_string());
+                        d.insert("universe".to_string(), String::new());
+                        d.insert(
+                            "min_index".to_string(),
+                            min_index
+                                .iter()
+                                .map(|v| v.to_string())
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        );
+                        d.insert(
+                            "max_index".to_string(),
+                            max_index
+                                .iter()
+                                .map(|v| v.to_string())
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        );
+                        d.insert(
+                            "universes".to_string(),
+                            universes
+                                .iter()
+                                .map(|u| {
+                                    u.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string())
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        );
+                    }
+                }
+                match &f.transform {
+                    None => {
+                        d.insert("transform".to_string(), String::new());
+                        d.insert("hidden_transform".to_string(), String::new());
+                    }
+                    Some(FillTransform::Reference(n)) => {
+                        d.insert("transform".to_string(), n.to_string());
+                        d.insert("hidden_transform".to_string(), String::new());
+                    }
+                    Some(FillTransform::Hidden(t)) => {
+                        d.insert("transform".to_string(), String::new());
+                        let mut coords: Vec<String> =
+                            t.displacement.iter().map(|v| v.to_string()).collect();
+                        coords.extend(t.rotation.iter().map(|v| v.to_string()));
+                        d.insert("hidden_transform".to_string(), coords.join(" "));
+                    }
+                }
+                d.insert("in_degrees".to_string(), f.in_degrees.to_string());
+                d
+            })
+            .collect())
+    }
+
+    /// Cell importance entries as `{cell, particle, value}` dicts.
+    #[getter]
+    fn importances(&self) -> PyResult<Vec<BTreeMap<String, String>>> {
+        let importances = self
+            .inner
+            .lock()
+            .unwrap()
+            .importances()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(importances
+            .iter()
+            .map(|v| {
+                let mut d = BTreeMap::new();
+                d.insert("cell".to_string(), v.cell.to_string());
+                d.insert("particle".to_string(), v.particle.clone());
+                d.insert("value".to_string(), v.value.to_string());
+                d
+            })
+            .collect())
+    }
+
+    /// Manual cell volumes as `{cell, volume}` dicts.
+    #[getter]
+    fn volumes(&self) -> PyResult<Vec<BTreeMap<String, String>>> {
+        let volumes = self
+            .inner
+            .lock()
+            .unwrap()
+            .volumes()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(volumes
+            .iter()
+            .map(|v| {
+                let mut d = BTreeMap::new();
+                d.insert("cell".to_string(), v.cell.to_string());
+                d.insert("volume".to_string(), v.volume.to_string());
+                d
+            })
+            .collect())
+    }
+
+    /// Typed tallies as `{number, type, particles, entries, fm, e_bins}` dicts
+    /// (lists are space-joined, absent groups are `""`).
+    #[getter]
+    fn tallies(&self) -> PyResult<Vec<BTreeMap<String, String>>> {
+        let tallies = self
+            .inner
+            .lock()
+            .unwrap()
+            .tallies()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(tallies
+            .iter()
+            .map(|t| {
+                let mut d = BTreeMap::new();
+                d.insert("number".to_string(), t.number.to_string());
+                d.insert("type".to_string(), t.tally_type.to_string());
+                d.insert("particles".to_string(), t.particles.join(","));
+                d.insert("entries".to_string(), t.entries.join(" "));
+                d.insert("fm".to_string(), t.fm.clone().unwrap_or_default().join(" "));
+                d.insert(
+                    "e_bins".to_string(),
+                    t.e_bins.clone().unwrap_or_default().join(" "),
+                );
+                d
+            })
+            .collect())
+    }
+
+    /// Validate every L3 semantic rule (duplicate numbers, dangling links,
+    /// redundant definitions, write-time state, lattice/fill cross-checks).
+    fn validate(&self) -> PyResult<()> {
+        self.inner
+            .lock()
+            .unwrap()
+            .validate()
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Non-fatal validation notes (particle/mode mismatches).
+    fn validation_notes(&self) -> Vec<String> {
+        self.inner.lock().unwrap().validation_notes()
+    }
+
+    /// Set the `MODE` card particles (re-renders that card canonically).
+    fn set_mode(&self, particles: Vec<String>) -> PyResult<()> {
+        self.inner
+            .lock()
+            .unwrap()
+            .set_mode(particles)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Set a cell's universe (`not_truncated` writes `U=-n`).
+    fn set_cell_universe(&self, cell: u32, universe: u32, not_truncated: bool) -> PyResult<()> {
+        self.inner
+            .lock()
+            .unwrap()
+            .set_cell_universe(cell, universe, not_truncated)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Set (`1`/`2`) or clear (`None`) a cell's lattice.
+    fn set_cell_lattice(&self, cell: u32, lattice: Option<u8>) -> PyResult<()> {
+        self.inner
+            .lock()
+            .unwrap()
+            .set_cell_lattice(cell, lattice)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Set a cell's fill to a single universe.
+    fn set_cell_fill(&self, cell: u32, universe: u32) -> PyResult<()> {
+        self.inner
+            .lock()
+            .unwrap()
+            .set_cell_fill(cell, universe)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 }

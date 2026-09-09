@@ -12,6 +12,7 @@ pub mod mctal;
 pub mod meshtal;
 pub mod problem;
 pub mod ptrac;
+pub mod semantic;
 pub mod surf;
 pub mod surfsrc;
 pub mod wwinp;

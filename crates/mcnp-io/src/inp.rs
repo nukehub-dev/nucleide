@@ -124,6 +124,14 @@ pub enum Error {
         /// The referenced cell number.
         cell: u32,
     },
+    /// Two cards claim the same number in one number space (cells,
+    /// surfaces, materials, transforms).
+    DuplicateNumber {
+        /// Which number space collided (`"cell"`, `"surface"`, ...).
+        kind: &'static str,
+        /// The repeated number.
+        number: u32,
+    },
 }
 
 impl fmt::Display for Error {
@@ -153,6 +161,9 @@ impl fmt::Display for Error {
             }
             Error::UnknownCell { cell } => {
                 write!(f, "deck has no cell {cell}")
+            }
+            Error::DuplicateNumber { kind, number } => {
+                write!(f, "duplicate {kind} number {number}")
             }
         }
     }
@@ -868,6 +879,10 @@ mod tests {
                 message: "why".to_string(),
             },
             Error::UnknownCell { cell: 7 },
+            Error::DuplicateNumber {
+                kind: "cell",
+                number: 7,
+            },
         ];
         for e in cases {
             assert!(!e.to_string().is_empty());

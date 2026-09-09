@@ -16,9 +16,9 @@
 //! # Known limitations (clean errors, documented here)
 //!
 //! - `like n but` cell clones: rejected, model them explicitly instead.
-//! - Periodic-boundary surface markers: rejected, use plain types.
 //! - `read` includes are passthrough cards, never followed.
-//! - Tallies, sources, and kinetics cards are untyped [`DataCard`]s.
+//! - Tallies beyond `F`/`FM`/`E`, sources, and kinetics cards are untyped
+//!   [`DataCard`]s (see [`crate::semantic`] for the typed subset).
 //! - Vertical-bar `|` alternation is not MCNP syntax and is rejected
 //!   (use `:` unions).
 
@@ -27,6 +27,10 @@ use std::path::Path;
 
 use crate::cell::{parse_cell_line, CellCard, GeomExpr};
 use crate::inp::{self, Error, McnpMaterial};
+use crate::semantic::{
+    self, FillView, ImportanceView, LatticeView, ModeView, TallyView, TransformView, UniverseView,
+    VolumeView,
+};
 use crate::surf::{parse_surf_line, SurfCard};
 
 /// Maximum MCNP input line length (MCNP 6.2+).
@@ -44,6 +48,8 @@ pub struct DataCard {
     pub name: String,
     /// Remaining first-line tokens with the `$` comment stripped.
     pub args: Vec<String>,
+    /// 1-based line number where this card starts (for error messages).
+    pub line: usize,
     /// Source lines forming this card (continuations included).
     pub raw_lines: Vec<String>,
 }
@@ -115,6 +121,143 @@ impl DeckProblem {
         Ok(())
     }
 
+    /// Typed `MODE` card (defaults to `{N}` when absent).
+    pub fn mode(&self) -> Result<ModeView, Error> {
+        semantic::parse_mode(&self.data)
+    }
+
+    /// Typed `TRn` cards in file order.
+    pub fn transforms(&self) -> Result<Vec<TransformView>, Error> {
+        semantic::parse_transforms(&self.data)
+    }
+
+    /// Auto-created universes (from cell/data `U` usage, including 0).
+    pub fn universes(&self) -> Result<Vec<UniverseView>, Error> {
+        semantic::parse_universes(&self.cells, &self.data)
+    }
+
+    /// Cell `LAT` assignments in file order.
+    pub fn lattices(&self) -> Result<Vec<LatticeView>, Error> {
+        semantic::parse_lattices(&self.cells, &self.data)
+    }
+
+    /// Cell `FILL` assignments in file order.
+    pub fn fills(&self) -> Result<Vec<FillView>, Error> {
+        semantic::parse_fills(&self.cells, &self.data)
+    }
+
+    /// Cell importance entries in file order.
+    pub fn importances(&self) -> Result<Vec<ImportanceView>, Error> {
+        semantic::parse_importances(&self.cells, &self.data)
+    }
+
+    /// Manual cell volumes in file order.
+    pub fn volumes(&self) -> Result<Vec<VolumeView>, Error> {
+        semantic::parse_volumes(&self.cells, &self.data)
+    }
+
+    /// Typed tallies (`Fn` with grouped `FMn`/`En`) in number order.
+    pub fn tallies(&self) -> Result<Vec<TallyView>, Error> {
+        semantic::parse_tallies(&self.data)
+    }
+
+    /// Validate every L3 semantic rule (see [`crate::semantic`]).
+    pub fn validate(&self) -> Result<(), Error> {
+        semantic::validate_problem(&self.cells, &self.surfs, &self.materials, &self.data)
+    }
+
+    /// Non-fatal validation notes (particle/mode mismatches).
+    pub fn validation_notes(&self) -> Vec<String> {
+        semantic::validation_notes_for(&self.cells, &self.data)
+    }
+
+    /// Set the `MODE` card particles, re-rendering that card canonically
+    /// (appending one when absent).
+    pub fn set_mode(&mut self, particles: Vec<String>) -> Result<(), Error> {
+        let mut upper = Vec::with_capacity(particles.len());
+        for particle in &particles {
+            let particle = particle.to_ascii_uppercase();
+            if !semantic::is_particle_token(&particle) {
+                return Err(Error::BadGeometry {
+                    line: 0,
+                    message: format!("unknown particle `{particle}` on MODE card"),
+                });
+            }
+            upper.push(particle);
+        }
+        let rendered = format!(
+            "MODE{}",
+            upper.iter().map(|p| format!(" {p}")).collect::<String>()
+        );
+        match self.data.iter_mut().find(|d| d.name == "MODE") {
+            Some(card) => {
+                card.args = upper;
+                card.raw_lines = vec![rendered];
+            }
+            None => self.data.push(DataCard {
+                name: "MODE".to_string(),
+                args: upper,
+                line: 0,
+                raw_lines: vec![rendered],
+            }),
+        }
+        Ok(())
+    }
+
+    /// Set a cell's universe (`U=n`, `U=-n` when `not_truncated`),
+    /// re-rendering that card canonically.
+    pub fn set_cell_universe(
+        &mut self,
+        cell: u32,
+        universe: u32,
+        not_truncated: bool,
+    ) -> Result<(), Error> {
+        let target = self.cell_mut(cell)?;
+        let token = if not_truncated {
+            format!("u=-{universe}")
+        } else {
+            format!("u={universe}")
+        };
+        replace_cell_param(target, "u", Some(&token));
+        target.raw_lines = vec![render_cell(target)];
+        Ok(())
+    }
+
+    /// Set (`Some(1|2)`) or clear (`None`) a cell's lattice, re-rendering
+    /// that card canonically.
+    pub fn set_cell_lattice(&mut self, cell: u32, lattice: Option<u8>) -> Result<(), Error> {
+        if let Some(lattice) = lattice {
+            if lattice != 1 && lattice != 2 {
+                return Err(Error::BadGeometry {
+                    line: 0,
+                    message: format!("cell {cell} LAT must be 1 or 2"),
+                });
+            }
+        }
+        let target = self.cell_mut(cell)?;
+        let token;
+        let replacement = match lattice {
+            Some(lattice) => {
+                token = format!("lat={lattice}");
+                Some(token.as_str())
+            }
+            None => None,
+        };
+        replace_cell_param(target, "lat", replacement);
+        target.raw_lines = vec![render_cell(target)];
+        Ok(())
+    }
+
+    /// Set a cell's fill to a single universe, re-rendering that card
+    /// canonically.
+    pub fn set_cell_fill(&mut self, cell: u32, universe: u32) -> Result<(), Error> {
+        let target = self.cell_mut(cell)?;
+        let token = format!("fill={universe}");
+        replace_cell_param(target, "fill", Some(&token));
+        target.raw_lines = vec![render_cell(target)];
+        Ok(())
+    }
+
     /// Serialize the deck: verbatim card text with canonical blank-line
     /// separators and a single trailing newline.
     pub fn dumps(&self) -> String {
@@ -155,6 +298,42 @@ impl DeckProblem {
             }
         }
         out
+    }
+}
+
+/// Replace (or append) one `key=...` cell parameter. Multi-word values
+/// (`fill=...`, `trcl=...`) span the `=` suffix plus following bare tokens,
+/// so the whole span is drained before the replacement is appended.
+fn replace_cell_param(card: &mut CellCard, key: &str, replacement: Option<&str>) {
+    let mut index = 0;
+    while index < card.params.len() {
+        let base = card.params[index]
+            .split('=')
+            .next()
+            .unwrap_or("")
+            .trim_start_matches('*')
+            .split(':')
+            .next()
+            .unwrap_or("");
+        if base.eq_ignore_ascii_case(key) {
+            break;
+        }
+        index += 1;
+    }
+    if index < card.params.len() {
+        let mut end = index + 1;
+        while end < card.params.len()
+            && !card.params[end].contains('=')
+            && !["vol", "pwt", "ext", "fcl"]
+                .iter()
+                .any(|k| card.params[end].eq_ignore_ascii_case(k))
+        {
+            end += 1;
+        }
+        card.params.drain(index..end);
+    }
+    if let Some(replacement) = replacement {
+        card.params.push(replacement.to_string());
     }
 }
 
@@ -228,8 +407,8 @@ pub fn parse_deck(text: &str) -> Result<DeckProblem, Error> {
     }
     let surf_trailer = std::mem::take(&mut pending);
     let mut data = Vec::new();
-    for (_lineno, logical, raw) in logical_cards(&data_lines) {
-        data.push(parse_data_card(&logical, raw));
+    for (lineno, logical, raw) in logical_cards(&data_lines) {
+        data.push(parse_data_card(&logical, raw, lineno));
     }
     let materials = inp::materials_from_inp(text)?;
     Ok(DeckProblem {
@@ -330,11 +509,12 @@ fn logical_cards(block: &[(usize, &str)]) -> Vec<(usize, String, Vec<String>)> {
 
 /// Classify one logical data-block entry: comments/blanks pass through
 /// with an empty name; anything else takes its first token as the name.
-fn parse_data_card(logical: &str, raw: Vec<String>) -> DataCard {
+fn parse_data_card(logical: &str, raw: Vec<String>, lineno: usize) -> DataCard {
     if logical.is_empty() {
         return DataCard {
             name: String::new(),
             args: Vec::new(),
+            line: lineno,
             raw_lines: raw,
         };
     }
@@ -343,6 +523,7 @@ fn parse_data_card(logical: &str, raw: Vec<String>) -> DataCard {
     DataCard {
         name,
         args: tokens.map(str::to_string).collect(),
+        line: lineno,
         raw_lines: raw,
     }
 }
@@ -406,6 +587,63 @@ mod tests {
             .iter()
             .any(|c| matches!(c.geom, GeomExpr::Intersect(_))));
         assert_eq!(write_deck(&problem), text);
+    }
+
+    #[test]
+    fn l3_semantic_deck_round_trips_and_validates() {
+        let text = fixture("deck_l3.txt");
+        let problem = parse_deck(&text).unwrap();
+        assert_eq!(write_deck(&problem), text);
+        assert_eq!(
+            problem.mode().unwrap().particles,
+            vec!["N".to_string(), "P".to_string()]
+        );
+        assert_eq!(problem.transforms().unwrap().len(), 2);
+        assert_eq!(problem.universes().unwrap().len(), 3);
+        assert_eq!(problem.lattices().unwrap().len(), 1);
+        assert_eq!(problem.fills().unwrap().len(), 1);
+        assert_eq!(problem.tallies().unwrap().len(), 1);
+        problem.validate().unwrap();
+        assert!(problem.validation_notes().is_empty());
+    }
+
+    #[test]
+    fn semantic_setters_rewrite_cards() {
+        let text = fixture("deck_l3.txt");
+        let mut problem = parse_deck(&text).unwrap();
+        problem.set_mode(vec!["P".to_string()]).unwrap();
+        assert_eq!(problem.mode().unwrap().particles, vec!["P".to_string()]);
+        // Particle/mode mismatches are notes, not errors.
+        problem.validate().unwrap();
+        assert_eq!(problem.validation_notes().len(), 5);
+
+        let mut problem = parse_deck(&text).unwrap();
+        problem.set_cell_universe(4, 5, true).unwrap();
+        assert_eq!(
+            problem
+                .cell(4)
+                .unwrap()
+                .params
+                .iter()
+                .find(|p| p.starts_with("u=")),
+            Some(&"u=-5".to_string())
+        );
+        let universes = problem.universes().unwrap();
+        let five = universes.iter().find(|u| u.number == 5).unwrap();
+        assert_eq!(five.cells, vec![4]);
+        assert_eq!(five.not_truncated, vec![4]);
+        problem.validate().unwrap();
+        problem.set_cell_lattice(4, Some(2)).unwrap();
+        assert!(problem.validate().is_err()); // LAT without FILL
+        problem.set_cell_fill(4, 0).unwrap();
+        problem.validate().unwrap();
+        problem.set_cell_lattice(4, None).unwrap();
+        problem.set_cell_universe(4, 0, false).unwrap();
+        problem.validate().unwrap();
+
+        assert!(problem.set_cell_lattice(4, Some(3)).is_err());
+        assert!(problem.set_mode(vec!["Q2".to_string()]).is_err());
+        assert!(problem.set_cell_universe(99, 1, false).is_err());
     }
 
     #[test]

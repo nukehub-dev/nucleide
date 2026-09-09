@@ -183,10 +183,15 @@ pub struct SurfCard {
     pub reflecting: bool,
     /// Transform number when the card carries one.
     pub transform: Option<u32>,
+    /// Periodic-boundary partner when the pointer is negative (`1 -5 PZ 0`
+    /// is periodic with surface 5). Mutually exclusive with [`Self::transform`].
+    pub periodic: Option<u32>,
     /// Surface type.
     pub kind: SurfKind,
     /// Numeric coefficients.
     pub coeffs: Vec<f64>,
+    /// 1-based line number where this card starts (for error messages).
+    pub line: usize,
     /// Source lines forming this card (for format-preserving write-back).
     pub raw_lines: Vec<String>,
     /// Comment/blank lines preceding this card in its block, verbatim.
@@ -200,9 +205,11 @@ impl SurfCard {
             "{}{}{} {}",
             if self.reflecting { "*" } else { "" },
             self.num,
-            match self.transform {
-                Some(t) => format!(" {t}"),
-                None => String::new(),
+            match (self.transform, self.periodic) {
+                (Some(t), None) => format!(" {t}"),
+                (None, Some(p)) => format!(" -{p}"),
+                (None, None) => String::new(),
+                (Some(_), Some(_)) => unreachable!("transform and periodic are exclusive"),
             },
             self.kind.keyword()
         );
@@ -248,19 +255,30 @@ pub fn parse_surf_line(logical: &str, lineno: usize) -> Result<SurfCard, Error> 
             message: format!("surface {num} is missing its type"),
         });
     }
-    // Optional transform number between the id and the type keyword.
-    let (transform, kind_token, coeff_tokens) = match SurfKind::from_keyword(rest[0]) {
-        Some(_) => (None, rest[0], &rest[1..]),
+    // Optional transform number between the id and the type keyword; a
+    // negative pointer names the periodic-boundary partner instead.
+    let (transform, periodic, kind_token, coeff_tokens) = match SurfKind::from_keyword(rest[0]) {
+        Some(_) => (None, None, rest[0], &rest[1..]),
         None => {
-            let transform: u32 = rest[0].parse().map_err(|_| Error::BadGeometry {
+            let pointer: i32 = rest[0].parse().map_err(|_| Error::BadGeometry {
                 line: lineno,
                 message: format!("invalid surface type `{}` on surface {num}", rest[0]),
             })?;
+            if pointer == 0 {
+                return Err(Error::BadGeometry {
+                    line: lineno,
+                    message: format!("surface {num} has a zero transform pointer"),
+                });
+            }
             let kind_token = *rest.get(1).ok_or_else(|| Error::BadGeometry {
                 line: lineno,
                 message: format!("surface {num} is missing its type"),
             })?;
-            (Some(transform), kind_token, &rest[2..])
+            if pointer > 0 {
+                (Some(pointer as u32), None, kind_token, &rest[2..])
+            } else {
+                (None, Some(pointer.unsigned_abs()), kind_token, &rest[2..])
+            }
         }
     };
     let kind = SurfKind::from_keyword(kind_token).ok_or_else(|| Error::BadGeometry {
@@ -290,8 +308,10 @@ pub fn parse_surf_line(logical: &str, lineno: usize) -> Result<SurfCard, Error> 
         num,
         reflecting,
         transform,
+        periodic,
         kind,
         coeffs,
+        line: lineno,
         raw_lines: Vec::new(),
         prefix_lines: Vec::new(),
     })

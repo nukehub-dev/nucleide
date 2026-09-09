@@ -51,8 +51,10 @@ pub struct CellCard {
     pub dens: Option<f64>,
     /// CSG geometry expression.
     pub geom: GeomExpr,
-    /// Trailing parameter tokens in card order (`imp:n=1`, `vol=...`).
+    /// Trailing parameter tokens in card order (`imp:n=1`, `u=3`, `fill=...`, ...).
     pub params: Vec<String>,
+    /// 1-based line number where this card starts (for error messages).
+    pub line: usize,
     /// Source lines forming this card (for format-preserving write-back).
     pub raw_lines: Vec<String>,
     /// Comment/blank lines preceding this card in its block, verbatim, so
@@ -200,6 +202,7 @@ pub fn parse_cell_line(logical: &str, lineno: usize) -> Result<CellCard, Error> 
         dens,
         geom,
         params: param_tokens.iter().map(|s| (*s).to_string()).collect(),
+        line: lineno,
         raw_lines: Vec::new(),
         prefix_lines: Vec::new(),
     })

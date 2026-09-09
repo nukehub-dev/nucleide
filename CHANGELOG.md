@@ -15,6 +15,26 @@ workspace crates from tags.
 
 ### Added
 
+- `nucleide-mcnp-io` L3 semantic objects (`crates/mcnp-io/src/semantic.rs`):
+  typed `MODE` (37 particle shorthands, default `{N}`), `TRn` cards
+  (degrees flag, 3-entry displacement, 5–9 entry rotation, main-to-aux flag,
+  hidden inline `FILL` transforms), auto-created universes (`U`/`-U`,
+  data-block lists with `J`/`nJ`/`nR`/`nM` expansion), `LAT` (1|2 only),
+  cell `FILL` (single universe or 3-D matrix with transform reference or
+  hidden transform; data-block lists are simple per-cell only), per-cell
+  `IMP`/`VOL`, periodic surface pointers, and a minimal typed tally model
+  (`Fn` number + particle classifier + entries with grouped `FMn`/`En`).
+  `DeckProblem::validate()` centralizes duplicate-number conflicts,
+  dangling material/surface/complement/transform/periodic/fill links,
+  redundant cell+data definitions, write-time state checks, and
+  nucleide-defined lattice/fill cross-checks (`LAT`-without-`FILL` and
+  `FILL`-matrix-without-`LAT` are errors); particle/mode mismatches are
+  notes via `validation_notes()`. Synthetic fixture
+  `fixtures/mcnp/inp/deck_l3.txt` (no license needed).
+- Python API: `DeckProblem` `mode`/`transforms`/`universes`/`lattices`/
+  `fills`/`importances`/`volumes`/`tallies` getters, `validate()` /
+  `validation_notes()`, and `set_mode`/`set_cell_universe`/
+  `set_cell_lattice`/`set_cell_fill` setters.
 - `nucleide-emit` single-material emission (`crates/emit/`): one `Material`
   renders through five code dialects — MCNP `m` cards (mass fractions,
   configurable xs suffix, 128-column packing), Serpent `mat` cards

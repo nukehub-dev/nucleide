@@ -72,6 +72,30 @@ deck.set_cell_density(1, -10.0)
 open("path/to/model_edited.i", "w").write(deck.dumps())
 ```
 
+## L3 semantics: universes, lattices, tallies, and validation
+
+`DeckProblem` also exposes typed semantic views over the raw cards —
+`MODE` particles, `TRn` transforms, auto-created universes (`U`/`-U`),
+`LAT`/`FILL` assignments, importances, volumes, and `F`/`FM`/`E` tallies —
+plus `validate()`, which centralizes duplicate-number, dangling-link,
+redundant-definition, and write-time-state checks (lattice/fill
+cross-checks are nucleide-defined: `LAT` without `FILL`, and a `FILL`
+matrix without `LAT`, are errors). Particle/mode mismatches are notes,
+not errors:
+
+```python
+from nucleide.mcnp import read_deck
+
+deck = read_deck("fixtures/mcnp/inp/deck_l3.txt")
+print(deck.mode)  # {'particles': 'N P'}
+print([(u["number"], u["cells"]) for u in deck.universes])
+print(deck.fills[0]["universes"], deck.tallies[0]["e_bins"])
+deck.validate()
+print(deck.validation_notes())
+deck.set_cell_universe(4, 5, True)  # writes U=-5
+deck.validate()
+```
+
 ## Fixtures
 
 Golden-byte reference files live under `fixtures/mcnp/`. Tests assert that
