@@ -133,7 +133,7 @@ Nucleide converts between several legacy code conventions.
 
 ## Data sources
 
-Nucleide embeds six reference tables at compile time and parses them lazily on
+Nucleide embeds seven reference tables at compile time and parses them lazily on
 first access.
 
 ### Atomic masses
@@ -219,6 +219,27 @@ Mean *prompt* recoverable energy per decay (`decay_energy_mev`, table
 
 See `decay_energy` in the [Python API](../reference/python-api.mdx#nucleidenuclei);
 composition-level heat lives under `decay_heat` in `nucleide.material`.
+
+### Dose factors
+
+External-air/soil, ingestion, and inhalation factors (`dose_factor`, table
+`dose_table`):
+
+- **Source**: the BSD-3 PyNE `dbgen/dosefactors*.csv` tables (93 rows each;
+  proximate provenance HNF-SD-WM-TI-707 Rev.1 with App. O of HNF-5636;
+  GENII/EPA/DOE are 3 parallel evaluations). `+D` (plus daughters) folds
+  into the parent. Air is EPA-only: GENII/DOE air rows are `-1` sentinels.
+- **Coverage**: 93 folded nuclides × 4 pathways × 3 sources (1,116 rows);
+  anything else returns `None`.
+- **File**: `crates/nuclei/src/data/dose_factors.tsv`.
+- **Units**: air `mrem/h per Ci/m³`, soil `mrem/h per Ci/m²` (15 cm slab),
+  ingest/inhale `mrem/pCi`.
+- **Scope**: screening-level dose-per-gram estimates only — not for safety
+  decisions (upstream PyNE disclaimer).
+
+See `dose_factor` in the [Python API](../reference/python-api.mdx#nucleidenuclei);
+composition-level dose lives under `dose_per_g` in `nucleide.material`
+(see `dose_per_g` in the [Python API](../reference/python-api.mdx#nucleidematerial)).
 
 ## Derived quantities
 

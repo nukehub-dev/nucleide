@@ -1,0 +1,1134 @@
+# GNDS name	pathway	source	factor	f1	lung_model
+# GNDS name	pathway(air|soil|ingest|inhale)	source(EPA|DOE|GENII)
+# factor	f1(to body fluids, ingest only)	lung(D|W|Y|V|O, inhale only)
+# Dose factors from the BSD-3 PyNE dbgen tables (no separate CSV license):
+# dosefactors_external_air.csv (93 rows; Nuclide,Air Dose Rate Factor,Ratio;
+# mrem/h per Ci/m^3; EPA-only), dosefactors_external_soil.csv (93 rows;
+# Nuclide,GENII,EPA,DOE,...; mrem/h per Ci/m^2, 15cm slab),
+# dosefactors_ingest.csv (93 rows; Nuclide,f1,GENII,EPA,DOE,...; mrem/pCi),
+# dosefactors_inhale.csv (93 rows; Nuclide,Lung Model,GENII,EPA,DOE,...;
+# mrem/pCi; lung D/W/Y/V/O).
+# Proximate provenance: HNF-SD-WM-TI-707 Rev.1 (Dec 1999), App. O of
+# HNF-5636 (2001); GENII/EPA/DOE are 3 parallel evaluations in that report.
+# Semantics follow pyne/dbgen/dosefactors.py (260 lines): Nuclide keys like
+# H-3 with +D = plus daughters fold into the parent (suffix stripped).
+# Air is EPA-only: GENII/DOE air rows are -1 sentinels (PyNE convention);
+# accessors treat negative factors as missing. Liability: not for safety
+# decisions (upstream PyNE disclaimer).
+# Regenerate: python3 scripts/gen-nuclear-data.py --help.
+Ac227	air	DOE	-1		
+Ac227	air	EPA	2.47e-07		
+Ac227	air	GENII	-1		
+Ac227	ingest	DOE	0.0146	0.001	
+Ac227	ingest	EPA	0.0148	0.001	
+Ac227	ingest	GENII	0.0144	0.001	
+Ac227	inhale	DOE	6.72		D
+Ac227	inhale	EPA	6.72		D
+Ac227	inhale	GENII	6.71		D
+Ac227	soil	DOE	5000		
+Ac227	soil	EPA	961		
+Ac227	soil	GENII	1080		
+Ag108_m1	air	DOE	-1		
+Ag108_m1	air	EPA	1.04e-06		
+Ag108_m1	air	GENII	-1		
+Ag108_m1	ingest	DOE	7.5e-06	0.05	
+Ag108_m1	ingest	EPA	7.62e-06	0.05	
+Ag108_m1	ingest	GENII	7.58e-06	0.05	
+Ag108_m1	inhale	DOE	0.0002		Y
+Ag108_m1	inhale	EPA	0.000283		Y
+Ag108_m1	inhale	GENII	0.000258		Y
+Ag108_m1	soil	DOE	19000		
+Ag108_m1	soil	EPA	4370		
+Ag108_m1	soil	GENII	5370		
+Am241	air	DOE	-1		
+Am241	air	EPA	1.09e-08		
+Am241	air	GENII	-1		
+Am241	ingest	DOE	0.0045	0.001	
+Am241	ingest	EPA	0.00364	0.001	
+Am241	ingest	GENII	0.00362	0.001	
+Am241	inhale	DOE	0.52		W
+Am241	inhale	EPA	0.444		W
+Am241	inhale	GENII	0.441		W
+Am241	soil	DOE	341		
+Am241	soil	EPA	22.2		
+Am241	soil	GENII	14.5		
+Am242_m1	air	DOE	-1		
+Am242_m1	air	EPA	1.02e-08		
+Am242_m1	air	GENII	-1		
+Am242_m1	ingest	DOE	0.0042	0.001	
+Am242_m1	ingest	EPA	0.00352	0.001	
+Am242_m1	ingest	GENII	0.0035	0.001	
+Am242_m1	inhale	DOE	0.51		W
+Am242_m1	inhale	EPA	0.426		W
+Am242_m1	inhale	GENII	0.424		W
+Am242_m1	soil	DOE	266		
+Am242_m1	soil	EPA	32.8		
+Am242_m1	soil	GENII	35.8		
+Am243	air	DOE	-1		
+Am243	air	EPA	1.32e-07		
+Am243	air	GENII	-1		
+Am243	ingest	DOE	0.0045	0.001	
+Am243	ingest	EPA	0.00363	0.001	
+Am243	ingest	GENII	0.00362	0.001	
+Am243	inhale	DOE	0.52		W
+Am243	inhale	EPA	0.44		W
+Am243	inhale	GENII	0.441		W
+Am243	soil	DOE	2940		
+Am243	soil	EPA	442		
+Am243	soil	GENII	449		
+Ba133	air	DOE	-1		
+Ba133	air	EPA	2.37e-07		
+Ba133	air	GENII	-1		
+Ba133	ingest	DOE	3.2e-06	0.1	
+Ba133	ingest	EPA	3.4e-06	0.1	
+Ba133	ingest	GENII	3.05e-06	0.1	
+Ba133	inhale	DOE	6.9e-06		D
+Ba133	inhale	EPA	7.81e-06		D
+Ba133	inhale	GENII	6e-06		D
+Ba133	soil	DOE	4780		
+Ba133	soil	EPA	936		
+Ba133	soil	GENII	1100		
+Be10	air	DOE	-1		
+Be10	air	EPA	1.49e-10		
+Be10	air	GENII	-1		
+Be10	ingest	DOE	4.2e-06	0.005	
+Be10	ingest	EPA	4.66e-06	0.005	
+Be10	ingest	GENII	4.7e-06	0.005	
+Be10	inhale	DOE	0.00035		Y
+Be10	inhale	EPA	0.000354		Y
+Be10	inhale	GENII	0.000354		Y
+Be10	soil	DOE	0		
+Be10	soil	EPA	0.537		
+Be10	soil	GENII	0.433		
+Bi207	air	DOE	-1		
+Bi207	air	EPA	1e-06		
+Bi207	air	GENII	-1		
+Bi207	ingest	DOE	4.9e-06	0.05	
+Bi207	ingest	EPA	5.48e-06	0.05	
+Bi207	ingest	GENII	5.49e-06	0.05	
+Bi207	inhale	DOE	1.4e-05		W
+Bi207	inhale	EPA	2e-05		W
+Bi207	inhale	GENII	1.96e-05		W
+Bi207	soil	DOE	17200		
+Bi207	soil	EPA	4110		
+Bi207	soil	GENII	4920		
+Bk247	air	DOE	-1		
+Bk247	air	EPA	6.27e-08		
+Bk247	air	GENII	-1		
+Bk247	ingest	DOE	0.0023	0.001	
+Bk247	ingest	EPA	0.0047	0.001	
+Bk247	ingest	GENII	0.00381	0.001	
+Bk247	inhale	DOE	0.55		W
+Bk247	inhale	EPA	0.574		W
+Bk247	inhale	GENII	0.465		W
+Bk247	soil	DOE	0		
+Bk247	soil	EPA	214		
+Bk247	soil	GENII	232		
+C14	air	DOE	-1		
+C14	air	EPA	2.98e-12		
+C14	air	GENII	-1		
+C14	ingest	DOE	2.1e-06	1	
+C14	ingest	EPA	2.09e-06	1	
+C14	ingest	GENII	2.06e-06	1	
+C14	inhale	DOE	2.1e-06		O
+C14	inhale	EPA	2.09e-06		O
+C14	inhale	GENII	2.06e-06		O
+C14	soil	DOE	0		
+C14	soil	EPA	0.00682		
+C14	soil	GENII	0.00751		
+Cd109	air	DOE	-1		
+Cd109	air	EPA	3.92e-09		
+Cd109	air	GENII	-1		
+Cd109	ingest	DOE	1.2e-05	0.05	
+Cd109	ingest	EPA	1.31e-05	0.05	
+Cd109	ingest	GENII	1.32e-05	0.05	
+Cd109	inhale	DOE	0.0001		D
+Cd109	inhale	EPA	0.000114		D
+Cd109	inhale	GENII	0.000115		D
+Cd109	soil	DOE	108		
+Cd109	soil	EPA	7.47		
+Cd109	soil	GENII	2.61		
+Cd113_m1	air	DOE	-1		
+Cd113_m1	air	EPA	9.24e-11		
+Cd113_m1	air	GENII	-1		
+Cd113_m1	ingest	DOE	0.00015	0.05	
+Cd113_m1	ingest	EPA	0.000161	0.05	
+Cd113_m1	ingest	GENII	0.000162	0.05	
+Cd113_m1	inhale	DOE	0.0014		D
+Cd113_m1	inhale	EPA	0.00153		D
+Cd113_m1	inhale	GENII	0.00154		D
+Cd113_m1	soil	DOE	0		
+Cd113_m1	soil	EPA	0.324		
+Cd113_m1	soil	GENII	0.428		
+Cf248	air	DOE	-1		
+Cf248	air	EPA	6.3e-11		
+Cf248	air	GENII	-1		
+Cf248	ingest	DOE	0.00028	0.001	
+Cf248	ingest	EPA	0.000334	0.001	
+Cf248	ingest	GENII	0.000339	0.001	
+Cf248	inhale	DOE	0.043		Y
+Cf248	inhale	EPA	0.0507		Y
+Cf248	inhale	GENII	0.0511		Y
+Cf248	soil	DOE	7.68		
+Cf248	soil	EPA	0.0632		
+Cf248	soil	GENII	0.0343		
+Cf249	air	DOE	-1		
+Cf249	air	EPA	2.11e-07		
+Cf249	air	GENII	-1		
+Cf249	ingest	DOE	0.0046	0.001	
+Cf249	ingest	EPA	0.00474	0.001	
+Cf249	ingest	GENII	0.00475	0.001	
+Cf249	inhale	DOE	0.55		W
+Cf249	inhale	EPA	0.577		W
+Cf249	inhale	GENII	0.577		W
+Cf249	soil	DOE	4020		
+Cf249	soil	EPA	871		
+Cf249	soil	GENII	982		
+Cf250	air	DOE	-1		
+Cf250	air	EPA	5.99e-11		
+Cf250	air	GENII	-1		
+Cf250	ingest	DOE	0.0019	0.001	
+Cf250	ingest	EPA	0.00213	0.001	
+Cf250	ingest	GENII	0.00213	0.001	
+Cf250	inhale	DOE	0.22		W
+Cf250	inhale	EPA	0.262		W
+Cf250	inhale	GENII	0.263		W
+Cf250	soil	DOE	7.81		
+Cf250	soil	EPA	0.0601		
+Cf250	soil	GENII	0.0537		
+Cf251	air	DOE	-1		
+Cf251	air	EPA	7.43e-08		
+Cf251	air	GENII	-1		
+Cf251	ingest	DOE	0.0046	0.001	
+Cf251	ingest	EPA	0.00485	0.001	
+Cf251	ingest	GENII	0.00482	0.001	
+Cf251	inhale	DOE	0.56		W
+Cf251	inhale	EPA	0.588		W
+Cf251	inhale	GENII	0.587		W
+Cf251	soil	DOE	1550		
+Cf251	soil	EPA	262		
+Cf251	soil	GENII	240		
+Cf252	air	DOE	-1		
+Cf252	air	EPA	6.74e-11		
+Cf252	air	GENII	-1		
+Cf252	ingest	DOE	0.00094	0.001	
+Cf252	ingest	EPA	0.00108	0.001	
+Cf252	ingest	GENII	0.00109	0.001	
+Cf252	inhale	DOE	0.13		Y
+Cf252	inhale	EPA	0.157		Y
+Cf252	inhale	GENII	0.155		Y
+Cf252	soil	DOE	7.23		
+Cf252	soil	EPA	0.0891		
+Cf252	soil	GENII	0.0425		
+Cl36	air	DOE	-1		
+Cl36	air	EPA	2.97e-10		
+Cl36	air	GENII	-1		
+Cl36	ingest	DOE	3e-06	1	
+Cl36	ingest	EPA	3.03e-06	1	
+Cl36	ingest	GENII	2.95e-06	1	
+Cl36	inhale	DOE	2e-05		W
+Cl36	inhale	EPA	2.19e-05		W
+Cl36	inhale	GENII	2.21e-05		W
+Cl36	soil	DOE	0.000532		
+Cl36	soil	EPA	1.16		
+Cl36	soil	GENII	0.858		
+Cm242	air	DOE	-1		
+Cm242	air	EPA	7.58e-11		
+Cm242	air	GENII	-1		
+Cm242	ingest	DOE	0.00011	0.001	
+Cm242	ingest	EPA	0.000115	0.001	
+Cm242	ingest	GENII	0.000115	0.001	
+Cm242	inhale	DOE	0.00017		W
+Cm242	inhale	EPA	0.0173		W
+Cm242	inhale	GENII	0.0175		W
+Cm242	soil	DOE	10.7		
+Cm242	soil	EPA	0.0859		
+Cm242	soil	GENII	0.0597		
+Cm243	air	DOE	-1		
+Cm243	air	EPA	7.83e-08		
+Cm243	air	GENII	-1		
+Cm243	ingest	DOE	0.0029	0.001	
+Cm243	ingest	EPA	0.00251	0.001	
+Cm243	ingest	GENII	0.0025	0.001	
+Cm243	inhale	DOE	0.35		W
+Cm243	inhale	EPA	0.307		W
+Cm243	inhale	GENII	0.307		W
+Cm243	soil	DOE	1670		
+Cm243	soil	EPA	286		
+Cm243	soil	GENII	290		
+Cm244	air	DOE	-1		
+Cm244	air	EPA	6.54e-11		
+Cm244	air	GENII	-1		
+Cm244	ingest	DOE	0.0023	0.001	
+Cm244	ingest	EPA	0.00202	0.001	
+Cm244	ingest	GENII	0.00201	0.001	
+Cm244	inhale	DOE	0.27		W
+Cm244	inhale	EPA	0.248		W
+Cm244	inhale	GENII	0.248		W
+Cm244	soil	DOE	9.46		
+Cm244	soil	EPA	0.0639		
+Cm244	soil	GENII	0.0509		
+Cm245	air	DOE	-1		
+Cm245	air	EPA	5.28e-08		
+Cm245	air	GENII	-1		
+Cm245	ingest	DOE	0.0045	0.001	
+Cm245	ingest	EPA	0.00374	0.001	
+Cm245	ingest	GENII	0.00373	0.001	
+Cm245	inhale	DOE	0.54		W
+Cm245	inhale	EPA	0.455		W
+Cm245	inhale	GENII	0.455		W
+Cm245	soil	DOE	974		
+Cm245	soil	EPA	171		
+Cm245	soil	GENII	132		
+Cm246	air	DOE	-1		
+Cm246	air	EPA	5.94e-11		
+Cm246	air	GENII	-1		
+Cm246	ingest	DOE	0.0045	0.001	
+Cm246	ingest	EPA	0.0037	0.001	
+Cm246	ingest	GENII	0.0037	0.001	
+Cm246	inhale	DOE	0.54		W
+Cm246	inhale	EPA	0.451		W
+Cm246	inhale	GENII	0.451		W
+Cm246	soil	DOE	8.37		
+Cm246	soil	EPA	0.0589		
+Cm246	soil	GENII	0.0419		
+Cm247	air	DOE	-1		
+Cm247	air	EPA	2.14e-07		
+Cm247	air	GENII	-1		
+Cm247	ingest	DOE	0.0041	0.001	
+Cm247	ingest	EPA	0.00342	0.001	
+Cm247	ingest	GENII	0.0034	0.001	
+Cm247	inhale	DOE	0.49		W
+Cm247	inhale	EPA	0.414		W
+Cm247	inhale	GENII	0.415		W
+Cm247	soil	DOE	4160		
+Cm247	soil	EPA	874		
+Cm247	soil	GENII	1300		
+Cm248	air	DOE	-1		
+Cm248	air	EPA	4.52e-11		
+Cm248	air	GENII	-1		
+Cm248	ingest	DOE	0.016	0.001	
+Cm248	ingest	EPA	0.0136	0.001	
+Cm248	ingest	GENII	0.0136	0.001	
+Cm248	inhale	DOE	1.9		W
+Cm248	inhale	EPA	1.65		W
+Cm248	inhale	GENII	1.65		W
+Cm248	soil	DOE	6.71		
+Cm248	soil	EPA	0.0445		
+Cm248	soil	GENII	0.0383		
+Cm250	air	DOE	-1		
+Cm250	air	EPA	2.11e-07		
+Cm250	air	GENII	-1		
+Cm250	ingest	DOE	0.0777	0.001	
+Cm250	ingest	EPA	0.0777	0.001	
+Cm250	ingest	GENII	0.0776	0.001	
+Cm250	inhale	DOE	9.4		W
+Cm250	inhale	EPA	9.4		W
+Cm250	inhale	GENII	9.43		W
+Cm250	soil	DOE	4400		
+Cm250	soil	EPA	855		
+Cm250	soil	GENII	1200		
+Co60	air	DOE	-1		
+Co60	air	EPA	1.68e-06		
+Co60	air	GENII	-1		
+Co60	ingest	DOE	2.6e-05	0.3	
+Co60	ingest	EPA	2.69e-05	0.3	
+Co60	ingest	GENII	2.65e-05	0.3	
+Co60	inhale	DOE	0.00015		Y
+Co60	inhale	EPA	0.000219		Y
+Co60	inhale	GENII	0.0002		Y
+Co60	soil	DOE	25900		
+Co60	soil	EPA	6870		
+Co60	soil	GENII	7510		
+Cs134	air	DOE	-1		
+Cs134	air	EPA	1.01e-06		
+Cs134	air	GENII	-1		
+Cs134	ingest	DOE	7.4e-05	1	
+Cs134	ingest	EPA	7.33e-05	1	
+Cs134	ingest	GENII	6.82e-05	1	
+Cs134	inhale	DOE	4.7e-05		D
+Cs134	inhale	EPA	4.63e-05		D
+Cs134	inhale	GENII	4.28e-05		D
+Cs134	soil	DOE	18000		
+Cs134	soil	EPA	4240		
+Cs134	soil	GENII	5230		
+Cs135	air	DOE	-1		
+Cs135	air	EPA	7.53e-12		
+Cs135	air	GENII	-1		
+Cs135	ingest	DOE	7.1e-06	1	
+Cs135	ingest	EPA	7.07e-06	1	
+Cs135	ingest	GENII	6.86e-06	1	
+Cs135	inhale	DOE	4.5e-06		D
+Cs135	inhale	EPA	4.55e-06		D
+Cs135	inhale	GENII	4.49e-06		D
+Cs135	soil	DOE	0		
+Cs135	soil	EPA	0.0194		
+Cs135	soil	GENII	0.0146		
+Cs137	air	DOE	-1		
+Cs137	air	EPA	3.63e-07		
+Cs137	air	GENII	-1		
+Cs137	ingest	DOE	5e-05	1	
+Cs137	ingest	EPA	5e-05	1	
+Cs137	ingest	GENII	4.74e-05	1	
+Cs137	inhale	DOE	3.2e-05		D
+Cs137	inhale	EPA	3.19e-05		D
+Cs137	inhale	GENII	2.98e-05		D
+Cs137	soil	DOE	6590		
+Cs137	soil	EPA	1530		
+Cs137	soil	GENII	1820		
+Eu150	air	DOE	-1		
+Eu150	air	EPA	9.55e-07		
+Eu150	air	GENII	-1		
+Eu150	ingest	DOE	6.2e-06	0.001	
+Eu150	ingest	EPA	6.36e-06	0.001	
+Eu150	ingest	GENII	6.34e-06	0.001	
+Eu150	inhale	DOE	0.00027		W
+Eu150	inhale	EPA	0.000268		W
+Eu150	inhale	GENII	0.00025		W
+Eu150	soil	DOE	0		
+Eu150	soil	EPA	3960		
+Eu150	soil	GENII	5040		
+Eu152	air	DOE	-1		
+Eu152	air	EPA	7.53e-07		
+Eu152	air	GENII	-1		
+Eu152	ingest	DOE	6e-06	0.001	
+Eu152	ingest	EPA	6.48e-06	0.001	
+Eu152	ingest	GENII	6.48e-06	0.001	
+Eu152	inhale	DOE	0.00022		W
+Eu152	inhale	EPA	0.000221		W
+Eu152	inhale	GENII	0.000211		W
+Eu152	soil	DOE	12700		
+Eu152	soil	EPA	3050		
+Eu152	soil	GENII	3600		
+Eu154	air	DOE	-1		
+Eu154	air	EPA	8.18e-07		
+Eu154	air	GENII	-1		
+Eu154	ingest	DOE	9.1e-06	0.001	
+Eu154	ingest	EPA	9.55e-06	0.001	
+Eu154	ingest	GENII	9.61e-06	0.001	
+Eu154	inhale	DOE	0.00026		W
+Eu154	inhale	EPA	0.000286		W
+Eu154	inhale	GENII	0.000278		W
+Eu154	soil	DOE	13800		
+Eu154	soil	EPA	3340		
+Eu154	soil	GENII	3740		
+Eu155	air	DOE	-1		
+Eu155	air	EPA	3.32e-08		
+Eu155	air	GENII	-1		
+Eu155	ingest	DOE	1.3e-06	0.001	
+Eu155	ingest	EPA	1.53e-06	0.001	
+Eu155	ingest	GENII	1.53e-06	0.001	
+Eu155	inhale	DOE	3.9e-05		W
+Eu155	inhale	EPA	4.14e-05		W
+Eu155	inhale	GENII	4.12e-05		W
+Eu155	soil	DOE	816		
+Eu155	soil	EPA	92.4		
+Eu155	soil	GENII	89.8		
+Fe55	air	DOE	-1		
+Fe55	air	EPA	0		
+Fe55	air	GENII	-1		
+Fe55	ingest	DOE	5.8e-07	0.1	
+Fe55	ingest	EPA	6.07e-07	0.1	
+Fe55	ingest	GENII	6.15e-07	0.1	
+Fe55	inhale	DOE	2.6e-06		D
+Fe55	inhale	EPA	2.69e-06		D
+Fe55	inhale	GENII	2.74e-06		D
+Fe55	soil	DOE	2.52		
+Fe55	soil	EPA	0		
+Fe55	soil	GENII	0.107		
+Gd152	air	DOE	-1		
+Gd152	air	EPA	0		
+Gd152	air	GENII	-1		
+Gd152	ingest	DOE	0.00015	0.0003	
+Gd152	ingest	EPA	0.000161	0.0003	
+Gd152	ingest	GENII	0.000161	0.0003	
+Gd152	inhale	DOE	0.24		D
+Gd152	inhale	EPA	0.243		D
+Gd152	inhale	GENII	0.244		D
+Gd152	soil	DOE	0		
+Gd152	soil	EPA	0		
+Gd152	soil	GENII	0		
+H3	air	DOE	-1		
+H3	air	EPA	4.41e-12		
+H3	air	GENII	-1		
+H3	ingest	DOE	6.3e-08	1	
+H3	ingest	EPA	6.4e-08	1	
+H3	ingest	GENII	6.12e-08	1	
+H3	inhale	DOE	9.45e-08		V
+H3	inhale	EPA	9.6e-08		V
+H3	inhale	GENII	9.02e-08		V
+H3	soil	DOE	0		
+H3	soil	EPA	0		
+H3	soil	GENII	3.49e-08		
+Ho166_m1	air	DOE	-1		
+Ho166_m1	air	EPA	1.13e-06		
+Ho166_m1	air	GENII	-1		
+Ho166_m1	ingest	DOE	7.8e-06	0.0003	
+Ho166_m1	ingest	EPA	8.07e-06	0.0003	
+Ho166_m1	ingest	GENII	8.13e-06	0.0003	
+Ho166_m1	inhale	DOE	0.00072		W
+Ho166_m1	inhale	EPA	0.000773		W
+Ho166_m1	inhale	GENII	0.000746		W
+Ho166_m1	soil	DOE	18800		
+Ho166_m1	soil	EPA	4640		
+Ho166_m1	soil	GENII	4670		
+I129	air	DOE	-1		
+I129	air	EPA	5.06e-09		
+I129	air	GENII	-1		
+I129	ingest	DOE	0.00028	1	
+I129	ingest	EPA	0.000276	1	
+I129	ingest	GENII	0.000249	1	
+I129	inhale	DOE	0.00018		D
+I129	inhale	EPA	0.000174		D
+I129	inhale	GENII	0.000151		D
+I129	soil	DOE	251		
+I129	soil	EPA	6.57		
+I129	soil	GENII	5.54		
+In115	air	DOE	-1		
+In115	air	EPA	5.99e-11		
+In115	air	GENII	-1		
+In115	ingest	DOE	0.00014	0.02	
+In115	ingest	EPA	0.000158	0.02	
+In115	ingest	GENII	8.68e-05	0.02	
+In115	inhale	DOE	0.0034		D
+In115	inhale	EPA	0.00374		D
+In115	inhale	GENII	0.00202		D
+In115	soil	DOE	0		
+In115	soil	EPA	0.201		
+In115	soil	GENII	0.256		
+K40	air	DOE	-1		
+K40	air	EPA	1.07e-07		
+K40	air	GENII	-1		
+K40	ingest	DOE	1.9e-05	1	
+K40	ingest	EPA	1.86e-05	1	
+K40	ingest	GENII	1.79e-05	1	
+K40	inhale	DOE	1.2e-05		D
+K40	inhale	EPA	1.24e-05		D
+K40	inhale	GENII	1.19e-05		D
+K40	soil	DOE	1560		
+K40	soil	EPA	433		
+K40	soil	GENII	487		
+Mn54	air	DOE	-1		
+Mn54	air	EPA	5.45e-07		
+Mn54	air	GENII	-1		
+Mn54	ingest	DOE	2.7e-06	0.1	
+Mn54	ingest	EPA	2.77e-06	0.1	
+Mn54	ingest	GENII	2.76e-06	0.1	
+Mn54	inhale	DOE	6.4e-06		W
+Mn54	inhale	EPA	6.7e-06		W
+Mn54	inhale	GENII	6.36e-06		W
+Mn54	soil	DOE	9590		
+Mn54	soil	EPA	2270		
+Mn54	soil	GENII	2530		
+Mo93	air	DOE	-1		
+Mo93	air	EPA	3.36e-10		
+Mo93	air	GENII	-1		
+Mo93	ingest	DOE	1.3e-06	0.8	
+Mo93	ingest	EPA	1.35e-06	0.8	
+Mo93	ingest	GENII	1.21e-06	0.8	
+Mo93	inhale	DOE	2.8e-05		Y
+Mo93	inhale	EPA	2.84e-05		Y
+Mo93	inhale	GENII	2.8e-05		Y
+Mo93	soil	DOE	65.9		
+Mo93	soil	EPA	0.299		
+Mo93	soil	GENII	0.243		
+Na22	air	DOE	-1		
+Na22	air	EPA	1.44e-06		
+Na22	air	GENII	-1		
+Na22	ingest	DOE	1.2e-05	1	
+Na22	ingest	EPA	1.15e-05	1	
+Na22	ingest	GENII	1.06e-05	1	
+Na22	inhale	DOE	8e-06		D
+Na22	inhale	EPA	7.66e-06		D
+Na22	inhale	GENII	7.11e-06		D
+Na22	soil	DOE	24000		
+Na22	soil	EPA	5980		
+Na22	soil	GENII	6750		
+Nb91	air	DOE	-1		
+Nb91	air	EPA	1.23e-09		
+Nb91	air	GENII	-1		
+Nb91	ingest	DOE	5.3e-07	0.01	
+Nb91	ingest	EPA	5.22e-07	0.01	
+Nb91	ingest	GENII	5.05e-07	0.01	
+Nb91	inhale	DOE	2.8e-05		Y
+Nb91	inhale	EPA	2.92e-05		Y
+Nb91	inhale	GENII	2.94e-05		Y
+Nb91	soil	DOE	83.6		
+Nb91	soil	EPA	5.74		
+Nb91	soil	GENII	5.74		
+Nb93_m1	air	DOE	-1		
+Nb93_m1	air	EPA	5.91e-11		
+Nb93_m1	air	GENII	-1		
+Nb93_m1	ingest	DOE	5.3e-07	0.01	
+Nb93_m1	ingest	EPA	5.22e-07	0.01	
+Nb93_m1	ingest	GENII	5.05e-07	0.01	
+Nb93_m1	inhale	DOE	2.8e-05		Y
+Nb93_m1	inhale	EPA	2.92e-05		Y
+Nb93_m1	inhale	GENII	2.94e-05		Y
+Nb93_m1	soil	DOE	11.7		
+Nb93_m1	soil	EPA	0.0528		
+Nb93_m1	soil	GENII	0.0433		
+Nb94	air	DOE	-1		
+Nb94	air	EPA	1.03e-06		
+Nb94	air	GENII	-1		
+Nb94	ingest	DOE	5.1e-06	0.01	
+Nb94	ingest	EPA	7.14e-06	0.01	
+Nb94	ingest	GENII	7.25e-06	0.01	
+Nb94	inhale	DOE	0.00033		Y
+Nb94	inhale	EPA	0.000414		Y
+Nb94	inhale	GENII	0.000391		Y
+Nb94	soil	DOE	18100		
+Nb94	soil	EPA	4290		
+Nb94	soil	GENII	4670		
+Ni59	air	DOE	-1		
+Ni59	air	EPA	0		
+Ni59	air	GENII	-1		
+Ni59	ingest	DOE	2e-07	0.05	
+Ni59	ingest	EPA	2.1e-07	0.05	
+Ni59	ingest	GENII	2.05e-07	0.05	
+Ni59	inhale	DOE	1.3e-06		D
+Ni59	inhale	EPA	1.32e-06		D
+Ni59	inhale	GENII	1.28e-06		D
+Ni59	soil	DOE	4.75		
+Ni59	soil	EPA	0		
+Ni59	soil	GENII	0.131		
+Ni63	air	DOE	-1		
+Ni63	air	EPA	0		
+Ni63	air	GENII	-1		
+Ni63	ingest	DOE	5.4e-07	0.05	
+Ni63	ingest	EPA	5.77e-07	0.05	
+Ni63	ingest	GENII	5.72e-07	0.05	
+Ni63	inhale	DOE	3e-06		D
+Ni63	inhale	EPA	3.1e-06		D
+Ni63	inhale	GENII	3.06e-06		D
+Ni63	soil	DOE	0		
+Ni63	soil	EPA	0		
+Ni63	soil	GENII	0.000191		
+Np237	air	DOE	-1		
+Np237	air	EPA	1.38e-07		
+Np237	air	GENII	-1		
+Np237	ingest	DOE	0.0039	0.001	
+Np237	ingest	EPA	0.00444	0.001	
+Np237	ingest	GENII	0.00522	0.001	
+Np237	inhale	DOE	0.49		W
+Np237	inhale	EPA	0.54		W
+Np237	inhale	GENII	0.632		W
+Np237	soil	DOE	3060		
+Np237	soil	EPA	528		
+Np237	soil	GENII	713		
+Pa231	air	DOE	-1		
+Pa231	air	EPA	2.29e-08		
+Pa231	air	GENII	-1		
+Pa231	ingest	DOE	0.011	0.001	
+Pa231	ingest	EPA	0.0106	0.001	
+Pa231	ingest	GENII	0.0106	0.001	
+Pa231	inhale	DOE	1.3		W
+Pa231	inhale	EPA	1.28		W
+Pa231	inhale	GENII	1.29		W
+Pa231	soil	DOE	408		
+Pa231	soil	EPA	91.1		
+Pa231	soil	GENII	90.9		
+Pb205	air	DOE	-1		
+Pb205	air	EPA	6.74e-12		
+Pb205	air	GENII	-1		
+Pb205	ingest	DOE	1.5e-06	0.2	
+Pb205	ingest	EPA	1.63e-06	0.2	
+Pb205	ingest	GENII	1.64e-06	0.2	
+Pb205	inhale	DOE	3.7e-06		D
+Pb205	inhale	EPA	3.92e-06		D
+Pb205	inhale	GENII	3.97e-06		D
+Pb205	soil	DOE	8.61		
+Pb205	soil	EPA	0.00358		
+Pb205	soil	GENII	0.0875		
+Pb210	air	DOE	-1		
+Pb210	air	EPA	1.19e-09		
+Pb210	air	GENII	-1		
+Pb210	ingest	DOE	0.00511	0.2	
+Pb210	ingest	EPA	0.00537	0.2	
+Pb210	ingest	GENII	0.0054	0.2	
+Pb210	inhale	DOE	0.0132		D
+Pb210	inhale	EPA	0.0138		D
+Pb210	inhale	GENII	0.0139		D
+Pb210	soil	DOE	34.2		
+Pb210	soil	EPA	3		
+Pb210	soil	GENII	3.85		
+Pd107	air	DOE	-1		
+Pd107	air	EPA	0		
+Pd107	air	GENII	-1		
+Pd107	ingest	DOE	1.4e-07	0.005	
+Pd107	ingest	EPA	1.49e-07	0.005	
+Pd107	ingest	GENII	1.5e-07	0.005	
+Pd107	inhale	DOE	1.3e-05		Y
+Pd107	inhale	EPA	1.28e-05		Y
+Pd107	inhale	GENII	1.29e-05		Y
+Pd107	soil	DOE	0		
+Pd107	soil	EPA	0		
+Pd107	soil	GENII	4.16e-06		
+Pm147	air	DOE	-1		
+Pm147	air	EPA	9.23e-12		
+Pm147	air	GENII	-1		
+Pm147	ingest	DOE	9.5e-07	0.0003	
+Pm147	ingest	EPA	1.05e-06	0.0003	
+Pm147	ingest	GENII	1.06e-06	0.0003	
+Pm147	inhale	DOE	3.4e-05		Y
+Pm147	inhale	EPA	3.92e-05		Y
+Pm147	inhale	GENII	3.92e-05		Y
+Pm147	soil	DOE	0.0468		
+Pm147	soil	EPA	0.0253		
+Pm147	soil	GENII	0.0274		
+Po209	air	DOE	-1		
+Po209	air	EPA	2.22e-09		
+Po209	air	GENII	-1		
+Po209	ingest	DOE	0.002	0.1	
+Po209	ingest	EPA	0.00238	0.1	
+Po209	ingest	GENII	0.00239	0.1	
+Po209	inhale	DOE	0.0101		D
+Po209	inhale	EPA	0.0118		D
+Po209	inhale	GENII	0.0119		D
+Po209	soil	DOE	41		
+Po209	soil	EPA	8.95		
+Po209	soil	GENII	8.95		
+Po210	air	DOE	-1		
+Po210	air	EPA	5.54e-12		
+Po210	air	GENII	-1		
+Po210	ingest	DOE	0.0016	0.1	
+Po210	ingest	EPA	0.0019	0.1	
+Po210	ingest	GENII	0.0019	0.1	
+Po210	inhale	DOE	0.0081		D
+Po210	inhale	EPA	0.0094		D
+Po210	inhale	GENII	0.00965		D
+Po210	soil	DOE	0.0981		
+Po210	soil	EPA	0.0232		
+Po210	soil	GENII	0.0268		
+Pu236	air	DOE	-1		
+Pu236	air	EPA	8.46e-11		
+Pu236	air	GENII	-1		
+Pu236	ingest	DOE	0.0013	0.001	
+Pu236	ingest	EPA	0.00117	0.001	
+Pu236	ingest	GENII	0.00116	0.001	
+Pu236	inhale	DOE	0.16		W
+Pu236	inhale	EPA	0.145		W
+Pu236	inhale	GENII	0.145		W
+Pu236	soil	DOE	11.3		
+Pu236	soil	EPA	0.114		
+Pu236	soil	GENII	0.0945		
+Pu238	air	DOE	-1		
+Pu238	air	EPA	6.5e-11		
+Pu238	air	GENII	-1		
+Pu238	ingest	DOE	0.0038	0.001	
+Pu238	ingest	EPA	0.0032	0.001	
+Pu238	ingest	GENII	0.00319	0.001	
+Pu238	inhale	DOE	0.46		W
+Pu238	inhale	EPA	0.392		W
+Pu238	inhale	GENII	0.39		W
+Pu238	soil	DOE	9.79		
+Pu238	soil	EPA	0.0765		
+Pu238	soil	GENII	0.106		
+Pu239	air	DOE	-1		
+Pu239	air	EPA	5.65e-11		
+Pu239	air	GENII	-1		
+Pu239	ingest	DOE	0.0043	0.001	
+Pu239	ingest	EPA	0.00354	0.001	
+Pu239	ingest	GENII	0.00353	0.001	
+Pu239	inhale	DOE	0.51		W
+Pu239	inhale	EPA	0.429		W
+Pu239	inhale	GENII	0.43		W
+Pu239	soil	DOE	4.31		
+Pu239	soil	EPA	0.144		
+Pu239	soil	GENII	0.159		
+Pu240	air	DOE	-1		
+Pu240	air	EPA	6.33e-11		
+Pu240	air	GENII	-1		
+Pu240	ingest	DOE	0.0043	0.001	
+Pu240	ingest	EPA	0.00354	0.001	
+Pu240	ingest	GENII	0.00353	0.001	
+Pu240	inhale	DOE	0.51		W
+Pu240	inhale	EPA	0.429		W
+Pu240	inhale	GENII	0.43		W
+Pu240	soil	DOE	9.35		
+Pu240	soil	EPA	0.0743		
+Pu240	soil	GENII	0.0729		
+Pu241	air	DOE	-1		
+Pu241	air	EPA	2.87e-12		
+Pu241	air	GENII	-1		
+Pu241	ingest	DOE	8.6e-05	0.001	
+Pu241	ingest	EPA	6.85e-05	0.001	
+Pu241	ingest	GENII	6.79e-05	0.001	
+Pu241	inhale	DOE	0.01		W
+Pu241	inhale	EPA	0.00825		W
+Pu241	inhale	GENII	0.00817		W
+Pu241	soil	DOE	0.044		
+Pu241	soil	EPA	0.00929		
+Pu241	soil	GENII	0.00943		
+Pu242	air	DOE	-1		
+Pu242	air	EPA	5.34e-11		
+Pu242	air	GENII	-1		
+Pu242	ingest	DOE	0.0041	0.001	
+Pu242	ingest	EPA	0.00336	0.001	
+Pu242	ingest	GENII	0.00335	0.001	
+Pu242	inhale	DOE	0.48		W
+Pu242	inhale	EPA	0.411		W
+Pu242	inhale	GENII	0.408		W
+Pu242	soil	DOE	7.78		
+Pu242	soil	EPA	0.0649		
+Pu242	soil	GENII	0.0957		
+Pu244	air	DOE	-1		
+Pu244	air	EPA	2.17e-07		
+Pu244	air	GENII	-1		
+Pu244	ingest	DOE	0.004	0.001	
+Pu244	ingest	EPA	0.00332	0.001	
+Pu244	ingest	GENII	0.00332	0.001	
+Pu244	inhale	DOE	0.48		W
+Pu244	inhale	EPA	0.403		W
+Pu244	inhale	GENII	0.403		W
+Pu244	soil	DOE	3860		
+Pu244	soil	EPA	904		
+Pu244	soil	GENII	1170		
+Ra226	air	DOE	-1		
+Ra226	air	EPA	1.18e-06		
+Ra226	air	GENII	-1		
+Ra226	ingest	DOE	0.0011	0.2	
+Ra226	ingest	EPA	0.00133	0.2	
+Ra226	ingest	GENII	0.000951	0.2	
+Ra226	inhale	DOE	0.00791		W
+Ra226	inhale	EPA	0.0086		W
+Ra226	inhale	GENII	0.00822		W
+Ra226	soil	DOE	19200		
+Ra226	soil	EPA	4780		
+Ra226	soil	GENII	5610		
+Ra228	air	DOE	-1		
+Ra228	air	EPA	6.37e-07		
+Ra228	air	GENII	-1		
+Ra228	ingest	DOE	0.0012	0.2	
+Ra228	ingest	EPA	0.00144	0.2	
+Ra228	ingest	GENII	0.000844	0.2	
+Ra228	inhale	DOE	0.00449		W
+Ra228	inhale	EPA	0.00508		W
+Ra228	inhale	GENII	0.0044		W
+Ra228	soil	DOE	10400		
+Ra228	soil	EPA	2620		
+Ra228	soil	GENII	3040		
+Rb87	air	DOE	-1		
+Rb87	air	EPA	2.42e-11		
+Rb87	air	GENII	-1		
+Rb87	ingest	DOE	4.8e-06	1	
+Rb87	ingest	EPA	4.92e-06	1	
+Rb87	ingest	GENII	4.73e-06	1	
+Rb87	inhale	DOE	3.3e-06		D
+Rb87	inhale	EPA	3.23e-06		D
+Rb87	inhale	GENII	3.18e-06		D
+Rb87	soil	DOE	0		
+Rb87	soil	EPA	0.0713		
+Rb87	soil	GENII	0.0402		
+Re187	air	DOE	-1		
+Re187	air	EPA	0		
+Re187	air	GENII	-1		
+Re187	ingest	DOE	8.3e-09	0.8	
+Re187	ingest	EPA	9.51e-09	0.8	
+Re187	ingest	GENII	1.45e-08	0.8	
+Re187	inhale	DOE	4.9e-08		W
+Re187	inhale	EPA	5.44e-08		W
+Re187	inhale	GENII	5.86e-08		W
+Re187	soil	DOE	0		
+Re187	soil	EPA	0		
+Re187	soil	GENII	0		
+Ru106	air	DOE	-1		
+Ru106	air	EPA	1.39e-07		
+Ru106	air	GENII	-1		
+Ru106	ingest	DOE	2.1e-05	0.05	
+Ru106	ingest	EPA	2.74e-05	0.05	
+Ru106	ingest	GENII	2.73e-05	0.05	
+Ru106	inhale	DOE	0.00044		Y
+Ru106	inhale	EPA	0.000477		Y
+Ru106	inhale	GENII	0.000475		Y
+Ru106	soil	DOE	2400		
+Ru106	soil	EPA	583		
+Ru106	soil	GENII	732		
+Sb125	air	DOE	-1		
+Sb125	air	EPA	2.69e-07		
+Sb125	air	GENII	-1		
+Sb125	ingest	DOE	2.6e-06	0.1	
+Sb125	ingest	EPA	2.81e-06	0.1	
+Sb125	ingest	GENII	2.83e-06	0.1	
+Sb125	inhale	DOE	9.8e-06		W
+Sb125	inhale	EPA	1.22e-05		W
+Sb125	inhale	GENII	1.23e-05		W
+Sb125	soil	DOE	5050		
+Sb125	soil	EPA	1120		
+Sb125	soil	GENII	1490		
+Se79	air	DOE	-1		
+Se79	air	EPA	4.04e-12		
+Se79	air	GENII	-1		
+Se79	ingest	DOE	8.3e-06	0.8	
+Se79	ingest	EPA	8.7e-06	0.8	
+Se79	ingest	GENII	8.33e-06	0.8	
+Se79	inhale	DOE	8.9e-06		W
+Se79	inhale	EPA	9.84e-06		W
+Se79	inhale	GENII	9.49e-06		W
+Se79	soil	DOE	0		
+Se79	soil	EPA	0.00944		
+Se79	soil	GENII	0.00537		
+Si32	air	DOE	-1		
+Si32	air	EPA	1.33e-09		
+Si32	air	GENII	-1		
+Si32	ingest	DOE	9.4e-06	0.01	
+Si32	ingest	EPA	1.1e-05	0.01	
+Si32	ingest	GENII	1.11e-05	0.01	
+Si32	inhale	DOE	0.00101		Y
+Si32	inhale	EPA	0.00103		Y
+Si32	inhale	GENII	0.00102		Y
+Si32	soil	DOE	0		
+Si32	soil	EPA	5.7		
+Si32	soil	GENII	9.62		
+Sm147	air	DOE	-1		
+Sm147	air	EPA	0		
+Sm147	air	GENII	-1		
+Sm147	ingest	DOE	0.00018	0.0003	
+Sm147	ingest	EPA	0.000185	0.0003	
+Sm147	ingest	GENII	0.000186	0.0003	
+Sm147	inhale	DOE	0.071		W
+Sm147	inhale	EPA	0.0747		W
+Sm147	inhale	GENII	0.0748		W
+Sm147	soil	DOE	0		
+Sm147	soil	EPA	0		
+Sm147	soil	GENII	0		
+Sm151	air	DOE	-1		
+Sm151	air	EPA	4.81e-13		
+Sm151	air	GENII	-1		
+Sm151	ingest	DOE	3.4e-07	0.0003	
+Sm151	ingest	EPA	3.89e-07	0.0003	
+Sm151	ingest	GENII	3.87e-07	0.0003	
+Sm151	inhale	DOE	2.9e-05		W
+Sm151	inhale	EPA	3e-05		W
+Sm151	inhale	GENII	3.01e-05		W
+Sm151	soil	DOE	0.0593		
+Sm151	soil	EPA	0.000499		
+Sm151	soil	GENII	0.00195		
+Sn121_m1	air	DOE	-1		
+Sn121_m1	air	EPA	8.26e-10		
+Sn121_m1	air	GENII	-1		
+Sn121_m1	ingest	DOE	1.99e-06	0.02	
+Sn121_m1	ingest	EPA	2.25e-06	0.02	
+Sn121_m1	ingest	GENII	2.24e-06	0.02	
+Sn121_m1	inhale	DOE	9.26e-06		W
+Sn121_m1	inhale	EPA	1.19e-05		W
+Sn121_m1	inhale	GENII	1.18e-05		W
+Sn121_m1	soil	DOE	0		
+Sn121_m1	soil	EPA	1.07		
+Sn121_m1	soil	GENII	5.15		
+Sn126	air	DOE	-1		
+Sn126	air	EPA	1.28e-06		
+Sn126	air	GENII	-1		
+Sn126	ingest	DOE	1.83e-05	0.02	
+Sn126	ingest	EPA	2.11e-05	0.02	
+Sn126	ingest	GENII	2.08e-05	0.02	
+Sn126	inhale	DOE	7.54e-05		W
+Sn126	inhale	EPA	0.000101		W
+Sn126	inhale	GENII	0.0001		W
+Sn126	soil	DOE	23700		
+Sn126	soil	EPA	5360		
+Sn126	soil	GENII	6560		
+Sr90	air	DOE	-1		
+Sr90	air	EPA	2.63e-09		
+Sr90	air	GENII	-1		
+Sr90	ingest	DOE	0.00014	0.3	
+Sr90	ingest	EPA	0.000153	0.3	
+Sr90	ingest	GENII	0.000131	0.3	
+Sr90	inhale	DOE	0.000237		D
+Sr90	inhale	EPA	0.000248		D
+Sr90	inhale	GENII	0.00021		D
+Sr90	soil	DOE	0		
+Sr90	soil	EPA	11.7		
+Sr90	soil	GENII	19.7		
+Tc99	air	DOE	-1		
+Tc99	air	EPA	2.16e-11		
+Tc99	air	GENII	-1		
+Tc99	ingest	DOE	1.3e-06	0.8	
+Tc99	ingest	EPA	1.46e-06	0.8	
+Tc99	ingest	GENII	2.23e-06	0.8	
+Tc99	inhale	DOE	7.5e-06		W
+Tc99	inhale	EPA	8.33e-06		W
+Tc99	inhale	GENII	9e-06		W
+Tc99	soil	DOE	0.00714		
+Tc99	soil	EPA	0.0635		
+Tc99	soil	GENII	0.0504		
+Te125_m1	air	DOE	-1		
+Te125_m1	air	EPA	6.03e-09		
+Te125_m1	air	GENII	-1		
+Te125_m1	ingest	DOE	3.4e-06	0.2	
+Te125_m1	ingest	EPA	3.67e-06	0.2	
+Te125_m1	ingest	GENII	3.72e-06	0.2	
+Te125_m1	inhale	DOE	6.7e-06		W
+Te125_m1	inhale	EPA	7.29e-06		W
+Te125_m1	inhale	GENII	7.18e-06		W
+Te125_m1	soil	DOE	240		
+Te125_m1	soil	EPA	7.67		
+Te125_m1	soil	GENII	8.78		
+Th228	air	DOE	-1		
+Th228	air	EPA	1.08e-06		
+Th228	air	GENII	-1		
+Th228	ingest	DOE	0.000754	0.0002	
+Th228	ingest	EPA	0.000811	0.0002	
+Th228	ingest	GENII	0.000579	0.0002	
+Th228	inhale	DOE	0.313		W
+Th228	inhale	EPA	0.345		W
+Th228	inhale	GENII	0.347		W
+Th228	soil	DOE	16600		
+Th228	soil	EPA	4200		
+Th228	soil	GENII	4920		
+Th229	air	DOE	-1		
+Th229	air	EPA	1.98e-07		
+Th229	air	GENII	-1		
+Th229	ingest	DOE	0.00391	0.0002	
+Th229	ingest	EPA	0.00403	0.0002	
+Th229	ingest	GENII	0.00387	0.0002	
+Th229	inhale	DOE	2.02		W
+Th229	inhale	EPA	2.16		W
+Th229	inhale	GENII	2.16		W
+Th229	soil	DOE	4090		
+Th229	soil	EPA	745		
+Th229	soil	GENII	904		
+Th230	air	DOE	-1		
+Th230	air	EPA	2.32e-10		
+Th230	air	GENII	-1		
+Th230	ingest	DOE	0.00053	0.0002	
+Th230	ingest	EPA	0.000548	0.0002	
+Th230	ingest	GENII	0.000548	0.0002	
+Th230	inhale	DOE	0.32		W
+Th230	inhale	EPA	0.326		W
+Th230	inhale	GENII	0.327		W
+Th230	soil	DOE	10.3		
+Th230	soil	EPA	0.605		
+Th230	soil	GENII	0.411		
+Th232	air	DOE	-1		
+Th232	air	EPA	1.16e-10		
+Th232	air	GENII	-1		
+Th232	ingest	DOE	0.0028	0.0002	
+Th232	ingest	EPA	0.00273	0.0002	
+Th232	ingest	GENII	0.00273	0.0002	
+Th232	inhale	DOE	1.6		W
+Th232	inhale	EPA	1.64		W
+Th232	inhale	GENII	1.64		W
+Th232	soil	DOE	7.6		
+Th232	soil	EPA	0.263		
+Th232	soil	GENII	0.213		
+Ti44	air	DOE	-1		
+Ti44	air	EPA	1.47e-06		
+Ti44	air	GENII	-1		
+Ti44	ingest	DOE	1.91e-05	0.01	
+Ti44	ingest	EPA	2.46e-05	0.01	
+Ti44	ingest	GENII	2.35e-05	0.01	
+Ti44	inhale	DOE	0.00045		D
+Ti44	inhale	EPA	0.000452		D
+Ti44	inhale	GENII	0.000418		D
+Ti44	soil	DOE	25700		
+Ti44	soil	EPA	6000		
+Ti44	soil	GENII	7100		
+Tl204	air	DOE	-1		
+Tl204	air	EPA	7.45e-10		
+Tl204	air	GENII	-1		
+Tl204	ingest	DOE	3.2e-06	1	
+Tl204	ingest	EPA	3.36e-06	1	
+Tl204	ingest	GENII	3.46e-06	1	
+Tl204	inhale	DOE	2.3e-06		D
+Tl204	inhale	EPA	2.41e-06		D
+Tl204	inhale	GENII	2.46e-06		D
+Tl204	soil	DOE	14.8		
+Tl204	soil	EPA	2.04		
+Tl204	soil	GENII	1.93		
+U232	air	DOE	-1		
+U232	air	EPA	1.89e-10		
+U232	air	GENII	-1		
+U232	ingest	DOE	0.0013	0.05	
+U232	ingest	EPA	0.00131	0.05	
+U232	ingest	GENII	0.00131	0.05	
+U232	inhale	DOE	0.67		Y
+U232	inhale	EPA	0.659		Y
+U232	inhale	GENII	0.656		Y
+U232	soil	DOE	11.7		
+U232	soil	EPA	0.452		
+U232	soil	GENII	0.31		
+U233	air	DOE	-1		
+U233	air	EPA	2.17e-10		
+U233	air	GENII	-1		
+U233	ingest	DOE	0.00027	0.05	
+U233	ingest	EPA	0.000289	0.05	
+U233	ingest	GENII	0.00029	0.05	
+U233	inhale	DOE	0.13		Y
+U233	inhale	EPA	0.135		Y
+U233	inhale	GENII	0.135		Y
+U233	soil	DOE	5.7		
+U233	soil	EPA	0.686		
+U233	soil	GENII	0.481		
+U234	air	DOE	-1		
+U234	air	EPA	1.02e-10		
+U234	air	GENII	-1		
+U234	ingest	DOE	0.00026	0.05	
+U234	ingest	EPA	0.000283	0.05	
+U234	ingest	GENII	0.000284	0.05	
+U234	inhale	DOE	0.13		Y
+U234	inhale	EPA	0.132		Y
+U234	inhale	GENII	0.132		Y
+U234	soil	DOE	9.21		
+U234	soil	EPA	0.203		
+U234	soil	GENII	0.189		
+U235	air	DOE	-1		
+U235	air	EPA	1.03e-07		
+U235	air	GENII	-1		
+U235	ingest	DOE	0.000251	0.05	
+U235	ingest	EPA	0.000267	0.05	
+U235	ingest	GENII	0.000267	0.05	
+U235	inhale	DOE	0.12		Y
+U235	inhale	EPA	0.123		Y
+U235	inhale	GENII	0.124		Y
+U235	soil	DOE	2170		
+U235	soil	EPA	374		
+U235	soil	GENII	252		
+U236	air	DOE	-1		
+U236	air	EPA	6.67e-11		
+U236	air	GENII	-1		
+U236	ingest	DOE	0.00025	0.05	
+U236	ingest	EPA	0.000269	0.05	
+U236	ingest	GENII	0.000269	0.05	
+U236	inhale	DOE	0.12		Y
+U236	inhale	EPA	0.125		Y
+U236	inhale	GENII	0.126		Y
+U236	soil	DOE	8.36		
+U236	soil	EPA	0.108		
+U236	soil	GENII	0.0985		
+U238	air	DOE	-1		
+U238	air	EPA	1.57e-08		
+U238	air	GENII	-1		
+U238	ingest	DOE	0.000243	0.05	
+U238	ingest	EPA	0.000268	0.05	
+U238	ingest	GENII	0.00027	0.05	
+U238	inhale	DOE	0.12		Y
+U238	inhale	EPA	0.118		Y
+U238	inhale	GENII	0.118		Y
+U238	soil	DOE	281		
+U238	soil	EPA	58.7		
+U238	soil	GENII	71		
+V49	air	DOE	-1		
+V49	air	EPA	0		
+V49	air	GENII	-1		
+V49	ingest	DOE	5.4e-08	0.01	
+V49	ingest	EPA	6.14e-08	0.01	
+V49	ingest	GENII	6.04e-08	0.01	
+V49	inhale	DOE	2.8e-07		W
+V49	inhale	EPA	3.45e-07		W
+V49	inhale	GENII	3.46e-07		W
+V49	soil	DOE	0.86		
+V49	soil	EPA	0		
+V49	soil	GENII	0		
+Zr93	air	DOE	-1		
+Zr93	air	EPA	0		
+Zr93	air	GENII	-1		
+Zr93	ingest	DOE	1.6e-06	0.002	
+Zr93	ingest	EPA	1.66e-06	0.002	
+Zr93	ingest	GENII	1.64e-06	0.002	
+Zr93	inhale	DOE	0.00032		D
+Zr93	inhale	EPA	0.000321		D
+Zr93	inhale	GENII	0.000316		D
+Zr93	soil	DOE	0		
+Zr93	soil	EPA	0		
+Zr93	soil	GENII	0.000134		

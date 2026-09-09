@@ -20,6 +20,11 @@ Each table is derived from a primary evaluated source — no hand-copied values:
   daughter's gammas belong to the daughter's row (e.g. the 662 keV line
   lives on Ba137_m1, not Cs137) — chain codes sum members.  Isomers with
   their own tapes (``*m1``/``*m2``) get their own rows.
+- ``dose_factors.tsv``: external-air/soil, ingestion, and inhalation dose
+  factors for 93 nuclides from the BSD-3 PyNE ``dbgen/dosefactors*.csv``
+  tables (HNF-SD-WM-TI-707 Rev.1 / HNF-5636 App. O; GENII/EPA/DOE are 3
+  parallel evaluations).  ``+D`` (plus daughters) folds into the parent.
+  Air is EPA-only (GENII/DOE rows are ``-1`` sentinels, matching PyNE).
 
 Usage::
 
@@ -27,15 +32,22 @@ Usage::
         --endf-neutrons /path/to/endf-b-vii.1/neutrons \
         --endf-decay /path/to/endf-b-vii.1/decay \
         --nist-html /path/to/scattering_lengths.html \
+        --dose-air /tmp/dosefactors_external_air.csv \
+        --dose-soil /tmp/dosefactors_external_soil.csv \
+        --dose-ingest /tmp/dosefactors_ingest.csv \
+        --dose-inhale /tmp/dosefactors_inhale.csv \
         --out crates/nuclei/src/data
 
 All inputs are local checkouts (see help for download URLs); nothing is
 fetched over the network.  Exit nonzero if any hard spot-check fails.
+Pass only the ``--dose-*`` flags (plus ``--out``) for a dose-only run;
+pass only the ENDF/NIST flags for the legacy tables.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import math
 import os
 import re
@@ -527,6 +539,120 @@ def _real_or_none(v: float | complex | None) -> float | None:
     return v.real if isinstance(v, complex) else v
 
 
+# Dose-factor spots: (GNDS name, pathway, source, expected DF).
+# Values are the raw table factors (mrem/h per Ci/m^3 for air,
+# mrem/h per Ci/m^2 for soil, mrem/pCi for ingest/inhale), copied from the
+# upstream PyNE CSVs. Failure aborts the run.
+DOSE_SPOTS = [
+    ("Co60", "ingest", "EPA", 2.69e-05),
+    ("Cs137", "inhale", "EPA", 3.19e-05),  # upstream Cs-137+D folds to Cs137
+    ("H3", "air", "EPA", 4.41e-012),
+    ("K40", "soil", "EPA", 4.33e02),
+]
+
+DOSE_PATHWAYS = ("air", "soil", "ingest", "inhale")
+DOSE_SOURCES = ("EPA", "DOE", "GENII")
+
+
+def pyne_to_gnds(raw: str) -> str:
+    """Convert a PyNE dose-table nuclide (``H-3``, ``Cs-137+D``) to GNDS.
+
+    ``+D`` (plus daughters) folds into the parent per ``dosefactors.py``
+    ``read_row``; dashes are dropped and a trailing metastable ``m`` becomes
+    ``_m1`` (all dose-table isomers are first isomers).
+    """
+    base = raw.strip()
+    if base.endswith("+D"):
+        base = base[:-2]
+    base = base.replace("-", "")
+    if base and base[-1] in ("m", "M") and len(base) >= 2 and base[-2].isdigit():
+        base = base[:-1] + "_m1"
+    m = re.match(r"^([A-Za-z]+)(.*)$", base)
+    if m:
+        sym, rest = m.groups()
+        sym = sym[0].upper() + sym[1:].lower() if len(sym) > 1 else sym.upper()
+        base = sym + rest
+    return base
+
+
+def _dose_csv_rows(path: str) -> tuple[list[str], list[dict[str, str]]]:
+    with open(path, newline="") as fh:
+        lines = [ln for ln in fh if not ln.startswith("#")]
+    reader = csv.DictReader(lines)
+    if reader.fieldnames is None:
+        raise ValueError(f"{path}: missing header row")
+    return list(reader.fieldnames), list(reader)
+
+
+def gen_dose(
+    air_path: str, soil_path: str, ingest_path: str, inhale_path: str
+) -> tuple[dict[tuple[str, str, str], tuple[float, float | None, str]], list[str]]:
+    """Build dose-factor rows from four local PyNE CSV copies.
+
+    Returns ({(gnds, pathway, source): (factor, f1, lung_model)}, log) where
+    ``f1`` is set only on ingest rows and ``lung_model`` only on inhale rows
+    (empty string elsewhere).  Air is EPA-only: GENII/DOE air factors are
+    ``-1`` sentinels, matching PyNE's ``grab_dose_factors`` (which stores
+    ``-1`` for missing GENII/DOE air and ratio).
+    """
+    rows: dict[tuple[str, str, str], tuple[float, float | None, str]] = {}
+    log: list[str] = []
+
+    _, air = _dose_csv_rows(air_path)
+    for r in air:
+        name = pyne_to_gnds(r["Nuclide"])
+        factor = float(r["Air Dose Rate Factor"])
+        rows[(name, "air", "EPA")] = (factor, None, "")
+        rows[(name, "air", "GENII")] = (-1.0, None, "")
+        rows[(name, "air", "DOE")] = (-1.0, None, "")
+
+    _, soil = _dose_csv_rows(soil_path)
+    for r in soil:
+        name = pyne_to_gnds(r["Nuclide"])
+        for src in DOSE_SOURCES:
+            rows[(name, "soil", src)] = (float(r[src]), None, "")
+
+    _, ingest = _dose_csv_rows(ingest_path)
+    for r in ingest:
+        name = pyne_to_gnds(r["Nuclide"])
+        f1 = float(r["f1"])
+        for src in DOSE_SOURCES:
+            rows[(name, "ingest", src)] = (float(r[src]), f1, "")
+
+    _, inhale = _dose_csv_rows(inhale_path)
+    for r in inhale:
+        name = pyne_to_gnds(r["Nuclide"])
+        lung = r["Lung Model"].strip()
+        for src in DOSE_SOURCES:
+            rows[(name, "inhale", src)] = (float(r[src]), None, lung)
+
+    names = sorted({k[0] for k in rows})
+    log.append(f"dose nuclides (folded +D): {len(names)}")
+    log.append(f"dose rows (nuclide x pathway x source): {len(rows)}")
+    # The air table carries Sb-125 where the other three carry Sb-125+D;
+    # both fold to Sb125, so the four inputs must agree after folding.
+    for label, got in (("air", air), ("soil", soil), ("ingest", ingest), ("inhale", inhale)):
+        folded = sorted({pyne_to_gnds(r["Nuclide"]) for r in got})
+        if folded != names:
+            missing = sorted(set(names) - set(folded))
+            extra = sorted(set(folded) - set(names))
+            log.append(f"note {label}: nuclide set differs (missing={missing} extra={extra})")
+    return rows, log
+
+
+def write_dose_tsv(
+    path: str,
+    header: list[str],
+    rows: dict[tuple[str, str, str], tuple[float, float | None, str]],
+) -> None:
+    with open(path, "w") as fh:
+        fh.write("\n".join("# " + h for h in header) + "\n")
+        for name, pathway, source in sorted(rows):
+            factor, f1, lung = rows[(name, pathway, source)]
+            f1_txt = "" if f1 is None else f"{f1:.6g}"
+            fh.write(f"{name}\t{pathway}\t{source}\t{factor:.6g}\t{f1_txt}\t{lung}\n")
+
+
 def write_tsv(path: str, header: list[str], rows: dict, fmt) -> None:
     with open(path, "w") as fh:
         fh.write("\n".join("# " + h for h in header) + "\n")
@@ -538,22 +664,114 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--endf-neutrons",
-        required=True,
+        required=False,
+        default=None,
         help="ENDF/B-VII.1 neutron tapes dir (download: https://www.nndc.bnl.gov/endf/)",
     )
     ap.add_argument(
-        "--endf-decay", required=True, help="ENDF/B-VII.1 decay tapes dir (same source)"
+        "--endf-decay",
+        required=False,
+        default=None,
+        help="ENDF/B-VII.1 decay tapes dir (same source)",
     )
     ap.add_argument(
         "--nist-html",
-        required=True,
+        required=False,
+        default=None,
         help="NIST scattering-lengths page copy "
         "(download: https://www.ncnr.nist.gov/resources/n-lengths/; "
         "a copy ships in PyNE as pyne/dbgen/scattering_lengths.html)",
     )
+    ap.add_argument(
+        "--dose-air",
+        required=False,
+        default=None,
+        help="Local copy of PyNE dosefactors_external_air.csv "
+        "(download: https://raw.githubusercontent.com/pyne/pyne/develop/pyne/dbgen/dosefactors_external_air.csv)",
+    )
+    ap.add_argument(
+        "--dose-soil",
+        required=False,
+        default=None,
+        help="Local copy of PyNE dosefactors_external_soil.csv "
+        "(download: https://raw.githubusercontent.com/pyne/pyne/develop/pyne/dbgen/dosefactors_external_soil.csv)",
+    )
+    ap.add_argument(
+        "--dose-ingest",
+        required=False,
+        default=None,
+        help="Local copy of PyNE dosefactors_ingest.csv "
+        "(download: https://raw.githubusercontent.com/pyne/pyne/develop/pyne/dbgen/dosefactors_ingest.csv)",
+    )
+    ap.add_argument(
+        "--dose-inhale",
+        required=False,
+        default=None,
+        help="Local copy of PyNE dosefactors_inhale.csv "
+        "(download: https://raw.githubusercontent.com/pyne/pyne/develop/pyne/dbgen/dosefactors_inhale.csv)",
+    )
     ap.add_argument("--out", required=True, help="crates/nuclei/src/data dir")
     args = ap.parse_args()
 
+    legacy = [args.endf_neutrons, args.endf_decay, args.nist_html]
+    dose_args = [args.dose_air, args.dose_soil, args.dose_ingest, args.dose_inhale]
+    if all(v is None for v in legacy) and all(v is None for v in dose_args):
+        print("nothing to do: pass ENDF/NIST flags and/or --dose-* flags")
+        return 2
+    if any(v is None for v in legacy) and not all(v is None for v in legacy):
+        print("legacy tables need --endf-neutrons, --endf-decay, and --nist-html together")
+        return 2
+    if any(v is None for v in dose_args) and not all(v is None for v in dose_args):
+        print("dose table needs --dose-air, --dose-soil, --dose-ingest, --dose-inhale together")
+        return 2
+
+    if all(v is None for v in dose_args):
+        dose_rows = None
+    else:
+        assert args.dose_air and args.dose_soil and args.dose_ingest and args.dose_inhale
+        dose_rows, dose_log = gen_dose(
+            args.dose_air, args.dose_soil, args.dose_ingest, args.dose_inhale
+        )
+        for name, pathway, source, expected in DOSE_SPOTS:
+            got = dose_rows.get((name, pathway, source))
+            if got is None:
+                print(f"SPOT FAIL: {(name, pathway, source)} missing from dose")
+                return 1
+            if abs(got[0] - expected) / max(abs(expected), 1e-30) > 1e-6:
+                print(f"SPOT FAIL: {(name, pathway, source)}={got[0]:.6g} != {expected:.6g}")
+                return 1
+            print(f"spot ok: dose       {name:10s} {pathway:7s} {source:5s} {got[0]:.6g}")
+        print(f"rows: dose={len(dose_rows)}")
+        for line in dose_log:
+            print(f"note: {line}")
+        write_dose_tsv(
+            os.path.join(args.out, "dose_factors.tsv"),
+            [
+                "GNDS name\tpathway\tsource\tfactor\tf1\tlung_model",
+                "GNDS name\tpathway(air|soil|ingest|inhale)\tsource(EPA|DOE|GENII)",
+                "factor\tf1(to body fluids, ingest only)\tlung(D|W|Y|V|O, inhale only)",
+                "Dose factors from the BSD-3 PyNE dbgen tables (no separate CSV license):",
+                "dosefactors_external_air.csv (93 rows; Nuclide,Air Dose Rate Factor,Ratio;",
+                "mrem/h per Ci/m^3; EPA-only), dosefactors_external_soil.csv (93 rows;",
+                "Nuclide,GENII,EPA,DOE,...; mrem/h per Ci/m^2, 15cm slab),",
+                "dosefactors_ingest.csv (93 rows; Nuclide,f1,GENII,EPA,DOE,...; mrem/pCi),",
+                "dosefactors_inhale.csv (93 rows; Nuclide,Lung Model,GENII,EPA,DOE,...;",
+                "mrem/pCi; lung D/W/Y/V/O).",
+                "Proximate provenance: HNF-SD-WM-TI-707 Rev.1 (Dec 1999), App. O of",
+                "HNF-5636 (2001); GENII/EPA/DOE are 3 parallel evaluations in that report.",
+                "Semantics follow pyne/dbgen/dosefactors.py (260 lines): Nuclide keys like",
+                "H-3 with +D = plus daughters fold into the parent (suffix stripped).",
+                "Air is EPA-only: GENII/DOE air rows are -1 sentinels (PyNE convention);",
+                "accessors treat negative factors as missing. Liability: not for safety",
+                "decisions (upstream PyNE disclaimer).",
+                "Regenerate: python3 scripts/gen-nuclear-data.py --help.",
+            ],
+            dose_rows,
+        )
+        if all(v is None for v in legacy):
+            return 0
+
+    assert args.endf_neutrons and args.endf_decay and args.nist_html
     xs_nist, xs_extra, elem100, sl_log = gen_scattering(args.nist_html)
     # Attribute ~100%-abundance element rows to the matching tape isotope,
     # but ONLY for provably monoisotopic elements (single mass number in the

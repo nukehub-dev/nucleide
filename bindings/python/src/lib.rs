@@ -2833,6 +2833,54 @@ fn decay_heat(comp: BTreeMap<String, f64>) -> PyResult<f64> {
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+fn parse_dose_pathway(s: &str) -> PyResult<nucleide_material::DosePathway> {
+    nucleide_material::DosePathway::parse(s)
+        .ok_or_else(|| PyValueError::new_err(format!("unknown dose pathway `{s}`")))
+}
+
+fn parse_dose_source(s: &str) -> PyResult<nucleide_material::DoseSource> {
+    nucleide_material::DoseSource::parse(s)
+        .ok_or_else(|| PyValueError::new_err(format!("unknown dose source `{s}`")))
+}
+
+/// Raw dose factor for a nuclide name, pathway, and source.
+///
+/// Pathway is one of `air`/`soil`/`ingest`/`inhale` (`ext_air`/`ext_soil`
+/// aliases accepted); source is one of `EPA`/`DOE`/`GENII` (default `EPA`,
+/// matching PyNE source id 0). Returns `None` when the nuclide has no row;
+/// GENII/DOE air resolve to `-1.0` (PyNE missing-air sentinel).
+#[pyfunction]
+#[pyo3(signature = (name, pathway, source="EPA"))]
+fn dose_factor(name: &str, pathway: &str, source: &str) -> PyResult<Option<f64>> {
+    NuclideId::from_name(name).map_err(wrap_nucid_err)?;
+    let p = parse_dose_pathway(pathway)?;
+    let s = parse_dose_source(source)?;
+    Ok(nucleide_nuclei::data::dose_factor_by_name(name, p, s))
+}
+
+/// Total dose per gram of a composition dict ({nuclide name: grams}).
+///
+/// Thin wrapper over `Material::total_dose_per_g` (Ame2020 masses,
+/// ENDF/B-VIII.0 decay constants, HNF-5636/PyNE dose factors). Pathway is one
+/// of `air`/`soil`/`ingest`/`inhale`; source is `EPA`/`DOE`/`GENII` (default
+/// `EPA`). Units follow the table: air `mrem/h per g per m^3`, soil
+/// `mrem/h per g per m^2`, ingest/inhale `mrem per g`. Screening-level only —
+/// not for safety decisions. Errors when a nuclide lacks mass, decay, or
+/// dose data (including `-1` GENII/DOE air sentinels).
+#[pyfunction]
+#[pyo3(signature = (comp, pathway, source="EPA"))]
+fn dose_per_g(comp: BTreeMap<String, f64>, pathway: &str, source: &str) -> PyResult<f64> {
+    let mat = comp_to_material(comp)?;
+    let analytics = nucleide_material::Analytics {
+        masses: &nucleide_material::Ame2020,
+        decays: &nucleide_material::ChainDecays,
+    };
+    let p = parse_dose_pathway(pathway)?;
+    let s = parse_dose_source(source)?;
+    mat.total_dose_per_g(&analytics, &nucleide_material::DoseFactors, p, s)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
 // ---------------------------------------------------------------------------
 // 0.3.0 Tier 1: deck round-trip, decay inventories, ARMI dialects, checks
 // ---------------------------------------------------------------------------
@@ -3523,6 +3571,8 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(scattering_length, m)?)?;
     m.add_function(wrap_pyfunction!(decay_energy, m)?)?;
     m.add_function(wrap_pyfunction!(decay_heat, m)?)?;
+    m.add_function(wrap_pyfunction!(dose_factor, m)?)?;
+    m.add_function(wrap_pyfunction!(dose_per_g, m)?)?;
     m.add_function(wrap_pyfunction!(read_serpent, m)?)?;
     m.add_function(wrap_pyfunction!(read_usrbin, m)?)?;
     m.add_function(wrap_pyfunction!(magic, m)?)?;

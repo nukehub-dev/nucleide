@@ -7,6 +7,7 @@ from nucleide._internal import (
     atomic_mass,
     decay_constant,
     decay_energy,
+    dose_factor,
     from_zaid,
     half_life,
     mcc3_to_nucid,
@@ -40,4 +41,5 @@ __all__ = [
     "simple_xs",
     "scattering_length",
     "decay_energy",
+    "dose_factor",
 ]

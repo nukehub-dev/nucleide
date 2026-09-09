@@ -40,8 +40,9 @@ pub use expansion::{
 };
 pub use material::{
     Ame2020, Analytics, AnalyticsError, ChainDecays, DecayEnergies, DecayEnergyProvider,
-    DecayProvider, MassProvider, Material, NoDecay, NoDecayEnergies, NoMasses, AVOGADRO,
-    GRAMS_PER_U, MEV_TO_JOULES,
+    DecayProvider, DoseFactors, DosePathway, DoseProvider, DoseSource, MassProvider, Material,
+    NoDecay, NoDecayEnergies, NoDoses, NoMasses, AVOGADRO, CI_PER_BQ, GRAMS_PER_U, MEV_TO_JOULES,
+    PCI_PER_BQ,
 };
 pub use xml::MaterialsDoc;
 
