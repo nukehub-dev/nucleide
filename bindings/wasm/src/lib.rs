@@ -2290,3 +2290,1008 @@ pub fn decay_mode(chain: &WasmChain, parent: &str, child: &str) -> Result<Option
 pub fn chain_edges(chain: &WasmChain) -> Result<JsValue, JsValue> {
     to_js(&nucleide_depletion::chain_edges(&chain.inner))
 }
+
+// ---------------------------------------------------------------------------
+// Emission (five-dialect cards + mass drift)
+// ---------------------------------------------------------------------------
+
+/// Optional per-dialect overrides for the `emit*` functions (`density` stays
+/// a top-level argument, like the Python `emit_cards` signature).
+#[derive(Deserialize, Default)]
+struct EmitOptsJson {
+    #[serde(default, rename = "mcnpNumber", alias = "mcnp_number")]
+    mcnp_number: Option<u32>,
+    #[serde(default, rename = "xsSuffix", alias = "xs_suffix")]
+    xs_suffix: Option<String>,
+    #[serde(default, rename = "serpentLib", alias = "serpent_lib")]
+    serpent_lib: Option<String>,
+    #[serde(default, rename = "flukaFid", alias = "fluka_fid")]
+    fluka_fid: Option<u32>,
+    #[serde(default, rename = "partisnZone", alias = "partisn_zone")]
+    partisn_zone: Option<u32>,
+}
+
+#[derive(Serialize)]
+struct DroppedJson {
+    nuclide: String,
+    mass: f64,
+    reason: String,
+}
+
+#[derive(Serialize)]
+struct DriftRowJson {
+    code: String,
+    #[serde(rename = "massIn")]
+    mass_in: f64,
+    #[serde(rename = "massOut")]
+    mass_out: f64,
+    #[serde(rename = "relDrift")]
+    rel_drift: f64,
+    dropped: Vec<DroppedJson>,
+    reparsed: bool,
+}
+
+fn comp_to_emit_material(comp: JsValue) -> Result<nucleide_material::Material, JsValue> {
+    let map: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(comp).map_err(js_err)?;
+    let mut mat = nucleide_material::Material::new();
+    for (name, grams) in &map {
+        let id = name
+            .parse::<NuclideId>()
+            .map_err(|e| js_err(format!("`{name}`: {e}")))?;
+        mat.add_nuclide(id, *grams);
+    }
+    Ok(mat)
+}
+
+fn emit_options(name: &str, opts: JsValue) -> Result<nucleide_emit::EmitOptions, JsValue> {
+    let parsed: EmitOptsJson = if opts.is_undefined() || opts.is_null() {
+        EmitOptsJson::default()
+    } else {
+        serde_wasm_bindgen::from_value(opts).map_err(js_err)?
+    };
+    let mut out = nucleide_emit::EmitOptions::new(name);
+    if let Some(v) = parsed.mcnp_number {
+        out.mcnp_number = v;
+    }
+    if let Some(v) = parsed.xs_suffix {
+        out.xs_suffix = v;
+    }
+    if let Some(v) = parsed.serpent_lib {
+        out.serpent_lib = v;
+    }
+    if let Some(v) = parsed.fluka_fid {
+        out.fluka_fid = v;
+    }
+    if let Some(v) = parsed.partisn_zone {
+        out.partisn_zone = v;
+    }
+    Ok(out)
+}
+
+fn emit_cards_json(emitted: &[nucleide_emit::Emitted]) -> BTreeMap<String, String> {
+    emitted
+        .iter()
+        .map(|e| (e.code.to_string(), e.text.clone()))
+        .collect()
+}
+
+fn drift_rows_json(table: &nucleide_emit::DriftTable) -> Vec<DriftRowJson> {
+    table
+        .rows
+        .iter()
+        .map(|r| DriftRowJson {
+            code: r.code.to_string(),
+            mass_in: r.mass_in,
+            mass_out: r.mass_out,
+            rel_drift: r.rel_drift,
+            dropped: r
+                .dropped
+                .iter()
+                .map(|d| DroppedJson {
+                    nuclide: d.id.to_name(),
+                    mass: d.mass,
+                    reason: d.reason.clone(),
+                })
+                .collect(),
+            reparsed: r.reparsed,
+        })
+        .collect()
+}
+
+/// Emit one composition through all five code dialects (MCNP, Serpent, FLUKA,
+/// ALARA, PARTISN). Returns `{code: card_text}`.
+///
+/// `comp` maps GNDS nuclide names to grams; `density` is the mass density
+/// [g/cm³] for dialects that need one (Serpent/FLUKA/PARTISN throw
+/// `MissingDensity` without it); `opts` optionally overrides `mcnpNumber`
+/// (default 1), `xsSuffix` (default `"80c"`), `serpentLib` (default `"03c"`),
+/// `flukaFid` (default 1), and `partisnZone` (default 1).
+#[wasm_bindgen(js_name = emitCards)]
+pub fn emit_cards(
+    comp: JsValue,
+    name: &str,
+    density: Option<f64>,
+    opts: JsValue,
+) -> Result<JsValue, JsValue> {
+    let mut mat = comp_to_emit_material(comp)?;
+    mat.set_density(density);
+    let options = emit_options(name, opts)?;
+    let (emitted, _) = nucleide_emit::emit_drift(&mat, &options).map_err(js_err)?;
+    to_js(&emit_cards_json(&emitted))
+}
+
+/// Mass-drift report for one composition across all five code dialects.
+///
+/// Same inputs as [`emit_cards`]; returns
+/// `[{code, massIn, massOut, relDrift, dropped: [{nuclide, mass, reason}], reparsed}]`.
+#[wasm_bindgen(js_name = emitDriftTable)]
+pub fn emit_drift_table(
+    comp: JsValue,
+    name: &str,
+    density: Option<f64>,
+    opts: JsValue,
+) -> Result<JsValue, JsValue> {
+    let mut mat = comp_to_emit_material(comp)?;
+    mat.set_density(density);
+    let options = emit_options(name, opts)?;
+    let (_, table) = nucleide_emit::emit_drift(&mat, &options).map_err(js_err)?;
+    to_js(&drift_rows_json(&table))
+}
+
+/// Emit one ARMI-keyed composition through all five code dialects (MCNP,
+/// Serpent, FLUKA, ALARA, PARTISN). Returns `{code: card_text}`.
+///
+/// `comp` maps ARMI nuclide keys (`nU235`, `92235`, `U-2355`, ...) to grams;
+/// keys resolve via `nucleide_emit::armi::from_armi_mass_fracs`, so elemental
+/// keys, bare `AM242`, and negative/non-finite masses throw. `density` is the
+/// hot mass density [g/cm³] for dialects that need one.
+#[wasm_bindgen(js_name = emitArmiCards)]
+pub fn emit_armi_cards(
+    comp: JsValue,
+    name: &str,
+    density: Option<f64>,
+    opts: JsValue,
+) -> Result<JsValue, JsValue> {
+    let map: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(comp).map_err(js_err)?;
+    let mat = nucleide_emit::armi::from_armi_mass_fracs(map, density).map_err(js_err)?;
+    let options = emit_options(name, opts)?;
+    let (emitted, _) = nucleide_emit::emit_drift(&mat, &options).map_err(js_err)?;
+    to_js(&emit_cards_json(&emitted))
+}
+
+/// Mass-drift report for one ARMI-keyed composition across all five code
+/// dialects.
+///
+/// Same inputs as [`emit_armi_cards`]; returns
+/// `[{code, massIn, massOut, relDrift, dropped: [{nuclide, mass, reason}], reparsed}]`.
+#[wasm_bindgen(js_name = emitArmiDriftTable)]
+pub fn emit_armi_drift_table(
+    comp: JsValue,
+    name: &str,
+    density: Option<f64>,
+    opts: JsValue,
+) -> Result<JsValue, JsValue> {
+    let map: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(comp).map_err(js_err)?;
+    let mat = nucleide_emit::armi::from_armi_mass_fracs(map, density).map_err(js_err)?;
+    let options = emit_options(name, opts)?;
+    let (_, table) = nucleide_emit::emit_drift(&mat, &options).map_err(js_err)?;
+    to_js(&drift_rows_json(&table))
+}
+
+// ---------------------------------------------------------------------------
+// Dose factors (screening-level only)
+// ---------------------------------------------------------------------------
+
+fn parse_dose_pathway(s: &str) -> Result<nucleide_nuclei::data::DosePathway, JsValue> {
+    nucleide_nuclei::data::DosePathway::parse(s).ok_or_else(|| {
+        js_err(format!(
+            "unknown dose pathway `{s}` (supported: air, soil, ingest, inhale)"
+        ))
+    })
+}
+
+fn parse_dose_source(s: &str) -> Result<nucleide_nuclei::data::DoseSource, JsValue> {
+    nucleide_nuclei::data::DoseSource::parse(s).ok_or_else(|| {
+        js_err(format!(
+            "unknown dose source `{s}` (supported: EPA, DOE, GENII)"
+        ))
+    })
+}
+
+/// Raw dose factor for a nuclide name, pathway, and source.
+///
+/// `pathway` is one of `air`/`soil`/`ingest`/`inhale` (`ext_air`/`ext_soil`
+/// aliases accepted); `source` is one of `EPA`/`DOE`/`GENII` (default `EPA`).
+/// Returns `undefined` when the nuclide has no row; GENII/DOE air resolve to
+/// `-1.0` (PyNE missing-air sentinel). Screening-level only — not for safety
+/// decisions.
+#[wasm_bindgen(js_name = doseFactor)]
+pub fn dose_factor(
+    name: &str,
+    pathway: &str,
+    source: Option<String>,
+) -> Result<Option<f64>, JsValue> {
+    let id = name
+        .parse::<NuclideId>()
+        .map_err(|e| js_err(format!("`{name}`: {e}")))?;
+    let p = parse_dose_pathway(pathway)?;
+    let s = parse_dose_source(source.as_deref().unwrap_or("EPA"))?;
+    Ok(nucleide_nuclei::data::dose_factor(id.nucid(), p, s))
+}
+
+/// Total dose per gram of a composition (`{nuclide name: grams}`).
+///
+/// Thin wrapper over `Material::total_dose_per_g` (AME2020 masses, ENDF/B-VIII.0
+/// decay constants, HNF-5636/PyNE dose factors). `pathway` is one of
+/// `air`/`soil`/`ingest`/`inhale`; `source` is `EPA`/`DOE`/`GENII` (default
+/// `EPA`). Units follow the table: air `mrem/h per g per m^3`, soil
+/// `mrem/h per g per m^2`, ingest/inhale `mrem per g`. Screening-level only —
+/// not for safety decisions. Throws when a nuclide lacks mass, decay, or dose
+/// data (including `-1` GENII/DOE air sentinels).
+#[wasm_bindgen(js_name = dosePerGram)]
+pub fn dose_per_gram(comp: JsValue, pathway: &str, source: Option<String>) -> Result<f64, JsValue> {
+    let mat = comp_to_emit_material(comp)?;
+    let analytics = nucleide_material::Analytics {
+        masses: &nucleide_material::Ame2020,
+        decays: &nucleide_material::ChainDecays,
+    };
+    let p = parse_dose_pathway(pathway)?;
+    let s = parse_dose_source(source.as_deref().unwrap_or("EPA"))?;
+    mat.total_dose_per_g(&analytics, &nucleide_material::DoseFactors, p, s)
+        .map_err(js_err)
+}
+
+// ---------------------------------------------------------------------------
+// R2S snapshot (local port — no `nucleide-r2s` dependency)
+// ---------------------------------------------------------------------------
+//
+// `nucleide-r2s` depends on `nucleide-depletion` with default features, which
+// would re-enable Rayon through Cargo feature unification and break this
+// `wasm32-unknown-unknown` build (the crate offers no `default-features = false`
+// switch). The thin snapshot→deck adapter from `nucleide_r2s::snapshot` is
+// therefore re-implemented here over `nucleide-alara-io` deck types plus the
+// nuclei ARMI bridge — the same no-`r2s`-dep precedent as `r2s_from_deck`
+// above. Key rules mirror the `nucleide-emit` ARMI-input rule (elemental keys
+// rejected with "expand first", bare `AM242` rejected, explicit `AM242G`
+// ground accepted).
+
+/// Geometry string emitted for snapshot decks (volumes method still needs a
+/// `geometry` block for parser consumers; the value carries no mesh axes).
+const SNAPSHOT_GEOMETRY: &str = "rectangular";
+/// Default schedule name synthesized when no `scheduleText` is given.
+const SNAPSHOT_SCHEDULE: &str = "snap_schedule";
+/// Default pulsing-history name synthesized when no `scheduleText` is given.
+const SNAPSHOT_HISTORY: &str = "snap_once";
+
+#[derive(Deserialize)]
+#[allow(dead_code)] // `material`/`xs_type` are informational round-trip metadata, never emitted.
+struct SnapshotZoneJson {
+    id: String,
+    #[serde(rename = "volumeCm3", alias = "volume_cm3")]
+    volume_cm3: f64,
+    #[serde(default, rename = "zbottomCm", alias = "zbottom_cm")]
+    zbottom_cm: Option<f64>,
+    #[serde(default, rename = "ztopCm", alias = "ztop_cm")]
+    ztop_cm: Option<f64>,
+    #[serde(default)]
+    material: Option<String>,
+    #[serde(default, rename = "xsType", alias = "xs_type")]
+    xs_type: Option<String>,
+    #[serde(default, rename = "temperatureC", alias = "temperature_C")]
+    temperature_c: Option<f64>,
+    composition: BTreeMap<String, f64>,
+    #[serde(default)]
+    flux: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SnapshotFluxJson {
+    name: String,
+    file: String,
+    scale: f64,
+}
+
+#[derive(Deserialize)]
+struct SnapshotInputJson {
+    zones: Vec<SnapshotZoneJson>,
+    #[serde(rename = "fluxDefs", alias = "flux_defs")]
+    flux_defs: Vec<SnapshotFluxJson>,
+    #[serde(rename = "coolingS", alias = "cooling_s")]
+    cooling_s: Vec<f64>,
+    #[serde(default, rename = "scheduleText", alias = "schedule_text")]
+    schedule_text: Option<String>,
+    #[serde(default)]
+    output: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SnapshotBundleJson {
+    workflow: R2sSummary,
+    deck: String,
+    decks: Vec<String>,
+}
+
+/// Mixture name for a zone (`mix_<zone>`; the prefix keeps zones named
+/// `void` distinct from the `void` mixture).
+fn snap_mixture_name(zone: &str) -> String {
+    format!("mix_{zone}")
+}
+
+/// Record a raw block so the canonical writer replays the typed views in deck
+/// order (synthesized blocks use line 0, like `emit_decks` does).
+fn snap_push_block(deck: &mut nucleide_alara_io::deck::AlaraDeck, kind: &str, body: Vec<String>) {
+    deck.blocks.push(nucleide_alara_io::deck::RawBlock {
+        kind: kind.to_string(),
+        line: 0,
+        body,
+    });
+}
+
+/// Zone ids are opaque deck tokens: non-empty with no whitespace.
+fn snap_check_zone_id(zone: &str) -> Result<(), String> {
+    if zone.trim().is_empty() {
+        return Err("snapshot zone id is empty".to_string());
+    }
+    if zone.chars().any(char::is_whitespace) {
+        return Err(format!(
+            "snapshot zone `{zone}` contains whitespace (deck tokens must not)"
+        ));
+    }
+    Ok(())
+}
+
+/// Volumes must be finite and positive (ALARA interval volumes in cm³).
+fn snap_check_volume(zone: &str, volume: f64) -> Result<(), String> {
+    if !volume.is_finite() || volume <= 0.0 {
+        return Err(format!(
+            "snapshot zone `{zone}` has non-positive non-finite volume {volume} (cm³)"
+        ));
+    }
+    Ok(())
+}
+
+/// Axial extents are informational but must be sane when both are dumped.
+fn snap_check_extent(zone: &SnapshotZoneJson) -> Result<(), String> {
+    for (label, value) in [
+        ("zbottom_cm", zone.zbottom_cm),
+        ("ztop_cm", zone.ztop_cm),
+        ("temperature_C", zone.temperature_c),
+    ] {
+        if let Some(v) = value {
+            if !v.is_finite() {
+                return Err(format!(
+                    "snapshot zone `{}` has non-finite {label} {v}",
+                    zone.id
+                ));
+            }
+        }
+    }
+    if let (Some(bottom), Some(top)) = (zone.zbottom_cm, zone.ztop_cm) {
+        if top < bottom {
+            return Err(format!(
+                "snapshot zone `{}` has ztop_cm {top} below zbottom_cm {bottom}",
+                zone.id
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Flux names are deck tokens referencing schedule items: non-empty, no
+/// whitespace.
+fn snap_check_flux_name(name: &str) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("snapshot flux name is empty".to_string());
+    }
+    if name.chars().any(char::is_whitespace) {
+        return Err(format!(
+            "snapshot flux `{name}` contains whitespace (deck tokens must not)"
+        ));
+    }
+    Ok(())
+}
+
+/// Canonical element symbol when `t` is a bare elemental key (`ZR` → `Zr`),
+/// else `None`. Only pure-letter input qualifies, so no nuclide key with
+/// mass digits, tags, or separators can collide.
+fn snap_elemental_symbol(t: &str) -> Option<String> {
+    if t.is_empty() || !t.bytes().all(|b| b.is_ascii_alphabetic()) {
+        return None;
+    }
+    let mut chars = t.chars();
+    let mut canon = String::with_capacity(t.len());
+    if let Some(first) = chars.next() {
+        canon.extend(first.to_uppercase());
+    }
+    canon.extend(chars.flat_map(|c| c.to_lowercase()));
+    if nucleide_nuclei::element_z(&canon).is_some() {
+        Some(canon)
+    } else {
+        None
+    }
+}
+
+/// Strip one leading ARMI database `n`/`N` when followed by a letter
+/// (`nZr` → `Zr`), mirroring the bridge so prefixed elementals are caught.
+fn snap_strip_db_prefix(t: &str) -> Option<&str> {
+    let mut chars = t.chars();
+    let first = chars.next()?;
+    let second = chars.next()?;
+    if (first == 'n' || first == 'N') && second.is_ascii_alphabetic() {
+        Some(&t[1..])
+    } else {
+        None
+    }
+}
+
+/// Uppercased key with the database prefix stripped (`nAm242` → `AM242`),
+/// for the bare-`AM242` disambiguation check.
+fn snap_bare_core(t: &str) -> Option<String> {
+    if t.is_empty() {
+        return None;
+    }
+    let u = t.to_ascii_uppercase();
+    let core = match u.strip_prefix('N') {
+        Some(rest) if rest.starts_with(|c: char| c.is_ascii_alphabetic()) => rest,
+        _ => u.as_str(),
+    };
+    Some(core.to_string())
+}
+
+/// Resolve one ARMI-side key: v1 rejections first, then the nuclei bridge.
+/// Mirrors the `nucleide-emit` ARMI-input rule.
+fn snap_key_to_nucid(key: &str) -> Result<NuclideId, String> {
+    let t = key.trim();
+    if let Some(sym) =
+        snap_elemental_symbol(t).or_else(|| snap_strip_db_prefix(t).and_then(snap_elemental_symbol))
+    {
+        return Err(format!(
+            "snapshot key `{t}` is elemental (`{sym}`): pass post-expansion nuclide \
+             number densities; the adapter never reimplements \
+             expandElementalMassFracsToNuclides — expand first"
+        ));
+    }
+    match snap_bare_core(t).as_deref() {
+        Some("AM242") => {
+            return Err(format!(
+                "snapshot key `{t}` is ambiguous bare `AM242` (ARMI means the m-state): \
+                 pass `AM242M` for Am-242m or `AM242G` for ground explicitly"
+            ));
+        }
+        Some("AM242G") => {
+            return NuclideId::new(95, 242, 0).map_err(|e| format!("snapshot key `{t}`: {e}"));
+        }
+        _ => {}
+    }
+    nucleide_nuclei::armi::armi_name_to_nucid(t).map_err(|e| format!("snapshot key `{t}`: {e}"))
+}
+
+/// Resolve one zone's composition to canonical ids, summing duplicate keys
+/// (e.g. `U235` plus `nU235`) the way a volume homogenization would.
+/// Densities must be finite and non-negative; empty input means void.
+fn snap_resolve_composition(
+    zone: &str,
+    pairs: &BTreeMap<String, f64>,
+) -> Result<BTreeMap<NuclideId, f64>, String> {
+    let mut ids = BTreeMap::new();
+    for (key, ndens) in pairs {
+        let id = snap_key_to_nucid(key)?;
+        if !ndens.is_finite() || *ndens < 0.0 {
+            return Err(format!(
+                "snapshot zone `{zone}` key `{key}` has number density {ndens} \
+                 (expected finite atoms/barn-cm >= 0)"
+            ));
+        }
+        *ids.entry(id).or_insert(0.0) += *ndens;
+    }
+    Ok(ids)
+}
+
+/// Merge caller-supplied irradiation-history blocks into the deck.
+///
+/// Only `schedule` and `pulsehistory` blocks may cross this boundary; any
+/// other block kind (geometry, fluxes, cooling, …) is a caller error naming
+/// the kind, keeping the dict-in schema versionless.
+fn snap_merge_schedule_text(
+    deck: &mut nucleide_alara_io::deck::AlaraDeck,
+    text: &str,
+) -> Result<(), String> {
+    use nucleide_alara_io::deck::AlaraDeck;
+    let fragment = AlaraDeck::parse(&format!("geometry {SNAPSHOT_GEOMETRY}\n{text}"))
+        .map_err(|e| e.to_string())?;
+    let mut bad: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    let mut geometries = 0;
+    for block in &fragment.blocks {
+        match block.kind.as_str() {
+            "geometry" => geometries += 1,
+            "schedule" | "pulsehistory" => {}
+            other => {
+                bad.insert(other);
+            }
+        }
+    }
+    if geometries > 1 {
+        bad.insert("geometry");
+    }
+    if !bad.is_empty() {
+        let kinds: Vec<&str> = bad.into_iter().collect();
+        return Err(format!(
+            "snapshot schedule_text must hold schedule/pulsehistory blocks only, \
+             found {}",
+            kinds.join(", ")
+        ));
+    }
+    for block in fragment.blocks {
+        if block.kind == "schedule" || block.kind == "pulsehistory" {
+            deck.blocks
+                .push(nucleide_alara_io::deck::RawBlock { line: 0, ..block });
+        }
+    }
+    deck.schedules = fragment.schedules;
+    deck.pulse_histories = fragment.pulse_histories;
+    Ok(())
+}
+
+/// Synthesize one 1-day-per-flux schedule plus a single-pulse history, so a
+/// snapshot without `scheduleText` still derives a workflow and expands.
+fn snap_synthesize_schedule(
+    deck: &mut nucleide_alara_io::deck::AlaraDeck,
+    flux_defs: &[SnapshotFluxJson],
+) -> Result<(), String> {
+    use nucleide_alara_io::deck::{PulseHistory, PulseLevel, ScheduleDef, ScheduleItemRef};
+    if flux_defs.is_empty() {
+        return Err("snapshot defines no flux definitions".to_string());
+    }
+    let items = flux_defs
+        .iter()
+        .map(|flux| ScheduleItemRef {
+            tokens: vec![
+                "1".to_string(),
+                "d".to_string(),
+                flux.name.clone(),
+                SNAPSHOT_HISTORY.to_string(),
+                "0".to_string(),
+                "s".to_string(),
+            ],
+            line: 0,
+        })
+        .collect::<Vec<_>>();
+    snap_push_block(
+        deck,
+        "schedule",
+        items.iter().map(|item| item.tokens.join(" ")).collect(),
+    );
+    deck.schedules.push(ScheduleDef {
+        name: SNAPSHOT_SCHEDULE.to_string(),
+        items,
+        line: 0,
+    });
+    snap_push_block(deck, "pulsehistory", vec!["1 0 s".to_string()]);
+    deck.pulse_histories.push(PulseHistory {
+        name: SNAPSHOT_HISTORY.to_string(),
+        levels: vec![PulseLevel {
+            pulses: 1,
+            delay_s: 0.0,
+        }],
+        line: 0,
+    });
+    Ok(())
+}
+
+/// Build a validated [`AlaraDeck`](nucleide_alara_io::deck::AlaraDeck)
+/// template from a versionless snapshot.
+///
+/// Runs deck validation before returning, so dangling mixture, volume, or
+/// schedule references surface here. A missing `cooling` block (empty
+/// `coolingS`) is *not* a deck error; it fails later in workflow validation,
+/// mirroring parsed decks.
+fn snap_deck_from_snapshot(
+    input: &SnapshotInputJson,
+) -> Result<nucleide_alara_io::deck::AlaraDeck, String> {
+    use nucleide_alara_io::deck::{
+        AlaraDeck, Cooling, FluxDef, Geometry, MatLoading, MatLoadingEntry, Mixture, MixtureEntry,
+        OutputDef, VolumeEntry, Volumes,
+    };
+    if input.zones.is_empty() {
+        return Err("snapshot defines no zones".to_string());
+    }
+    if input.flux_defs.is_empty() {
+        return Err("snapshot defines no flux definitions".to_string());
+    }
+    let mut seen_zones = std::collections::BTreeSet::new();
+    for zone in &input.zones {
+        snap_check_zone_id(&zone.id)?;
+        if !seen_zones.insert(zone.id.as_str()) {
+            return Err(format!(
+                "snapshot zone `{}` appears more than once",
+                zone.id
+            ));
+        }
+        snap_check_volume(&zone.id, zone.volume_cm3)?;
+        snap_check_extent(zone)?;
+    }
+    let mut seen_fluxes = std::collections::BTreeSet::new();
+    for flux in &input.flux_defs {
+        snap_check_flux_name(&flux.name)?;
+        if !seen_fluxes.insert(flux.name.as_str()) {
+            return Err(format!(
+                "snapshot flux `{}` appears more than once",
+                flux.name
+            ));
+        }
+        if flux.file.trim().is_empty() {
+            return Err(format!("snapshot flux `{}` names an empty file", flux.name));
+        }
+        if !flux.scale.is_finite() {
+            return Err(format!(
+                "snapshot flux `{}` has non-finite scale {}",
+                flux.name, flux.scale
+            ));
+        }
+    }
+    for time in &input.cooling_s {
+        if !time.is_finite() || *time < 0.0 {
+            return Err(format!(
+                "snapshot cooling time `{time}` is not a non-negative finite value"
+            ));
+        }
+    }
+
+    let mut deck = AlaraDeck::default();
+    snap_push_block(&mut deck, "geometry", vec![SNAPSHOT_GEOMETRY.to_string()]);
+    deck.geometry = Some(Geometry {
+        kind: SNAPSHOT_GEOMETRY.to_string(),
+        line: 0,
+    });
+
+    let mut volume_entries = Vec::with_capacity(input.zones.len());
+    let mut loading_entries = Vec::with_capacity(input.zones.len());
+    for zone in &input.zones {
+        volume_entries.push(VolumeEntry {
+            volume: zone.volume_cm3,
+            zone: zone.id.clone(),
+        });
+        let resolved = snap_resolve_composition(&zone.id, &zone.composition)?;
+        if resolved.is_empty() {
+            loading_entries.push(MatLoadingEntry {
+                zone: zone.id.clone(),
+                mixture: "void".to_string(),
+            });
+        } else {
+            let mixture = snap_mixture_name(&zone.id);
+            let entries = resolved
+                .into_iter()
+                .map(|(id, ndens)| MixtureEntry::Element {
+                    symbol: id.to_name(),
+                    rel_density: 1.0,
+                    vol_fraction: ndens,
+                })
+                .collect::<Vec<_>>();
+            snap_push_block(
+                &mut deck,
+                "mixture",
+                entries
+                    .iter()
+                    .map(|entry| match entry {
+                        MixtureEntry::Element {
+                            symbol,
+                            rel_density,
+                            vol_fraction,
+                        } => Ok(format!("element {symbol} {rel_density} {vol_fraction}")),
+                        other => Err(format!(
+                            "internal error: snapshot mixture entry is not an element ({other:?})"
+                        )),
+                    })
+                    .collect::<Result<Vec<_>, String>>()?,
+            );
+            deck.mixtures.push(Mixture {
+                name: mixture.clone(),
+                entries,
+                line: 0,
+            });
+            loading_entries.push(MatLoadingEntry {
+                zone: zone.id.clone(),
+                mixture,
+            });
+        }
+    }
+    snap_push_block(
+        &mut deck,
+        "volumes",
+        volume_entries
+            .iter()
+            .map(|entry| format!("{} {}", entry.volume, entry.zone))
+            .collect(),
+    );
+    deck.volumes = Some(Volumes {
+        entries: volume_entries,
+        line: 0,
+    });
+    snap_push_block(
+        &mut deck,
+        "mat_loading",
+        loading_entries
+            .iter()
+            .map(|entry| format!("{} {}", entry.zone, entry.mixture))
+            .collect(),
+    );
+    deck.mat_loading = Some(MatLoading {
+        entries: loading_entries,
+        line: 0,
+    });
+
+    for flux in &input.flux_defs {
+        snap_push_block(
+            &mut deck,
+            "flux",
+            vec![format!(
+                "{} {} {} 0 default",
+                flux.name, flux.file, flux.scale
+            )],
+        );
+        deck.fluxes.push(FluxDef {
+            name: flux.name.clone(),
+            file: flux.file.clone(),
+            scale: flux.scale,
+            skip: 0,
+            format: "default".to_string(),
+            line: 0,
+        });
+    }
+
+    match input.schedule_text.as_deref() {
+        Some(text) if !text.trim().is_empty() => snap_merge_schedule_text(&mut deck, text)?,
+        _ => snap_synthesize_schedule(&mut deck, &input.flux_defs)?,
+    }
+
+    if !input.cooling_s.is_empty() {
+        snap_push_block(
+            &mut deck,
+            "cooling",
+            input
+                .cooling_s
+                .iter()
+                .map(|time| format!("{time} s"))
+                .collect(),
+        );
+        deck.cooling = Some(Cooling {
+            times_s: input.cooling_s.clone(),
+            line: 0,
+        });
+    }
+
+    if let Some(resolution) = input.output.as_deref() {
+        let kind = resolution.trim().to_ascii_lowercase();
+        if !["interval", "zone", "mixture"].contains(&kind.as_str()) {
+            return Err(format!(
+                "snapshot output `{resolution}` is not an ALARA resolution \
+                 (interval, zone, or mixture)"
+            ));
+        }
+        snap_push_block(&mut deck, "output", vec!["number_density".to_string()]);
+        deck.outputs.push(OutputDef {
+            resolution: kind,
+            entries: vec!["number_density".to_string()],
+            line: 0,
+        });
+    }
+
+    deck.validate().map_err(|e| e.to_string())?;
+    Ok(deck)
+}
+
+/// Cross-check derived steps against the template deck: every step zone must
+/// appear in `mat_loading`, every step flux must be a defined `flux` block,
+/// and both the workflow (`cooling_s`) and the deck (`cooling` block) must
+/// carry a non-empty cooling history.
+fn snap_validate_against(
+    deck: &nucleide_alara_io::deck::AlaraDeck,
+    steps: &[R2sStepJson],
+    cooling_s: &[f64],
+) -> Result<(), String> {
+    if steps.is_empty() {
+        return Err("empty R2S workflow".to_string());
+    }
+    for step in steps {
+        if step.zone.trim().is_empty() {
+            return Err("R2S step names an empty zone".to_string());
+        }
+        if step.flux.trim().is_empty() {
+            return Err(format!(
+                "R2S step for zone `{}` names an empty flux",
+                step.zone
+            ));
+        }
+    }
+    let loading = deck
+        .mat_loading
+        .as_ref()
+        .ok_or_else(|| "deck defines no `mat_loading` block".to_string())?;
+    let zones: std::collections::BTreeSet<&str> = loading
+        .entries
+        .iter()
+        .map(|entry| entry.zone.as_str())
+        .collect();
+    for step in steps {
+        if !zones.contains(step.zone.as_str()) {
+            return Err(format!(
+                "workflow zone `{}` is not in deck `mat_loading`",
+                step.zone
+            ));
+        }
+    }
+    let fluxes: std::collections::BTreeSet<&str> =
+        deck.fluxes.iter().map(|flux| flux.name.as_str()).collect();
+    for step in steps {
+        if !fluxes.contains(step.flux.as_str()) {
+            return Err(format!(
+                "workflow flux `{}` for zone `{}` is not a defined deck flux",
+                step.flux, step.zone
+            ));
+        }
+    }
+    if cooling_s.is_empty() {
+        return Err("workflow defines no cooling times".to_string());
+    }
+    match &deck.cooling {
+        Some(cooling) if !cooling.times_s.is_empty() => Ok(()),
+        _ => Err("deck defines no cooling times".to_string()),
+    }
+}
+
+/// Emit one deck clone per workflow step with `solve_zones` narrowed to that
+/// step's zone (typed field plus the raw block the canonical writer replays).
+fn snap_emit_decks(
+    template: &nucleide_alara_io::deck::AlaraDeck,
+    zones: &[String],
+) -> Vec<nucleide_alara_io::deck::AlaraDeck> {
+    use nucleide_alara_io::deck::{RawBlock, SolveZones};
+    zones
+        .iter()
+        .map(|zone| {
+            let mut deck = template.clone();
+            let line = deck.solve_zones.as_ref().map(|z| z.line).unwrap_or(0);
+            deck.solve_zones = Some(SolveZones {
+                zones: vec![zone.clone()],
+                line,
+            });
+            let mut found = false;
+            for raw in deck
+                .blocks
+                .iter_mut()
+                .filter(|block| block.kind == "solve_zones")
+            {
+                raw.body = vec![zone.clone()];
+                found = true;
+            }
+            if !found {
+                deck.blocks.push(RawBlock {
+                    kind: "solve_zones".to_string(),
+                    line,
+                    body: vec![zone.clone()],
+                });
+            }
+            deck
+        })
+        .collect()
+}
+
+/// Build an R2S workflow bundle from a versionless snapshot object.
+///
+/// `snapshot` mirrors the Python `r2s_from_snapshot` dict: `zones` (list of
+/// `{id, volumeCm3, composition: {ARMI-name: ndens}}` with optional
+/// `zbottomCm`/`ztopCm`/`material`/`xsType`/`temperatureC`/`flux`),
+/// `fluxDefs` (list of `{name, file, scale}`), `coolingS` (list of seconds),
+/// plus optional `scheduleText` and `output`. Snake-case aliases
+/// (`volume_cm3`, `flux_defs`, `cooling_s`, `schedule_text`, ...) are accepted
+/// for every camelCase key.
+///
+/// Returns `{workflow, deck, decks}`: the workflow summary (same shape as
+/// [`r2s_from_deck`]), the canonical template deck text, and one canonical
+/// deck text per step. Composition keys follow the emit ARMI-input rule
+/// (post-expansion nuclide keys; elemental keys, bare `AM242`, and unknown
+/// names throw); densities are atoms/barn-cm. Empty `coolingS` throws via
+/// workflow validation.
+#[wasm_bindgen(js_name = r2sFromSnapshot)]
+pub fn r2s_from_snapshot(snapshot: JsValue) -> Result<JsValue, JsValue> {
+    let input: SnapshotInputJson = serde_wasm_bindgen::from_value(snapshot).map_err(js_err)?;
+    let deck = snap_deck_from_snapshot(&input).map_err(js_err)?;
+
+    let loading = deck
+        .mat_loading
+        .as_ref()
+        .ok_or_else(|| js_err("deck defines no `mat_loading` block"))?;
+    let zones: Vec<&str> = loading
+        .entries
+        .iter()
+        .filter(|entry| !entry.mixture.eq_ignore_ascii_case("void"))
+        .map(|entry| entry.zone.as_str())
+        .collect();
+    if zones.is_empty() {
+        return Err(js_err("deck defines no non-`void` zones in `mat_loading`"));
+    }
+    if deck.fluxes.is_empty() {
+        return Err(js_err("deck defines no `flux` blocks"));
+    }
+    let mut steps: Vec<R2sStepJson> = zones
+        .iter()
+        .map(|zone| {
+            Ok(R2sStepJson {
+                zone: (*zone).to_string(),
+                flux: r2s_resolve_flux(&deck.fluxes, zone).map_err(js_err)?,
+            })
+        })
+        .collect::<Result<Vec<_>, JsValue>>()?;
+
+    let pins: BTreeMap<&str, &str> = input
+        .zones
+        .iter()
+        .filter_map(|zone| zone.flux.as_deref().map(|flux| (zone.id.as_str(), flux)))
+        .collect();
+    if !pins.is_empty() {
+        let defined: std::collections::BTreeSet<&str> =
+            deck.fluxes.iter().map(|flux| flux.name.as_str()).collect();
+        for step in &mut steps {
+            if let Some(pinned) = pins.get(step.zone.as_str()) {
+                if !defined.contains(*pinned) {
+                    return Err(js_err(format!(
+                        "snapshot zone `{}` pins undefined flux `{pinned}`",
+                        step.zone
+                    )));
+                }
+                step.flux = (*pinned).to_string();
+            }
+        }
+    }
+
+    let cooling_s = deck
+        .cooling
+        .as_ref()
+        .map(|cooling| cooling.times_s.clone())
+        .unwrap_or_default();
+    let top_schedule = r2s_top_schedule(&deck).map_err(js_err)?;
+
+    let mut schedules = Vec::with_capacity(deck.schedules.len());
+    for raw in &deck.schedules {
+        let mut items = Vec::with_capacity(raw.items.len());
+        for entry in &raw.items {
+            items.push(r2s_sched_item(&entry.tokens, entry.line).map_err(js_err)?);
+        }
+        schedules.push(nucleide_alara_io::schedule::ScheduleDef {
+            name: raw.name.clone(),
+            items,
+        });
+    }
+    let histories: Vec<nucleide_alara_io::schedule::PulseHistory> = deck
+        .pulse_histories
+        .iter()
+        .map(|history| nucleide_alara_io::schedule::PulseHistory {
+            name: history.name.clone(),
+            levels: history
+                .levels
+                .iter()
+                .map(|level| nucleide_alara_io::schedule::PulseLevel {
+                    count: level.pulses,
+                    delay_s: level.delay_s,
+                })
+                .collect(),
+        })
+        .collect();
+    let flat = nucleide_alara_io::schedule::expand_from(&top_schedule, &schedules, &histories)
+        .map_err(js_err)?;
+
+    snap_validate_against(&deck, &steps, &cooling_s).map_err(js_err)?;
+    let step_zones: Vec<String> = steps.iter().map(|s| s.zone.clone()).collect();
+    let decks = snap_emit_decks(&deck, &step_zones);
+
+    to_js(&SnapshotBundleJson {
+        workflow: R2sSummary {
+            steps,
+            cooling_s,
+            top_schedule,
+            total_s: nucleide_alara_io::total_time(&flat),
+        },
+        deck: deck.to_string(),
+        decks: decks.iter().map(ToString::to_string).collect(),
+    })
+}

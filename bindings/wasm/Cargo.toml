@@ -21,6 +21,7 @@ serde_json = { workspace = true }
 # Workspace crates — keep Rayon disabled so this builds for wasm32-unknown-unknown.
 nucleide-nuclei.workspace = true
 nucleide-material.workspace = true
+nucleide-emit.workspace = true
 nucleide-enrichment.workspace = true
 nucleide-depletion = { workspace = true, default-features = false }
 nucleide-mcnp-io.workspace = true

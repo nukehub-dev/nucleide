@@ -170,6 +170,31 @@ workspace crates from tags.
   index` / `Sample voxel`, materials `Mix` + `To XML`, enrichment `Optimize
   M*`, activation ALARA-output / FISPACT / R2S mode tabs, mcnp-io `wwinp`
   parse, depletion `Load sample chain`.
+- WASM mirrors for the new Rust APIs (`bindings/wasm/src/lib.rs`, typed in
+  `website/src/types/nucleide-wasm.d.ts`): `emitCards` / `emitDriftTable`
+  over `nucleide-emit` (all five dialects, `EmitOpts` overrides, drift rows
+  with per-nuclide drop reasons), `emitArmiCards` / `emitArmiDriftTable`
+  over the ARMI bridge (elemental keys, bare `AM242`, and unknown names
+  throw), `doseFactor` / `dosePerGram` over the vendored HNF-5636 tables
+  (pathway `air`/`soil`/`ingest`/`inhale`, source `EPA`/`DOE`/`GENII`,
+  screening-level only), and `r2sFromSnapshot` over the snapshot adapter
+  (typed `Snapshot*Json` inputs returning a `{workflow, deck, decks}`
+  bundle).
+- Interactive `emitter` demo (`website/src/components/interactive/
+  EmitterDemo.tsx`, `docs/tutorials/interactive/emitter.mdx`): GNDS/ARMI key
+  toggle with inline presets, material name/density/per-dialect options, all
+  five dialect cards plus the drift table, with inline errors for
+  elemental/AM242/bad keys.
+- Interactive `materials` demo dose-per-gram section (`website/src/
+  components/interactive/MaterialBuilder.tsx`): pathway/source selects
+  scoring the current formula via `dosePerGram`, with a screening-only note.
+- Interactive `activation` demo `r2s-snapshot` mode (`website/src/
+  components/interactive/ActivationDemo.tsx`): an inline two-zone JSON
+  snapshot parsed via `r2sFromSnapshot` into workflow steps plus the template
+  and per-step deck count.
+- Interactive tutorial E2E coverage (`website/e2e/smoke.spec.ts`): emitter
+  GNDS emit plus ARMI re-emit with drift assertion, materials `Compute dose`
+  value, activation `R2S snapshot` tab with steps and deck-count outputs.
 
 ### Fixed
 

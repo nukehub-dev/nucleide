@@ -13,6 +13,8 @@ committed `results.md` holds the measured numbers that the paper quotes.
 | `enrichment_vs_pyne.py` | Uranium and tungsten enrichment cascades vs PyNE `multicomponent` |
 | `magic_vs_pyne.py` | MAGIC weight-window generation vs PyNE (or equivalent formula when PyMOAB is missing) |
 | `nuclear_data_vs_refs.py` | Atomic masses, abundances, half-lives, name-dialect conversions vs PyNE/OpenMC |
+| `dose_vs_pyne.py` | Dose coefficients (`dose_factor`/`dose_per_g`) vs PyNE accessors |
+| `emit_vs_self.py` | Five-dialect emission + drift self-consistency (incl. ARMI-key equivalence; no external oracle exists) |
 | `parsers_vs_refs.py` | Serpent/MCNP/FLUKA parser cross-validation vs serpentTools and PyNE oracles |
 | `activation_vs_refs.py` | ALARA/CCCC/FISPACT/ORIGEN/R2S I/O checks vs PyNE oracle probes + synthetic self-consistency |
 | `timings.py` | Coarse wall-time comparisons (Python overhead included) |

@@ -3,7 +3,7 @@
   "name": "activation",
   "title": "Activation I/O (`activation_vs_refs.py`)",
   "environment": {
-    "date": "2026-09-08",
+    "date": "2026-09-10",
     "python": "3.12.14",
     "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
     "nucleide": "0.3.0",
@@ -602,12 +602,26 @@
           "total 0",
           "-0.000000e+00",
           "PASS"
+        ],
+        [
+          "synthetic snapshot",
+          "void zone skipped",
+          "[B0120-005 x snap_flux]",
+          "[{'zone': 'B0120-005', 'flux': 'snap_flux'}]",
+          "PASS"
+        ],
+        [
+          "synthetic snapshot",
+          "deck validates, expands",
+          "OK, 86400 s",
+          "OK, 8.640000e+04",
+          "PASS"
         ]
       ]
     },
     {
       "kind": "prose",
-      "text": "Both zones share one flux (no void-only step is synthesized), and the expanded\nschedule totals one ALARA year of 365.25 d (31557600 s). Photon assembly\nsums zone `SpecificActivity` and splits the total uniformly over the\nrequested groups: the total shutdown strength is preserved, while real decay\nphotons follow the nuclide- and energy-dependent `.photonSrc` lines."
+      "text": "Both zones share one flux (no void-only step is synthesized), and the expanded\nschedule totals one ALARA year of 365.25 d (31557600 s). Photon assembly\nsums zone `SpecificActivity` and splits the total uniformly over the\nrequested groups: the total shutdown strength is preserved, while real decay\nphotons follow the nuclide- and energy-dependent `.photonSrc` lines. The\nsynthetic snapshot rows cover the dict-in adapter (no ARMI files: one\nbroadcast flux, one void zone skipped, template deck validating and\nexpanding to a single 86400 s step)."
     },
     {
       "kind": "heading",

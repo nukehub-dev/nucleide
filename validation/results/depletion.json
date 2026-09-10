@@ -3,7 +3,7 @@
   "name": "depletion",
   "title": "Depletion (`depletion_vs_openmc.py`)",
   "environment": {
-    "date": "2026-09-08",
+    "date": "2026-09-10",
     "python": "3.12.14",
     "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
     "nucleide": "0.3.0",
@@ -157,6 +157,41 @@
           "Decay heat (max abs, W)",
           "0.000000e+00",
           "0.0"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Bateman-vs-CRAM cross-check (synthetic A->B->C)"
+    },
+    {
+      "kind": "prose",
+      "text": "Analytic Bateman fast path (`method='bateman'` / `'bateman_hp'`) on the same synthetic A->B->C pure-decay chain built inline in a temp file (no fixtures): single-step `deplete` at dt = 1e5 s vs CRAM-48 and vs the analytic solution, plus a Predictor `deplete_series` band check (max vs Bateman analytic and vs CRAM-48 at every node)."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Method",
+        "Vs CRAM-48",
+        "Vs analytic",
+        "Conservation",
+        "Series band"
+      ],
+      "rows": [
+        [
+          "bateman",
+          "4.401336e-15",
+          "2.640802e-15",
+          "1.250000e-16",
+          "2.309593e-14"
+        ],
+        [
+          "bateman_hp",
+          "4.401336e-15",
+          "2.640802e-15",
+          "1.250000e-16",
+          "2.309593e-14"
         ]
       ]
     }

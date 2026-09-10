@@ -4,7 +4,28 @@ import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
+import { Select } from "@nukehub/docs-kit/components/ui/Select";
 import { Textarea } from "@nukehub/docs-kit/components/ui/Textarea";
+
+const PATHWAY_OPTIONS = [
+  { value: "air", label: "Air" },
+  { value: "soil", label: "Soil" },
+  { value: "ingest", label: "Ingest" },
+  { value: "inhale", label: "Inhale" },
+];
+
+const SOURCE_OPTIONS = [
+  { value: "EPA", label: "EPA" },
+  { value: "DOE", label: "DOE" },
+  { value: "GENII", label: "GENII" },
+];
+
+const DOSE_UNITS: Record<string, string> = {
+  air: "mrem/h per g per m³",
+  soil: "mrem/h per g per m²",
+  ingest: "mrem per g",
+  inhale: "mrem per g",
+};
 
 export function MaterialBuilder() {
   const { wasm, ready, error } = useWasm();
@@ -16,6 +37,9 @@ export function MaterialBuilder() {
   const [weightFracs, setWeightFracs] = useState<Record<string, number> | null>(null);
   const [mixedFracs, setMixedFracs] = useState<Record<string, number> | null>(null);
   const [xml, setXml] = useState<string | null>(null);
+  const [pathway, setPathway] = useState("air");
+  const [source, setSource] = useState("EPA");
+  const [dose, setDose] = useState<number | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function clearError() {
@@ -65,6 +89,18 @@ export function MaterialBuilder() {
     } catch (e) {
       setLocalError(e instanceof Error ? e.message : String(e));
       setXml(null);
+    }
+  }
+
+  function runDose() {
+    if (!wasm) return;
+    try {
+      const mat = new wasm.WasmMaterial(formula);
+      setDose(wasm.dosePerGram(mat.weightFractions(), pathway, source));
+      setLocalError(null);
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : String(e));
+      setDose(null);
     }
   }
 
@@ -162,6 +198,46 @@ export function MaterialBuilder() {
               <pre className="max-h-48 overflow-auto rounded-lg border border-border bg-muted p-2 text-xs [clip-path:inset(-1px_round_calc(0.5rem+1px))]">
                 {xml}
               </pre>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Dose per gram (screening only)</p>
+            <p className="text-xs text-muted-foreground">
+              Screening-level dose per gram of the current formula from the vendored HNF-5636 tables
+              — not for safety decisions. Compositions with nuclides outside the tables report an
+              inline error instead of a value.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1">
+                <Label>Pathway</Label>
+                <Select
+                  value={pathway}
+                  onChange={(v) => {
+                    setPathway(v);
+                    clearError();
+                  }}
+                  options={PATHWAY_OPTIONS}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Source</Label>
+                <Select
+                  value={source}
+                  onChange={(v) => {
+                    setSource(v);
+                    clearError();
+                  }}
+                  options={SOURCE_OPTIONS}
+                />
+              </div>
+              <Button onClick={runDose}>Compute dose</Button>
+            </div>
+            {dose !== null && (
+              <p className="text-sm">
+                Dose per gram: <span className="font-mono">{dose.toExponential(4)}</span>{" "}
+                <span className="text-muted-foreground">{DOSE_UNITS[pathway]}</span>
+              </p>
             )}
           </div>
         </>

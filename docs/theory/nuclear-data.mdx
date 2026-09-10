@@ -52,6 +52,55 @@ references:
     source: Nucleide implementation
     date: "2026"
     type: misc
+  - id: sears-1992
+    title: "Neutron scattering lengths and cross sections"
+    url: https://www.ncnr.nist.gov/resources/n-lengths
+    authors: ["V. F. Sears"]
+    source: Neutron News
+    journal: Neutron News
+    volume: "3"
+    issue: "3"
+    pages: "29–37"
+    date: "1992"
+    type: article
+  - id: chadwick-2011
+    title: "ENDF/B-VII.1 Nuclear Data for Science and Technology: Cross Sections, Covariances, Fission Product Yields and Decay Data"
+    url: https://doi.org/10.1016/j.nds.2011.11.009
+    authors: ["M. B. Chadwick", "et al."]
+    source: Nuclear Data Sheets
+    journal: Nuclear Data Sheets
+    volume: "112"
+    issue: "12"
+    pages: "2887–2996"
+    date: "2011"
+    type: article
+    doi: "10.1016/j.nds.2011.11.009"
+  - id: touran-2017
+    title: "Computational Tools for the Integrated Design of Advanced Nuclear Reactors"
+    url: https://doi.org/10.1016/J.ENG.2017.04.016
+    authors: ["N. W. Touran", "J. Gilleland", "G. T. Malmgren", "C. Whitmer"]
+    source: Engineering
+    journal: Engineering
+    volume: "3"
+    issue: "4"
+    pages: "518–526"
+    date: "2017"
+    type: article
+    doi: "10.1016/J.ENG.2017.04.016"
+  - id: hnf-1999
+    title: "HNF-SD-WM-TI-707 Rev.1 (Dec 1999) dose-factor tables, via PyNE dbgen"
+    url: https://github.com/pyne/pyne/tree/develop/pyne/dbgen
+    authors: ["Hanford Site"]
+    source: HNF-SD-WM-TI-707 Rev.1
+    date: "1999"
+    type: misc
+  - id: hnf-5636
+    title: "HNF-5636 App. O (2001) dose-factor tables, via PyNE dbgen"
+    url: https://github.com/pyne/pyne/tree/develop/pyne/dbgen
+    authors: ["Hanford Site"]
+    source: HNF-5636
+    date: "2001"
+    type: misc
 ---
 
 Nucleide carries a small, self-contained set of nuclear reference data and a
@@ -131,6 +180,10 @@ Nucleide converts between several legacy code conventions.
   cases.
 </Callout>
 
+ARMI database keys (`nU235`, MCC3) resolve through the same identifier for
+post-expansion mass fractions in the emission bridge and R2S snapshot adapter
+(Touran et al.)<Citation id="touran-2017" />.
+
 ## Data sources
 
 Nucleide embeds eight reference tables at compile time and parses them lazily on
@@ -171,7 +224,7 @@ first access.
 
 ### Half-lives
 
-- **Source**: ENDF/B-VIII.0 decay evaluations (IAEA / BNL-NNDC).
+- **Source**: ENDF/B-VIII.0 decay evaluations (IAEA / BNL-NNDC)<Citation id="brown-2018" />.
 - **Coverage**: 3,561 radionuclides; stable nuclides are absent.
 - **File**: `crates/nuclei/src/data/half_life.tsv`.
 - **Units**: seconds.
@@ -185,7 +238,7 @@ first access.
 ### Decay branches
 
 Per-branch daughters (`decay_branches`, table `decay_branch_table`) from the
-ENDF/B-VIII.0 decay sublibrary (MF8/MT457 NDK records: RTYP decay-mode code,
+ENDF/B-VIII.0 decay sublibrary<Citation id="brown-2018" /> (MF8/MT457 NDK records: RTYP decay-mode code,
 RFS daughter state flag, BR branching fraction):
 
 - **Source**: ENDF/B-VIII.0 decay tapes (same checkout basis as the half-life
@@ -222,7 +275,7 @@ Approximate total microscopic cross sections (`simple_xs` in
 
 - **Source**: thermal (0.0253 eV) totals from NIST 2200 m/s bound
   scattering/absorption converted to free-atom totals
-  (`xs·(A/(A+1))² + xs_a`); 14-MeV totals from ENDF/B-VII.1 MF3/MT1.
+  (`xs·(A/(A+1))² + xs_a`); 14-MeV totals from ENDF/B-VII.1 MF3/MT1<Citation id="chadwick-2011" />.
   ENDF File 3 alone cannot supply thermal values inside resonance ranges
   (it holds background only there), and resonance nuclides without a NIST
   row (Cs-137, Co-60, I-135, Xe-135) plus isomers are absent by
@@ -240,7 +293,7 @@ See `simple_xs` in the [Python API](../reference/python-api.mdx#nucleidenuclei).
 Bound scattering lengths (`scattering_length`, table
 `scattering_length_table`), returned as `(coherent, incoherent)` pairs:
 
-- **Source**: the NIST NCNR tabulation of Sears (1992) and its update
+- **Source**: the NIST NCNR tabulation of Sears (1992)<Citation id="sears-1992" /> and its update
   (complex absorbing lengths by real part; incoherent derived from the
   spin-incoherent cross section where the table gives only σ).
 - **Coverage**: 267 nuclides (tabulated isotopes plus monoisotopic element
@@ -258,7 +311,7 @@ See `scattering_length` in the
 Mean *prompt* recoverable energy per decay (`decay_energy_mev`, table
 `decay_energy_table`):
 
-- **Source**: ENDF/B-VII.1 decay tapes (MF8/MT457 summary components,
+- **Source**: ENDF/B-VII.1 decay tapes<Citation id="chadwick-2011" /> (MF8/MT457 summary components,
   paired uncertainties skipped; delayed-neutron kinetic energy included,
   neutrinos never appear). Daughter gammas belong to the daughter row, so
   chain codes must sum members (Cs-137 prompt ≈ 0.179 MeV; the 662 keV
@@ -282,7 +335,8 @@ External-air/soil, ingestion, and inhalation factors (`dose_factor`, table
 `dose_table`):
 
 - **Source**: the BSD-3 PyNE `dbgen/dosefactors*.csv` tables (93 rows each;
-  proximate provenance HNF-SD-WM-TI-707 Rev.1 with App. O of HNF-5636;
+  proximate provenance HNF-SD-WM-TI-707 Rev.1<Citation id="hnf-1999" /> with App. O of
+  HNF-5636<Citation id="hnf-5636" />;
   GENII/EPA/DOE are 3 parallel evaluations). `+D` (plus daughters) folds
   into the parent. Air is EPA-only: GENII/DOE air rows are `-1` sentinels.
 - **Coverage**: 93 folded nuclides × 4 pathways × 3 sources (1,116 rows);

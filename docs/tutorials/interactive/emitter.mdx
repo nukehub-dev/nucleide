@@ -1,0 +1,27 @@
+---
+title: Code-card emission
+description: Emit one material through five transport-code dialects and audit mass drift in the browser.
+sidebar:
+  order: 10
+---
+
+The `emit` crate renders one material through five code dialects — MCNP `m`
+cards, Serpent `mat` cards, FLUKA `COMPOUND` cards, ALARA `mixture` blocks,
+and single-zone PARTISN decks — and reports a per-dialect mass-drift table
+with drop reasons plus re-parse verification where readers exist (MCNP,
+ALARA). The ARMI blueprint bridge accepts post-expansion ARMI mass-fraction
+keys (`nU235`, …) instead of GNDS names.
+
+## Try it
+
+Pick a key dialect, edit the composition JSON, set the material name,
+density, and per-dialect options, then press **Emit**. Elemental keys, bare
+`AM242`, and unknown names fail with an inline error instead of crashing.
+
+<InteractiveDemo kind="emitter" />
+
+## See also
+
+- Tutorial: [Emit code cards](../python/emit-cards.md)
+- Tutorial: [Build materials](../python/build-materials.md)
+- Crate docs: [`crates/emit/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/emit/src/lib.rs)

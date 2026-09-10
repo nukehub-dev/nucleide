@@ -8,6 +8,7 @@ import { DeckEditor } from "./DeckEditor";
 import { VrDemo } from "./VrDemo";
 import { ActivationDemo } from "./ActivationDemo";
 import { DeterministicDemo } from "./DeterministicDemo";
+import { EmitterDemo } from "./EmitterDemo";
 
 interface InteractiveDemoProps {
   kind:
@@ -20,7 +21,8 @@ interface InteractiveDemoProps {
     | "deck-editor"
     | "variance-reduction"
     | "activation"
-    | "deterministic";
+    | "deterministic"
+    | "emitter";
 }
 
 export function InteractiveDemo({ kind }: InteractiveDemoProps) {
@@ -45,6 +47,8 @@ export function InteractiveDemo({ kind }: InteractiveDemoProps) {
       return <ActivationDemo />;
     case "deterministic":
       return <DeterministicDemo />;
+    case "emitter":
+      return <EmitterDemo />;
     default:
       return <div className="text-sm text-muted-foreground">Unknown demo kind: {kind}</div>;
   }

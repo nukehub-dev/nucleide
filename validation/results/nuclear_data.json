@@ -3,7 +3,7 @@
   "name": "nuclear_data",
   "title": "Nuclear data (`nuclear_data_vs_refs.py`)",
   "environment": {
-    "date": "2026-09-08",
+    "date": "2026-09-10",
     "python": "3.12.14",
     "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
     "nucleide": "0.3.0",
@@ -31,8 +31,8 @@
         ],
         [
           "PyNE",
-          "4.000000e-06",
-          "3.248103e-07"
+          "7.101520e-04",
+          "1.555758e-05"
         ]
       ]
     },
@@ -354,6 +354,132 @@
     {
       "kind": "prose",
       "text": "Stable Fe56 correctly resolves to None (no decay-energy entry)."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Decay branches vs ENDF/B-VIII.0 spot values"
+    },
+    {
+      "kind": "prose",
+      "text": "Nucleide `decay_branches` (per-branch daughters) and `decay_branch_fraction` vs the ENDF/B-VIII.0 MF8/MT457 NDK values they were generated from, with the parent half-life pinned to the same VIII.0 checkout: K-40 pins 3.93839e16 s plus its beta-/EC pair, Es-254 members follow this repo's own branch table. SF branches are dropped at generation, so they never appear here."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Parent",
+        "Branch",
+        "Nucleide",
+        "Spot",
+        "Rel diff"
+      ],
+      "rows": [
+        [
+          "K40",
+          "half-life",
+          "3.938390e+16",
+          "3.938390e+16",
+          "0.000000e+00"
+        ],
+        [
+          "K40",
+          "Ca40 [beta-]",
+          "8.914000e-01",
+          "8.914000e-01",
+          "0.000000e+00"
+        ],
+        [
+          "K40",
+          "Ar40 [ec/beta+]",
+          "1.086000e-01",
+          "1.086000e-01",
+          "0.000000e+00"
+        ],
+        [
+          "Es254",
+          "half-life",
+          "2.382048e+07",
+          "2.382048e+07",
+          "0.000000e+00"
+        ],
+        [
+          "Es254",
+          "Bk250 [alpha]",
+          "1.000000e+00",
+          "1.000000e+00",
+          "0.000000e+00"
+        ],
+        [
+          "Es254_m1",
+          "half-life",
+          "1.414799e+05",
+          "1.414799e+05",
+          "0.000000e+00"
+        ],
+        [
+          "Es254_m1",
+          "Bk250 [alpha]",
+          "3.200000e-03",
+          "3.200000e-03",
+          "0.000000e+00"
+        ],
+        [
+          "Es254_m1",
+          "Fm254 [beta-]",
+          "9.800000e-01",
+          "9.800000e-01",
+          "0.000000e+00"
+        ],
+        [
+          "Es254_m1",
+          "Cf254 [ec/beta+]",
+          "8.000000e-04",
+          "8.000000e-04",
+          "0.000000e+00"
+        ],
+        [
+          "Es254_m1",
+          "Es254 [IT]",
+          "1.550000e-02",
+          "1.550000e-02",
+          "0.000000e+00"
+        ],
+        [
+          "Ba137_m1",
+          "half-life",
+          "1.531200e+02",
+          "1.531200e+02",
+          "0.000000e+00"
+        ],
+        [
+          "Ba137_m1",
+          "Ba137 [IT]",
+          "1.000000e+00",
+          "1.000000e+00",
+          "0.000000e+00"
+        ],
+        [
+          "He8",
+          "half-life",
+          "1.191000e-01",
+          "1.191000e-01",
+          "0.000000e+00"
+        ],
+        [
+          "He8",
+          "Li8 [beta-]",
+          "8.400000e-01",
+          "8.400000e-01",
+          "0.000000e+00"
+        ],
+        [
+          "He8",
+          "Li7 [beta-]",
+          "1.600000e-01",
+          "1.600000e-01",
+          "0.000000e+00"
+        ]
+      ]
     }
   ]
 }

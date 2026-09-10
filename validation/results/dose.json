@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "name": "dose",
+  "title": "Dose coefficients (`dose_vs_pyne.py`)",
+  "environment": {
+    "date": "2026-09-10",
+    "python": "3.12.14",
+    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
+    "nucleide": "0.3.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "text": "Nucleide dose factors (HNF-SD-WM-TI-707 Rev.1 / HNF-5636 App. O via PyNE `dbgen/dosefactors*.csv`) vs the PyNE `Material::dose_per_g` equations (source ids 0=EPA/1=DOE/2=GENII). Screening-level only; not for safety decisions."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Nuclide",
+        "Pathway",
+        "Source",
+        "Nucleide DF",
+        "Spot DF",
+        "Rel diff",
+        "Status"
+      ],
+      "rows": [
+        [
+          "Co60",
+          "ingest",
+          "EPA",
+          "2.690000e-05",
+          "2.690000e-05",
+          "0.000000e+00",
+          "PASS"
+        ],
+        [
+          "Cs137",
+          "inhale",
+          "EPA",
+          "3.190000e-05",
+          "3.190000e-05",
+          "0.000000e+00",
+          "PASS"
+        ],
+        [
+          "H3",
+          "air",
+          "EPA",
+          "4.410000e-12",
+          "4.410000e-12",
+          "0.000000e+00",
+          "PASS"
+        ],
+        [
+          "K40",
+          "soil",
+          "EPA",
+          "4.330000e+02",
+          "4.330000e+02",
+          "0.000000e+00",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Co60 ingest EPA: PyNE accessor"
+    },
+    {
+      "kind": "prose",
+      "text": "Cs137 inhale EPA: PyNE accessor"
+    },
+    {
+      "kind": "prose",
+      "text": "H3 air EPA: PyNE accessor"
+    },
+    {
+      "kind": "prose",
+      "text": "K40 soil EPA: PyNE accessor"
+    },
+    {
+      "kind": "prose",
+      "text": "1 g Co60 ingest EPA per-gram dose: nucleide 3.044019e+10, PyNE-N_A formula 3.044019e+10, exact-N_A formula 3.044019e+10."
+    },
+    {
+      "kind": "prose",
+      "text": "Nucleide uses exact N_A (6.02214076e23); PyNE uses 6.0221415e23. The per-gram doses agree to <1 ppm."
+    },
+    {
+      "kind": "prose",
+      "text": "H3 air GENII sentinel: -1.0 (PyNE -1-for-missing-air)."
+    },
+    {
+      "kind": "prose",
+      "text": "1 g K-40 soil EPA per-gram dose: 3.103665e-03 mrem/h per g per m^2."
+    }
+  ]
+}

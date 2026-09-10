@@ -379,6 +379,61 @@ export interface IsotxsSummary {
   groups: number;
 }
 
+export interface DroppedJson {
+  nuclide: string;
+  mass: number;
+  reason: string;
+}
+
+export interface DriftRowJson {
+  code: string;
+  massIn: number;
+  massOut: number;
+  relDrift: number;
+  dropped: DroppedJson[];
+  reparsed: boolean;
+}
+
+export interface EmitOpts {
+  mcnpNumber?: number;
+  xsSuffix?: string;
+  serpentLib?: string;
+  flukaFid?: number;
+  partisnZone?: number;
+}
+
+export interface SnapshotZoneJson {
+  id: string;
+  volumeCm3: number;
+  zbottomCm?: number;
+  ztopCm?: number;
+  material?: string;
+  xsType?: string;
+  temperatureC?: number;
+  composition: Record<string, number>;
+  flux?: string;
+}
+
+export interface SnapshotFluxJson {
+  name: string;
+  file: string;
+  scale: number;
+}
+
+export interface SnapshotInputJson {
+  zones: SnapshotZoneJson[];
+  fluxDefs: SnapshotFluxJson[];
+  coolingS: number[];
+  scheduleText?: string;
+  output?: string;
+}
+
+export interface SnapshotBundleJson {
+  workflow: R2sSummary;
+  deck: string;
+  decks: string[];
+}
+
 export interface CompendiumEntryInfo {
   name: string;
   acronym: string[];
@@ -485,5 +540,32 @@ export interface WasmApi {
   parseAlaraOutput(text: string, runLbl: string): AlaraOutputSummary;
   parseFispactOutput(text: string, runLbl: string): FispactOutputSummary;
   r2sFromDeck(text: string): R2sSummary;
+  r2sFromSnapshot(snapshot: SnapshotInputJson): SnapshotBundleJson;
   parseIsotxs(text: string): IsotxsSummary;
+  emitCards(
+    comp: Record<string, number>,
+    name: string,
+    density?: number,
+    opts?: EmitOpts,
+  ): Record<string, string>;
+  emitDriftTable(
+    comp: Record<string, number>,
+    name: string,
+    density?: number,
+    opts?: EmitOpts,
+  ): DriftRowJson[];
+  emitArmiCards(
+    comp: Record<string, number>,
+    name: string,
+    density?: number,
+    opts?: EmitOpts,
+  ): Record<string, string>;
+  emitArmiDriftTable(
+    comp: Record<string, number>,
+    name: string,
+    density?: number,
+    opts?: EmitOpts,
+  ): DriftRowJson[];
+  doseFactor(name: string, pathway: string, source?: string): number | undefined;
+  dosePerGram(comp: Record<string, number>, pathway: string, source?: string): number;
 }

@@ -3,7 +3,7 @@
   "name": "enrichment",
   "title": "Enrichment (`enrichment_vs_pyne.py`)",
   "environment": {
-    "date": "2026-09-08",
+    "date": "2026-09-10",
     "python": "3.12.14",
     "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
     "nucleide": "0.3.0",

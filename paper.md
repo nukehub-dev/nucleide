@@ -115,15 +115,15 @@ file-parsing demos.
 
 The repository contains a runnable cross-code validation harness
 (`validation/`, results committed in `validation/results.md`) comparing
-Nucleide 0.1.0 against PyNE 0.7.5 (numerically identical to the 0.7.8 release
+Nucleide 0.3.0 against PyNE 0.7.5 (numerically identical to the 0.7.8 release
 for the exercised modules) and OpenMC 0.16.0:
 
 - **Depletion**: CRAM-48 on a realistic nickel activation chain agrees with
   OpenMC's CRAM-48 solver to a maximum relative difference of $8.3\times10^{-15}$;
-  on the full 228-nuclide CASL/VERA simplified depletion chain (fission product
+  on the full 228-nuclide CASL/VERA simplified depletion chain [@kim2015vera] (fission product
   yields, decay branching, fresh-UO$_2$ inventory) the final density vectors
   agree to a maximum relative difference of $8.9\times10^{-15}$; a
-  three-nuclide chain matches the closed-form Bateman solution to
+  three-nuclide chain matches the closed-form Bateman solution [@bateman1910] to
   $\sim10^{-15}$.
 - **Enrichment**: the $M^*$-optimizing multicomponent solver agrees with PyNE's
   `multicomponent()` to $\sim10^{-4}$ or better in stage counts, $M^*$, and
@@ -136,22 +136,28 @@ for the exercised modules) and OpenMC 0.16.0:
   (both derive from IUPAC 2013 [@meija2016iupac] and ENDF/B-VIII.0
   [@brown2018endf]); masses match OpenMC's AME2020 [@huang2021ame2020;
   @wang2021ame2020] tables exactly and PyNE's AME2016 tables to
-  $4\times10^{-6}$ u; all name-dialect conversions match `pyne.nucname`
-  exactly.
-- **Performance**: single-step CRAM-48 solves run in $\sim$137 µs from Python
-  ($\sim$77 µs native) versus $\sim$2.9 ms for OpenMC's Python path; the
-  default uranium enrichment solve runs in $\sim$106 µs versus $\sim$5.6 ms
+  $7.1\times10^{-4}$ u max ($1.6\times10^{-5}$ u mean; the table now also
+  carries per-isomer excitation masses alongside the AME2020 grounds); all name-dialect conversions match `pyne.nucname`
+  exactly. Screening scattering lengths follow Sears [@sears1992], and prompt
+  decay energies plus 14-MeV totals follow ENDF/B-VII.1 [@chadwick2011endf71].
+- **Performance**: single-step CRAM-48 solves run in $\sim$133 µs from Python
+  ($\sim$85 µs native) versus $\sim$3.0 ms for OpenMC's Python path; the
+  default uranium enrichment solve runs in $\sim$110 µs versus $\sim$5.5 ms
   for PyNE; MAGIC weight-window generation runs in $\sim$0.6 µs versus
-  $\sim$3.8 µs for an equivalent pure-Python implementation.
+  $\sim$3.9 µs for an equivalent pure-Python implementation.
 
 Beyond the measured comparisons above, the harness also covers activation and
 deterministic I/O through `validation/activation_vs_refs.py`, described here
 as coverage rather than measured claims. The script checks the ALARA, CCCC,
 FISPACT-II, ORIGEN, and R2S readers against committed fixtures for
 self-consistency (row and variable counts, spot values, totals, PARTISN render
-and validate round-trips, and workflow smoke tests), plus container-only PyNE
+and validate round-trips, and workflow smoke tests, including the ARMI
+snapshot adapter [@touran2017armi]), plus container-only PyNE
 oracle probes where PyNE exposes a usable entry point, with every skip
-recorded loudly in the report. Committed results regenerate through the same
+recorded loudly in the report. Screening dose factors follow HNF-SD-WM-TI-707
+Rev.1 / HNF-5636 App. O via PyNE dbgen [@hnf1999dose; @hnf2001dose], and
+emission-drift plus ARMI-key checks run as self-consistency coverage.
+Committed results regenerate through the same
 container entry point as the rest of the harness (`run_container.sh`). No
 numeric agreement claims are made here.
 

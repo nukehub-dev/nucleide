@@ -874,6 +874,7 @@ dependencies = [
  "nucleide-alara-io",
  "nucleide-cccc-io",
  "nucleide-depletion",
+ "nucleide-emit",
  "nucleide-enrichment",
  "nucleide-fispact-io",
  "nucleide-linalg",

@@ -27,6 +27,7 @@ async function assertNoWasmError(page) {
 interface ExtraStep {
   button: string;
   output?: string;
+  fill?: { label: string; text: string };
 }
 
 interface InteractivePage {
@@ -56,6 +57,11 @@ const INTERACTIVE_PAGES: InteractivePage[] = [
     extraSteps: [
       { button: "Mix", output: "text=Mixed atom fractions" },
       { button: "To XML", output: "text=density" },
+      {
+        button: "Compute dose",
+        fill: { label: "Formula", text: "U" },
+        output: "text=Dose per gram",
+      },
     ],
   },
   {
@@ -120,6 +126,9 @@ end`,
       { button: "Parse", output: "text=Rows:" },
       { button: "R2S workflow" },
       { button: "Parse", output: "text=Top schedule:" },
+      { button: "R2S snapshot" },
+      { button: "Parse", output: "text=Top schedule:" },
+      { button: "Parse", output: "text=Decks:" },
     ],
   },
   {
@@ -142,6 +151,12 @@ NUCLIDE PU239 94239 2
       { button: "Load L3 sample" },
       { button: "Parse", output: "text=Cell 1" },
     ],
+  },
+  {
+    path: "tutorials/interactive/emitter",
+    button: "Emit",
+    output: "text=MCNP",
+    extraSteps: [{ button: "ARMI keys" }, { button: "Emit", output: "text=Mass-drift report" }],
   },
 ];
 
@@ -184,6 +199,11 @@ for (const { path, button, output, cell, chart, paste, extraSteps } of INTERACTI
 
     if (extraSteps) {
       for (const step of extraSteps) {
+        if (step.fill) {
+          const input = page.getByLabel(step.fill.label);
+          await input.scrollIntoViewIfNeeded();
+          await input.fill(step.fill.text);
+        }
         const stepButton = page.getByRole("button", { name: step.button });
         await stepButton.scrollIntoViewIfNeeded();
         await stepButton.click();

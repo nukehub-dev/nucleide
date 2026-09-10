@@ -5,6 +5,8 @@ import type {
   AlaraOutputSummary,
   FispactOutputSummary,
   R2sSummary,
+  SnapshotBundleJson,
+  SnapshotInputJson,
 } from "../../types/nucleide-wasm";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
@@ -12,7 +14,7 @@ import { Label } from "@nukehub/docs-kit/components/ui/Label";
 import { Textarea } from "@nukehub/docs-kit/components/ui/Textarea";
 import { DataTable } from "@nukehub/docs-kit/components/mdx/DataTable";
 
-type ActivationMode = "alara-deck" | "alara-output" | "fispact" | "r2s";
+type ActivationMode = "alara-deck" | "alara-output" | "fispact" | "r2s" | "r2s-snapshot";
 
 const DEFAULT_DECK = `geometry rectangular
 mat_loading
@@ -44,11 +46,21 @@ NUCLIDE ATOMS ACTIVITY HEAT
 h-3 1.0000E+20 1.2000E+09 3.5000E-03
 total 1.3000E+20 5.5000E+09 7.6600E-02`;
 
+const DEFAULT_SNAPSHOT = `{
+  "zones": [
+    {"id": "zone1", "volumeCm3": 1000, "composition": {"U235": 0.001, "U238": 0.02}},
+    {"id": "zone2", "volumeCm3": 500, "composition": {"H1": 0.06, "O16": 0.03}}
+  ],
+  "fluxDefs": [{"name": "flux_1", "file": "flux1", "scale": 1.0}],
+  "coolingS": [86400]
+}`;
+
 const DEFAULTS: Record<ActivationMode, string> = {
   "alara-deck": DEFAULT_DECK,
   "alara-output": DEFAULT_ALARA_OUTPUT,
   fispact: DEFAULT_FISPACT,
   r2s: DEFAULT_DECK,
+  "r2s-snapshot": DEFAULT_SNAPSHOT,
 };
 
 const MODES: { value: ActivationMode; label: string }[] = [
@@ -56,6 +68,7 @@ const MODES: { value: ActivationMode; label: string }[] = [
   { value: "alara-output", label: "ALARA output" },
   { value: "fispact", label: "FISPACT output" },
   { value: "r2s", label: "R2S workflow" },
+  { value: "r2s-snapshot", label: "R2S snapshot" },
 ];
 
 export function ActivationDemo() {
@@ -67,6 +80,7 @@ export function ActivationDemo() {
   const [alaraOutput, setAlaraOutput] = useState<AlaraOutputSummary | null>(null);
   const [fispact, setFispact] = useState<FispactOutputSummary | null>(null);
   const [r2s, setR2s] = useState<R2sSummary | null>(null);
+  const [snapshot, setSnapshot] = useState<SnapshotBundleJson | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function clearError() {
@@ -78,6 +92,7 @@ export function ActivationDemo() {
     setAlaraOutput(null);
     setFispact(null);
     setR2s(null);
+    setSnapshot(null);
   }
 
   function selectMode(next: ActivationMode) {
@@ -104,6 +119,16 @@ export function ActivationDemo() {
         case "r2s":
           setR2s(wasm.r2sFromDeck(text));
           break;
+        case "r2s-snapshot": {
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            throw new Error("bad snapshot JSON (expected zones/fluxDefs/coolingS)");
+          }
+          setSnapshot(wasm.r2sFromSnapshot(parsed as SnapshotInputJson));
+          break;
+        }
       }
       clearError();
     } catch (e) {
@@ -252,6 +277,32 @@ export function ActivationDemo() {
                   { key: "flux", header: "Flux" },
                 ]}
               />
+            </div>
+          )}
+
+          {snapshot && (
+            <div className="space-y-3">
+              <div className="grid gap-2 text-sm sm:grid-cols-3">
+                <p>Top schedule: {snapshot.workflow.top_schedule}</p>
+                <p>Total time (s): {snapshot.workflow.total_s.toExponential(4)}</p>
+                <p>Decks: {snapshot.decks.length}</p>
+              </div>
+              <DataTable
+                data={snapshot.workflow.steps.map((s) => ({
+                  zone: <span className="font-mono">{s.zone}</span>,
+                  flux: <span className="font-mono">{s.flux}</span>,
+                }))}
+                columns={[
+                  { key: "zone", header: "Zone" },
+                  { key: "flux", header: "Flux" },
+                ]}
+              />
+              <div className="space-y-1">
+                <Label>Template deck</Label>
+                <pre className="overflow-x-auto rounded-lg border border-border/50 bg-muted/30 p-3 font-mono text-xs whitespace-pre-wrap">
+                  {snapshot.deck}
+                </pre>
+              </div>
             </div>
           )}
         </>

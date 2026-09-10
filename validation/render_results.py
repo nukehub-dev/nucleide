@@ -19,6 +19,7 @@ SECTION_ORDER = [
     "enrichment",
     "magic",
     "nuclear_data",
+    "dose",
     "parsers",
     "activation",
     "emit",

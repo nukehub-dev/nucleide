@@ -66,6 +66,23 @@ references:
     source: Nucleide implementation
     date: "2026"
     type: misc
+  - id: bateman-1910
+    title: "Solution of a system of differential equations occurring in the theory of radioactive transformations"
+    url: https://ocw.mit.edu/courses/12-744-marine-isotope-chemistry-fall-2012/7997df0810fedf7a37d24671a40ec68a_MIT12_744F12_rd1910Btmn.pdf
+    authors: ["H. Bateman"]
+    source: Proceedings of the Cambridge Philosophical Society
+    journal: Proceedings of the Cambridge Philosophical Society
+    volume: "15"
+    pages: "423–427"
+    date: "1910"
+    type: article
+  - id: kim-2015
+    title: "Specification for the VERA Depletion Benchmark Suite"
+    url: https://info.ornl.gov/sites/publications/files/Pub61302.pdf
+    authors: ["K. S. Kim"]
+    source: CASL-U-2015-1014-000 / CASL-X-2015-1014-000 (Rev. 0)
+    date: "2015"
+    type: misc
 ---
 
 Nucleide solves nuclide transmutation over a single time step using a **burnup
@@ -271,7 +288,7 @@ $\alpha_0 = 2.124853710495224 \times 10^{-16}$.
 
 For decay-only chains the burnup matrix is lower-triangular $\mathbf{\Lambda}$
 and the depletion equation admits a closed form (Bateman, *Proc. Cambridge
-Philos. Soc.* 15 (1910), 423–427):
+Philos. Soc.* 15 (1910), 423–427)<Citation id="bateman-1910" />:
 
 $$
 \frac{d\mathbf{N}}{dt} = \mathbf{\Lambda}\,\mathbf{N},
