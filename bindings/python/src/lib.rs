@@ -3175,8 +3175,9 @@ fn normalize_nuclide(name: &str) -> PyResult<String> {
 /// Decay heat [W] of a composition dict ({nuclide name: grams}).
 ///
 /// Screening-level estimate via `Material::total_decay_heat` (Ame2020 masses,
-/// ENDF/B-VIII.0 decay constants, placeholder decay energies). Errors when a
-/// nuclide lacks mass, decay, or energy data.
+/// ENDF/B-VIII.0 decay constants, placeholder decay energies). Stable
+/// nuclides (known mass, no decay constant) contribute 0. Errors when a
+/// nuclide lacks mass data, or a radioactive nuclide lacks energy data.
 #[pyfunction]
 fn decay_heat(comp: BTreeMap<String, f64>) -> PyResult<f64> {
     let mat = comp_to_material(comp)?;
@@ -3220,8 +3221,10 @@ fn dose_factor(name: &str, pathway: &str, source: &str) -> PyResult<Option<f64>>
 /// of `air`/`soil`/`ingest`/`inhale`; source is `EPA`/`DOE`/`GENII` (default
 /// `EPA`). Units follow the table: air `mrem/h per g per m^3`, soil
 /// `mrem/h per g per m^2`, ingest/inhale `mrem per g`. Screening-level only —
-/// not for safety decisions. Errors when a nuclide lacks mass, decay, or
-/// dose data (including `-1` GENII/DOE air sentinels).
+/// not for safety decisions. Stable nuclides (known mass, no decay constant)
+/// contribute 0 without a dose-factor lookup. Errors when a nuclide lacks
+/// mass data, or a radioactive nuclide lacks dose data (including `-1`
+/// GENII/DOE air sentinels).
 #[pyfunction]
 #[pyo3(signature = (comp, pathway, source="EPA"))]
 fn dose_per_g(comp: BTreeMap<String, f64>, pathway: &str, source: &str) -> PyResult<f64> {

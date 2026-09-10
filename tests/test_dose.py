@@ -84,3 +84,40 @@ class TestDosePerG:
         # 1 g K-40 soil EPA per-gram dose is large but finite; check magnitude.
         got = nucleide.material.dose_per_g({"K40": 1.0}, "soil", "EPA")
         assert math.isfinite(got) and got > 0.0
+
+
+class TestStableZero:
+    def test_h1_dose_air_is_zero(self) -> None:
+        assert nucleide.material.dose_per_g({"H1": 1.0}, "air") == 0.0
+
+    def test_water_dose_heat_activity_zero(self) -> None:
+        water = {"H1": 2.0, "O16": 1.0}
+        for pathway in ("air", "soil", "ingest", "inhale"):
+            assert nucleide.material.dose_per_g(water, pathway) == 0.0
+        assert nucleide.material.decay_heat(water) == 0.0
+        out = nucleide.material.activity(water)
+        assert out["H1"] == 0.0 and out["O16"] == 0.0
+        assert out["specific"] == 0.0
+
+    def test_mixed_stable_matches_radioactive_only(self) -> None:
+        pure_heat = nucleide.material.decay_heat({"U235": 1.0})
+        assert nucleide.material.decay_heat({"U235": 1.0, "H1": 1.0}) == pytest.approx(
+            pure_heat, rel=1e-12
+        )
+        pure_dose = nucleide.material.dose_per_g({"U235": 1.0}, "ingest", "EPA")
+        mixed_dose = nucleide.material.dose_per_g({"U235": 1.0, "H1": 1.0}, "ingest", "EPA")
+        assert mixed_dose == pytest.approx(pure_dose / 2.0, rel=1e-12)
+        pure_act = nucleide.material.activity({"U235": 1.0})
+        mixed_act = nucleide.material.activity({"U235": 1.0, "H1": 1.0})
+        assert mixed_act["U235"] == pytest.approx(pure_act["U235"], rel=1e-12)
+        assert mixed_act["H1"] == 0.0
+
+    def test_unknown_nuclide_still_errors(self) -> None:
+        # Og296 parses but has no mass data anywhere: never silent zeros.
+        assert nucleide.nuclei.atomic_mass("Og296") is None
+        with pytest.raises(ValueError, match="no atomic mass"):
+            nucleide.material.dose_per_g({"Og296": 1.0}, "ingest", "EPA")
+        with pytest.raises(ValueError, match="no atomic mass"):
+            nucleide.material.decay_heat({"Og296": 1.0})
+        with pytest.raises(ValueError, match="no atomic mass"):
+            nucleide.material.activity({"Og296": 1.0})

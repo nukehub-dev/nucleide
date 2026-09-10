@@ -145,6 +145,22 @@ def main() -> int:
     report.prose(f"1 g K-40 soil EPA per-gram dose: {fmt(k40)} mrem/h per g per m^2.")
     _check(math.isfinite(k40) and k40 > 0.0, "K40 per-gram dose finite/positive")
 
+    # Stable-as-zero (in-memory only; no report rows): H2O members carry
+    # mass data but no decay data, so every observable is exactly 0.0.
+    water = {"H1": 2.0, "O16": 1.0}
+    for pw in ("air", "soil", "ingest", "inhale"):
+        for src in ("EPA", "DOE", "GENII"):
+            _check(
+                nucleide.material.dose_per_g(water, pw, src) == 0.0,
+                f"H2O {pw} {src} dose is stable-zero",
+            )
+    _check(nucleide.material.decay_heat(water) == 0.0, "H2O heat is stable-zero")
+    wact = nucleide.material.activity(water)
+    _check(
+        wact.get("H1") == 0.0 and wact.get("O16") == 0.0 and wact.get("specific") == 0.0,
+        "H2O activity is stable-zero",
+    )
+
     try:
         report.emit()
     except Exception as exc:

@@ -478,6 +478,13 @@ impl std::fmt::Debug for Analytics<'_> {
 #[derive(Debug, Error)]
 pub enum AnalyticsError {
     /// No decay data was available for a requested nuclide.
+    ///
+    /// Reserved for provider-level absence. The built-in analytics paths
+    /// below never construct this anymore: a known atomic mass with no
+    /// decay constant is a stable nuclide (λ = 0) and contributes exactly
+    /// 0.0 instead of erroring, so only a genuinely unknown nuclide (no
+    /// mass data, [`crate::Error::MissingMass`]) can still fail. The
+    /// variant is retained for API compatibility.
     #[error("no decay data available for nuclide `{0}`")]
     MissingDecay(NuclideId),
     /// No mean decay energy was available for a requested nuclide.
@@ -591,10 +598,12 @@ impl Material {
     ///
     /// Atom counts follow from stored masses through `masses`
     /// (`N = m / (M · u)` with `u = 1.66053906892e-24 g`) and decay
-    /// constants through `decays`. Fails with
-    /// [`AnalyticsError::MissingDecay`] for nuclides without decay data and
-    /// [`AnalyticsError::Core`] wrapping [`crate::Error::MissingMass`] when
-    /// an atomic mass is unknown.
+    /// constants through `decays`. Stable-as-zero: a known atomic mass
+    /// with no decay constant is a stable nuclide (λ = 0, mirroring the
+    /// chain rule where `None` decay → 0.0) and contributes exactly 0.0.
+    /// Fails with [`AnalyticsError::Core`] wrapping
+    /// [`crate::Error::MissingMass`] when an atomic mass is unknown, so
+    /// genuinely unknown nuclides never collapse to silent zeros.
     pub fn activity(
         &self,
         analytics: &Analytics<'_>,
@@ -605,10 +614,7 @@ impl Material {
                 .masses
                 .mass(id.nucid())
                 .ok_or(crate::Error::MissingMass(id))?;
-            let lambda = analytics
-                .decays
-                .decay_constant(id.nucid())
-                .ok_or(AnalyticsError::MissingDecay(id))?;
+            let lambda = analytics.decays.decay_constant(id.nucid()).unwrap_or(0.0);
             let atoms = grams / (mass_u * GRAMS_PER_U);
             out.insert(id, lambda * atoms);
         }
@@ -641,9 +647,11 @@ impl Material {
     /// [`DecayEnergies`]), so heat numbers are order-of-magnitude checks,
     /// not calorimetry.
     ///
-    /// Fails with [`AnalyticsError::MissingEnergy`] for nuclides without a
-    /// decay-energy row; otherwise identical error behavior to
-    /// [`Material::activity`].
+    /// Fails with [`AnalyticsError::MissingEnergy`] for radioactive
+    /// nuclides without a decay-energy row; stable nuclides (zero
+    /// activity, hence `P = A·E = 0` regardless of `E`) skip the energy
+    /// lookup and contribute exactly 0.0. Otherwise identical error
+    /// behavior to [`Material::activity`].
     pub fn decay_heat(
         &self,
         analytics: &Analytics<'_>,
@@ -652,6 +660,12 @@ impl Material {
         let activities = self.activity(analytics)?;
         let mut out = BTreeMap::new();
         for (&id, &activity_bq) in &activities {
+            // Exact zero by construction (λ = 0 or zero stored mass); no
+            // energy row exists for stable nuclides, and none is needed.
+            if activity_bq == 0.0 {
+                out.insert(id, 0.0);
+                continue;
+            }
             let mev = energies
                 .decay_energy_mev(id.nucid())
                 .ok_or(AnalyticsError::MissingEnergy(id))?;
@@ -690,9 +704,12 @@ impl Material {
     /// soil `mrem/h per g per m^2`, ingest/inhale `mrem per g`. The returned
     /// map holds each nuclide's per-gram contribution; sum for the total.
     ///
-    /// Screening-level only — not for safety decisions. Fails with
-    /// [`AnalyticsError::MissingDose`] when a factor is absent or negative
-    /// (`-1` GENII/DOE air sentinel); otherwise identical error behavior to
+    /// Screening-level only — not for safety decisions. Stable nuclides
+    /// (known mass, λ = 0 or absent) contribute exactly 0.0 and skip the
+    /// `doses` lookup entirely, so no [`AnalyticsError::MissingDose`] is
+    /// raised for them. Fails with [`AnalyticsError::MissingDose`] when a
+    /// radioactive nuclide's factor is absent or negative (`-1` GENII/DOE
+    /// air sentinel); otherwise identical error behavior to
     /// [`Material::activity`] (plus `Degenerate` for empty materials).
     pub fn dose_per_g(
         &self,
@@ -715,10 +732,11 @@ impl Material {
                 .masses
                 .mass(id.nucid())
                 .ok_or(crate::Error::MissingMass(id))?;
-            let lambda = analytics
-                .decays
-                .decay_constant(id.nucid())
-                .ok_or(AnalyticsError::MissingDecay(id))?;
+            let lambda = analytics.decays.decay_constant(id.nucid()).unwrap_or(0.0);
+            if lambda <= 0.0 {
+                out.insert(id, 0.0);
+                continue;
+            }
             let df = doses
                 .dose_factor(id.nucid(), pathway, source)
                 .filter(|v| v.is_finite() && *v >= 0.0)
@@ -1114,7 +1132,10 @@ mod radio_tests {
     }
 
     #[test]
-    fn no_decay_provider_yields_missing_decay_error() {
+    fn no_decay_provider_treats_known_masses_as_stable_zero() {
+        // Provider-level absence resolves through the same stable-as-zero
+        // rule: a known mass with no decay constant contributes 0.0 rather
+        // than raising MissingDecay.
         let mut mat = Material::new();
         mat.add_nuclide(nid("Co60"), 1.0);
 
@@ -1122,10 +1143,9 @@ mod radio_tests {
             masses: &Ame2020,
             decays: &NoDecay,
         };
-        match mat.activity(&analytics).unwrap_err() {
-            AnalyticsError::MissingDecay(id) => assert_eq!(id, nid("Co60")),
-            other => panic!("{other:?}"),
-        }
+        let activity = mat.activity(&analytics).unwrap();
+        assert_eq!(activity[&nid("Co60")], 0.0);
+        assert_eq!(mat.specific_activity(&analytics).unwrap(), 0.0);
     }
 
     #[test]
@@ -1343,16 +1363,19 @@ mod radio_tests {
             masses: &Ame2020,
             decays: &ChainDecays,
         };
-        // Fe56 is stable with no dose row.
+        // Fe56 is stable with no dose row: stable-as-zero skips the dose
+        // provider, so it contributes exactly 0.0 instead of erroring.
         let mut fe = Material::new();
         fe.add_nuclide(nid("Fe56"), 1.0);
-        match fe
+        let fe_dose = fe
             .dose_per_g(&analytics, &DoseFactors, P::Ingest, S::Epa)
-            .unwrap_err()
-        {
-            AnalyticsError::MissingDecay(_) | AnalyticsError::MissingDose(_) => {}
-            other => panic!("{other:?}"),
-        }
+            .unwrap();
+        assert_eq!(fe_dose[&nid("Fe56")], 0.0);
+        assert_eq!(
+            fe.total_dose_per_g(&analytics, &DoseFactors, P::Ingest, S::Epa)
+                .unwrap(),
+            0.0
+        );
         // GENII air is a -1 sentinel, treated as missing.
         let mut h3 = Material::new();
         h3.add_nuclide(nid("H3"), 1.0);
@@ -1381,6 +1404,128 @@ mod radio_tests {
             AnalyticsError::Core(crate::Error::Degenerate) => {}
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn stable_water_contributes_exact_zeros() {
+        use DosePathway as P;
+        use DoseSource as S;
+        // H2O: every member has an AME2020 mass but no decay data, so all
+        // three observables resolve to exactly 0.0 on every pathway/source.
+        let mut mat = Material::new();
+        mat.add_nuclide(nid("H1"), 2.0);
+        mat.add_nuclide(nid("O16"), 16.0);
+        let analytics = Analytics {
+            masses: &Ame2020,
+            decays: &ChainDecays,
+        };
+
+        let activity = mat.activity(&analytics).unwrap();
+        assert_eq!(activity[&nid("H1")], 0.0);
+        assert_eq!(activity[&nid("O16")], 0.0);
+        assert_eq!(mat.specific_activity(&analytics).unwrap(), 0.0);
+
+        let heat = mat.decay_heat(&analytics, &DecayEnergies).unwrap();
+        assert_eq!(heat[&nid("H1")], 0.0);
+        assert_eq!(heat[&nid("O16")], 0.0);
+        assert_eq!(
+            mat.total_decay_heat(&analytics, &DecayEnergies).unwrap(),
+            0.0
+        );
+
+        for pathway in [P::Air, P::Soil, P::Ingest, P::Inhale] {
+            for source in [S::Epa, S::Doe, S::Genii] {
+                let dose = mat
+                    .dose_per_g(&analytics, &DoseFactors, pathway, source)
+                    .unwrap();
+                assert_eq!(dose[&nid("H1")], 0.0, "{pathway:?}/{source:?}");
+                assert_eq!(dose[&nid("O16")], 0.0, "{pathway:?}/{source:?}");
+                assert_eq!(
+                    mat.total_dose_per_g(&analytics, &DoseFactors, pathway, source)
+                        .unwrap(),
+                    0.0,
+                    "{pathway:?}/{source:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn mixed_stable_plus_radioactive_matches_radioactive_only() {
+        use DosePathway as P;
+        use DoseSource as S;
+        // Activity and heat are absolute per nuclide: the U235 entries are
+        // identical with or without the stable diluent, which adds 0.0.
+        let mut mixed = Material::new();
+        mixed.add_nuclide(nid("U235"), 1.0);
+        mixed.add_nuclide(nid("H1"), 1.0);
+        let mut pure = Material::new();
+        pure.add_nuclide(nid("U235"), 1.0);
+        let analytics = Analytics {
+            masses: &Ame2020,
+            decays: &ChainDecays,
+        };
+
+        let mixed_act = mixed.activity(&analytics).unwrap();
+        let pure_act = pure.activity(&analytics).unwrap();
+        assert_eq!(mixed_act[&nid("U235")], pure_act[&nid("U235")]);
+        assert!(pure_act[&nid("U235")] > 0.0);
+        assert_eq!(mixed_act[&nid("H1")], 0.0);
+
+        let mixed_heat = mixed.decay_heat(&analytics, &DecayEnergies).unwrap();
+        let pure_heat = pure.decay_heat(&analytics, &DecayEnergies).unwrap();
+        assert_eq!(mixed_heat[&nid("U235")], pure_heat[&nid("U235")]);
+        assert!(pure_heat[&nid("U235")] > 0.0);
+        assert_eq!(mixed_heat[&nid("H1")], 0.0);
+
+        // Dose is per gram, so the U235 entry scales by its weight fraction
+        // (1/2 here) while H1 contributes exactly 0.0.
+        let mixed_dose = mixed
+            .dose_per_g(&analytics, &DoseFactors, P::Ingest, S::Epa)
+            .unwrap();
+        let pure_dose = pure
+            .dose_per_g(&analytics, &DoseFactors, P::Ingest, S::Epa)
+            .unwrap();
+        assert_eq!(mixed_dose[&nid("H1")], 0.0);
+        assert_eq!(mixed_dose[&nid("U235")], pure_dose[&nid("U235")] * 0.5);
+    }
+
+    #[test]
+    fn unknown_nuclide_without_mass_still_errors() {
+        use DosePathway as P;
+        use DoseSource as S;
+        // Og296 parses (Z = 118) but has no AME2020 row anywhere: the
+        // guard rail against silent zeros for genuinely unknown nuclides.
+        let og = nid("Og296");
+        assert_eq!(
+            nucleide_nuclei::data::atomic_mass(og.nucid()),
+            None,
+            "Og296 must stay absent from the mass table"
+        );
+        let mut mat = Material::new();
+        mat.add_nuclide(og, 1.0);
+        let analytics = Analytics {
+            masses: &Ame2020,
+            decays: &ChainDecays,
+        };
+
+        match mat.activity(&analytics).unwrap_err() {
+            AnalyticsError::Core(crate::Error::MissingMass(id)) => assert_eq!(id, og),
+            other => panic!("{other:?}"),
+        }
+        match mat.decay_heat(&analytics, &DecayEnergies).unwrap_err() {
+            AnalyticsError::Core(crate::Error::MissingMass(id)) => assert_eq!(id, og),
+            other => panic!("{other:?}"),
+        }
+        match mat
+            .dose_per_g(&analytics, &DoseFactors, P::Ingest, S::Epa)
+            .unwrap_err()
+        {
+            AnalyticsError::Core(crate::Error::MissingMass(id)) => assert_eq!(id, og),
+            other => panic!("{other:?}"),
+        }
+        let msg = crate::Error::MissingMass(og).to_string();
+        assert!(msg.contains("Og296"), "{msg}");
     }
 
     #[test]

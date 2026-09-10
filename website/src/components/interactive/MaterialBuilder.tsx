@@ -192,9 +192,9 @@ export function MaterialBuilder() {
             <p className="text-sm font-medium">Dose per gram (screening only)</p>
             <p className="text-xs text-muted-foreground">
               Screening-level dose per gram of the current formula from the vendored HNF-5636 tables
-              — not for safety decisions. Compositions with nuclides outside the tables, or fully
-              stable compositions such as H2O (no decay data means no activity to convert), report
-              an inline error instead of a value.
+              — not for safety decisions. Fully stable compositions such as H2O return 0 (no
+              activity to convert). Compositions with nuclides outside the tables report an inline
+              error instead of a value.
             </p>
             <div className="flex flex-wrap items-end gap-2">
               <div className="space-y-1 min-w-28">

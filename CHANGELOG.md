@@ -13,6 +13,17 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Fixed
+
+- Stable-as-zero analytics (`nucleide-material`): a known nuclide with mass
+  data but no decay constant is now stable (λ = 0) and contributes exactly
+  0.0 to `activity` / `decay_heat` / `dose_per_g` instead of raising
+  `MissingDecay`. Stable nuclides skip the dose-factor lookup entirely, so
+  fully stable compositions such as H2O return 0 on every pathway/source.
+  Nuclides with no mass data still raise `MissingMass`, and radioactive
+  nuclides without a dose row (including `-1` air sentinels) still raise
+  `MissingDose`. Python/WASM signatures are unchanged.
+
 ## [0.4.0] - 2026-09-10
 
 ### Added

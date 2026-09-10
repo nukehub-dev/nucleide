@@ -2526,8 +2526,10 @@ pub fn dose_factor(
 /// `air`/`soil`/`ingest`/`inhale`; `source` is `EPA`/`DOE`/`GENII` (default
 /// `EPA`). Units follow the table: air `mrem/h per g per m^3`, soil
 /// `mrem/h per g per m^2`, ingest/inhale `mrem per g`. Screening-level only —
-/// not for safety decisions. Throws when a nuclide lacks mass, decay, or dose
-/// data (including `-1` GENII/DOE air sentinels).
+/// not for safety decisions. Stable nuclides (known mass, no decay constant)
+/// contribute 0 without a dose-factor lookup. Throws when a nuclide lacks
+/// mass data, or a radioactive nuclide lacks dose data (including `-1`
+/// GENII/DOE air sentinels).
 #[wasm_bindgen(js_name = dosePerGram)]
 pub fn dose_per_gram(comp: JsValue, pathway: &str, source: Option<String>) -> Result<f64, JsValue> {
     let mat = comp_to_emit_material(comp)?;

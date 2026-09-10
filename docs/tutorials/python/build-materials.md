@@ -80,8 +80,9 @@ print(dose_per_g({"Co60": 1.0}, "ingest"))  # mrem per g
 print(dose_per_g({"Co60": 1.0}, "air"))  # mrem/h per g per m^3
 ```
 
-Nuclides lacking mass, decay, or dose data (including the `-1`
-sentinels) are errors.
+Nuclides lacking mass data are errors, as are radioactive nuclides
+lacking dose data (including the `-1` sentinels). Stable nuclides — known
+mass but no decay constant — contribute exactly 0.
 
 ## See also
 
