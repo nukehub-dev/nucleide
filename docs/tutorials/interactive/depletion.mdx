@@ -38,6 +38,19 @@ required) before any solve runs.
 
 <InteractiveDemo kind="depletion" />
 
+## Solver method
+
+The demo's **Solver method** selector mirrors the Python `method=`
+spelling (`cram48` default, `cram16`, `bateman`, `bateman_hp`): an
+explicitly non-default choice overrides the CRAM order on both the
+one-step `deplete` call and the `depleteSeries` burnup path. The Bateman
+arms evaluate the analytic closed form and fall back to CRAM-48 outside
+decay-only triangular topology (near-degenerate half-lives, cyclic or
+out-of-order chains, live reactions); long chains can still suffer
+float64 cancellation, so CRAM-48 stays the default. See the
+[Run depletion](../python/run-depletion.md) tutorial for the D1–D4
+fallback rule and the conditioning limits.
+
 ## Multi-step series and decay heat
 
 `depleteSeries(chain, n0, dts, rates, integrator, order)` threads the core

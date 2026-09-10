@@ -35,6 +35,34 @@ t4 = mt.tallies[4]
 print(t4.dims(), t4.num_ves())
 ```
 
+`result_array()` / `totals_array()` expose the same tables as NumPy
+arrays (requires NumPy at runtime; `to_list()` / `totals_list()` stay
+the NumPy-free plain-copy path). Each returns a `(result, rel_error)`
+pair: `result_array()` yields owned writable C-order float64
+`(ve, group)` arrays with `ve = (i * ny + j) * nz + k`, while
+`totals_array()` yields `(num_ves,)` totals pairs:
+
+```python
+import numpy as np
+
+from nucleide.mcnp import read_meshtal
+
+mt = read_meshtal("fixtures/mcnp/meshtal/mcnp_meshtal_single_meshtal.txt")
+t = mt.tallies[4]
+result, rel_err = t.result_array()
+print(result.shape, result.dtype, result.flags["C_CONTIGUOUS"])
+totals, totals_err = t.totals_array()
+print(totals.shape, totals.dtype)
+```
+
+Two hardening notes for deck-adjacent work: cell-`FILL` universe
+matrices are capped at 1 000 000 cells (hostile `i:j` ranges fail with
+a cap error before any allocation — larger lattices must be built
+programmatically), and raw nucid integers outside the validated
+`(Z, A, state)` domain render the diagnostic `Z{z}A{a}[m{s}]` fallback
+in `to_name` / ARMI labels instead of panicking (validate untrusted
+integers with `try_from_nucid` / `is_valid` on the Rust side).
+
 ## MCTAL, WWINP, PTRAC, and SSW
 
 ```python

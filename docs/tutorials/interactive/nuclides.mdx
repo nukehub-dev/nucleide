@@ -47,6 +47,19 @@ identifier into:
 - **FLUKA**: `235-U` (via `fluka()`)
 - **CINDER**: numeric Cinder ID
 
+## Free-form names, decay branches, and isomer masses (Python-only)
+
+The Python `nuclei` surface resolves free-form spellings symbol-first
+then mass-first (`241Pu` → `Pu241`, `Ba-137m` → `Ba137_m1`,
+`Ir-192n` → `Ir192_m2`; bare symbols rejected), lists ENDF/B-VIII.0
+per-branch `(daughter, fraction, mode)` rows via `decay_branches` /
+`decay_branch_fraction`, and carries isomer masses (each isomer tape's
+File-1 MT451 excitation energy over the AME2020 ground state, so
+`Ba137_m1` outweighs `Ba137`; tapeless isomers fall back to the ground
+state). See the
+[Run depletion](../python/run-depletion.md#nuclide-names-decay-branches-and-isomer-masses)
+tutorial for a worked snippet.
+
 ## See also
 
 - Theory: [Nuclear data](../../theory/nuclear-data.mdx)

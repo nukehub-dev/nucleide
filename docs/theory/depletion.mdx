@@ -188,9 +188,11 @@ cheaper; CRAM-48 is the production default.
   $\alpha_0 = 2.258038182743983 \times 10^{-47}$ (order-48); order-16
   $k{=}1$ pole $\theta_1 = 3.509103608414918 + 8.436198985884374\,i$ with
   $\alpha_1 = 5.464930576870210{\times}10^3 - 3.797983575308356{\times}10^4\,i$.
-  The order-16 table below is a full transcription guard; order-48 still
-  needs a pinned-values unit test in `cram.rs` (recorded in the decision
-  log — coefficient values must not change).
+  The order-16 table below is a full transcription guard; the order-48
+  anchors are pinned by the
+  `coefficient_tests::pinned_coefficient_anchors` transcription-guard test
+  in `crates/depletion/src/cram.rs` (recorded in the decision log —
+  coefficient values must not change).
 </Callout>
 
 <DataTable

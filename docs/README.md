@@ -27,13 +27,13 @@ license.
 | [Tutorials](tutorials/index.md) | Tutorial index and suggested reading order |
 | [Getting started](tutorials/getting-started.md) | Install Nucleide from PyPI and run your first Python snippet |
 | [Python tutorials](tutorials/python/index.md) | Python tutorial index and suggested reading order |
-| [Parse MCNP output](tutorials/python/parse-mcnp-output.md) | Read xsdir, meshtal, MCTAL, WWINP, PTRAC, and SSW files |
-| [Build materials](tutorials/python/build-materials.md) | Build materials from formulae, mix compositions, and export XML |
-| [Run depletion](tutorials/python/run-depletion.md) | Load a depletion chain and run single-step and multi-step CRAM solves |
+| [Parse MCNP output](tutorials/python/parse-mcnp-output.md) | Read xsdir, meshtal, MCTAL, WWINP, PTRAC, and SSW files, including the NumPy meshtal bridge |
+| [Build materials](tutorials/python/build-materials.md) | Build materials from formulae, mix compositions, export XML, and screen dose per gram |
+| [Run depletion](tutorials/python/run-depletion.md) | Load a depletion chain and run single-step and multi-step CRAM/Bateman solves |
 | [Enrichment cascade](tutorials/python/enrichment-cascade.md) | Set up and solve a multicomponent enrichment cascade |
-| [Activation analysis](tutorials/python/activation-analysis.md) | Read ALARA, FISPACT-II, and ORIGEN files and assemble an R2S workflow |
+| [Activation analysis](tutorials/python/activation-analysis.md) | Read ALARA, FISPACT-II, and ORIGEN files and assemble an R2S workflow, including ARMI snapshots |
 | [Deterministic I/O](tutorials/python/deterministic-io.md) | Read ISOTXS and flux files and write PARTISN decks |
-| [Emit code cards](tutorials/python/emit-cards.md) | Render one material to MCNP, Serpent, FLUKA, ALARA, and PARTISN cards |
+| [Emit code cards](tutorials/python/emit-cards.md) | Render one material to MCNP, Serpent, FLUKA, ALARA, and PARTISN cards, including ARMI blueprint keys |
 | [Interactive tutorials](tutorials/interactive/index.mdx) | Run Nucleide in the browser through the WASM build |
 | [Interactive — nuclides](tutorials/interactive/nuclides.mdx) | Nuclide identifiers and nuclear data |
 | [Interactive — materials](tutorials/interactive/materials.mdx) | Formulas, fractions, mixing, and XML export |

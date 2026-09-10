@@ -25,6 +25,8 @@ assumes you have already installed the project (see
    and ORIGEN files and assemble an R2S workflow.
 9. [Deterministic I/O](python/deterministic-io.md) — read ISOTXS and flux files
    and write PARTISN decks.
+10. [Emit code cards](python/emit-cards.md) — render one material to MCNP,
+    Serpent, FLUKA, ALARA, and PARTISN cards with a mass-drift report.
 
 ## Finding more examples
 

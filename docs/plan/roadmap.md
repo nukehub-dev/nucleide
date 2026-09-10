@@ -44,11 +44,25 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   ALARA/CCCC/FISPACT/ORIGEN/R2S checks on committed fixtures vs PyNE oracle
   probes + synthetic self-consistency.
 - Documentation website with interactive WASM tutorials (`website/`).
+- Five-dialect card emission with mass-drift report (`emit`).
+- ARMI blueprint-key bridge to emission (`emit`).
+- Dose factors (`nuclei`) and dose per gram (`material`).
+- L3 semantic deck objects with validation (`mcnp-io`).
+- Analytic Bateman fast path with `method=` selector (`depletion`).
+- Deck-editor demo and WASM decay inventory (`bindings/wasm`, `website`).
+- ARMI database-snapshot adapter (`r2s`).
+- License-free ENDF/B-VIII.0 decay-data pack: branches, isomer masses,
+  free-form name normalizer (`nuclei`).
+- `MeshTally.result_array()` / `totals_array()` NumPy bridge (`mcnp-io`).
+- Library/inventory charts in the interactive demos (`website`).
+- Hardened guards: invalid-id fallback labels, poisoned-lock errors,
+  cell-`FILL` cap, Bateman `n0` validation, snapshot-mixture error.
 
 ## Upcoming priorities
 
 - Stabilize the Rust public API across all crates.
-- Extend zero-copy bridges where it improves Python ergonomics.
+- Extend zero-copy NumPy bridges to the remaining tally surfaces (MCTAL,
+  WWINP, PTRAC histograms) where it improves Python ergonomics.
 - Cut releases: `vX.Y.Z` tags publish Python wheels to PyPI and workspace
   crates to crates.io.
 

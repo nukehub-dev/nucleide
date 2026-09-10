@@ -30,6 +30,69 @@ result = deplete(chain, n0, dt=1e6, rates=rates, order=48)
 
 `order` selects CRAM-16 or CRAM-48.
 
+## Pick the solver kernel with `method=`
+
+`deplete`, `deplete_series`, `DepletionSystem.solve` / `solve_vec`, and
+`Inventory.decay` all accept `method=` (`"cram16"`, `"cram48"`,
+`"bateman"`, `"bateman_hp"`; default `"cram48"`). An explicitly
+non-default `method` overrides `order`; omit it (or pass `"cram48"`) to
+keep the legacy `order` behavior. The Bateman arms evaluate the analytic
+closed form per step and fall back to CRAM-48 — never an error — outside
+decay-only triangular topology: (D1) near-degenerate half-lives
+(`1e-12` relative gap with a live coupling path), (D2) cyclic or
+out-of-order topology, (D3) stable nuclides via inline limit forms, and
+(D4) live reactions or fission. The closed form sums alternating-sign
+terms, so long chains (tens of members) or extreme half-life spreads can
+suffer catastrophic cancellation in float64 — `bateman_hp` (magnitude-
+sorted terms, Neumaier compensation, `exp_m1` for small `λt`) extends the
+usable range, but ill-conditioned chains should use CRAM-48, which stays
+the default. `n0` entries must be finite atom counts `>= 0` on the
+Bateman path (other spellings are errors, as are non-positive or
+non-finite `dt` values other than exactly `0.0`, which echoes the input):
+
+```python
+from nucleide.depletion import deplete, read_chain
+
+chain = read_chain("fixtures/depletion/chain_abc.xml")
+n0 = {"A": 1.0e15}
+for method in ("cram48", "cram16", "bateman", "bateman_hp"):
+    out = deplete(chain, n0, dt=1.0e5, method=method)
+    print(method, f"{out['B']:.4e}")
+```
+
+For the kernel math and the D1–D4 limits see the
+[Depletion theory](../../theory/depletion.mdx) page.
+
+## Nuclide names, decay branches, and isomer masses
+
+Chain lookups key on GNDS names, and the `nuclei` tables behind them
+accept free-form spellings. `normalize_nuclide` resolves symbol-first
+(`N15` stays nitrogen) then mass-first (`92235` stays a ZAID); bare
+symbols are rejected and `Ir-192n` resolves to state 2:
+
+```python
+from nucleide.nuclei import (
+    atomic_mass,
+    decay_branches,
+    decay_branch_fraction,
+    normalize_nuclide,
+)
+
+print(normalize_nuclide("241Pu"))  # Pu241
+print(normalize_nuclide("Ba-137m"))  # Ba137_m1
+print(normalize_nuclide("Ir-192n"))  # Ir192_m2
+print(decay_branches("K40"))
+print(decay_branch_fraction("K40", "Ca40"))
+print(atomic_mass("Ba137_m1"), atomic_mass("Ba137"))
+```
+
+`decay_branches` lists per-branch `(daughter, fraction, mode)` rows from
+the ENDF/B-VIII.0 decay tapes (SF/fission branches dropped); isomer
+masses extend the AME2020 ground-state table with each isomer tape's
+File-1 MT451 excitation energy (`m_ground + ELIS/931.49410242 u`),
+falling back to the ground-state mass where no tape exists. Q-values
+stay ground-state-only.
+
 ## Run a multi-step series
 
 `deplete_series` threads single-step CRAM solves forward over a list of step

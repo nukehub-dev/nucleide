@@ -35,6 +35,12 @@ const INTEGRATOR_OPTIONS = [
   { value: "cf4", label: "cf4" },
 ];
 
+const METHOD_OPTIONS = [
+  { value: "cram48", label: "cram48" },
+  { value: "bateman", label: "bateman" },
+  { value: "bateman_hp", label: "bateman_hp" },
+];
+
 const MAX_BURNUP_STEPS = 200;
 const DEFAULT_BURNUP_STEPS = 50;
 
@@ -45,6 +51,7 @@ export function DepletionStep() {
   const [dt, setDt] = useState(86400.0);
   const [order, setOrder] = useState<16 | 48>(48);
   const [integrator, setIntegrator] = useState<"predictor" | "cecm" | "cf4">("predictor");
+  const [method, setMethod] = useState<"cram48" | "bateman" | "bateman_hp">("cram48");
   const [showHeat, setShowHeat] = useState(true);
   const [result, setResult] = useState<Record<string, number> | null>(null);
   const [burnupSteps, setBurnupSteps] = useState(DEFAULT_BURNUP_STEPS);
@@ -98,7 +105,7 @@ export function DepletionStep() {
     try {
       const chain = wasm.WasmChain.fromXml(xml);
       const n0 = parseN0();
-      const out = wasm.deplete(chain, n0, parseDt(), {}, order);
+      const out = wasm.deplete(chain, n0, parseDt(), {}, order, method);
       setResult(out);
       setLocalError(null);
     } catch (e) {
@@ -120,7 +127,7 @@ export function DepletionStep() {
         // returns the t = 0 initial row plus one row per step.
         const dtValue = parseDt();
         const dts = Array(steps).fill(dtValue);
-        const series = wasm.depleteSeries(chain, n0, dts, {}, integrator, order);
+        const series = wasm.depleteSeries(chain, n0, dts, {}, integrator, order, method);
         const atomSeries: Record<string, number[]> = {};
         for (const row of series.atoms) {
           for (const [name, value] of Object.entries(row)) {
@@ -196,7 +203,7 @@ export function DepletionStep() {
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1">
               <Label>Time step (s)</Label>
               <Input
@@ -230,6 +237,18 @@ export function DepletionStep() {
                   clearError();
                 }}
                 options={INTEGRATOR_OPTIONS}
+                className="min-w-[120px]"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Solver method</Label>
+              <Select
+                value={method}
+                onChange={(v) => {
+                  setMethod(v as "cram48" | "bateman" | "bateman_hp");
+                  clearError();
+                }}
+                options={METHOD_OPTIONS}
                 className="min-w-[120px]"
               />
             </div>

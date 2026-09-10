@@ -49,6 +49,16 @@ fractions do not need to sum to one; they are normalized internally.
 The `to_xml(name, density)` method produces an OpenMC-style material XML
 fragment, including the canonical nuclide list, densities, and mass fractions.
 
+## Dose per gram and code-card emission (Python-only)
+
+Screening-level dose factors (`dose_factor` over the vendored HNF-5636
+tables; `dose_per_g` per pathway with the `EPA` default) and the
+five-dialect card emitter (`emit_cards` / `emit_drift_table`, plus the
+`emit_armi_cards` ARMI blueprint bridge) live in the Python API only —
+the browser build exposes neither. See the
+[Build materials](../python/build-materials.md) tutorial for dose and the
+[Emit code cards](../python/emit-cards.md) tutorial for emission.
+
 ## See also
 
 - Tutorial: [Build materials](../python/build-materials.md)

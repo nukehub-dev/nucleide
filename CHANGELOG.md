@@ -185,6 +185,39 @@ workspace crates from tags.
   / time step / burnup steps require finite (and positive where applicable)
   values (`website/src/components/interactive/DepletionStep.tsx`,
   `docs/tutorials/interactive/depletion.mdx`).
+- Invalid nuclide-id fallback labels instead of panics (`crates/nuclei/src/
+  lib.rs`, `crates/nuclei/src/armi.rs`): `NuclideId::from_nucid` on a raw
+  integer outside the validated `(Z, A, state)` domain previously panicked
+  downstream — out-of-bounds `ELEMENTS[z]` indexing in `to_name`, or an
+  `.expect()` on the element-symbol lookup in `nucid_to_armi_label`. Both
+  are now total: such ids render the diagnostic fallback `Z{z}A{a}[m{s}]`
+  (with the same `n`-prefix/capitalization treatment on the ARMI side),
+  which `from_name` does not parse. New `try_from_nucid` / `is_valid`
+  validate untrusted integers (`1 <= Z <= 118`, `Z <= A <= 999`, canonical
+  tail) with the matching `Error` instead of producing a fallback id.
+- Poisoned-lock getters now return errors instead of panicking
+  (`bindings/python/src/lib.rs`): every `PyCascade` getter and
+  `PyDeckProblem` getter/setter previously called `.lock().unwrap()`, so a
+  poisoned `Mutex` aborted the interpreter. Each now maps the poison to a
+  `ValueError` (`"cascade lock poisoned"` / `"deck lock poisoned"`).
+- Cell-`FILL` matrix cap at 1 000 000 cells
+  (`crates/mcnp-io/src/semantic.rs`): a hostile `FILL` range such as
+  `-2147483648:2147483647` previously overflowed the `i32` width
+  computation (debug panic / release wrap) and could drive a gigabyte
+  allocation. Widths are now computed in `i64` with checked multiplication,
+  and any matrix above the cap fails with a cap error before allocation;
+  larger lattices must be built programmatically, not spelled per cell.
+- Non-finite `n0` validation at the Bateman solve entry
+  (`crates/depletion/src/bateman.rs`): `BatemanCache::solve` previously
+  propagated NaN/infinite/negative initial counts into the triangular
+  solves. It now rejects them with a `Linalg` error (`n0` must hold finite
+  atom counts `>= 0`), matching the existing `dt`/length-mismatch errors.
+- Snapshot-mixture emission returns an error instead of panicking
+  (`crates/r2s/src/snapshot.rs`, `crates/r2s/src/error.rs`): the
+  `deck_from_snapshot` mixture writer previously ended its entry match with
+  `unreachable!`, so a future non-element variant would panic. It now
+  returns `Error::Invalid` (the `error.rs:16` arm) with the offending
+  entry attached.
 
 ## [0.3.0] - 2026-09-08
 

@@ -110,8 +110,10 @@ higher-order treatment in Pusa (2016) — in `docs/theory/depletion.mdx`,
 with pinned anchors transcribed from the code (order-16/48 `alpha0`, the
 order-16 k=1 pole). No published table number is claimed for order-48
 until confirmed against the coefficients. Coefficient values must not
-change; the `cram.rs` "Pusa & Li" comment correction and the order-48
-pinned-values transcription-guard test belong to the solver owner.
+change; the order-48 pinned-values transcription-guard test has landed as
+`coefficient_tests::pinned_coefficient_anchors` in
+`crates/depletion/src/cram.rs`, while the `cram.rs` "Pusa & Li" comment
+correction belongs to the solver owner.
 
 **Rationale:** Checkability without touching solver code: the IPF variant
 is what the code itself implements, and the two references already exist in
