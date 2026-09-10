@@ -1,6 +1,8 @@
 from collections.abc import Sequence
 from typing import Any, final
 
+import numpy as np
+
 @final
 class Nuclide:
     """A nuclide identifier with naming-convention conversions."""
@@ -118,6 +120,8 @@ class MeshTally:
     def cell_total(self, i: int, j: int, k: int) -> tuple[float, float]: ...
     def to_list(self) -> tuple[list[list[float]], list[list[float]]]: ...
     def totals_list(self) -> tuple[list[float], list[float]]: ...
+    def result_array(self) -> tuple[np.ndarray, np.ndarray]: ...
+    def totals_array(self) -> tuple[np.ndarray, np.ndarray]: ...
 
 @final
 class Meshtal:

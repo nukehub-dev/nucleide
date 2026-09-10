@@ -38,7 +38,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install Python tooling
-        run: pip install maturin pytest pytest-cov ruff mypy
+        run: pip install maturin pytest pytest-cov ruff mypy numpy
 
       - name: Build and install Python extension
         run: |

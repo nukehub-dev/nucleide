@@ -13,6 +13,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3.workspace = true
+numpy.workspace = true
 nucleide-nuclei.workspace = true
 nucleide-material.workspace = true
 nucleide-mcnp-io.workspace = true

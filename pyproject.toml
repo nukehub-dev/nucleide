@@ -19,7 +19,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8"]
+test = ["pytest>=8", "numpy>=1.26"]
 
 [tool.maturin]
 python-source = "python"
@@ -55,13 +55,20 @@ python_version = "3.10"
 strict = true
 # The compiled _internal module is checked via its .pyi stub.
 disallow_untyped_calls = true
+# Local `stubs/` shadows site-packages NumPy, whose bundled stubs use
+# Python 3.12+ `type`-statement syntax that mypy cannot parse under the
+# 3.10 target above (fatal even with follow_imports=skip). The shadow
+# declares only the names `_internal.pyi` needs, as opaque `Any`.
+mypy_path = "stubs"
 
 # Tests only use pytest.approx/raises; treat pytest (and numpy, which local
 # pytest installs pull in and whose stubs require Python 3.12+ syntax) as
 # opaque so `mypy` behaves the same in local envs and CI (which has no numpy).
+# `result_array`/`totals_array` return `np.ndarray` (typed as opaque here).
 [[tool.mypy.overrides]]
 module = ["pytest", "_pytest", "_pytest.*", "numpy", "numpy.*"]
 follow_imports = "skip"
+ignore_missing_imports = true
 
 [tool.coverage.run]
 source = ["nucleide", "tests"]

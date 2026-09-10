@@ -15,6 +15,15 @@ workspace crates from tags.
 
 ### Added
 
+- Python API: `MeshTally.result_array()` / `totals_array()` zero-copy NumPy
+  bridge over the meshtal `result`/`rel_error` tables (supersedes the 0.3.0
+  deferral): `result_array()` returns owned writable C-order float64
+  `(ve, group)` arrays with `ve = (i * ny + j) * nz + k`, moved out of one
+  row-major flatten via `Vec::into_pyarray` + a reshape view (no second
+  copy); `totals_array()` returns `(num_ves,)` totals pairs directly.
+  Requires NumPy installed at runtime (`numpy>=1.26` in the `test` extra;
+  base wheel stays dependency-free). `to_list()` / `totals_list()` stay as
+  the NumPy-free plain-copy path.
 - License-free decay-data pack (`nucleide-nuclei`, AD-7): per-branch
   daughters from ENDF/B-VIII.0 decay tapes
   (`crates/nuclei/src/data/decay_branches.tsv`, 5 068 rows over 3 541

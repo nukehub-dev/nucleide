@@ -60,6 +60,44 @@ class TestMeshtal:
         assert m.tallies[24].particle == "p"
         assert m.tallies[14].num_e_groups() == 1
 
+    def test_result_array(self) -> None:
+        np = pytest.importorskip("numpy")
+        m = nucleide.mcnp.read_meshtal(
+            str(FIXTURES / "meshtal" / "mcnp_meshtal_single_meshtal.txt")
+        )
+        t = m.tallies[4]
+        assert list(t.dims()) == [3, 5, 3]
+        assert t.num_e_groups() == 3
+        r, e = t.result_array()
+        assert isinstance(r, np.ndarray)
+        assert r.shape == (45, 3)
+        assert e.shape == (45, 3)
+        assert r.dtype == np.dtype("float64")
+        assert e.dtype == np.dtype("float64")
+        assert r.flags["C_CONTIGUOUS"]
+        assert e.flags["C_CONTIGUOUS"]
+        assert r.flags["WRITEABLE"]
+        nested_r, nested_e = t.to_list()
+        np.testing.assert_allclose(r, np.asarray(nested_r), rtol=1e-12)
+        np.testing.assert_allclose(e, np.asarray(nested_e), rtol=1e-12)
+        nx, ny, nz = (int(v) for v in t.dims())
+        for i in range(nx):
+            for j in range(ny):
+                for k in range(nz):
+                    ve = (i * ny + j) * nz + k
+                    cell_r, cell_e = t.cell(i, j, k)
+                    np.testing.assert_allclose(r[ve], np.asarray(cell_r), rtol=1e-12)
+                    np.testing.assert_allclose(e[ve], np.asarray(cell_e), rtol=1e-12)
+                    np.testing.assert_allclose(r[ve], np.asarray(nested_r[ve]), rtol=1e-12)
+        tr, te = t.totals_array()
+        assert tr.shape == (45,)
+        assert te.shape == (45,)
+        assert tr.dtype == np.dtype("float64")
+        flat_tr, flat_te = t.totals_list()
+        np.testing.assert_allclose(tr, np.asarray(flat_tr), rtol=1e-12)
+        np.testing.assert_allclose(te, np.asarray(flat_te), rtol=1e-12)
+        assert float(tr[0]) == pytest.approx(flat_tr[0])
+
 
 class TestWwinp:
     def test_neutron(self) -> None:

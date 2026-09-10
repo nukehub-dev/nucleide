@@ -9,6 +9,8 @@ use std::str::FromStr;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
+use numpy::{IntoPyArray, PyArray1, PyArray2, PyArrayMethods};
+
 use nucleide_nuclei::NuclideId;
 
 /// Package version, re-exported to Python.
@@ -432,8 +434,8 @@ impl PyMeshTally {
     }
     /// Full results + relative errors as nested lists (plain copy).
     ///
-    /// Zero-copy `result_array()` via NumPy stays deferred (see the Stream C
-    /// module note); use this until the ndarray/NumPy bridge lands.
+    /// See `result_array` for the zero-copy NumPy bridge over the same data;
+    /// use this when NumPy is unavailable.
     fn to_list(&self) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
         (self.inner.result.clone(), self.inner.rel_error.clone())
     }
@@ -443,6 +445,72 @@ impl PyMeshTally {
             self.inner.total_result.clone(),
             self.inner.total_rel_error.clone(),
         )
+    }
+    /// Full results + relative errors as 2-D float64 NumPy arrays.
+    ///
+    /// Shape is `(ve, group)` with `ve = (i * ny + j) * nz + k` (x slowest,
+    /// z fastest, matching `cell(i, j, k)` and MCNP write order), C-order
+    /// (row-major) float64. Each array is owned, writable, and decoupled
+    /// from the tally: resizing fails (NumPy base semantics) and later
+    /// tally mutation is not reflected. Requires NumPy installed at runtime
+    /// (rust-numpy resolves the C-API at import; the wheel itself stays
+    /// dependency-free).
+    #[allow(clippy::type_complexity)]
+    fn result_array<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> PyResult<(Bound<'py, PyArray2<f64>>, Bound<'py, PyArray2<f64>>)> {
+        let n_ve = self.inner.num_ves();
+        let n_g = self.inner.num_e_groups();
+        let flatten = |rows: &[Vec<f64>], name: &str| -> PyResult<Vec<f64>> {
+            if rows.len() != n_ve {
+                return Err(PyValueError::new_err(format!(
+                    "tally {name}: expected {n_ve} rows, found {}",
+                    rows.len()
+                )));
+            }
+            let mut flat = Vec::with_capacity(n_ve * n_g);
+            for (ve, row) in rows.iter().enumerate() {
+                if row.len() != n_g {
+                    return Err(PyValueError::new_err(format!(
+                        "tally {name}: row {ve} has {} groups, expected {n_g}",
+                        row.len()
+                    )));
+                }
+                flat.extend_from_slice(row);
+            }
+            Ok(flat)
+        };
+        let flat_r = flatten(&self.inner.result, "result")?;
+        let flat_e = flatten(&self.inner.rel_error, "rel_error")?;
+        let arr_r = m_err(
+            flat_r
+                .into_pyarray(py)
+                .reshape((n_ve, n_g))
+                .map_err(|e| e.to_string()),
+        )?;
+        let arr_e = m_err(
+            flat_e
+                .into_pyarray(py)
+                .reshape((n_ve, n_g))
+                .map_err(|e| e.to_string()),
+        )?;
+        Ok((arr_r, arr_e))
+    }
+    /// Per-cell energy-integrated totals + errors as 1-D float64 NumPy arrays.
+    ///
+    /// Shape is `(num_ves,)` in the same `ve = (i * ny + j) * nz + k` order
+    /// as `result_array`. Each array is owned, writable, and decoupled from
+    /// the tally. Requires NumPy installed at runtime.
+    #[allow(clippy::type_complexity)]
+    fn totals_array<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> PyResult<(Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>)> {
+        Ok((
+            self.inner.total_result.clone().into_pyarray(py),
+            self.inner.total_rel_error.clone().into_pyarray(py),
+        ))
     }
 }
 
@@ -2905,11 +2973,10 @@ fn r2s_from_snapshot(
 //   `cf4`), omitting the core `t = 0` row so there is one output per step.
 // - `simple_xs` / `scattering_length` / `decay_energy` / `decay_heat` are
 //   thin wrappers over the vendored TSV tables + material analytics.
-// - `MeshTally::to_list` / `totals_list` are plain-copy helpers. The zero-copy
-//   NumPy bridge (`result_array()`, roadmap "ndarray/NumPy zero-copy") stays
-//   DEFERRED: adding the `numpy` crate was judged too risky for this change
-//   (native build + abi3 version matching), so no `numpy` dependency is
-//   introduced here.
+// - `MeshTally::to_list` / `totals_list` are plain-copy helpers alongside the
+//   landed zero-copy NumPy bridge (`result_array()` / `totals_array()`,
+//   roadmap "ndarray/NumPy zero-copy"): `numpy = "0.28"` is a bindings-only
+//   dependency (abi3-py310 inherited from the workspace PyO3).
 
 /// Supported `deplete_series` integrators (core `Integrator` variants).
 fn parse_integrator(name: &str) -> PyResult<nucleide_depletion::Integrator> {

@@ -48,7 +48,7 @@ nucleide-emit = { path = "crates/emit", version = "0.3.0" }
 # --- planned stack (enabled per-crate as features land) ---
 # abi3-py310: one wheel per platform serves all Python >= 3.10
 pyo3 = { version = "0.28", features = ["extension-module", "abi3-py310"] }
-# numpy       = "0.28"        # rust-numpy, enable with pyo3 in bindings
+numpy = "0.28" # rust-numpy, enabled in bindings only (abi3-py310 inherited)
 # binrw       = "0.14"        # declarative binary readers (mcnp-io)
 # winnow      = "0.7"         # text/combinatorial parsing (xsdir, meshtal)
 # faer        = "0.21"        # sparse/dense LA, complex, symbolic LU reuse (depletion)

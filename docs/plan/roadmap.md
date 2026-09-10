@@ -34,6 +34,9 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   linking, schedule expansion, and uniform-split photon assembly (transport
   and activation solving stay out of scope).
 - Typed Python facade and `.pyi` stubs (`python/nucleide/`).
+- `MeshTally.result_array()` / `totals_array()` zero-copy NumPy bridge
+  (`mcnp-io`): owned C-order float64 `(ve, group)` views over one row-major
+  flatten (plus `(num_ves,)` totals); `to_list()` stays the NumPy-free path.
 - Criterion benchmarks for CRAM, cascade solving, and parser throughput
   (`crates/*/benches/`).
 - Cross-code validation harness against PyNE and OpenMC (`validation/`).
@@ -45,7 +48,7 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 ## Upcoming priorities
 
 - Stabilize the Rust public API across all crates.
-- Add ndarray/NumPy zero-copy bridges where it improves Python ergonomics.
+- Extend zero-copy bridges where it improves Python ergonomics.
 - Cut releases: `vX.Y.Z` tags publish Python wheels to PyPI and workspace
   crates to crates.io.
 
