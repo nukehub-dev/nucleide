@@ -110,19 +110,6 @@ export function MaterialBuilder() {
     <div className="rounded-xl border border-border/50 bg-background p-4 space-y-4">
       {!ready && <p className="text-sm text-muted-foreground">Loading Nucleide WASM…</p>}
 
-      {displayError && (
-        <div className="flex items-start justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          <span>WASM error: {displayError}</span>
-          <button
-            onClick={clearError}
-            className="font-bold leading-none"
-            aria-label="Dismiss error"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
       {ready && (
         <>
           <div className="space-y-2">
@@ -205,22 +192,26 @@ export function MaterialBuilder() {
             <p className="text-sm font-medium">Dose per gram (screening only)</p>
             <p className="text-xs text-muted-foreground">
               Screening-level dose per gram of the current formula from the vendored HNF-5636 tables
-              — not for safety decisions. Compositions with nuclides outside the tables report an
-              inline error instead of a value.
+              — not for safety decisions. Compositions with nuclides outside the tables, or fully
+              stable compositions such as H2O (no decay data means no activity to convert), report
+              an inline error instead of a value.
             </p>
             <div className="flex flex-wrap items-end gap-2">
-              <div className="space-y-1">
+              <div className="space-y-1 min-w-28">
                 <Label>Pathway</Label>
                 <Select
                   value={pathway}
                   onChange={(v) => {
                     setPathway(v);
+                    // Air dose factors exist for EPA only (DOE/GENII rows are
+                    // -1 sentinels); keep the source valid when switching.
+                    if (v === "air") setSource("EPA");
                     clearError();
                   }}
                   options={PATHWAY_OPTIONS}
                 />
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1 min-w-32">
                 <Label>Source</Label>
                 <Select
                   value={source}
@@ -228,11 +219,19 @@ export function MaterialBuilder() {
                     setSource(v);
                     clearError();
                   }}
-                  options={SOURCE_OPTIONS}
+                  options={SOURCE_OPTIONS.map((o) => ({
+                    ...o,
+                    disabled: pathway === "air" && o.value !== "EPA",
+                  }))}
                 />
               </div>
               <Button onClick={runDose}>Compute dose</Button>
             </div>
+            {pathway === "air" && (
+              <p className="text-xs text-muted-foreground">
+                Air factors are EPA-only in the HNF tables, so the source is locked to EPA.
+              </p>
+            )}
             {dose !== null && (
               <p className="text-sm">
                 Dose per gram: <span className="font-mono">{dose.toExponential(4)}</span>{" "}
@@ -241,6 +240,19 @@ export function MaterialBuilder() {
             )}
           </div>
         </>
+      )}
+
+      {displayError && (
+        <div className="flex items-start justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+          <span>WASM error: {displayError}</span>
+          <button
+            onClick={clearError}
+            className="font-bold leading-none"
+            aria-label="Dismiss error"
+          >
+            ×
+          </button>
+        </div>
       )}
     </div>
   );
