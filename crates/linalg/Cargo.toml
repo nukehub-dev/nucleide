@@ -1,6 +1,6 @@
 [package]
 name = "nucleide-linalg"
-description = "Isolation facade over the numeric backend (planned: faer) so the rest of the workspace never depends on it directly"
+description = "Isolation facade over the numeric backend (faer) so the rest of the workspace never depends on it directly"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,4 +15,3 @@ rayon = ["faer/rayon"]
 faer = { version = "0.20", default-features = false, features = ["std", "linalg"] }
 num-complex = "0.4"
 roxmltree = "0.20"
-# faer is intentionally NOT enabled yet.

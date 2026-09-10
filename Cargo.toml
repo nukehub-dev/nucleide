@@ -21,7 +21,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 license = "BSD-2-Clause"
 repository = "https://github.com/nukehub-dev/nucleide"
@@ -29,31 +29,30 @@ rust-version = "1.83"
 
 [workspace.dependencies]
 # --- internal crates ---
-nucleide-nuclei = { path = "crates/nuclei", version = "0.3.0" }
-nucleide-material = { path = "crates/material", version = "0.3.0" }
-nucleide-linalg = { path = "crates/linalg", version = "0.3.0", default-features = false }
-nucleide-mcnp-io = { path = "crates/mcnp-io", version = "0.3.0" }
-nucleide-serpent-io = { path = "crates/serpent-io", version = "0.3.0" }
-nucleide-fluka-io = { path = "crates/fluka-io", version = "0.3.0" }
-nucleide-vr-tools = { path = "crates/vr-tools", version = "0.3.0" }
-nucleide-enrichment = { path = "crates/enrichment", version = "0.3.0" }
-nucleide-depletion = { path = "crates/depletion", version = "0.3.0", default-features = false }
-nucleide-alara-io = { path = "crates/alara-io", version = "0.3.0" }
-nucleide-cccc-io = { path = "crates/cccc-io", version = "0.3.0" }
-nucleide-fispact-io = { path = "crates/fispact-io", version = "0.3.0" }
-nucleide-origen-io = { path = "crates/origen-io", version = "0.3.0" }
-nucleide-r2s = { path = "crates/r2s", version = "0.3.0" }
-nucleide-emit = { path = "crates/emit", version = "0.3.0" }
+nucleide-nuclei = { path = "crates/nuclei", version = "0.4.0" }
+nucleide-material = { path = "crates/material", version = "0.4.0" }
+nucleide-linalg = { path = "crates/linalg", version = "0.4.0", default-features = false }
+nucleide-mcnp-io = { path = "crates/mcnp-io", version = "0.4.0" }
+nucleide-serpent-io = { path = "crates/serpent-io", version = "0.4.0" }
+nucleide-fluka-io = { path = "crates/fluka-io", version = "0.4.0" }
+nucleide-vr-tools = { path = "crates/vr-tools", version = "0.4.0" }
+nucleide-enrichment = { path = "crates/enrichment", version = "0.4.0" }
+nucleide-depletion = { path = "crates/depletion", version = "0.4.0", default-features = false }
+nucleide-alara-io = { path = "crates/alara-io", version = "0.4.0" }
+nucleide-cccc-io = { path = "crates/cccc-io", version = "0.4.0" }
+nucleide-fispact-io = { path = "crates/fispact-io", version = "0.4.0" }
+nucleide-origen-io = { path = "crates/origen-io", version = "0.4.0" }
+nucleide-r2s = { path = "crates/r2s", version = "0.4.0" }
+nucleide-emit = { path = "crates/emit", version = "0.4.0" }
 
-# --- planned stack (enabled per-crate as features land) ---
+# --- shared stack (crates opt in per feature as they land) ---
 # abi3-py310: one wheel per platform serves all Python >= 3.10
 pyo3 = { version = "0.28", features = ["extension-module", "abi3-py310"] }
 numpy = "0.28" # rust-numpy, enabled in bindings only (abi3-py310 inherited)
-# binrw       = "0.14"        # declarative binary readers (mcnp-io)
-# winnow      = "0.7"         # text/combinatorial parsing (xsdir, meshtal)
-# faer        = "0.21"        # sparse/dense LA, complex, symbolic LU reuse (depletion)
-# ndarray     = "0.16"        # N-dim containers / NumPy-shaped glue
-# num-complex = "0.4"
+# Landed per-crate (pins live in each crate's Cargo.toml): faer 0.20 behind
+# the linalg facade only, num-complex 0.4 (linalg, depletion).
+# Declared but unused so far: binrw 0.14 + winnow 0.7 (mcnp-io).
+# Not yet used anywhere: ndarray (N-dim containers) — add on first need.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 quick-xml = "0.37"

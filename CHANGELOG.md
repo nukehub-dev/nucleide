@@ -13,6 +13,8 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-10
+
 ### Added
 
 - Python API: `MeshTally.result_array()` / `totals_array()` zero-copy NumPy
