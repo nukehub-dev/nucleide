@@ -44,6 +44,7 @@ license.
 | [Interactive — activation](tutorials/interactive/activation.mdx) | ALARA decks/outputs, FISPACT, R2S workflows |
 | [Interactive — deterministic I/O](tutorials/interactive/deterministic.mdx) | ISOTXS fluxes and PARTISN decks |
 | [Interactive — code-card emission](tutorials/interactive/emitter.mdx) | Five-dialect card emission and mass drift |
+
 ### Theory
 
 | Document | Purpose |
