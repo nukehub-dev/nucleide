@@ -161,30 +161,31 @@ jobs:
               fi
               echo "$out"
               # Re-runs must tolerate crates published by an earlier attempt.
+              # crates.io failures are retried: 429s carry an exact retry
+              # timestamp (leaky bucket — adapts to either limit); a missing
+              # dependency right after publishing siblings is registry-index
+              # lag (verified 0.4.0: alara-io present, r2s resolution lagged).
               case "$out" in
-                *"already uploaded"*|*"already exists"*)
+                *"already uploaded"*|*"already been uploaded"*|*"already exists"*)
                   echo "$crate already published; continuing."
                   break
                   ;;
-              esac
-              # crates.io rate-limits publishes (leaky bucket): new crates earn
-              # back slowly, new versions quickly. The 429 message names the
-              # exact retry time, so sleep until then instead of a fixed wait —
-              # this adapts automatically to either bucket and to crates added
-              # later. Falls back to 660s if the timestamp cannot be parsed.
-              case "$out" in
-                *"429"*|*"Too Many Requests"*)
+                *"429"*|*"Too Many Requests"*|*"no matching package named"*)
                   if [ "$attempt" -ge 12 ]; then
-                    echo "still rate-limited after $attempt attempts; giving up."
+                    echo "still failing after $attempt attempts; giving up."
                     exit 1
                   fi
-                  retry_at=$(echo "$out" | grep -oE '[A-Z][a-z]{2}, [0-9]{2} [A-Z][a-z]{2} [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} GMT' | head -n 1 || true)
                   wait_for=660
-                  if [ -n "$retry_at" ] && epoch=$(date -d "$retry_at" +%s 2>/dev/null); then
-                    wait_for=$((epoch - $(date +%s) + 30))
-                    if [ "$wait_for" -lt 60 ]; then wait_for=60; fi
+                  if [[ "$out" == *"429"* ]]; then
+                    retry_at=$(echo "$out" | grep -oE '[A-Z][a-z]{2}, [0-9]{2} [A-Z][a-z]{2} [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} GMT' | head -n 1 || true)
+                    if [ -n "$retry_at" ] && epoch=$(date -d "$retry_at" +%s 2>/dev/null); then
+                      wait_for=$((epoch - $(date +%s) + 30))
+                      if [ "$wait_for" -lt 60 ]; then wait_for=60; fi
+                    fi
+                  else
+                    wait_for=300
                   fi
-                  echo "rate-limited; waiting ${wait_for}s (attempt $attempt/12)."
+                  echo "registry not ready; waiting ${wait_for}s (attempt $attempt/12)."
                   sleep "$wait_for"
                   attempt=$((attempt + 1))
                   ;;
