@@ -167,15 +167,25 @@ jobs:
                   break
                   ;;
               esac
-              # crates.io throttles first-time crate names; back off and retry.
+              # crates.io rate-limits publishes (leaky bucket): new crates earn
+              # back slowly, new versions quickly. The 429 message names the
+              # exact retry time, so sleep until then instead of a fixed wait —
+              # this adapts automatically to either bucket and to crates added
+              # later. Falls back to 660s if the timestamp cannot be parsed.
               case "$out" in
                 *"429"*|*"Too Many Requests"*)
-                  if [ "$attempt" -ge 6 ]; then
+                  if [ "$attempt" -ge 12 ]; then
                     echo "still rate-limited after $attempt attempts; giving up."
                     exit 1
                   fi
-                  echo "rate-limited; waiting 300s (attempt $attempt/6)."
-                  sleep 300
+                  retry_at=$(echo "$out" | grep -oE '[A-Z][a-z]{2}, [0-9]{2} [A-Z][a-z]{2} [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} GMT' | head -n 1 || true)
+                  wait_for=660
+                  if [ -n "$retry_at" ] && epoch=$(date -d "$retry_at" +%s 2>/dev/null); then
+                    wait_for=$((epoch - $(date +%s) + 30))
+                    if [ "$wait_for" -lt 60 ]; then wait_for=60; fi
+                  fi
+                  echo "rate-limited; waiting ${wait_for}s (attempt $attempt/12)."
+                  sleep "$wait_for"
                   attempt=$((attempt + 1))
                   ;;
                 *)
