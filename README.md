@@ -119,7 +119,7 @@ Python >= 3.10 via abi3 — the same stack used by pydantic-core, polars, and ru
    parser output must match recorded snapshots before any release.
 2. Numeric kernels (CRAM, cascade solving) are checked against published
    analytic vectors and cross-code results on shared inputs; the runnable
-   cross-code harness in [`validation/`](validation/README.md) compares
+   cross-code harness in [`validation/`](https://github.com/nukehub-dev/nucleide/tree/main/validation) compares
    Nucleide against PyNE and OpenMC and commits its measured results.
 3. Behavioral compatibility with legacy tool output is asserted wherever a
    fixture exists, so downstream workflows see identical data.
@@ -128,8 +128,10 @@ Criterion benchmarks (`cargo bench`) cover the numeric kernels and parsers.
 
 ## Citing
 
-If you use Nucleide in research, see [`CITATION.cff`](CITATION.cff) and the
-JOSS paper draft in [`paper.md`](paper.md).
+If you use Nucleide in research, see
+[`CITATION.cff`](https://github.com/nukehub-dev/nucleide/blob/main/CITATION.cff)
+and the JOSS paper draft in
+[`paper.md`](https://github.com/nukehub-dev/nucleide/blob/main/paper.md).
 
 ## Status
 
@@ -138,7 +140,7 @@ Pre-alpha. APIs may change without notice.
 ## Documentation
 
 Additional tutorials, reference pages, and developer guides live in the
-[`docs/`](docs/README.md) tree.
+[`docs/`](https://github.com/nukehub-dev/nucleide/tree/main/docs) tree.
 
 ## Acknowledgments
 
@@ -150,4 +152,4 @@ DOE/PNNL Materials Compendium — are vendored directly from PyNE; see
 
 ## License
 
-[BSD-2-Clause](LICENSE).
+[BSD-2-Clause](https://github.com/nukehub-dev/nucleide/blob/main/LICENSE).
