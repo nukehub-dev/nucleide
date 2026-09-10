@@ -15,6 +15,30 @@ workspace crates from tags.
 
 ### Added
 
+- License-free decay-data pack (`nucleide-nuclei`, AD-7): per-branch
+  daughters from ENDF/B-VIII.0 decay tapes
+  (`crates/nuclei/src/data/decay_branches.tsv`, 5 068 rows over 3 541
+  parents; MF8/MT457 NDK RTYP/RFS/BR with SF/fission branches dropped and
+  zero-half-life tapes absent), exposed as `decay_branches` /
+  `branching_fraction` lookups plus the `DecayData` facade and the
+  `DecayBranch` / `DecayBranchMode` types. Isomer masses extend
+  `ame2020.tsv` (738 rows: `m_ground + ELIS/931.49410242 u` from each
+  isomer tape's File-1 MT451 record; tapeless isomers fall back to the
+  ground-state mass, Q-values stay ground-state-only). New free-form
+  `normalize_nuclide_name` in `crates/nuclei/src/dialects.rs`
+  (symbol-first, then mass-first so `N15` stays nitrogen and `92235` stays
+  a ZAID; bare symbols rejected; `Ir-192n` resolves to state 2).
+  `scripts/gen-nuclear-data.py --endf-decay8` regenerates both tables with
+  hard ENDF spot-checks (K-40 beta-/EC pair summing to 1, Es-254 members);
+  `decay_energy.tsv` stays on ENDF/B-VII.1 with its basis in its header.
+- Python API: `nucleide.nuclei.decay_branches` /
+  `nucleide.nuclei.decay_branch_fraction` thin wrappers over the new
+  tables. WASM `decay_branches` / `decay_branch_fraction` table-level
+  mirrors.
+- `validation/nuclear_data_vs_refs.py`: `DECAY_BRANCH_SPOTS` oracle
+  (K-40 pins 3.93839e16 s plus its beta-/EC pair; Es-254 members per the
+  repo tables) following the decay-energy spot pattern; committed results
+  untouched, container rerun deferred.
 - `nucleide-depletion` analytic Bateman decay fast path
   (`crates/depletion/src/bateman.rs`): cached `C`/`C⁻¹` eigendecomposition
   closed form (Bateman 1910; Amaku–Pascholati–Vanin CPC 181 (2010)) for

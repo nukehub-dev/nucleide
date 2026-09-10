@@ -233,6 +233,34 @@ DECAY_ENERGY_SPOTS_MEV = {
     "Am241": 5.62799,
 }
 
+#: Evaluated decay branches from ENDF/B-VIII.0 MF8/MT457 NDK records
+#: (RTYP code, RFS daughter state, BR fraction), mirroring the
+#: ``DECAY_ENERGY_SPOTS_MEV`` pattern. K-40 pins the half-life table entry
+#: derived from the same VIII.0 checkout (3.93839e16 s) plus its beta-/EC
+#: pair; Es-254 members follow this repo's own branch table.
+#: ``{parent: (half_life_s, [(progeny, mode, bf)])}``.
+DECAY_BRANCH_SPOTS = {
+    "K40": (
+        3.93839e16,
+        [("Ca40", "beta-", 0.8914), ("Ar40", "ec/beta+", 0.1086)],
+    ),
+    "Es254": (
+        2.382048e7,
+        [("Bk250", "alpha", 1.0)],
+    ),
+    "Es254_m1": (
+        141479.9,
+        [
+            ("Bk250", "alpha", 0.0032),
+            ("Fm254", "beta-", 0.98),
+            ("Cf254", "ec/beta+", 0.0008),
+            ("Es254", "IT", 0.0155),
+        ],
+    ),
+    "Ba137_m1": (153.12, [("Ba137", "IT", 1.0)]),
+    "He8": (0.1191, [("Li8", "beta-", 0.84), ("Li7", "beta-", 0.16)]),
+}
+
 
 def _pyne_simple_xs_source():
     """Return PyNE's KAERI simple-xs source, or raise SkipCheck with a reason."""
@@ -333,6 +361,36 @@ def compare_scattering_lengths() -> dict:
         "rows": rows,
         "missing": missing,
         "max_abs": max(diffs) if diffs else float("nan"),
+    }
+
+
+def compare_decay_branches() -> dict:
+    """Compare `decay_branches`/`decay_branch_fraction` vs ENDF VIII.0 spots."""
+    rows: list[list[str]] = []
+    diffs: list[float] = []
+    missing: list[str] = []
+    for parent, (hl_spot, spots) in DECAY_BRANCH_SPOTS.items():
+        hl = nucleide.nuclei.half_life(parent)
+        if hl is None:
+            missing.append(f"{parent} half-life")
+            rows.append([parent, "half-life", "None", fmt(hl_spot), "n/a"])
+        else:
+            diffs.append(rel_diff(hl, hl_spot))
+            rows.append([parent, "half-life", fmt(hl), fmt(hl_spot), fmt(diffs[-1])])
+        branches = nucleide.nuclei.decay_branches(parent)
+        by_prog = {prog: (bf, mode) for prog, bf, mode in branches}
+        for prog, mode, bf_spot in spots:
+            entry = by_prog.get(prog)
+            if entry is None or entry[1] != mode:
+                missing.append(f"{parent}->{prog} [{mode}]")
+                rows.append([parent, f"{prog} [{mode}]", "None", fmt(bf_spot), "n/a"])
+                continue
+            diffs.append(rel_diff(entry[0], bf_spot))
+            rows.append([parent, f"{prog} [{mode}]", fmt(entry[0]), fmt(bf_spot), fmt(diffs[-1])])
+    return {
+        "rows": rows,
+        "missing": missing,
+        "max_rel": max(diffs) if diffs else float("nan"),
     }
 
 
@@ -558,10 +616,26 @@ def main() -> int:
     print(de_note)
     report.prose(de_note)
 
+    br_stats = compare_decay_branches()
+    report.heading("Decay branches vs ENDF/B-VIII.0 spot values")
+    report.prose(
+        "Nucleide `decay_branches` (per-branch daughters) and"
+        " `decay_branch_fraction` vs the ENDF/B-VIII.0 MF8/MT457 NDK values"
+        " they were generated from, with the parent half-life pinned to the"
+        " same VIII.0 checkout: K-40 pins 3.93839e16 s plus its beta-/EC pair,"
+        " Es-254 members follow this repo's own branch table. SF branches are"
+        " dropped at generation, so they never appear here."
+    )
+    report.table(
+        ["Parent", "Branch", "Nucleide", "Spot", "Rel diff"],
+        br_stats["rows"],
+    )
+
     if xs_stats["available"]:
         print(f"simple_xs vs PyNE: max rel diff {fmt(max(xs_stats['diffs']))}")  # type: ignore[arg-type]
     print(f"scattering vs NIST: max abs diff {fmt(scat_stats['max_abs'])} fm")
     print(f"decay_energy vs spots: max rel diff {fmt(de_stats['max_rel'])}")
+    print(f"decay_branches vs spots: max rel diff {fmt(br_stats['max_rel'])}")
 
     emit_report(report)
 
@@ -579,6 +653,9 @@ def main() -> int:
         return 1
     if de_stats["missing"] or not de_stats["stable_none"] or de_stats["max_rel"] > 0.20:
         print("FAIL: decay-energy spot check outside the 20% screening band", file=sys.stderr)
+        return 1
+    if br_stats["missing"] or br_stats["max_rel"] > 1.0e-6:
+        print("FAIL: decay-branch spot check vs ENDF/B-VIII.0 failed", file=sys.stderr)
         return 1
     return 0
 

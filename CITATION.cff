@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "Nucleide: A Rust toolkit for nuclear-engineering data and workflow glue"
-version: 0.2.0
+version: 0.3.0
 authors:
   - family-names: Chowdhury
     given-names: Ahnaf Tahmid

@@ -216,6 +216,55 @@ pub fn decay_constant(key: &str) -> Result<Option<f64>, JsValue> {
     Ok(nucleide_nuclei::data::half_life(id.nucid()).map(|t| std::f64::consts::LN_2 / t))
 }
 
+/// One evaluated decay branch, JSON-shaped for the table-level mirror.
+#[derive(serde::Serialize)]
+struct JsDecayBranch {
+    progeny: String,
+    branching_fraction: f64,
+    mode: String,
+}
+
+/// Evaluated decay branches for a nuclide (empty when the nuclide has no
+/// branch rows, e.g. stable nuclides).
+#[wasm_bindgen]
+pub fn decay_branches(key: &str) -> Result<JsValue, JsValue> {
+    let id = resolve_nucid(key)?;
+    let branches: Vec<JsDecayBranch> = nucleide_nuclei::data::decay_branches(id.nucid())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|b| JsDecayBranch {
+            progeny: nucleide_nuclei::NuclideId::from_nucid(b.progeny).to_name(),
+            branching_fraction: b.branching_fraction,
+            mode: b.mode.as_str().to_string(),
+        })
+        .collect();
+    to_js(&branches)
+}
+
+/// Branching fraction from parent to progeny (GNDS names), if tabulated.
+///
+/// Named apart from the chain-scoped `branching_fraction` below.
+#[wasm_bindgen]
+pub fn decay_branch_fraction(parent: &str, progeny: &str) -> Result<Option<f64>, JsValue> {
+    let p = resolve_nucid(parent)?;
+    let d = resolve_nucid(progeny)?;
+    Ok(nucleide_nuclei::data::branching_fraction(
+        p.nucid(),
+        d.nucid(),
+    ))
+}
+
+/// Normalize a nuclide name in any accepted dialect to canonical GNDS form.
+///
+/// Accepts symbol-first (`Pu241`, `Pu-241`, `Ba137m`), mass-first (`241Pu`,
+/// `40K`), and isomer suffix letters (`Ir-192n` → second isomer).
+#[wasm_bindgen]
+pub fn normalize_nuclide(name: &str) -> Result<String, JsValue> {
+    nucleide_nuclei::dialects::normalize_nuclide_name(name)
+        .map(|id| id.to_name())
+        .map_err(js_err)
+}
+
 #[wasm_bindgen]
 pub fn q_value_capture(key: &str) -> Result<Option<f64>, JsValue> {
     let id = resolve_nucid(key)?;

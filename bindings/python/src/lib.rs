@@ -3007,6 +3007,53 @@ fn decay_energy(name: &str) -> PyResult<Option<f64>> {
     Ok(nucleide_nuclei::data::decay_energy_mev_by_name(name))
 }
 
+/// Evaluated decay branches for a nuclide name.
+///
+/// One `(progeny GNDS name, branching fraction, mode)` tuple per kept
+/// ENDF/B-VIII.0 branch (SF/fission branches dropped); empty when the
+/// nuclide has no branch rows (stable nuclides).
+#[pyfunction]
+fn decay_branches(name: &str) -> PyResult<Vec<(String, f64, String)>> {
+    NuclideId::from_name(name).map_err(wrap_nucid_err)?;
+    Ok(nucleide_nuclei::data::decay_branches_by_name(name)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|b| {
+            (
+                nucleide_nuclei::NuclideId::from_nucid(b.progeny).to_name(),
+                b.branching_fraction,
+                b.mode.as_str().to_string(),
+            )
+        })
+        .collect())
+}
+
+/// Branching fraction from parent to progeny (GNDS names), if tabulated.
+///
+/// Evaluated ENDF/B-VIII.0 value, verbatim; `None` when the branch is
+/// absent (including dropped SF branches). Named apart from the
+/// chain-scoped `branching_fraction` (which takes a chain argument).
+#[pyfunction]
+fn decay_branch_fraction(parent: &str, progeny: &str) -> PyResult<Option<f64>> {
+    NuclideId::from_name(parent).map_err(wrap_nucid_err)?;
+    NuclideId::from_name(progeny).map_err(wrap_nucid_err)?;
+    Ok(nucleide_nuclei::data::branching_fraction_by_name(
+        parent, progeny,
+    ))
+}
+
+/// Normalize a nuclide name in any accepted dialect to canonical GNDS form.
+///
+/// Accepts symbol-first (`Pu241`, `Pu-241`, `Ba137m`), mass-first (`241Pu`,
+/// `40K`), and isomer suffix letters (`Ir-192n` → second isomer); see
+/// `nucleide_nuclei::dialects::normalize_nuclide_name`.
+#[pyfunction]
+fn normalize_nuclide(name: &str) -> PyResult<String> {
+    Ok(nucleide_nuclei::dialects::normalize_nuclide_name(name)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?
+        .to_name())
+}
+
 /// Decay heat [W] of a composition dict ({nuclide name: grams}).
 ///
 /// Screening-level estimate via `Material::total_decay_heat` (Ame2020 masses,
@@ -4205,6 +4252,9 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(simple_xs, m)?)?;
     m.add_function(wrap_pyfunction!(scattering_length, m)?)?;
     m.add_function(wrap_pyfunction!(decay_energy, m)?)?;
+    m.add_function(wrap_pyfunction!(decay_branches, m)?)?;
+    m.add_function(wrap_pyfunction!(decay_branch_fraction, m)?)?;
+    m.add_function(wrap_pyfunction!(normalize_nuclide, m)?)?;
     m.add_function(wrap_pyfunction!(decay_heat, m)?)?;
     m.add_function(wrap_pyfunction!(dose_factor, m)?)?;
     m.add_function(wrap_pyfunction!(dose_per_g, m)?)?;

@@ -25,6 +25,26 @@ Each table is derived from a primary evaluated source — no hand-copied values:
   tables (HNF-SD-WM-TI-707 Rev.1 / HNF-5636 App. O; GENII/EPA/DOE are 3
   parallel evaluations).  ``+D`` (plus daughters) folds into the parent.
   Air is EPA-only (GENII/DOE rows are ``-1`` sentinels, matching PyNE).
+- ``decay_branches.tsv``: per-branch daughters from the ENDF/B-VIII.0
+  decay sublibrary (MF8/MT457 NDK records: RTYP decay-mode code, RFS
+  daughter state flag, BR branching fraction).  One row per kept branch:
+  ``parent_GNDS``, ``progeny_GNDS``, ``bf``, ``mode``.  Spontaneous-fission
+  and fission-family branches are dropped (depletion matrices skip ``sf``
+  gains); tapes with zero half-life or stable flags yield no rows, so
+  effectively-stable entries (e.g. Te123) stay absent, matching the
+  half-life table's stable-absent convention.
+  Upstream: https://www.nndc.bnl.gov/endf-b8.0/
+  (``zips/ENDF-B-VIII.0_decay.zip``).
+- ``ame2020.tsv`` isomer rows: for every ENDF/B-VIII.0 isomer tape
+  (``*m1``/``*m2``) with a positive File-1 MT451 ``ELIS`` excitation
+  energy, one row keyed by the full state-bearing nucid:
+  ``m = m_ground(AME2020) + ELIS[eV]/1e6/931.49410242``.  Ground rows are
+  preserved verbatim; no NUBASE import (ENDF excitation energies only).
+
+Per-table evaluation bases (kept distinct on purpose): ``decay_energy.tsv``
+stays on ENDF/B-VII.1 while ``decay_branches.tsv``, ``half_life.tsv``, and
+the ``ame2020.tsv`` isomer rows use ENDF/B-VIII.0.  Each TSV header records
+its own basis.
 
 Usage::
 
@@ -32,6 +52,7 @@ Usage::
         --endf-neutrons /path/to/endf-b-vii.1/neutrons \
         --endf-decay /path/to/endf-b-vii.1/decay \
         --nist-html /path/to/scattering_lengths.html \
+        --endf-decay8 /path/to/endf-b-viii.0/decay \
         --dose-air /tmp/dosefactors_external_air.csv \
         --dose-soil /tmp/dosefactors_external_soil.csv \
         --dose-ingest /tmp/dosefactors_ingest.csv \
@@ -41,7 +62,8 @@ Usage::
 All inputs are local checkouts (see help for download URLs); nothing is
 fetched over the network.  Exit nonzero if any hard spot-check fails.
 Pass only the ``--dose-*`` flags (plus ``--out``) for a dose-only run;
-pass only the ENDF/NIST flags for the legacy tables.
+pass only the ENDF/NIST flags for the legacy tables; pass only
+``--endf-decay8`` (plus ``--out``) for the VIII.0 branch/isomer tables.
 """
 
 from __future__ import annotations
@@ -404,6 +426,285 @@ def gen_decay(decay_dir: str) -> tuple[dict[str, float], dict[str, str], list[st
     return rows, half, log
 
 
+# ---------------------------------------------------------------------------
+# ENDF/B-VIII.0 decay branches + isomer masses.
+#
+# RTYP provenance: exact float codes confirmed against ENDF-102 section 8.4
+# (2023 manual, BNL-224854-2023-INRE: the decay-mode table lists 0 gamma —
+# not used in MT457 — 1 beta-, 2 EC/beta+, 3 IT, 4 alpha, 5 neutron, 6 SF,
+# 7 proton, 10 unknown, plus the multi-particle construction rule where the
+# digits apply in emission order, e.g. RTYP = 1.5 is beta- decay followed by
+# neutron emission) and the MIT-licensed OpenMC implementation
+# (openmc/data/decay.py ``_DECAY_MODES`` + ``get_decay_modes``: digit-wise
+# parse of the RTYP float with 10.0 special-cased to unknown).  Mode-name
+# strings below reuse OpenMC's tokens verbatim so depletion matrices keep
+# their ``sf``-skip / ``alpha`` / ``p`` substring semantics.
+# ---------------------------------------------------------------------------
+
+#: MeV per u, matching ``MEV_PER_U`` in ``crates/nuclei/src/data.rs``.
+MEV_PER_U = 931.494_102_42
+
+# Single-digit RTYP codes: (mode token, dA, dZ). Digits apply in emission
+# order to (Z, A); the NDK RFS flag sets the daughter's isomer state.
+# Digits 0/8/9 (gamma / conversion-electron / x-ray) carry no nucleons and
+# are no-ops for progeny. Digit 6 (SF) and code 10 (unknown origin) have no
+# single-daughter mapping: those branches are dropped.
+_RTYP_DIGITS = {
+    1: ("beta-", 0, 1),
+    2: ("ec/beta+", 0, -1),
+    3: ("IT", 0, 0),
+    4: ("alpha", -4, -2),
+    5: ("n", -1, 0),
+    7: ("p", -1, -1),
+}
+
+
+def rtyp_digits(value: float) -> list[int] | None:
+    """Split an NDK RTYP float into emission digits (OpenMC ``get_decay_modes``).
+
+    Returns None for unknown origin (10.0). Multi-particle codes expand
+    digit-wise: 1.5 is beta- + neutron, 2.77 is EC + proton + proton, 1.1 is
+    double-beta decay (two successive beta- steps).
+    """
+    if int(value) == 10:
+        return None
+    return [int(x) for x in str(value).strip("0").replace(".", "")]
+
+
+def mt451_elis(lines: list[str]) -> tuple[float, int, int] | None:
+    """Return (ELIS_eV, LIS, LISO) from a decay tape's File 1 MT451 record."""
+    sec = section_lines(lines, 1, 451)
+    if len(sec) < 2:
+        return None
+    try:
+        rec = fields(sec[1])
+        return rec[0], int(rec[2]), int(rec[3])
+    except (IndexError, ValueError):
+        return None
+
+
+def ndk_modes(lines: list[str]) -> tuple[float, list[tuple[float, float, float]]] | None:
+    """Return (half_life_s, [(RTYP, RFS, BR)]) from MF8/MT457, or None.
+
+    Returns None for stable tapes (NST flag set), zero half-lives
+    (evaluation dummies such as Te123/Ca46), missing sections, or tapes
+    with no decay modes. Q values and uncertainties are not needed here.
+    """
+    sec = section_lines(lines, 8, 457)
+    if len(sec) < 4:
+        return None
+    try:
+        head = fields(sec[0])
+        nst = int(head[4])
+        if nst != 0:
+            return None
+        hl_head = fields(sec[1])
+        t12 = hl_head[0]
+        if not t12 > 0.0:
+            return None
+        n_avg = (int(hl_head[4]) + 5) // 6
+        spin = fields(sec[2 + n_avg])
+        ndk = int(spin[5])
+        if ndk <= 0:
+            return None
+        vals: list[float] = []
+        for body in sec[3 + n_avg :]:
+            vals.extend(fields(body))
+            if len(vals) >= 6 * ndk:
+                break
+        if len(vals) < 6 * ndk:
+            return None
+    except (IndexError, ValueError):
+        return None
+    modes = [(vals[6 * i], vals[6 * i + 1], vals[6 * i + 4]) for i in range(ndk)]
+    return t12, modes
+
+
+def gen_decay_branches(
+    decay8_dir: str,
+) -> tuple[list[tuple[str, str, float, str]], dict[str, float], list[str]]:
+    """Build (parent, progeny, bf, mode) rows from ENDF/B-VIII.0 decay tapes.
+
+    Progeny apply the RTYP digits in emission order (beta- ``Z+1``,
+    EC/beta+ ``Z-1``, alpha ``Z-2/A-4``, IT unchanged, delayed neutrons and
+    protons subtract the emitted nucleons); the mode token is the initial
+    event per ENDF-102 procedure 8.4.2-3. SF/fission-family branches
+    (any digit 6) and unknown-origin branches (10.0) are dropped. Also
+    returns {parent: half_life_s} for spot-checks.
+    """
+    rows: list[tuple[str, str, float, str]] = []
+    half: dict[str, float] = {}
+    log: list[str] = []
+    n_sf = n_unknown = n_zero_br = n_bad = n_tapes = 0
+    kept_sum: dict[str, float] = {}
+    for fname in sorted(os.listdir(decay8_dir)):
+        ident = tape_id(fname)
+        if ident is None or not fname.startswith("dec-"):
+            continue
+        z, sym, a, state = ident
+        lines = read_lines(os.path.join(decay8_dir, fname))
+        parsed = ndk_modes(lines)
+        if parsed is None:
+            continue
+        t12, modes = parsed
+        parent = gnds(sym, a, state)
+        half[parent] = t12
+        n_tapes += 1
+        for rtyp, rfs, br in modes:
+            digits = rtyp_digits(rtyp)
+            if digits is None:
+                n_unknown += 1
+                log.append(f"drop {fname}: unknown-origin branch (RTYP=10)")
+                continue
+            if 6 in digits:
+                n_sf += 1
+                continue
+            if any(d not in _RTYP_DIGITS and d not in (0, 8, 9) for d in digits):
+                n_bad += 1
+                log.append(f"drop {fname}: unmapped RTYP digits in {rtyp:.6g}")
+                continue
+            if br == 0.0:
+                n_zero_br += 1
+                continue
+            first = next(d for d in digits if d in _RTYP_DIGITS)
+            mode = _RTYP_DIGITS[first][0]
+            zz, aa = z, a
+            for d in digits:
+                if d in _RTYP_DIGITS:
+                    _, da, dz = _RTYP_DIGITS[d]
+                    aa += da
+                    zz += dz
+            rfs_i = int(rfs)
+            if not 1 <= zz <= 118 or not zz <= aa <= 999 or rfs_i < 0 or rfs_i > 9:
+                n_bad += 1
+                log.append(f"drop {fname}: invalid progeny Z={zz} A={aa} RFS={rfs_i}")
+                continue
+            progeny = gnds(SYMBOLS[zz - 1], aa, rfs_i)
+            rows.append((parent, progeny, br, mode))
+            kept_sum[parent] = kept_sum.get(parent, 0.0) + br
+    for parent, total in sorted(kept_sum.items()):
+        if abs(total - 1.0) > 0.01:
+            log.append(f"note {parent}: kept branches sum to {total:.6g} (SF dropped)")
+    log.append(
+        f"branch tapes={n_tapes} rows={len(rows)} "
+        f"dropped_sf={n_sf} dropped_unknown={n_unknown} "
+        f"dropped_zero_br={n_zero_br} dropped_bad={n_bad}"
+    )
+    return rows, half, log
+
+
+def gen_isomer_masses(
+    decay8_dir: str, ground: dict[int, tuple[float, str]]
+) -> tuple[dict[int, tuple[float, str]], list[str]]:
+    """Build {full_nucid: (mass_u, unc_str)} for ENDF/B-VIII.0 isomer tapes.
+
+    ``mass = m_ground(AME2020) + ELIS[eV]/1e6/MEV_PER_U`` with ELIS from
+    the tape's File 1 MT451 record (LIS/LISO identify the level). ENDF
+    excitation energies only; no NUBASE import. Tapes with unset (zero)
+    ELIS still get a row carrying the ground-state mass, flagged in the log.
+    """
+    rows: dict[int, tuple[float, str]] = {}
+    log: list[str] = []
+    n_no_elis = n_no_ground = n_zero_elis = 0
+    for fname in sorted(os.listdir(decay8_dir)):
+        ident = tape_id(fname)
+        if ident is None or not fname.startswith("dec-"):
+            continue
+        z, sym, a, state = ident
+        if state == 0:
+            continue
+        lines = read_lines(os.path.join(decay8_dir, fname))
+        info = mt451_elis(lines)
+        if info is None:
+            n_no_elis += 1
+            log.append(f"skip {fname}: no MT451 ELIS record")
+            continue
+        elis_ev, _lis, liso = info
+        if liso != state:
+            log.append(f"note {fname}: filename m{state} vs MT451 LISO={liso}")
+        if elis_ev <= 0.0:
+            n_zero_elis += 1
+            log.append(f"note {fname}: unset ELIS carries the ground-state mass")
+        key = (z * 1000 + a) * 10_000
+        entry = ground.get(key)
+        if entry is None:
+            n_no_ground += 1
+            log.append(f"skip {fname}: no AME2020 ground row for {gnds(sym, a, 0)}")
+            continue
+        g_mass, g_unc = entry
+        rows[key + state] = (g_mass + elis_ev / 1e6 / MEV_PER_U, g_unc)
+    log.append(
+        f"isomer rows={len(rows)} missing_elis={n_no_elis} "
+        f"missing_ground={n_no_ground} zero_elis={n_zero_elis}"
+    )
+    return rows, log
+
+
+def read_ame_grounds(path: str) -> tuple[list[str], dict[int, tuple[float, str]]]:
+    """Return (verbatim ground lines, {ground_nucid: (mass, unc_str)}).
+
+    State-bearing rows (if the file already carries isomer rows from a
+    previous run) are excluded from ``ground`` but preserved by the caller.
+    """
+    lines: list[str] = []
+    ground: dict[int, tuple[float, str]] = {}
+    with open(path) as fh:
+        for line in fh.read().splitlines():
+            if not line.strip() or line.startswith("#"):
+                continue
+            cols = line.split("\t")
+            nucid = int(cols[0])
+            if nucid % 10 == 0:
+                lines.append(line)
+                ground[nucid] = (float(cols[1]), cols[2] if len(cols) > 2 else "")
+    return lines, ground
+
+
+def ame_isomer_lines(ground_lines: list[str], isomers: dict[int, tuple[float, str]]) -> list[str]:
+    """Merge verbatim ground lines with isomer rows, sorted by nucid."""
+    merged: dict[int, str] = {}
+    for line in ground_lines:
+        merged[int(line.split("\t")[0])] = line
+    for nucid, (mass, unc) in isomers.items():
+        merged[nucid] = f"{nucid}\t{mass:.9f}\t{unc}"
+    return [merged[k] for k in sorted(merged)]
+
+
+# Spot-checks on the VIII.0 branch/isomer tables. Failure aborts the run.
+# All values are read off the ENDF/B-VIII.0 decay tapes themselves (see the
+# per-branch notes); K-40 additionally pins the half-life table's K40 entry.
+BRANCH_SPOTS = [
+    # (parent, progeny, mode, expected_bf)
+    ("K40", "Ca40", "beta-", 0.8914),
+    ("K40", "Ar40", "ec/beta+", 0.1086),
+    ("Es254", "Bk250", "alpha", 1.0),
+    ("Ba137_m1", "Ba137", "IT", 1.0),
+    ("He8", "Li8", "beta-", 0.84),
+    ("He8", "Li7", "beta-", 0.16),
+    ("Es254_m1", "Fm254", "beta-", 0.98),
+    ("Es254_m1", "Es254", "IT", 0.0155),
+]
+
+# (parent, expected half-life in s, relative tolerance). K-40 pins the
+# half-life table entry derived from the same VIII.0 checkout.
+BRANCH_HALF_LIFE_SPOTS = [
+    ("K40", 3.93839e16, 1e-6),
+    ("Es254", 2.382048e7, 1e-6),
+    ("Es254_m1", 141479.9, 1e-6),
+]
+
+# Parents that must NOT appear (zero-half-life evaluation dummies and the
+# effectively-stable Te123, matching the half-life stable-absent rule).
+BRANCH_ABSENT = ["Te123", "Ca46"]
+
+# Isomer-mass spots: (GNDS isomer, ELIS in eV from its MT451 record).
+ISOMER_ELIS_SPOTS_EV = [
+    ("Ba137_m1", 661659.0),
+    ("Te123_m1", 247470.0),
+    ("Es254_m1", 80000.0),
+]
+
+
 CELL = r"((?:[^<]|<i>|</i>)*?)"
 NIST_ROW_RE = re.compile(
     r"<td>\s*(?P<iso>[A-Za-z\d]+)\s*"
@@ -660,6 +961,134 @@ def write_tsv(path: str, header: list[str], rows: dict, fmt) -> None:
             fh.write(f"{name}\t" + fmt(rows[name]) + "\n")
 
 
+def write_branch_tsv(path: str, header: list[str], rows: list[tuple[str, str, float, str]]) -> None:
+    with open(path, "w") as fh:
+        fh.write("\n".join("# " + h for h in header) + "\n")
+        for parent, progeny, bf, mode in sorted(rows):
+            fh.write(f"{parent}\t{progeny}\t{bf:.6g}\t{mode}\n")
+
+
+def run_decay8(out_dir: str, decay8_dir: str) -> int:
+    """Generate ``decay_branches.tsv`` + extended ``ame2020.tsv``. Nonzero on spot failure."""
+    branches, branch_half, br_log = gen_decay_branches(decay8_dir)
+
+    by_parent: dict[str, list[tuple[str, str, float, str]]] = {}
+    for row in branches:
+        by_parent.setdefault(row[0], []).append(row)
+
+    for parent, progeny, mode, expected in BRANCH_SPOTS:
+        cands = [r for r in by_parent.get(parent, []) if r[1] == progeny and r[3] == mode]
+        if not cands:
+            print(f"SPOT FAIL: {parent}->{progeny} [{mode}] missing from branches")
+            return 1
+        got = cands[0][2]
+        if abs(got - expected) / max(abs(expected), 1e-30) > 1e-6:
+            print(f"SPOT FAIL: {parent}->{progeny} [{mode}]={got:.6g} != {expected:.6g}")
+            return 1
+        print(f"spot ok: branch     {parent:10s} -> {progeny:10s} [{mode:8s}] {got:.6g}")
+
+    for parent, expected, tol in BRANCH_HALF_LIFE_SPOTS:
+        got = branch_half.get(parent)
+        if got is None:
+            print(f"SPOT FAIL: {parent} missing half-life in VIII.0 tapes")
+            return 1
+        if abs(got - expected) / expected > tol:
+            print(f"SPOT FAIL: {parent} T1/2={got:.6g} != {expected:.6g}")
+            return 1
+        print(f"spot ok: halflife   {parent:10s} {got:.6g} s")
+
+    for parent in BRANCH_ABSENT:
+        if parent in by_parent:
+            print(f"SPOT FAIL: {parent} must stay absent from branches (stable-absent rule)")
+            return 1
+        print(f"spot ok: absent     {parent:10s} (no branch rows)")
+
+    # K-40 agreement: the two evaluated branches sum to unity.
+    k_sum = sum(r[2] for r in by_parent.get("K40", []))
+    if abs(k_sum - 1.0) > 1e-9:
+        print(f"SPOT FAIL: K40 branches sum to {k_sum:.6g}, expected 1.0")
+        return 1
+    print(f"spot ok: agreement  K40 kept branches sum to {k_sum:.6g}")
+
+    # Isomer masses from MT451 ELIS + vendored AME2020 grounds.
+    ame_path = os.path.join(out_dir, "ame2020.tsv")
+    ground_lines, ground = read_ame_grounds(ame_path)
+    isomers, iso_log = gen_isomer_masses(decay8_dir, ground)
+    for name, elis_ev in ISOMER_ELIS_SPOTS_EV:
+        m = re.match(r"^([A-Za-z]+)(\d+)_m(\d+)$", name)
+        assert m is not None
+        key = (Z_OF[m.group(1)] * 1000 + int(m.group(2))) * 10_000 + int(m.group(3))
+        got_mass, _unc = isomers.get(key, (None, ""))
+        if got_mass is None:
+            print(f"SPOT FAIL: {name} missing from isomer masses")
+            return 1
+        g_mass = ground[key - int(m.group(3))][0]
+        expected_mass = g_mass + elis_ev / 1e6 / MEV_PER_U
+        if abs(got_mass - expected_mass) > 1e-9:
+            print(f"SPOT FAIL: {name} mass {got_mass:.9f} != {expected_mass:.9f}")
+            return 1
+        print(f"spot ok: isomer     {name:10s} {got_mass:.9f} u (ELIS {elis_ev:.6g} eV)")
+
+    print(f"rows: branches={len(branches)} parents={len(by_parent)} isomers={len(isomers)}")
+    for line in br_log + iso_log:
+        print(f"note: {line}")
+
+    pm_tape = "dec-061_Pm_137m1.endf"
+    pm_present = os.path.exists(os.path.join(decay8_dir, pm_tape))
+    pm_note = (
+        f"{pm_tape} present: Pm137_m1 emitted from its ENDF tape."
+        if pm_present
+        else f"{pm_tape} absent from ENDF/B-VIII.0: no Pm137_m1 row (no fill-in)."
+    )
+    print(f"note: {pm_note}")
+
+    write_branch_tsv(
+        os.path.join(out_dir, "decay_branches.tsv"),
+        [
+            "parent_GNDS\tprogeny_GNDS\tbf\tmode",
+            "Per-branch daughters from ENDF/B-VIII.0 decay tapes (MF8/MT457 NDK",
+            "records: RTYP decay-mode code, RFS daughter state flag, BR branching",
+            "fraction). RTYP digits apply in emission order (ENDF-102 8.4; OpenMC",
+            "decay.py digit table): beta- Z+1, EC/beta+ Z-1, alpha Z-2/A-4, IT",
+            "unchanged, delayed neutrons/protons subtract emitted nucleons; the",
+            "mode token is the initial event. SF/fission-family branches (any",
+            "digit 6) and unknown-origin branches (RTYP 10) are dropped, so kept",
+            "branches of strong SF emitters sum to 1-BR(SF); depletion matrices",
+            "skip sf gains. Tapes with zero half-life or stable flags yield no",
+            "rows (Te123 stays absent: effectively stable in this evaluation).",
+            "Basis note: this table and half_life.tsv use ENDF/B-VIII.0 while",
+            "decay_energy.tsv stays on ENDF/B-VII.1 (different sublibrary vintages).",
+            "Screening-level only: use evaluated libraries for transport.",
+            "Regenerate: python3 scripts/gen-nuclear-data.py --endf-decay8 <dir> --out <dir>.",
+        ],
+        branches,
+    )
+
+    isomer_body = ame_isomer_lines(ground_lines, isomers)
+    with open(ame_path, "w") as fh:
+        fh.write(
+            "\n".join(
+                [
+                    "# nucid\tmass_u\tuncertainty_u",
+                    "# Ground states: AME2020 (Huang et al., Chinese Physics C 45,",
+                    "# 030002/030003, 2021). Isomer rows (state > 0, full nucid):",
+                    "# m = m_ground(AME2020) + E*/931.49410242 with E* (eV) = ELIS",
+                    "# from the ENDF/B-VIII.0 decay tape's File 1 MT451 record",
+                    "# (LIS/LISO identify the level). ENDF excitation energies only;",
+                    "# no NUBASE import. Isomer tapes with unset (zero) ELIS carry",
+                    "# the ground-state mass. Uncertainty column carries the ground-state",
+                    "# AME2020 uncertainty.",
+                    f"# {pm_note}",
+                    "# Regenerate: python3 scripts/gen-nuclear-data.py --endf-decay8 <dir>.",
+                ]
+            )
+            + "\n"
+        )
+        for line in isomer_body:
+            fh.write(line + "\n")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -673,6 +1102,14 @@ def main() -> int:
         required=False,
         default=None,
         help="ENDF/B-VII.1 decay tapes dir (same source)",
+    )
+    ap.add_argument(
+        "--endf-decay8",
+        required=False,
+        default=None,
+        help="ENDF/B-VIII.0 decay tapes dir for the branch/isomer tables "
+        "(download: https://www.nndc.bnl.gov/endf-b8.0/ "
+        "zips/ENDF-B-VIII.0_decay.zip)",
     )
     ap.add_argument(
         "--nist-html",
@@ -715,8 +1152,12 @@ def main() -> int:
 
     legacy = [args.endf_neutrons, args.endf_decay, args.nist_html]
     dose_args = [args.dose_air, args.dose_soil, args.dose_ingest, args.dose_inhale]
-    if all(v is None for v in legacy) and all(v is None for v in dose_args):
-        print("nothing to do: pass ENDF/NIST flags and/or --dose-* flags")
+    if (
+        all(v is None for v in legacy)
+        and all(v is None for v in dose_args)
+        and args.endf_decay8 is None
+    ):
+        print("nothing to do: pass ENDF/NIST flags, --endf-decay8, and/or --dose-* flags")
         return 2
     if any(v is None for v in legacy) and not all(v is None for v in legacy):
         print("legacy tables need --endf-neutrons, --endf-decay, and --nist-html together")
@@ -768,9 +1209,18 @@ def main() -> int:
             ],
             dose_rows,
         )
-        if all(v is None for v in legacy):
+        if all(v is None for v in legacy) and args.endf_decay8 is None:
             return 0
 
+    if args.endf_decay8 is not None:
+        rc = run_decay8(args.out, args.endf_decay8)
+        if rc != 0:
+            return rc
+        if all(v is None for v in legacy) and all(v is None for v in dose_args):
+            return 0
+
+    if all(v is None for v in legacy):
+        return 0
     assert args.endf_neutrons and args.endf_decay and args.nist_html
     xs_nist, xs_extra, elem100, sl_log = gen_scattering(args.nist_html)
     # Attribute ~100%-abundance element rows to the matching tape isotope,

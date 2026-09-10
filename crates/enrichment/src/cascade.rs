@@ -1357,14 +1357,14 @@ mod tests {
 
     #[test]
     fn reject_unknown_atomic_mass() {
-        // Metastable ids have no AME2020 ground-state mass entry.
-        let am242m = NuclideId::from_name("Am242_m1").unwrap();
+        // Isomers now resolve (own ENDF-derived row, else the ground-state
+        // mass), so exercise the error path with a nuclide beyond AME2020.
+        let fm400 = NuclideId::new(100, 400, 0).unwrap();
         let mut casc = default_uranium_cascade();
-        casc.mat_feed =
-            Stream::from_comp(comp(&[(am242m, 0.01), (U235, 0.0072), (U238, 0.982745)]));
+        casc.mat_feed = Stream::from_comp(comp(&[(fm400, 0.01), (U235, 0.0072), (U238, 0.982745)]));
         let err = solve_numeric(&casc, DEFAULT_TOLERANCE, DEFAULT_MAX_ITER)
             .expect_err("unknown mass must fail");
-        assert_eq!(err, Error::MissingMass(am242m));
+        assert_eq!(err, Error::MissingMass(fm400));
     }
 
     #[test]

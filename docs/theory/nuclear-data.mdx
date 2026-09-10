@@ -133,14 +133,20 @@ Nucleide converts between several legacy code conventions.
 
 ## Data sources
 
-Nucleide embeds seven reference tables at compile time and parses them lazily on
+Nucleide embeds eight reference tables at compile time and parses them lazily on
 first access.
 
 ### Atomic masses
 
 - **Source**: AME2020 atomic mass evaluation (Huang et al., *Chinese Physics C*
-  45, 030002/030003, 2021)<Citation id="huang-2021" /><Citation id="wang-2021" />.
-- **Coverage**: 3,557 ground-state nuclides with $Z \geq 1$.
+  45, 030002/030003, 2021)<Citation id="huang-2021" /><Citation id="wang-2021" />,
+  plus ENDF/B-VIII.0 excitation energies for isomers (see below).
+- **Coverage**: 3,557 ground-state nuclides with $Z \geq 1$, plus one row per
+  ENDF/B-VIII.0 isomer tape (738 rows): $m = m_{\mathrm{ground}} +
+  E^*/931.49410242\,\mathrm{u}$ with $E^*$ (in eV) from the tape's File-1
+  MT451 `ELIS` record. Isomer tapes with unset (`ELIS = 0`) entries carry the
+  ground-state mass; isomers without a tape fall back to the ground-state mass
+  at lookup time. No NUBASE import: ENDF excitation energies only.
 - **File**: `crates/nuclei/src/data/ame2020.tsv`.
 - **Units**: unified atomic mass units (u).
 
@@ -159,6 +165,38 @@ first access.
 - **Coverage**: 3,561 radionuclides; stable nuclides are absent.
 - **File**: `crates/nuclei/src/data/half_life.tsv`.
 - **Units**: seconds.
+
+### Decay branches
+
+Per-branch daughters (`decay_branches`, table `decay_branch_table`) from the
+ENDF/B-VIII.0 decay sublibrary (MF8/MT457 NDK records: RTYP decay-mode code,
+RFS daughter state flag, BR branching fraction):
+
+- **Source**: ENDF/B-VIII.0 decay tapes (same checkout basis as the half-life
+  table). RTYP digits apply in emission order (ENDF-102 §8.4; OpenMC
+  `decay.py` digit table): beta- gives $Z+1$, EC/beta+ gives $Z-1$, alpha
+  gives $Z-2$/$A-4$, IT is unchanged, and delayed neutrons/protons subtract
+  the emitted nucleons. The mode token is the initial event.
+- **Coverage**: 5,068 branches over 3,541 parents. Spontaneous-fission and
+  fission-family branches are dropped (depletion matrices skip `sf` gains),
+  so strong SF emitters sum to $1 - \mathrm{BR(SF)}$. Tapes with zero
+  half-life or stable flags yield no rows, so effectively-stable entries stay
+  absent, matching the half-life table's stable-absent convention.
+- **File**: `crates/nuclei/src/data/decay_branches.tsv`.
+- **Units**: branching fractions in $[0, 1]$; modes are `beta-`, `ec/beta+`,
+  `alpha`, `IT`, `sf` (parses only), `n`, `p`.
+- **Scope**: evaluated branching data for chain building — never for
+  spectroscopy or safety use.
+
+<Callout type="note" title="Evaluated tables vs runtime caches">
+  These branch tables live at a different layer from the depletion solver's
+  `BatemanCache` (`crates/depletion/src/bateman.rs`): the tables are
+  evaluated input data, while the cache builds its time-independent
+  eigendecomposition at runtime from whichever chain it is given. Either layer
+  can change without touching the other.
+</Callout>
+
+See `decay_branches` in the [Python API](../reference/python-api.mdx#nucleidenuclei).
 
 ### Simple cross sections
 
@@ -216,6 +254,8 @@ Mean *prompt* recoverable energy per decay (`decay_energy_mev`, table
 - **Units**: MeV per decay.
 - **Scope**: decay-heat estimates only — never for spectroscopy,
   dose, or safety use.
+- **Basis note**: this table stays on ENDF/B-VII.1 while the half-life and
+  decay-branch tables use ENDF/B-VIII.0 (different sublibrary vintages).
 
 See `decay_energy` in the [Python API](../reference/python-api.mdx#nucleidenuclei);
 composition-level heat lives under `decay_heat` in `nucleide.material`.
@@ -279,14 +319,24 @@ with $m(^4\mathrm{He}) = 4.00260325413\,\mathrm{u}$.
 
 ## Assumptions and limitations
 
-- **Ground-state masses only**: metastable-state ids have no separate mass
-  entry; query the ground-state id.
+- **Isomer masses are tape-derived**: isomers with their own ENDF/B-VIII.0
+  tape resolve to $m_{\mathrm{ground}} + E^*$; isomers without one fall back
+  to the ground-state mass at lookup time.
+- **Q-values stay ground-state-only**: the capture/alpha helpers combine
+  tabulated atomic masses per the textbook formulas and reject metastable
+  inputs; isomer-resolved Q-values would need excitation bookkeeping beyond
+  this screening-level scope.
 - **Natural elements are unrepresentable**: a bare symbol such as `"U"` cannot
-  be stored as a `NuclideId` because $A \geq Z$ is required.
+  be stored as a `NuclideId` because $A \geq Z$ is required. Free-form input
+  (`241Pu`, `40K`, `Ba-137m`, `Ir-192n`, bare ZAIDs) is normalized by
+  `normalize_nuclide_name` in `crates/nuclei/src/dialects.rs`, which tries
+  symbol-first parsing before mass-first so `N15` stays nitrogen-15 and
+  `92235` stays a ZAID.
 - **Electron binding neglected**: capture Q-values use neutral atomic masses but
   do not correct for electron binding differences.
-- **No ENSDF decay data**: detailed decay schemes beyond half-life and branching
-  ratios are out of scope.
+- **Branching data is ENDF, not ENSDF**: decay modes and branching ratios come
+  from the ENDF/B-VIII.0 decay sublibrary; detailed ENSDF decay schemes and
+  radiation spectra remain out of scope.
 
 ## Related work beyond Nucleide
 
@@ -295,8 +345,9 @@ embed:
 
 - **Decay schemes**: PyNE derives decay modes, branching ratios, state
   energies, and radiation spectra from ENSDF; OpenMC parses full decay modes
-  from ENDF files. Nucleide carries half-lives plus mean prompt decay
-  energies (MeV per decay from ENDF/B-VII.1 MF8/MT457, not ENSDF).
+  from ENDF files. Nucleide carries half-lives, ENDF/B-VIII.0 branching
+  ratios, and mean prompt decay energies (MeV per decay from ENDF/B-VII.1
+  MF8/MT457, not ENSDF).
 - **Fission product yields**: PyNE exposes WIMSD and NDS yield tables; OpenMC
   reads yields into depletion chains.
 - **Q-values and energy release**: PyNE's `q_val` and OpenMC's

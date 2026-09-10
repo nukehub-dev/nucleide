@@ -59,6 +59,21 @@ the workspace never depends on the numeric backend directly.
 **Rationale:** Makes it possible to swap or upgrade the backend without touching
 parser or depletion code.
 
+## AD-7: License-free decay-data pack instead of vendored ICRP-107
+
+**Decision:** Decline vendoring ICRP-107 decay data. Build the branching-ratio /
+progeny / mode store, isomer masses, and free-form name normalizer from
+permissive evaluations only: ENDF/B-VIII.0 decay tapes (MF8/MT457 NDK records
+for branches, File-1 MT451 ELIS for isomer excitation energies) plus AME2020
+ground-state masses.
+
+**Rationale:** ICRP-107 carries redistribution terms incompatible with
+vendoring into this repository, while ENDF/B-VIII.0 plus AME2020 supply the
+needed branching fractions, daughter states, and excitation energies under
+terms that permit redistribution. Keeping one permissive basis also keeps the
+half-life, branch, and isomer-mass tables mutually consistent (the VII.1-based
+decay-energy table stays as-is and records its own basis in its header).
+
 ## Open questions
 
 - Whether to enable `abi3-py311` or stay on `abi3-py310` as the minimum Python

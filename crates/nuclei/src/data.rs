@@ -1,17 +1,31 @@
-//! Static nuclear reference data: atomic masses (AME2020), natural
-//! abundances, radioactive half-lives, screening-level cross sections,
-//! neutron scattering lengths, mean decay energies, and dose factors.
+//! Static nuclear reference data: atomic masses (AME2020 plus ENDF-derived
+//! isomer masses), natural abundances, radioactive half-lives, decay branches,
+//! screening-level cross sections, neutron scattering lengths, mean decay
+//! energies, and dose factors.
 //!
 //! # Provenance
 //!
 //! - Atomic masses: the [AME2020 atomic mass evaluation][ame] (Huang et al.,
 //!   *Chinese Physics C* **45**, 030002/030003, 2021; data courtesy the
 //!   IAEA-supported AMDC), condensed into the compact [`crate::data`]
-//!   tables below.
+//!   tables below. Isomer rows add the ENDF/B-VIII.0 File-1 MT451 `ELIS`
+//!   excitation energy: `m = m_ground + E*/931.49410242 u` (ENDF excitation
+//!   energies only; no NUBASE import; isomer tapes with unset `ELIS` carry
+//!   the ground-state mass).
 //! - Natural abundances: standard isotopic compositions from the
 //!   ENDF/B-VIII.0 evaluation, expressed as fractions in 0..1.
 //! - Half-lives: ENDF/B-VIII.0 decay evaluations (distributed via the IAEA
 //!   and BNL/NNDC), expressed in seconds.
+//! - Decay branches (`decay_branches.tsv`): per-branch daughters from the
+//!   ENDF/B-VIII.0 decay sublibrary (MF8/MT457 NDK records: RTYP decay-mode
+//!   code, RFS daughter state flag, BR branching fraction). RTYP digits
+//!   apply in emission order (ENDF-102 §8.4; OpenMC `decay.py` digit table):
+//!   beta- gives Z+1, EC/beta+ gives Z-1, alpha gives Z-2/A-4, IT is
+//!   unchanged, delayed neutrons/protons subtract the emitted nucleons.
+//!   Spontaneous-fission and fission-family branches are dropped (depletion
+//!   matrices skip `sf` gains); zero-half-life and stable-flagged tapes
+//!   yield no rows, so effectively-stable entries stay absent, matching the
+//!   half-life table's stable-absent convention.
 //! - Simple cross sections (`simple_xs.tsv`): **total** microscopic cross
 //!   sections in barns. Thermal values combine NIST NCNR 2200 m/s bound
 //!   scattering/absorption converted to free-atom totals via
@@ -51,13 +65,17 @@
 //! Table contents:
 //!
 //! - `data/ame2020.tsv`: one row per ground-state nuclide (`nucid`,
-//!   `mass_u`, `uncertainty_u`), covering all 3 557 nuclides with `Z >= 1`.
-//!   The free-neutron row of the source file is dropped, and excited levels
-//!   are absent because `mass.mas20` lists one entry per (Z, A).
+//!   `mass_u`, `uncertainty_u`), covering all 3 557 nuclides with `Z >= 1`
+//!   (the free-neutron row of the source file is dropped), plus one row per
+//!   ENDF/B-VIII.0 isomer tape (full state-bearing nucid, 738 rows):
+//!   `m = m_ground + ELIS/931.49410242 u` (4 295 rows total).
 //! - `data/natural_abundance.tsv`: `GNDS name` → `fraction`, including the
 //!   lone naturally occurring isomer Ta180_m1.
 //! - `data/half_life.tsv`: `GNDS name` → `half_life_seconds`, for every
 //!   radionuclide in the evaluation (stable nuclides are simply absent).
+//! - `data/decay_branches.tsv`: `parent_GNDS` → (`progeny_GNDS`, `bf`,
+//!   `mode`) per kept branch (5 068 rows over 3 541 parents; SF/fission
+//!   branches dropped, so strong SF emitters sum to `1 - BR(SF)`).
 //! - `data/simple_xs.tsv`: `GNDS name` → (`thermal_barn`, `fast14mev_barn`)
 //!   total cross sections (241 rows; resonance nuclides without a NIST row
 //!   and isomers are absent by construction).
@@ -65,16 +83,23 @@
 //!   `b_incoherent_fm`) bound scattering lengths (267 rows, NIST-tabulated
 //!   isotopes plus monoisotopic element attributions).
 //! - `data/decay_energy.tsv`: `GNDS name` → `mev_per_decay` mean prompt
-//!   recoverable decay energy (3 820 rows covering every ENDF/B-VII.1 decay
-//!   tape, isomers with prompt gammas such as Ba137_m1 included).
+//!   recoverable decay energy (3 557 rows covering every ENDF/B-VII.1 decay
+//!   tape with nonzero heat data, isomers with prompt gammas such as
+//!   Ba137_m1 included). Basis note: this table stays on ENDF/B-VII.1
+//!   while `half_life.tsv` and `decay_branches.tsv` use ENDF/B-VIII.0.
 //! - `data/dose_factors.tsv`: (`GNDS name`, `pathway`, `source`) → (`factor`,
 //!   `f1`, `lung_model`) dose factors (1 116 rows: 93 folded nuclides × 4
 //!   pathways × 3 sources; `f1` set only on ingest rows, `lung_model` only
 //!   on inhale rows).
 //!
-//! Masses are keyed by the canonical [`NuclideId`] nucid layout; metastable
-//! states have no mass entries (ground state and isomers share an atomic
-//! mass — query the state-0 nucid).
+//! Masses are keyed by the canonical [`NuclideId`] nucid layout, including
+//! the metastable state: isomers with their own ENDF/B-VIII.0 tape resolve
+//! to `m_ground + E*/931.49410242 u`, while isomers without a tape fall back
+//! to the ground-state mass (the missing excitation energy is at most MeV
+//! against a GeV-scale mass). Q-value helpers stay ground-state-only by
+//! design (see [`q_value_neutron_capture`]): they combine tabulated atomic
+//! masses per the textbook formulas, and isomer-resolved Q-values would need
+//! excitation bookkeeping beyond this screening-level scope.
 //!
 //! [ame]: https://doi.org/10.1088/1674-1137/abddaf
 //!
@@ -91,6 +116,7 @@ const HALF_LIFE_TSV: &str = include_str!("data/half_life.tsv");
 const SIMPLE_XS_TSV: &str = include_str!("data/simple_xs.tsv");
 const SCATTERING_LENGTHS_TSV: &str = include_str!("data/scattering_lengths.tsv");
 const DECAY_ENERGY_TSV: &str = include_str!("data/decay_energy.tsv");
+const DECAY_BRANCHES_TSV: &str = include_str!("data/decay_branches.tsv");
 const DOSE_FACTORS_TSV: &str = include_str!("data/dose_factors.tsv");
 
 static MASSES: OnceLock<BTreeMap<u32, f64>> = OnceLock::new();
@@ -99,6 +125,7 @@ static HALF_LIVES: OnceLock<BTreeMap<u32, f64>> = OnceLock::new();
 static SIMPLE_XS: OnceLock<BTreeMap<u32, (f64, f64)>> = OnceLock::new();
 static SCATTERING_LENGTHS: OnceLock<BTreeMap<u32, (f64, f64)>> = OnceLock::new();
 static DECAY_ENERGIES: OnceLock<BTreeMap<u32, f64>> = OnceLock::new();
+static DECAY_BRANCHES: OnceLock<BTreeMap<u32, Vec<DecayBranch>>> = OnceLock::new();
 static DOSE_FACTORS: OnceLock<BTreeMap<(u32, DosePathway, DoseSource), DoseEntry>> =
     OnceLock::new();
 
@@ -323,6 +350,153 @@ pub fn decay_energy_mev_by_name(name: &str) -> Option<f64> {
 }
 
 // ---------------------------------------------------------------------------
+// Decay branches
+// ---------------------------------------------------------------------------
+
+/// One decay mode token, matching the depletion-chain vocabulary (`beta-`,
+/// `ec/beta+`, `alpha`, `IT`, `sf`) plus the direct nucleon-emission modes
+/// (`n`, `p`) for particle-unbound light nuclei.
+///
+/// EC-only and beta+/EC evaluations both fold into [`Self::EcBetaPlus`].
+/// `sf` never appears in the vendored table (fission branches are dropped
+/// at generation) but parses for robustness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum DecayBranchMode {
+    /// Negative beta decay (Z+1 daughter, incl. delayed-neutron branches).
+    BetaMinus,
+    /// Electron capture and/or positron emission (Z-1 daughter).
+    EcBetaPlus,
+    /// Alpha decay (Z-2/A-4 daughter).
+    Alpha,
+    /// Isomeric transition (same Z/A daughter).
+    It,
+    /// Spontaneous fission (dropped at generation; parses only).
+    Sf,
+    /// Direct neutron emission (A-1 daughter).
+    Neutron,
+    /// Direct proton emission (Z-1/A-1 daughter).
+    Proton,
+}
+
+impl DecayBranchMode {
+    /// Canonical table token (`beta-`/`ec/beta+`/`alpha`/`IT`/`sf`/`n`/`p`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::BetaMinus => "beta-",
+            Self::EcBetaPlus => "ec/beta+",
+            Self::Alpha => "alpha",
+            Self::It => "IT",
+            Self::Sf => "sf",
+            Self::Neutron => "n",
+            Self::Proton => "p",
+        }
+    }
+
+    /// Parse a mode token (case-insensitive).
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "beta-" | "beta" | "b-" => Some(Self::BetaMinus),
+            "ec/beta+" | "ec" | "beta+" => Some(Self::EcBetaPlus),
+            "alpha" | "a" => Some(Self::Alpha),
+            "it" => Some(Self::It),
+            "sf" => Some(Self::Sf),
+            "n" => Some(Self::Neutron),
+            "p" => Some(Self::Proton),
+            _ => None,
+        }
+    }
+}
+
+/// One evaluated decay branch: daughter nuclide, branching fraction, mode.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DecayBranch {
+    /// Daughter nucid (full state-bearing id; RFS sets the state).
+    pub progeny: u32,
+    /// Branching fraction in 0..1 (evaluated value, verbatim).
+    pub branching_fraction: f64,
+    /// Decay mode token (initial event for multi-particle branches).
+    pub mode: DecayBranchMode,
+}
+
+/// Parse `parent_GNDS \t progeny_GNDS \t bf \t mode` rows into
+/// parent-nucid-keyed branch lists.
+///
+/// Malformed rows are skipped silently, matching [`parse_masses`].
+fn parse_decay_branches(tsv: &str) -> BTreeMap<u32, Vec<DecayBranch>> {
+    let mut map: BTreeMap<u32, Vec<DecayBranch>> = BTreeMap::new();
+    for line in tsv
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+    {
+        let mut cols = line.split('\t');
+        let (Some(parent), Some(progeny), Some(bf), Some(mode)) =
+            (cols.next(), cols.next(), cols.next(), cols.next())
+        else {
+            continue;
+        };
+        let (Ok(p), Ok(d), Ok(b), Some(m)) = (
+            NuclideId::from_name(parent).map(|id| id.nucid()),
+            NuclideId::from_name(progeny).map(|id| id.nucid()),
+            bf.parse::<f64>(),
+            DecayBranchMode::parse(mode),
+        ) else {
+            continue;
+        };
+        map.entry(p).or_default().push(DecayBranch {
+            progeny: d,
+            branching_fraction: b,
+            mode: m,
+        });
+    }
+    for branches in map.values_mut() {
+        branches.sort_by_key(|b| (b.progeny, b.mode));
+    }
+    map
+}
+
+fn decay_branch_map() -> &'static BTreeMap<u32, Vec<DecayBranch>> {
+    DECAY_BRANCHES.get_or_init(|| parse_decay_branches(DECAY_BRANCHES_TSV))
+}
+
+/// The full decay-branch table, keyed by parent nucid.
+///
+/// 5 068 rows over 3 541 parents from ENDF/B-VIII.0; SF/fission branches
+/// are dropped, so strong SF emitters sum to `1 - BR(SF)`.
+pub fn decay_branch_table() -> &'static BTreeMap<u32, Vec<DecayBranch>> {
+    decay_branch_map()
+}
+
+/// Evaluated decay branches of the given parent `nucid`.
+///
+/// Returns `None` for nuclides with no branch rows (stable nuclides and
+/// zero-half-life evaluation dummies such as Te123).
+pub fn decay_branches(nucid: u32) -> Option<Vec<DecayBranch>> {
+    decay_branch_map().get(&nucid).cloned()
+}
+
+/// Evaluated decay branches of a named nuclide (see [`NuclideId::from_name`]).
+pub fn decay_branches_by_name(name: &str) -> Option<Vec<DecayBranch>> {
+    decay_branches(NuclideId::from_name(name).ok()?.nucid())
+}
+
+/// Branching fraction from `parent` to `progeny` (both nucids), if tabulated.
+pub fn branching_fraction(parent: u32, progeny: u32) -> Option<f64> {
+    decay_branch_map()
+        .get(&parent)?
+        .iter()
+        .find(|b| b.progeny == progeny)
+        .map(|b| b.branching_fraction)
+}
+
+/// Branching fraction from `parent` to `progeny` (GNDS names), if tabulated.
+pub fn branching_fraction_by_name(parent: &str, progeny: &str) -> Option<f64> {
+    branching_fraction(
+        NuclideId::from_name(parent).ok()?.nucid(),
+        NuclideId::from_name(progeny).ok()?.nucid(),
+    )
+}
+
+// ---------------------------------------------------------------------------
 // Dose factors
 // ---------------------------------------------------------------------------
 
@@ -529,12 +703,23 @@ pub fn dose_lung_model_by_name(name: &str, source: DoseSource) -> Option<char> {
     dose_lung_model(NuclideId::from_name(name).ok()?.nucid(), source)
 }
 
-/// Atomic mass of the nuclide with the given ground-state `nucid`, in u.
+/// Atomic mass of the nuclide with the given `nucid`, in u.
 ///
-/// Returns `None` for unknown nuclides, non-nuclide ids (`Z = 0`), and
-/// metastable state ids (query the ground state instead).
+/// Ground states resolve to the AME2020 value. Metastable states resolve to
+/// their ENDF-derived isomer mass (`m_ground + E*/931.49410242 u`) when the
+/// isomer has its own tape, and fall back to the ground-state mass otherwise
+/// (the missing excitation energy is at most MeV against a GeV-scale mass).
+/// Returns `None` for unknown nuclides and non-nuclide ids (`Z = 0`).
 pub fn atomic_mass(nucid: u32) -> Option<f64> {
-    masses().get(&nucid).copied()
+    if let Some(mass) = masses().get(&nucid) {
+        return Some(*mass);
+    }
+    let id = NuclideId::from_nucid(nucid);
+    if id.state() != 0 {
+        let ground = (id.z() * 1000 + id.a()) * 10_000;
+        return masses().get(&ground).copied();
+    }
+    None
 }
 
 /// Atomic mass of a named nuclide (see [`NuclideId::from_name`]), in u.
@@ -583,6 +768,12 @@ pub fn decay_constant_by_name(name: &str) -> Option<f64> {
 
 /// Q-value of neutron radiative capture X(n,γ)X', in MeV.
 ///
+/// Ground-state-only by design: the formula combines tabulated atomic
+/// masses per the textbook definition, and isomer-resolved Q-values would
+/// need explicit excitation-energy bookkeeping beyond this
+/// screening-level scope (metastable-state and non-nuclide inputs return
+/// `None` even though [`atomic_mass`] now resolves isomers).
+///
 /// From atomic masses (AME2020, in u):
 ///
 /// ```text
@@ -609,6 +800,9 @@ pub fn q_value_neutron_capture_by_name(name: &str) -> Option<f64> {
 }
 
 /// Q-value of alpha decay X → Y + He4, in MeV.
+///
+/// Ground-state-only by design, like [`q_value_neutron_capture`]:
+/// metastable and non-nuclide inputs return `None`.
 ///
 /// From atomic masses (AME2020, in u):
 ///
@@ -666,7 +860,8 @@ impl AmeMasses {
 }
 
 /// Zero-sized façade over the decay-data lookups ([`half_life`],
-/// [`decay_constant`], [`decay_energy_mev`]).
+/// [`decay_constant`], [`decay_energy_mev`], [`decay_branches`],
+/// [`branching_fraction`]).
 ///
 /// Mirrors [`AmeMasses`]; standalone today, kept free of cross-crate
 /// coupling for future provider-trait integration.
@@ -702,6 +897,26 @@ impl DecayData {
     /// See [`decay_energy_mev_by_name`].
     pub fn decay_energy_mev_by_name(&self, name: &str) -> Option<f64> {
         decay_energy_mev_by_name(name)
+    }
+
+    /// See [`decay_branches`].
+    pub fn decay_branches(&self, nucid: u32) -> Option<Vec<DecayBranch>> {
+        decay_branches(nucid)
+    }
+
+    /// See [`decay_branches_by_name`].
+    pub fn decay_branches_by_name(&self, name: &str) -> Option<Vec<DecayBranch>> {
+        decay_branches_by_name(name)
+    }
+
+    /// See [`branching_fraction`].
+    pub fn branching_fraction(&self, parent: u32, progeny: u32) -> Option<f64> {
+        branching_fraction(parent, progeny)
+    }
+
+    /// See [`branching_fraction_by_name`].
+    pub fn branching_fraction_by_name(&self, parent: &str, progeny: &str) -> Option<f64> {
+        branching_fraction_by_name(parent, progeny)
     }
 }
 
@@ -787,9 +1002,15 @@ mod tests {
         // Free neutron row (Z = 0) is excluded from the vendored table.
         assert_eq!(atomic_mass(10_000), None);
         assert_eq!(atomic_mass(999_999_999), None);
-        // Ground states only: metastable ids have no mass entries.
-        assert_eq!(atomic_mass(922_350_001), None);
-        assert_eq!(atomic_mass_by_name("U235_m1"), None);
+        // Isomers with their own ENDF tape resolve to the isomer mass;
+        // isomers without one fall back to the ground-state mass.
+        let ba_m1 = NuclideId::from_name("Ba137_m1").unwrap().nucid();
+        assert!(atomic_mass(ba_m1).unwrap() > atomic_mass(561_370_000).unwrap());
+        assert!(atomic_mass_by_name("U235_m1").unwrap() > atomic_mass(U235).unwrap());
+        assert_eq!(
+            atomic_mass_by_name("Pm137_m1"),
+            atomic_mass_by_name("Pm137")
+        );
     }
 
     #[test]
@@ -838,7 +1059,9 @@ mod tests {
         let table = mass_table();
         for (nucid, mass) in table {
             let id = NuclideId::from_nucid(*nucid);
-            assert_eq!(id.state(), 0, "only ground states expected");
+            // Ground states plus ENDF-taped isomers (state 1-9); the
+            // excitation energy is at most MeV against a GeV-scale mass.
+            assert!(id.state() <= 9, "state out of range: {nucid}");
             let (lo, hi) = (0.9 * f64::from(id.a()), 1.2 * f64::from(id.a()));
             assert!(*mass > lo && *mass < hi, "{} mass {mass}", id.to_name());
             assert!(*mass > 0.0);
@@ -856,9 +1079,29 @@ mod tests {
             .filter(|l| !l.is_empty() && !l.starts_with('#'))
             .count();
         assert_eq!(mass_table().len(), mass_rows);
-        assert_eq!(mass_rows, 3557);
+        assert_eq!(mass_rows, 3557 + 738);
         assert_eq!(abundance_table().len(), abundance_rows);
         assert_eq!(abundance_rows, 289);
+    }
+
+    #[test]
+    fn isomer_masses_follow_ground_plus_excitation() {
+        // Ba137_m1: ELIS 661659 eV on a 136.905827207 u ground state.
+        let ba = NuclideId::from_name("Ba137").unwrap().nucid();
+        let ba_m1 = NuclideId::from_name("Ba137_m1").unwrap().nucid();
+        let expected = atomic_mass(ba).unwrap() + 0.661_659 / MEV_PER_U;
+        assert!((atomic_mass(ba_m1).unwrap() - expected).abs() < 1e-9);
+        // Second isomers resolve too (ENDF m2 tapes, e.g. Cu70_m2).
+        let cu_m2 = NuclideId::from_name("Cu70_m2").unwrap().nucid();
+        assert!(atomic_mass(cu_m2).unwrap() >= atomic_mass_by_name("Cu70").unwrap());
+        // Pm137m has no ENDF/B-VIII.0 isomer tape: absent, no fill-in, so
+        // the lookup falls back to the ground-state mass.
+        assert_eq!(
+            atomic_mass_by_name("Pm137_m1"),
+            atomic_mass_by_name("Pm137")
+        );
+        // Stable Te123 keeps its ground mass; its isomer has its own row.
+        assert!(atomic_mass_by_name("Te123_m1").unwrap() > atomic_mass_by_name("Te123").unwrap());
     }
 
     #[test]
@@ -1168,6 +1411,143 @@ mod tests {
         let co60 = provider.decay_energy_mev_by_name("Co60").unwrap();
         assert!((co60 - 2.6006).abs() / 2.6006 < 0.05, "{co60}");
         assert_eq!(provider.decay_energy_mev_by_name("Fe56"), None);
+    }
+
+    #[test]
+    fn decay_branch_k40_two_branches_sum_to_one() {
+        // ENDF/B-VIII.0 NDK values, verbatim: beta- 0.8914 to Ca40 and
+        // EC/beta+ 0.1086 to Ar40.
+        let k40 = NuclideId::from_name("K40").unwrap().nucid();
+        let branches = decay_branches(k40).unwrap();
+        assert_eq!(branches.len(), 2);
+        let ca40 = NuclideId::from_name("Ca40").unwrap().nucid();
+        let ar40 = NuclideId::from_name("Ar40").unwrap().nucid();
+        assert!(branches.contains(&DecayBranch {
+            progeny: ca40,
+            branching_fraction: 0.8914,
+            mode: DecayBranchMode::BetaMinus,
+        }));
+        assert!(branches.contains(&DecayBranch {
+            progeny: ar40,
+            branching_fraction: 0.1086,
+            mode: DecayBranchMode::EcBetaPlus,
+        }));
+        let total: f64 = branches.iter().map(|b| b.branching_fraction).sum();
+        assert!((total - 1.0).abs() < 1e-9, "{total}");
+        assert_eq!(branching_fraction(k40, ca40), Some(0.8914));
+        assert_eq!(branching_fraction_by_name("K40", "Ar40"), Some(0.1086));
+        assert_eq!(branching_fraction_by_name("K40", "K40"), None);
+    }
+
+    #[test]
+    fn decay_branch_spot_modes() {
+        use DecayBranchMode as M;
+        // Single alpha branch with unit BR.
+        let es254 = decay_branches_by_name("Es254").unwrap();
+        assert_eq!(es254.len(), 1);
+        assert_eq!(es254[0].mode, M::Alpha);
+        assert_eq!(es254[0].branching_fraction, 1.0);
+        assert_eq!(NuclideId::from_nucid(es254[0].progeny).to_name(), "Bk250");
+        // Isomeric transition keeps Z/A.
+        let ba = decay_branches_by_name("Ba137_m1").unwrap();
+        assert_eq!(ba.len(), 1);
+        assert_eq!(ba[0].mode, M::It);
+        assert_eq!(NuclideId::from_nucid(ba[0].progeny).to_name(), "Ba137");
+        // Delayed-neutron branch collapses to the beta- initial event with
+        // the emitted neutron subtracted from the progeny.
+        let he8 = decay_branches_by_name("He8").unwrap();
+        assert_eq!(he8.len(), 2);
+        let names: Vec<String> = he8
+            .iter()
+            .map(|b| NuclideId::from_nucid(b.progeny).to_name())
+            .collect();
+        assert!(names.contains(&"Li8".to_string()), "{names:?}");
+        assert!(names.contains(&"Li7".to_string()), "{names:?}");
+        assert!(he8.iter().all(|b| b.mode == M::BetaMinus));
+        // Es254m mixes alpha, beta-, EC, and IT; the SF branch is dropped.
+        let es_m1 = decay_branches_by_name("Es254_m1").unwrap();
+        assert_eq!(es_m1.len(), 4);
+        assert!(es_m1.iter().all(|b| b.mode != M::Sf));
+        assert_eq!(branching_fraction_by_name("Es254_m1", "Fm254"), Some(0.98));
+    }
+
+    #[test]
+    fn decay_branch_stable_and_unknown_have_no_rows() {
+        assert_eq!(decay_branches_by_name("Fe56"), None);
+        assert_eq!(decay_branches_by_name("O16"), None);
+        // Zero-half-life evaluation dummies stay absent (stable-absent rule).
+        assert_eq!(decay_branches_by_name("Te123"), None);
+        assert_eq!(decay_branches_by_name("Ca46"), None);
+        assert_eq!(branching_fraction_by_name("Fe56", "Fe56"), None);
+        assert_eq!(decay_branches_by_name("Xx999"), None);
+    }
+
+    #[test]
+    fn decay_branch_parents_agree_with_half_life_table() {
+        // Every branch parent carries a half-life row (same VIII.0 basis);
+        // progeny may be stable (absent) — only names must parse.
+        for (parent, branches) in decay_branch_table() {
+            assert!(
+                half_life(*parent).is_some(),
+                "parent without half-life: {parent}"
+            );
+            assert!(!branches.is_empty());
+            for b in branches {
+                assert!(
+                    (0.0..=1.0).contains(&b.branching_fraction),
+                    "BF range: {}",
+                    b.branching_fraction
+                );
+                let id = NuclideId::from_nucid(b.progeny);
+                assert!(id.z() >= 1 && id.a() >= id.z(), "{}", id.to_name());
+            }
+        }
+    }
+
+    #[test]
+    fn decay_branch_row_count_matches_table() {
+        let rows = DECAY_BRANCHES_TSV
+            .lines()
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .count();
+        let table_rows: usize = decay_branch_table().values().map(Vec::len).sum();
+        assert_eq!(table_rows, rows);
+        assert_eq!(rows, 5068);
+        assert_eq!(decay_branch_table().len(), 3541);
+    }
+
+    #[test]
+    fn decay_branch_mode_parsing() {
+        use DecayBranchMode as M;
+        assert_eq!(M::parse("beta-"), Some(M::BetaMinus));
+        assert_eq!(M::parse("ec/beta+"), Some(M::EcBetaPlus));
+        assert_eq!(M::parse("EC/BETA+"), Some(M::EcBetaPlus));
+        assert_eq!(M::parse("alpha"), Some(M::Alpha));
+        assert_eq!(M::parse("IT"), Some(M::It));
+        assert_eq!(M::parse("it"), Some(M::It));
+        assert_eq!(M::parse("sf"), Some(M::Sf));
+        assert_eq!(M::parse("n"), Some(M::Neutron));
+        assert_eq!(M::parse("p"), Some(M::Proton));
+        assert_eq!(M::parse("nope"), None);
+        assert_eq!(M::BetaMinus.as_str(), "beta-");
+        assert_eq!(M::EcBetaPlus.as_str(), "ec/beta+");
+        assert_eq!(M::It.as_str(), "IT");
+    }
+
+    #[test]
+    fn decay_data_facade_delegates_branches() {
+        let provider = DecayData;
+        let k40 = NuclideId::from_name("K40").unwrap().nucid();
+        assert_eq!(provider.decay_branches(k40), decay_branches(k40));
+        assert_eq!(
+            provider.decay_branches_by_name("Es254"),
+            decay_branches_by_name("Es254")
+        );
+        assert_eq!(
+            provider.branching_fraction_by_name("K40", "Ca40"),
+            Some(0.8914)
+        );
+        assert_eq!(provider.decay_branches_by_name("Fe56"), None);
     }
 
     #[test]

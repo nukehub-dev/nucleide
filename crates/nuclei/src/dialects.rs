@@ -591,6 +591,131 @@ fn split_isomer_suffix(body: &str) -> Result<(u32, &str), DialectError> {
     }
 }
 
+/// Normalize a free-form nuclide name to its canonical [`NuclideId`].
+///
+/// Accepts symbol-first (`U235`, `Ba137m`, `Ba-137m`, `Ir-192n`),
+/// mass-first (`241Pu`, `40K`), and bare ZAID integers (`92235` → U235).
+/// Isomer letters use [`isomer_state`] (case-insensitive, so `n` is state 2)
+/// while `_mN`/`MN` numeric forms keep their existing `from_name` semantics.
+/// Bare element symbols (`U`) are rejected: a mass number is required.
+///
+/// Resolution order is symbol-first ([`NuclideId::from_name`], which already
+/// covers `_mN`, trailing-`M`, and dash-tolerant forms), then — for inputs
+/// `from_name` rejects — mass-first via [`digit_letter_runs`] (so `N15`
+/// stays nitrogen-15 rather than parsing as an element), with all-digit
+/// inputs read as MCNP ZAIDs via [`from_zaid`].
+///
+/// # Examples
+///
+/// ```rust
+/// # use nucleide_nuclei::dialects::normalize_nuclide_name;
+/// # use nucleide_nuclei::NuclideId;
+/// assert_eq!(normalize_nuclide_name("241Pu").unwrap(), NuclideId::from_name("Pu241").unwrap());
+/// assert_eq!(normalize_nuclide_name("40K").unwrap(), NuclideId::from_name("K40").unwrap());
+/// assert_eq!(normalize_nuclide_name("Ba-137m").unwrap(), NuclideId::from_name("Ba137_m1").unwrap());
+/// assert_eq!(normalize_nuclide_name("Ir-192n").unwrap().state(), 2);
+/// ```
+pub fn normalize_nuclide_name(input: &str) -> Result<NuclideId, DialectError> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(DialectError::MissingMassNumber(input.to_string()));
+    }
+    // Symbol-first (plus `_mN` / `MN` numerics and dash tolerance): the
+    // canonical parser covers `U235`, `Ba137m`, `Ba-137m`, `N15`, ....
+    if let Ok(id) = NuclideId::from_name(trimmed) {
+        return Ok(id);
+    }
+    let compact: String = trimmed
+        .chars()
+        .filter(|c| *c != '-' && !c.is_whitespace())
+        .collect();
+    if compact.is_empty() || !compact.is_ascii() {
+        return Err(DialectError::MissingMassNumber(trimmed.to_string()));
+    }
+    let upper = compact.to_ascii_uppercase();
+    // All-digit inputs are ZAIDs (`92235` → U235), not mass numbers.
+    if upper.chars().all(|c| c.is_ascii_digit()) {
+        let zaid: u32 = upper
+            .parse()
+            .map_err(|_| crate::Error::BadNumber(upper.clone()))?;
+        return from_zaid(zaid);
+    }
+    // Symbol-first with an extended isomer letter (`Ir192n` → state 2;
+    // trailing-`M` forms never reach here: `from_name` takes them).
+    if let Some((z, rest)) = split_leading_symbol(&upper) {
+        if rest.is_empty() {
+            return Err(DialectError::NaturalElement(trimmed.to_string()));
+        }
+        let digit_end = rest
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(rest.len());
+        let (a_str, suffix) = rest.split_at(digit_end);
+        if a_str.is_empty() {
+            return Err(DialectError::MissingMassNumber(trimmed.to_string()));
+        }
+        let a = a_str
+            .parse::<u32>()
+            .map_err(|_| crate::Error::BadNumber(a_str.to_string()))?;
+        let state = match suffix.len() {
+            0 => 0,
+            1 => isomer_state(suffix.chars().next().unwrap())
+                .ok_or_else(|| DialectError::BadIsomerLetter(suffix.chars().next().unwrap()))?,
+            _ => return Err(DialectError::MissingMassNumber(trimmed.to_string())),
+        };
+        return NuclideId::new(z, a, state).map_err(DialectError::from);
+    }
+    // Mass-first (`241Pu`, `40K`) via `digit_letter_runs`: the digits must
+    // lead and the remainder must be letters only. The full remainder is
+    // tried as a symbol before any isomer-letter strip, so `Pu` in `241Pu`
+    // is never misread as state 8 (`u`).
+    let (digits, letters) = digit_letter_runs(&upper);
+    if digits.is_empty() {
+        return if z_of_canonical_symbol(&letters).is_some() {
+            Err(DialectError::NaturalElement(trimmed.to_string()))
+        } else {
+            Err(DialectError::UnknownElement(trimmed.to_string()))
+        };
+    }
+    if upper.len() < digits.len() || &upper[..digits.len()] != digits.as_str() {
+        return Err(DialectError::MissingMassNumber(trimmed.to_string()));
+    }
+    let remainder = &upper[digits.len()..];
+    if remainder.is_empty() || remainder != letters.as_str() {
+        return Err(DialectError::MissingMassNumber(trimmed.to_string()));
+    }
+    let (z, state) = match z_of_canonical_symbol(letters.as_str()) {
+        Some(z) => (z, 0),
+        None => {
+            let (head, tail) = letters.split_at(letters.len() - 1);
+            let letter = tail.chars().next().unwrap();
+            match (z_of_canonical_symbol(head), isomer_state(letter)) {
+                (Some(z), Some(state)) => (z, state),
+                _ => return Err(DialectError::UnknownElement(trimmed.to_string())),
+            }
+        }
+    };
+    let a = digits
+        .parse::<u32>()
+        .map_err(|_| crate::Error::BadNumber(digits.to_string()))?;
+    NuclideId::new(z, a, state).map_err(DialectError::from)
+}
+
+/// Split a leading element symbol off `s` (two-letter symbols preferred),
+/// returning the atomic number and the remainder.
+fn split_leading_symbol(s: &str) -> Option<(u32, &str)> {
+    if s.len() >= 2 {
+        if let Some(z) = z_of_canonical_symbol(&s[..2]) {
+            return Some((z, &s[2..]));
+        }
+    }
+    if !s.is_empty() {
+        if let Some(z) = z_of_canonical_symbol(&s[..1]) {
+            return Some((z, &s[1..]));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -830,6 +955,65 @@ mod tests {
         assert!(matches!(
             from_sza(20),
             Err(DialectError::BadComponents(Error::BadZ(0)))
+        ));
+    }
+
+    #[test]
+    fn normalize_symbol_first_forms() {
+        assert_eq!(
+            normalize_nuclide_name("U235").unwrap(),
+            NuclideId::from_name("U235").unwrap()
+        );
+        assert_eq!(
+            normalize_nuclide_name("Ba137m").unwrap(),
+            NuclideId::from_name("Ba137_m1").unwrap()
+        );
+        assert_eq!(
+            normalize_nuclide_name("Ba-137m").unwrap(),
+            NuclideId::from_name("Ba137_m1").unwrap()
+        );
+        // Extended isomer letters via isomer_state (case-insensitive).
+        assert_eq!(normalize_nuclide_name("Ir-192n").unwrap().state(), 2);
+        assert_eq!(normalize_nuclide_name("Ir192n").unwrap(), nid(77, 192, 2));
+        assert_eq!(normalize_nuclide_name("Ta-182N").unwrap(), nid(73, 182, 2));
+        // `_mN` / `MN` numerics keep from_name semantics untouched.
+        assert_eq!(normalize_nuclide_name("Am242_m1").unwrap(), nid(95, 242, 1));
+        assert_eq!(normalize_nuclide_name("Am242M").unwrap(), nid(95, 242, 1));
+    }
+
+    #[test]
+    fn normalize_mass_first_and_zaid() {
+        // Mass-first: digits lead, symbol follows.
+        assert_eq!(normalize_nuclide_name("241Pu").unwrap(), nid(94, 241, 0));
+        assert_eq!(normalize_nuclide_name("40K").unwrap(), nid(19, 40, 0));
+        // N15 stays nitrogen-15 (symbol-first wins, never an element trap).
+        assert_eq!(normalize_nuclide_name("N15").unwrap(), nid(7, 15, 0));
+        // Bare ZAIDs stay ZAIDs (all-digit inputs read via from_zaid).
+        assert_eq!(normalize_nuclide_name("92235").unwrap(), nid(92, 235, 0));
+        assert_eq!(normalize_nuclide_name("1001").unwrap(), nid(1, 1, 0));
+    }
+
+    #[test]
+    fn normalize_rejects_bare_symbols_and_garbage() {
+        assert!(matches!(
+            normalize_nuclide_name("U"),
+            Err(DialectError::MissingMassNumber(_)) | Err(DialectError::NaturalElement(_))
+        ));
+        assert!(matches!(
+            normalize_nuclide_name("Pu"),
+            Err(DialectError::NaturalElement(_))
+        ));
+        assert!(matches!(
+            normalize_nuclide_name(""),
+            Err(DialectError::MissingMassNumber(_))
+        ));
+        assert!(matches!(
+            normalize_nuclide_name("Xx99"),
+            Err(DialectError::UnknownElement(_)) | Err(DialectError::MissingMassNumber(_))
+        ));
+        assert!(matches!(
+            normalize_nuclide_name("99Xx"),
+            Err(DialectError::UnknownElement(_))
         ));
     }
 

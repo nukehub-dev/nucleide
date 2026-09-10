@@ -747,9 +747,16 @@ mod tests {
             ),
             Err(Error::Naming(_))
         ));
-        // Metastable ids fall back to the ground-state mass.
+        // Isomers with their own ENDF tape resolve to the isomer mass.
         let am242m = NuclideId::from_name("Am242_m1").unwrap();
         let mass = FlukaNuc::from(am242m).atomic_mass();
-        assert_eq!(mass, nuc_data::atomic_mass(952_420_000));
+        assert_eq!(mass, nuc_data::atomic_mass(952_420_001));
+        assert!(mass.unwrap() > nuc_data::atomic_mass(952_420_000).unwrap());
+        // Isomers without a tape fall back to the ground-state mass.
+        let pm137m = NuclideId::from_name("Pm137_m1").unwrap();
+        assert_eq!(
+            FlukaNuc::from(pm137m).atomic_mass(),
+            nuc_data::atomic_mass(611_370_000)
+        );
     }
 }

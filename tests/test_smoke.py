@@ -55,7 +55,12 @@ def test_atomic_masses() -> None:
     assert abs(h1 - 1.007825031898) < 1e-11
     assert abs(u5 - 235.043928117) < 1e-8
     assert nucleide.nuclei.atomic_mass(999999999) is None
-    assert nucleide.nuclei.Nuclide("Am242_m1").mass is None  # metastables: ground-state table
+    # Isomers with their own ENDF tape resolve to m_ground + E*.
+    am242m = nucleide.nuclei.Nuclide("Am242_m1").mass
+    am242 = nucleide.nuclei.atomic_mass("Am242")
+    assert am242m is not None
+    assert am242 is not None
+    assert am242m > am242
     by_id = nucleide.nuclei.atomic_mass(10010000)
     assert by_id is not None
     assert abs(by_id - 1.007825031898) < 1e-11

@@ -226,6 +226,12 @@ export interface McnpMaterialJson {
   comments: string[];
 }
 
+export interface DecayBranchJson {
+  progeny: string;
+  branching_fraction: number;
+  mode: string;
+}
+
 export interface XsdirTableJson {
   name: string;
   zaid: string;
@@ -436,6 +442,9 @@ export interface WasmApi {
   decayConstant(key: string): number | undefined;
   qValueCapture(key: string): number | undefined;
   qValueAlpha(key: string): number | undefined;
+  normalize_nuclide(name: string): string;
+  decay_branches(key: string): DecayBranchJson[];
+  decay_branch_fraction(parent: string, progeny: string): number | undefined;
   deplete(
     chain: WasmChain,
     n0: Record<string, number>,
