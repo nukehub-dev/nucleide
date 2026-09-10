@@ -50,7 +50,7 @@
 //! A single evaluated table is the only source of truth — there is no
 //! parallel hand-kept fallback. No HDF5 dependencies are involved.
 
-use crate::bateman::Method;
+use crate::bateman::{BatemanCache, Method};
 use crate::chain::{Chain, ChainNuclide, Error};
 use crate::cram::Order;
 use crate::matrix::{DepletionSystem, ReactionRates};
@@ -229,12 +229,64 @@ const CF4_A12: f64 = -0.038_675_134_594_812_87; // 1/4 - sqrt(3)/6
 /// Errors on dimension mismatch, non-positive/non-finite step lengths, or
 /// backend failures (mapped to [`Error::BadStructure`], matching
 /// [`crate::deplete`]).
+///
+/// # Cross-step reuse
+///
+/// Expensive time-independent objects are hoisted out of the per-step loop
+/// and reused while the step sequence allows it (see [`ReuseStats`]):
+///
+/// - the [`DepletionSystem`] pattern/entries are reused; only `base_values`
+///   are recomputed per step ([`DepletionSystem::refresh_rates`]);
+/// - the [`nucleide_linalg::SymbolicLu`] analysis is rebuilt only when the
+///   sparsity pattern changes (constant-rate series build it once);
+/// - one [`BatemanCache`] is reused for decay-only step sequences whose
+///   matrix values are unchanged (the cache holds time-independent `C`/`C⁻¹`;
+///   only the `e^{−λdt}` diagonal is fresh per step).
+///
+/// All reuse checks are exact (entry-by-entry pattern comparison, bit-exact
+/// value comparison), so reused results are bit-identical to fresh per-step
+/// builds.
 pub fn integrate_with_method(
     sys: &DepletionSystem,
     n0: &[f64],
     steps: &[Step],
     integrator: Integrator,
     method: Method,
+) -> Result<TimeSeries, Error> {
+    let mut stats = ReuseStats::default();
+    integrate_with_method_counted(sys, n0, steps, integrator, method, &mut stats)
+}
+
+/// Counts of expensive per-series rebuilds observed while integrating one
+/// rate schedule.
+///
+/// [`integrate_with_method`] hoists every time-independent object out of the
+/// per-step loop; [`integrate_with_method_counted`] additionally fills this
+/// struct so regression tests can prove the reuse (a single build for
+/// step-invariant series) while the series stays bit-identical to fresh
+/// per-step builds.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReuseStats {
+    /// Number of steps advanced.
+    pub steps: usize,
+    /// Full [`DepletionSystem`] (pattern + entries) builds.
+    pub system_builds: usize,
+    /// [`nucleide_linalg::SymbolicLu`] analyses built.
+    pub symbolic_builds: usize,
+    /// [`BatemanCache`] build attempts (decay probes, including ones that
+    /// fall back to CRAM-48).
+    pub bateman_builds: usize,
+}
+
+/// [`integrate_with_method`] with reuse accounting (see [`ReuseStats`]).
+/// Validation and numerics are identical to [`integrate_with_method`].
+pub fn integrate_with_method_counted(
+    sys: &DepletionSystem,
+    n0: &[f64],
+    steps: &[Step],
+    integrator: Integrator,
+    method: Method,
+    stats: &mut ReuseStats,
 ) -> Result<TimeSeries, Error> {
     if n0.len() != sys.chain.len() {
         return Err(Error::BadStructure(format!(
@@ -263,10 +315,11 @@ pub fn integrate_with_method(
     activity.push(activity_vec(sys, n0));
     decay_heat.push(decay_heat_vec(sys, n0, &energies));
 
+    let mut cache = SeriesCache::new();
     let mut n = n0.to_vec();
     let mut t = 0.0;
     for step in steps {
-        n = advance(sys, &n, step, integrator, method)?;
+        n = cache.advance(sys, stats, &n, step, integrator, method)?;
         t += step.dt;
         times.push(t);
         activity.push(activity_vec(sys, &n));
@@ -296,7 +349,263 @@ pub fn integrate(
     integrate_with_method(sys, n0, steps, integrator, Method::Cram(order))
 }
 
-/// Advance one step with the chosen integrator.
+/// Cross-step caches hoisted out of the per-step loop.
+///
+/// Reuse conditions (all checks exact, so reuse is bit-identical to fresh
+/// per-step builds):
+///
+/// - `sys`: the [`DepletionSystem`] pattern/entries are reused while the
+///   sparsity is unchanged; only `base_values` are recomputed per step via
+///   [`DepletionSystem::refresh_rates`]. The pattern changes exactly when a
+///   rate channel toggles between zero and nonzero (or the template chain
+///   differs, which never happens inside one series).
+/// - `sym`: the [`nucleide_linalg::SymbolicLu`] analysis depends only on the
+///   sparsity pattern, so it is rebuilt only when the pattern changes
+///   (constant-rate series build it once). CF4 scaled-matrix stages share
+///   the pattern, so they reuse it too.
+/// - `bateman`: the [`BatemanCache`] holds time-independent `C`/`C⁻¹` and is
+///   reused while the assembled matrix values are bit-identical
+///   (decay-only steps with an unchanged pattern). Any value or pattern
+///   change re-probes; a probe that falls back to CRAM-48 is remembered for
+///   those exact values so repeated fallback steps skip the rebuild.
+struct SeriesCache {
+    /// Working system: pattern/entries reused, `base_values` refreshed.
+    sys: Option<DepletionSystem>,
+    /// Symbolic analysis for the working system's pattern.
+    sym: Option<nucleide_linalg::SymbolicLu>,
+    /// Bateman decomposition for the current values, if the last probe
+    /// succeeded.
+    bateman: Option<BatemanCache>,
+    /// `base_values` the Bateman slot was probed with (success or fallback).
+    bateman_values: Option<Vec<nucleide_linalg::C64>>,
+    /// The last probe for `bateman_values` fell back to CRAM-48.
+    bateman_fallback: bool,
+}
+
+impl SeriesCache {
+    fn new() -> Self {
+        Self {
+            sys: None,
+            sym: None,
+            bateman: None,
+            bateman_values: None,
+            bateman_fallback: false,
+        }
+    }
+
+    /// Advance one step with the chosen integrator, reusing every
+    /// time-independent object the step sequence allows.
+    fn advance(
+        &mut self,
+        template: &DepletionSystem,
+        stats: &mut ReuseStats,
+        n: &[f64],
+        step: &Step,
+        integrator: Integrator,
+        method: Method,
+    ) -> Result<Vec<f64>, Error> {
+        // Working system: built once, values refreshed per step; a sparsity
+        // change fully rebuilds it and invalidates every derived cache.
+        let pattern_changed = match self.sys.as_mut() {
+            None => {
+                self.sys = Some(DepletionSystem::build(template.chain.clone(), &step.rates)?);
+                stats.system_builds += 1;
+                true
+            }
+            Some(cur) => {
+                if cur.refresh_rates(&step.rates)? {
+                    false
+                } else {
+                    stats.system_builds += 1;
+                    true
+                }
+            }
+        };
+        if pattern_changed {
+            self.sym = None;
+            self.bateman = None;
+            self.bateman_values = None;
+            self.bateman_fallback = false;
+        }
+        // Symbolic analysis: pattern-invariant, so at most one build per
+        // distinct pattern in the series.
+        if self.sym.is_none() {
+            let sys = self.sys.as_ref().expect("working system built above");
+            self.sym = Some(
+                nucleide_linalg::SymbolicLu::try_new(&sys.pattern)
+                    .map_err(|e| Error::BadStructure(e.to_string()))?,
+            );
+            stats.symbolic_builds += 1;
+        }
+        stats.steps += 1;
+
+        match method {
+            Method::Cram(order) => {
+                let sys = self.sys.as_ref().expect("working system built above");
+                let sym = self.sym.as_ref().expect("symbolic built above");
+                advance_cram_cached(sys, sym, n, step, integrator, order)
+            }
+            Method::Bateman | Method::BatemanHp => {
+                let hp = matches!(method, Method::BatemanHp);
+                // Fast path: the cached decomposition matches these exact
+                // values — only the `e^{−λdt}` diagonal is fresh per step.
+                let values_match = self.bateman_values.as_ref().is_some_and(|v| {
+                    values_equal(v, &self.sys.as_ref().expect("built").base_values)
+                });
+                if values_match {
+                    if let Some(cache) = self.bateman.as_ref() {
+                        return solve_bateman_staged(cache, n, step, integrator, hp);
+                    }
+                    // Known fallback for these exact values: CRAM-48 with the
+                    // reused symbolic analysis (same dt-scaled staging as the
+                    // probe path below).
+                    debug_assert!(self.bateman_fallback);
+                    let sys = self.sys.as_ref().expect("working system built above");
+                    let sym = self.sym.as_ref().expect("symbolic built above");
+                    return solve_cram48_fallback_staged(sys, sym, n, step, integrator);
+                }
+                // Slow path: probe the fast path for these exact values.
+                stats.bateman_builds += 1;
+                let sys = self.sys.as_ref().expect("working system built above");
+                let sym = self.sym.as_ref().expect("symbolic built above");
+                let snapshot = sys.base_values.clone();
+                match BatemanCache::build(sys) {
+                    Ok(cache) => {
+                        let out = solve_bateman_staged(&cache, n, step, integrator, hp)?;
+                        self.bateman = Some(cache);
+                        self.bateman_values = Some(snapshot);
+                        self.bateman_fallback = false;
+                        Ok(out)
+                    }
+                    Err(_) => {
+                        let out = solve_cram48_fallback_staged(sys, sym, n, step, integrator)?;
+                        self.bateman = None;
+                        self.bateman_values = Some(snapshot);
+                        self.bateman_fallback = true;
+                        Ok(out)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Bit-exact comparison of CRAM value vectors.
+fn values_equal(a: &[nucleide_linalg::C64], b: &[nucleide_linalg::C64]) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(x, y)| x.re.to_bits() == y.re.to_bits() && x.im.to_bits() == y.im.to_bits())
+}
+
+/// Bateman-arm staging for one step through a cached decomposition: the
+/// integrator structure matches the pre-hoist dispatch exactly (CF4 stages
+/// scale the timestep so the per-stage system stays in decay form).
+fn solve_bateman_staged(
+    cache: &BatemanCache,
+    n: &[f64],
+    step: &Step,
+    integrator: Integrator,
+    hp: bool,
+) -> Result<Vec<f64>, Error> {
+    let solve = |v: &[f64], dt: f64| {
+        cache
+            .solve(v, dt, hp)
+            .map_err(|e| Error::BadStructure(e.to_string()))
+    };
+    match integrator {
+        Integrator::Predictor => solve(n, step.dt),
+        Integrator::Cecm => {
+            let _pred = solve(n, step.dt)?;
+            solve(n, step.dt)
+        }
+        Integrator::Cf4 => {
+            let s1 = CF4_A11 + CF4_A12;
+            let s2 = CF4_A12 + CF4_A11;
+            let n1 = solve(n, s1 * step.dt)?;
+            solve(&n1, s2 * step.dt)
+        }
+    }
+}
+
+/// CRAM-48 fallback staging for Bateman steps whose matrix carries
+/// reaction/fission contributions (same dt-scaled staging as the Bateman
+/// arms above, solved with the reused symbolic analysis).
+fn solve_cram48_fallback_staged(
+    sys: &DepletionSystem,
+    sym: &nucleide_linalg::SymbolicLu,
+    n: &[f64],
+    step: &Step,
+    integrator: Integrator,
+) -> Result<Vec<f64>, Error> {
+    let solve = |s: &DepletionSystem, v: &[f64], dt: f64| {
+        crate::cram_with_symbolic(s, sym, Order::Order48, v, dt)
+            .map_err(|e| Error::BadStructure(e.to_string()))
+    };
+    match integrator {
+        Integrator::Predictor => solve(sys, n, step.dt),
+        Integrator::Cecm => {
+            let _pred = solve(sys, n, step.dt)?;
+            solve(sys, n, step.dt)
+        }
+        Integrator::Cf4 => {
+            let s1 = CF4_A11 + CF4_A12;
+            let s2 = CF4_A12 + CF4_A11;
+            let n1 = solve(sys, n, s1 * step.dt)?;
+            solve(sys, &n1, s2 * step.dt)
+        }
+    }
+}
+
+/// Advance one step through the CRAM kernel with caller-managed caches
+/// (preserves the historical scaled-matrix CF4 staging exactly; the scaled
+/// stages share the working pattern so the symbolic analysis is reused).
+fn advance_cram_cached(
+    sys: &DepletionSystem,
+    sym: &nucleide_linalg::SymbolicLu,
+    n: &[f64],
+    step: &Step,
+    integrator: Integrator,
+    order: Order,
+) -> Result<Vec<f64>, Error> {
+    let solve = |s: &DepletionSystem, v: &[f64], dt: f64| {
+        crate::cram_with_symbolic(s, sym, order, v, dt)
+            .map_err(|e| Error::BadStructure(e.to_string()))
+    };
+    match integrator {
+        Integrator::Predictor => solve(sys, n, step.dt),
+        Integrator::Cecm => {
+            // Predictor with BOS rates, then corrector with the averaged
+            // (BOS + EOS) / 2 matrix. Prescribed rates make EOS == BOS, so
+            // the average reuses the same matrix (midpoint rate reuse); the
+            // second CRAM keeps the two-solve CECM structure for future
+            // flux-coupled EOS rates.
+            let _pred = solve(sys, n, step.dt)?;
+            // EOS rates equal BOS rates here; average is `sys` itself.
+            solve(sys, n, step.dt)
+        }
+        Integrator::Cf4 => {
+            // Two-exponential CF4: stage weights s1 = a11 + a12 and
+            // s2 = a21 + a22 (both 1/2 with the coefficients above) scale
+            // the stage matrices; with A1 == A2 == A_k each stage is a
+            // half-step solve.
+            let s1 = CF4_A11 + CF4_A12;
+            let s2 = CF4_A12 + CF4_A11;
+            let stage1 = scaled_system(sys, s1);
+            let n1 = solve(&stage1, n, step.dt)?;
+            let stage2 = scaled_system(sys, s2);
+            solve(&stage2, &n1, step.dt)
+        }
+    }
+}
+
+/// Advance one step with the chosen integrator (fresh per-step builds).
+///
+/// Uncached oracle for the reuse regression tests: [`SeriesCache::advance`]
+/// must reproduce this bit-for-bit on every step sequence. Kept in sync with
+/// the staged solvers above by construction (same stage structure, same
+/// kernels, only the caches differ).
+#[cfg(test)]
 fn advance(
     sys: &DepletionSystem,
     n: &[f64],
@@ -336,6 +645,7 @@ fn advance(
 
 /// Advance one step through the CRAM kernel (preserves the historical
 /// scaled-matrix CF4 staging exactly).
+#[cfg(test)]
 fn advance_cram(
     n: &[f64],
     step: &Step,
@@ -617,6 +927,228 @@ mod tests {
             integrate_with_method(&sys, &n0, &steps, Integrator::Predictor, Method::BatemanHp)
                 .unwrap();
         assert_eq!(got.atoms, cref.atoms);
+    }
+
+    #[test]
+    fn reuse_decay_series_builds_once_and_matches_oracle() {
+        use crate::bateman::Method;
+        // Finding 1: one BatemanCache for a decay-only series with an
+        // unchanged pattern; only the `e^{-λdt}` diagonal is fresh per step.
+        let sys = DepletionSystem::build(abc_chain(), &ReactionRates::new()).unwrap();
+        let n0 = vec![1.0e15, 0.0, 0.0];
+        let steps = constant_steps(2.0e4, 6);
+        for method in [Method::Bateman, Method::BatemanHp] {
+            let mut stats = ReuseStats::default();
+            let ts = integrate_with_method_counted(
+                &sys,
+                &n0,
+                &steps,
+                Integrator::Predictor,
+                method,
+                &mut stats,
+            )
+            .unwrap();
+            assert_eq!(
+                stats,
+                ReuseStats {
+                    steps: 6,
+                    system_builds: 1,
+                    symbolic_builds: 1,
+                    bateman_builds: 1,
+                },
+                "{method:?}"
+            );
+            // Bit-identical to fresh per-step builds on every node.
+            let mut n = n0.clone();
+            for (k, step) in steps.iter().enumerate() {
+                n = advance(&sys, &n, step, Integrator::Predictor, method).unwrap();
+                assert_eq!(ts.atoms[k + 1], n, "{method:?} node {}", k + 1);
+            }
+            // Identical Bateman-vs-analytic gates as the uncached path.
+            for (k, t) in ts.times.iter().enumerate() {
+                let want = bateman(n0[0], *t);
+                assert!(
+                    max_rel_err(&ts.atoms[k], &want) < 1e-6,
+                    "{method:?} node {k}"
+                );
+                let total: f64 = ts.atoms[k].iter().sum();
+                assert!((total - n0[0]).abs() / n0[0] < 1e-8, "{method:?} node {k}");
+            }
+        }
+    }
+
+    #[test]
+    fn reuse_cram_constant_series_builds_once_and_holds_bands() {
+        use crate::bateman::Method;
+        // Finding 2: one SymbolicLu for a step-invariant sparsity pattern;
+        // Predictor/CeCM/CF4 bands are unchanged (all within 1e-6 of the
+        // analytic chain) and bit-identical to fresh per-step builds.
+        let sys = DepletionSystem::build(abc_chain(), &ReactionRates::new()).unwrap();
+        let n0 = vec![1.0e15, 0.0, 0.0];
+        let steps = constant_steps(2.0e4, 5);
+        for integrator in [Integrator::Predictor, Integrator::Cecm, Integrator::Cf4] {
+            let mut stats = ReuseStats::default();
+            let ts = integrate_with_method_counted(
+                &sys,
+                &n0,
+                &steps,
+                integrator,
+                Method::default_cram(),
+                &mut stats,
+            )
+            .unwrap();
+            assert_eq!(
+                stats,
+                ReuseStats {
+                    steps: 5,
+                    system_builds: 1,
+                    symbolic_builds: 1,
+                    bateman_builds: 0,
+                },
+                "{integrator:?}"
+            );
+            let mut n = n0.clone();
+            for (k, step) in steps.iter().enumerate() {
+                n = advance(&sys, &n, step, integrator, Method::default_cram()).unwrap();
+                assert_eq!(ts.atoms[k + 1], n, "{integrator:?} node {}", k + 1);
+            }
+            for (k, t) in ts.times.iter().enumerate() {
+                let want = bateman(n0[0], *t);
+                assert!(
+                    max_rel_err(&ts.atoms[k], &want) < 1e-6,
+                    "{integrator:?} node {k}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn reuse_invalidates_on_pattern_and_value_change() {
+        use crate::bateman::Method;
+        // Finding 3: pattern/entries are reused while only base_values change;
+        // a zero/nonzero channel toggle rebuilds, a value-only change only
+        // re-probes the Bateman slot. Results stay bit-identical to fresh
+        // per-step builds throughout.
+        let a = ChainNuclide {
+            name: "A".into(),
+            half_life: Some(std::f64::consts::LN_2 / L1),
+            decay_modes: vec![DecayMode {
+                kind: "beta".into(),
+                target: "B".into(),
+                branching_ratio: 1.0,
+            }],
+            reactions: vec![crate::chain::Reaction {
+                kind: "(n,gamma)".into(),
+                // Capture to C: no decay edge (C, A) exists, so toggling the
+                // rate changes the sparsity pattern (decay A -> B keeps the
+                // (B, A) entry either way).
+                target: Some("C".into()),
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let b = ChainNuclide {
+            name: "B".into(),
+            half_life: Some(std::f64::consts::LN_2 / L2),
+            decay_modes: vec![DecayMode {
+                kind: "beta".into(),
+                target: "C".into(),
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let c = ChainNuclide {
+            name: "C".into(),
+            ..Default::default()
+        };
+        let chain = Chain::from_nuclides(vec![a, b, c]).unwrap();
+        let sys = DepletionSystem::build(chain, &ReactionRates::new()).unwrap();
+        let mut r1 = ReactionRates::new();
+        r1.entry(0usize)
+            .or_default()
+            .insert("(n,gamma)".to_string(), 1e-7);
+        let mut r2 = ReactionRates::new();
+        r2.entry(0usize)
+            .or_default()
+            .insert("(n,gamma)".to_string(), 2e-7);
+        let steps = vec![
+            Step::new(2.0e4, r1.clone()),
+            Step::new(2.0e4, r1.clone()),
+            Step::new(2.0e4, r2.clone()),
+            Step::new(2.0e4, ReactionRates::new()),
+        ];
+        let n0 = vec![1.0e15, 0.0, 0.0];
+        let mut stats = ReuseStats::default();
+        let ts = integrate_with_method_counted(
+            &sys,
+            &n0,
+            &steps,
+            Integrator::Predictor,
+            Method::BatemanHp,
+            &mut stats,
+        )
+        .unwrap();
+        // One initial build + one rebuild on the decay-only pattern change;
+        // one symbolic analysis per distinct pattern; one Bateman probe per
+        // distinct value set (r1 fallback, r1 hit, r2 fallback, decay probe).
+        assert_eq!(
+            stats,
+            ReuseStats {
+                steps: 4,
+                system_builds: 2,
+                symbolic_builds: 2,
+                bateman_builds: 3,
+            },
+            "{stats:?}"
+        );
+        let mut n = n0.clone();
+        for (k, step) in steps.iter().enumerate() {
+            n = advance(&sys, &n, step, Integrator::Predictor, Method::BatemanHp).unwrap();
+            assert_eq!(ts.atoms[k + 1], n, "node {}", k + 1);
+        }
+    }
+
+    #[test]
+    fn refresh_rates_matches_fresh_build() {
+        // `refresh_rates` reuses the pattern for value-only changes and
+        // rebuilds on sparsity changes, bit-identical to fresh builds.
+        // A is stable with only a capture channel, so zeroing the rate
+        // removes entries (with a decay A -> B edge the pattern would be
+        // unchanged either way).
+        let a = ChainNuclide {
+            name: "A".into(),
+            reactions: vec![crate::chain::Reaction {
+                kind: "(n,gamma)".into(),
+                target: Some("B".into()),
+                q: 0.0,
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let b = ChainNuclide {
+            name: "B".into(),
+            ..Default::default()
+        };
+        let chain = Chain::from_nuclides(vec![a, b]).unwrap();
+        let mut r1 = ReactionRates::new();
+        r1.entry(0usize)
+            .or_default()
+            .insert("(n,gamma)".to_string(), 1e-7);
+        let mut r2 = ReactionRates::new();
+        r2.entry(0usize)
+            .or_default()
+            .insert("(n,gamma)".to_string(), 3e-7);
+        let mut sys = DepletionSystem::build(chain.clone(), &r1).unwrap();
+        assert!(sys.refresh_rates(&r2).unwrap());
+        let fresh = DepletionSystem::build(chain.clone(), &r2).unwrap();
+        assert_eq!(sys.entries, fresh.entries);
+        assert_eq!(sys.base_values, fresh.base_values);
+        // Zeroing the channel changes sparsity: full rebuild, still identical.
+        assert!(!sys.refresh_rates(&ReactionRates::new()).unwrap());
+        let fresh_decay = DepletionSystem::build(chain, &ReactionRates::new()).unwrap();
+        assert_eq!(sys.entries, fresh_decay.entries);
+        assert_eq!(sys.base_values, fresh_decay.base_values);
     }
 
     #[test]

@@ -149,11 +149,21 @@ first access.
   at lookup time. No NUBASE import: ENDF excitation energies only.
 - **File**: `crates/nuclei/src/data/ame2020.tsv`.
 - **Units**: unified atomic mass units (u).
+- **Generator path**: ground rows are condensed from the AME2020
+  `mass.mas20` table and carried verbatim on every `--endf-decay8` run
+  (`read_ame_grounds` in `scripts/gen-nuclear-data.py`); only isomer rows
+  are re-appended, so grounds are never orphaned. The script has no
+  AME2020 re-parse path: refresh grounds from `mass.mas20`, then re-run
+  `--endf-decay8` to re-append isomers.
 
 ### Natural abundances
 
-- **Source**: standard isotopic compositions from the ENDF/B-VIII.0
-  evaluation<Citation id="brown-2018" />, expressed as fractions.
+- **Source**: vendored isotopic compositions, expressed as fractions. No
+  generator path in this repo emits the table
+  (`scripts/gen-nuclear-data.py` only reads it for monoisotopic-element
+  detection), so the exact transcription path is **TO BE SOURCED**. Values
+  cross-check identical to the OpenMC `NATURAL_ABUNDANCE` tabulation (see
+  `validation/results.md`: 289 isotopes, max abs diff 0.0).
 - **Coverage**: 289 naturally occurring nuclides, including the isomer
   Ta-180m.
 - **File**: `crates/nuclei/src/data/natural_abundance.tsv`.
@@ -165,6 +175,12 @@ first access.
 - **Coverage**: 3,561 radionuclides; stable nuclides are absent.
 - **File**: `crates/nuclei/src/data/half_life.tsv`.
 - **Units**: seconds.
+- **Regeneration**: `T1/2` is the first value of each tape's MF8/MT457
+  summary LIST record (ENDF-102 §8.4.1); stable (`NST != 0`) and
+  zero-half-life tapes yield no rows. Regenerate with
+  `python3 scripts/gen-nuclear-data.py --endf-decay8 <dir> --out <dir>`
+  from `zips/ENDF-B-VIII.0_decay.zip` (`--help` pins the source URL and
+  zip MD5); the writer reproduces the committed data rows byte-identically.
 
 ### Decay branches
 

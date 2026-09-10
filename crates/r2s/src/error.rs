@@ -28,5 +28,8 @@ mod tests {
         assert!(Error::Invalid("empty mesh".to_string())
             .to_string()
             .contains("empty mesh"));
+        assert!(Error::CrossRef("zone Z pins ghost flux".to_string())
+            .to_string()
+            .contains("ghost flux"));
     }
 }

@@ -18,8 +18,8 @@ pub use chain::{Chain, ChainNuclide, DecayMode, Error, FissionYields, Reaction};
 pub use cram::{cram, cram_with_symbolic, Order};
 pub use integrate::{
     activity_vec, decay_constants, decay_energies_by_name, decay_energies_mev, decay_energy_mev,
-    decay_heat_vec, integrate, integrate_with_method, Integrator, Step, TimeSeries, EV_PER_MEV,
-    MEV_TO_JOULE,
+    decay_heat_vec, integrate, integrate_with_method, integrate_with_method_counted, Integrator,
+    ReuseStats, Step, TimeSeries, EV_PER_MEV, MEV_TO_JOULE,
 };
 pub use inventory::{
     branching_fraction, chain_edges, cumulative_decays, decay_mode, progeny, time_unit_from_str,

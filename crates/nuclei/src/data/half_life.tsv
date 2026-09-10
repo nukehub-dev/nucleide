@@ -1,5 +1,18 @@
 # GNDS name	half_life_seconds
-# Half-lives in seconds, derived from the ENDF/B-VIII.0 decay sublibrary.
+# Half-lives (T1/2) in seconds from the ENDF/B-VIII.0 decay
+# sublibrary (MF8/MT457): T1/2 is the first value of the
+# summary LIST record (ENDF-102 section 8.4.1: [MAT, 8,457/
+# T1/2, dT1/2, 0, 0, 2*NC, 0 / ...]; seconds per the
+# ENDF-102 quantity dictionary). Stable tapes (NST != 0)
+# and zero-half-life evaluation dummies (e.g. Te123, Ca46)
+# yield no rows: stable nuclides are simply absent.
+# Basis note: this table and decay_branches.tsv use
+# ENDF/B-VIII.0 while decay_energy.tsv stays on ENDF/B-VII.1.
+# Source: https://www.nndc.bnl.gov/endf-b8.0/zips/ENDF-B-VIII.0_decay.zip
+# Source zip MD5 (as served): aa80cd0a880d9d7e0905940b868370c3
+# Screening-level only: use evaluated libraries for
+# transport; not for safety calculations (no warranty).
+# Regenerate: python3 scripts/gen-nuclear-data.py --endf-decay8 <dir> --out <dir>.
 Ac206	0.024
 Ac206_m1	0.0395
 Ac207	0.027

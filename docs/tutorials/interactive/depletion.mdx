@@ -32,7 +32,9 @@ $$
 production you would loop this call, update reaction rates from a transport
 solve, and accumulate burnup. The demo also offers a **Burnup curve** run that
 plots nuclide densities versus cumulative time, now backed by a single
-`depleteSeries` call with a selectable integrator.
+`depleteSeries` call with a selectable integrator. Atom counts, the time step,
+and the burnup step count are validated inline (finite, and positive where
+required) before any solve runs.
 
 <InteractiveDemo kind="depletion" />
 

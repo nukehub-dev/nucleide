@@ -15,7 +15,7 @@
 # Air is EPA-only: GENII/DOE air rows are -1 sentinels (PyNE convention);
 # accessors treat negative factors as missing. Liability: not for safety
 # decisions (upstream PyNE disclaimer).
-# Regenerate: python3 scripts/gen-nuclear-data.py --help.
+# Regenerate: python3 scripts/gen-nuclear-data.py --dose-air <air.csv> --dose-soil <soil.csv> --dose-ingest <ingest.csv> --dose-inhale <inhale.csv> --out <dir>.
 Ac227	air	DOE	-1		
 Ac227	air	EPA	2.47e-07		
 Ac227	air	GENII	-1		

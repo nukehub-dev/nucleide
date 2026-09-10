@@ -236,10 +236,15 @@ pub fn deck_from_snapshot(input: &SnapshotInput) -> Result<AlaraDeck> {
                             symbol,
                             rel_density,
                             vol_fraction,
-                        } => format!("element {symbol} {rel_density} {vol_fraction}"),
-                        _ => unreachable!("snapshot mixtures only hold element entries"),
+                        } => Ok(format!("element {symbol} {rel_density} {vol_fraction}")),
+                        // Unreachable by construction (entries are built as
+                        // `Element` above), but a defensive error — never a
+                        // panic — if a future edit adds another variant.
+                        other => Err(Error::Invalid(format!(
+                            "internal error: snapshot mixture entry is not an element ({other:?})"
+                        ))),
                     })
-                    .collect(),
+                    .collect::<Result<Vec<_>>>()?,
             );
             deck.mixtures.push(Mixture {
                 name: mixture.clone(),

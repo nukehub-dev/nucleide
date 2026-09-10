@@ -1,6 +1,10 @@
 //! IPF (incomplete partial factorization) CRAM solvers, orders 16 and 48.
 //!
-//! Chebyshev rational-approximation coefficients for the CRAM matrix exponent (Pusa & Li).
+//! Chebyshev rational-approximation coefficients for the CRAM matrix exponent,
+//! incomplete-partial-fraction (IPF) variant: order-16 per Pusa–Leppänen
+//! (Nucl. Sci. Eng. 164(2):140–150, 2010), order-48 per Pusa (Nucl. Sci.
+//! Eng. 182(3):297–318, 2016). Values are frozen transcription guards (see
+//! `pinned_coefficient_anchors`); see AD-10 for provenance.
 //! Algorithm per timestep: with `A' = dt*A`, factorize `A' - theta_k I` for
 //! each pole, then iterate
 //! `y += 2*Re(alpha_k * (A' - theta_k I)^-1 y)` for all k and scale by
@@ -288,4 +292,33 @@ pub fn cram_with_symbolic(
     }
 
     Ok(y.into_iter().map(|v| v.re).collect())
+}
+
+#[cfg(test)]
+mod coefficient_tests {
+    use super::*;
+
+    /// Transcription guard for the published IPF CRAM constants (AD-10).
+    /// Pins table anchors; any edit to the coefficient tables must update
+    /// these values deliberately, never by accident.
+    #[allow(clippy::excessive_precision)] // asserting exact published constants
+    #[test]
+    fn pinned_coefficient_anchors() {
+        assert_eq!(C16_ALPHA0, 2.124853710495224e-16);
+        assert_eq!(C48_ALPHA0, 2.258038182743983e-47);
+        assert_eq!(C16_ALPHA.len(), 8);
+        assert_eq!(C16_THETA.len(), 8);
+        assert_eq!(C48_THETA_RE.len(), 24);
+        // Order-16 k=1 pole, also quoted in docs/theory/depletion.mdx.
+        assert_eq!(C16_ALPHA[0].re, 5.464930576870210e3);
+        assert_eq!(C16_ALPHA[0].im, -3.797983575308356e4);
+        assert_eq!(C16_THETA[0].re, 3.509103608414918);
+        assert_eq!(C16_THETA[0].im, 8.436198985884374);
+        // Order-48 first entries.
+        assert_eq!(C48_THETA_RE[0], -4.465731934165702e+01);
+        let (a48, t48, a0) = coefficients(Order::Order48);
+        assert_eq!(a48.len(), 24);
+        assert_eq!(t48.len(), 24);
+        assert_eq!(a0, C48_ALPHA0);
+    }
 }

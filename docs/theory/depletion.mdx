@@ -174,6 +174,25 @@ the classic partial-fraction sum form.
 Nucleide ships the CRAM-16 and CRAM-48 coefficient sets verbatim. CRAM-16 is
 cheaper; CRAM-48 is the production default.
 
+<Callout type="note" title="Coefficient provenance (checkable)">
+  Both sets are the **incomplete-partial-fraction (IPF)** coefficients, not
+  the residues of the classic partial-fraction sum form — the two forms are
+  not interchangeable (see the IPF product form above). Order-16 follows
+  Pusa–Leppänen (2010)<Citation id="pusa-2010" />; the order-48 set follows
+  the higher-order treatment in Pusa (2016)<Citation id="pusa-2016" />. The
+  code comment in `crates/depletion/src/cram.rs` cites this as “Pusa & Li”;
+  that string is imprecise and should name the two references above (with
+  the exact published table for order-48 once confirmed against the
+  coefficients — no table number is claimed here). Pinned anchors straight
+  from the code: $\alpha_0 = 2.124853710495224 \times 10^{-16}$ (order-16),
+  $\alpha_0 = 2.258038182743983 \times 10^{-47}$ (order-48); order-16
+  $k{=}1$ pole $\theta_1 = 3.509103608414918 + 8.436198985884374\,i$ with
+  $\alpha_1 = 5.464930576870210{\times}10^3 - 3.797983575308356{\times}10^4\,i$.
+  The order-16 table below is a full transcription guard; order-48 still
+  needs a pinned-values unit test in `cram.rs` (recorded in the decision
+  log — coefficient values must not change).
+</Callout>
+
 <DataTable
   caption="CRAM-16 poles and residues (real and imaginary parts)."
   columns={[
@@ -260,6 +279,7 @@ $$
 \Lambda_{ij} = b_{j \to i}\,\lambda_j \;\; (i > j),
 \qquad
 \lambda_j = \frac{\ln 2}{t_{1/2,j}},
+\tag{E1}
 $$
 
 with $\lambda_j = 0$ for stable nuclides. $\mathbf{\Lambda}$ is assembled from
@@ -277,6 +297,7 @@ C_{ii} = 1,
 \qquad
 C_{ij} = \sum_{k=j}^{i-1} \frac{\Lambda_{ik}\,C_{kj}}{\Lambda_{jj} - \Lambda_{ii}}
 \;\; (i > j),
+\tag{E2,E3}
 $$
 
 $$
@@ -284,11 +305,23 @@ C^{-1}_{ii} = 1,
 \qquad
 C^{-1}_{ij} = -\sum_{k=j}^{i-1} C_{ik}\,C^{-1}_{kj}
 \;\; (i > j),
+\tag{E4}
 $$
 
 $$
 \mathbf{N}(t) = \mathbf{C}\,\mathrm{diag}(e^{-\lambda t})\,\mathbf{C}^{-1}\,\mathbf{N}_0.
+\tag{E5}
 $$
+
+Activity and cumulative-decay observables follow (E8) of
+`crates/depletion/src/bateman.rs`: $A_i = \lambda_i N_i$ (implemented by
+`activity_vec` in `crates/depletion/src/integrate.rs`) with the diagonal
+cumulative integral $\int_0^t e^{-\lambda s}\,ds = (1 - e^{-\lambda t})/\lambda$
+($\lambda = 0$ limit $\to t$; `cumulative_decays` in
+`crates/depletion/src/inventory.rs`). Labels (E6)–(E7) are intentionally
+unassigned in both the code and this page so the two stay consistent; a
+code-side close-the-gap renumber is left to the depletion owner (no formula
+changes either way).
 
 $\mathbf{C}$/$\mathbf{C}^{-1}$ are time-independent, so Nucleide builds them
 once per chain (`BatemanCache` in `crates/depletion/src/bateman.rs`,
@@ -490,6 +523,31 @@ synthetic nuclides) — one evaluated table, no parallel hand-kept fallback.
   [Run depletion tutorial](../tutorials/python/run-depletion.md).
 </Callout>
 
+## Year-length convention
+
+Production code uses the **Julian year**: 1 yr = 365.25 d = 31,557,600 s
+(`SECONDS_PER_YEAR` in `crates/depletion/src/inventory.rs`; the `y` unit in
+`crates/alara-io/src/schedule.rs` and `crates/alara-io/src/deck.rs`).
+Rationale: the Julian year is the standard year-scale interval for
+time-unit conversion, and both the depletion solver and the ALARA
+schedule/deck layers convert through it.
+
+Two deliberate neighbors differ and must not be “unified” by accident:
+
+- `crates/fispact-io/src/inventory.rs` uses a 365-day year to match the
+  ALARA reference tool’s file-format convention — format fidelity, not physics.
+- Some test anchors divide by the Gregorian mean year 365.2425 d
+  ($3.1556952 \times 10^7$ s/yr), e.g. the Cs-137 30.08 yr anchor in the
+  `nuclei` half-life tests. The gap between conventions there is
+  $\approx 6 \times 10^{-4}$ yr against a $0.01$ yr tolerance, so no
+  validation gate moves either way.
+
+Decision (no gate movement): keep the Julian production convention, document
+the split here, and migrate test anchors to 31,557,600 s/yr only where the
+current tolerance already hides the drift — tolerances themselves stay
+untouched. The `alara-io` and `fispact-io` year definitions are referenced
+from here rather than restated.
+
 ## Assumptions and limitations
 
 - **One-group reaction rates**: CRAM in Nucleide uses a single scalar rate per
@@ -508,6 +566,13 @@ synthetic nuclides) — one evaluated table, no parallel hand-kept fallback.
   recommended for production burnup matrices. Pure-decay chains may use the
   `bateman`/`bateman_hp` closed form instead (same `method=` selector;
   automatic CRAM-48 fallback outside decay-only triangular topology).
+- **Bateman conditioning**: the closed form sums alternating-sign terms, so
+  long chains (tens of members) or extreme half-life spreads can suffer
+  catastrophic cancellation in float64 — `bateman_hp` (sorted Neumaier
+  summation) extends the usable range, but ill-conditioned chains should use
+  CRAM-48, which remains the default. The automatic fallback covers
+  non-triangular topology, not ill-conditioning: pick the method deliberately
+  for long chains.
 
 ## Related work beyond Nucleide
 

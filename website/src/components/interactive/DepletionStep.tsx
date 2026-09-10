@@ -71,10 +71,26 @@ export function DepletionStep() {
   function parseN0(): Record<string, number> {
     const n0: Record<string, number> = {};
     for (const line of n0Input.split("\n")) {
-      const [name, count] = line.trim().split(/\s+/);
-      if (name && count) n0[name] = parseFloat(count);
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const [name, count] = trimmed.split(/\s+/);
+      if (!name || count === undefined) throw new Error(`bad atom count line \`${line}\``);
+      const v = parseFloat(count);
+      if (!Number.isFinite(v) || v < 0) throw new Error(`bad atom count \`${count}\``);
+      n0[name] = v;
     }
     return n0;
+  }
+
+  function parseDt(): number {
+    if (!Number.isFinite(dt) || dt <= 0) throw new Error(`bad time step \`${dt}\``);
+    return dt;
+  }
+
+  function parseBurnupSteps(): number {
+    if (!Number.isFinite(burnupSteps) || burnupSteps < 1)
+      throw new Error(`bad burnup steps \`${burnupSteps}\``);
+    return Math.min(Math.floor(burnupSteps), MAX_BURNUP_STEPS);
   }
 
   function run() {
@@ -82,7 +98,7 @@ export function DepletionStep() {
     try {
       const chain = wasm.WasmChain.fromXml(xml);
       const n0 = parseN0();
-      const out = wasm.deplete(chain, n0, dt, {}, order);
+      const out = wasm.deplete(chain, n0, parseDt(), {}, order);
       setResult(out);
       setLocalError(null);
     } catch (e) {
@@ -93,34 +109,40 @@ export function DepletionStep() {
 
   function runBurnup() {
     if (!wasm) return;
-    const steps = Math.min(Math.max(1, burnupSteps), MAX_BURNUP_STEPS);
-    setBurnupSteps(steps);
-    setBurnupBusy(true);
     try {
-      const chain = wasm.WasmChain.fromXml(xml);
-      const n0 = parseN0();
-      // One Step per dt with the same (here empty) rates; depleteSeries
-      // returns the t = 0 initial row plus one row per step.
-      const dts = Array(steps).fill(dt);
-      const series = wasm.depleteSeries(chain, n0, dts, {}, integrator, order);
-      const atomSeries: Record<string, number[]> = {};
-      for (const row of series.atoms) {
-        for (const [name, value] of Object.entries(row)) {
-          if (!atomSeries[name]) atomSeries[name] = [];
-          atomSeries[name].push(value);
+      const steps = parseBurnupSteps();
+      setBurnupSteps(steps);
+      setBurnupBusy(true);
+      try {
+        const chain = wasm.WasmChain.fromXml(xml);
+        const n0 = parseN0();
+        // One Step per dt with the same (here empty) rates; depleteSeries
+        // returns the t = 0 initial row plus one row per step.
+        const dtValue = parseDt();
+        const dts = Array(steps).fill(dtValue);
+        const series = wasm.depleteSeries(chain, n0, dts, {}, integrator, order);
+        const atomSeries: Record<string, number[]> = {};
+        for (const row of series.atoms) {
+          for (const [name, value] of Object.entries(row)) {
+            if (!atomSeries[name]) atomSeries[name] = [];
+            atomSeries[name].push(value);
+          }
         }
-      }
-      const totalHeat = series.decay_heat.map((row) =>
-        Object.values(row).reduce((acc, v) => acc + v, 0),
-      );
+        const totalHeat = series.decay_heat.map((row) =>
+          Object.values(row).reduce((acc, v) => acc + v, 0),
+        );
 
-      setBurnup({ times: series.times, series: atomSeries, totalHeat });
-      setLocalError(null);
+        setBurnup({ times: series.times, series: atomSeries, totalHeat });
+        setLocalError(null);
+      } catch (e) {
+        setLocalError(e instanceof Error ? e.message : String(e));
+        setBurnup(null);
+      } finally {
+        setBurnupBusy(false);
+      }
     } catch (e) {
       setLocalError(e instanceof Error ? e.message : String(e));
       setBurnup(null);
-    } finally {
-      setBurnupBusy(false);
     }
   }
 

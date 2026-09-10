@@ -155,6 +155,27 @@ workspace crates from tags.
   (`website/src/components/interactive/VrDemo.tsx`,
   `docs/tutorials/interactive/variance-reduction.mdx`): the MAGIC energy
   upper-bound step line (`hv` shape, log energy axis) gains a group-count title.
+- Interactive tutorial E2E coverage (`website/e2e/smoke.spec.ts`): follow-up
+  clicks with per-click output assertions on every demo page — deck-editor
+  `Validate` + a setter flow + `Load L3 sample`, variance-reduction `Sample
+  index` / `Sample voxel`, materials `Mix` + `To XML`, enrichment `Optimize
+  M*`, activation ALARA-output / FISPACT / R2S mode tabs, mcnp-io `wwinp`
+  parse, depletion `Load sample chain`.
+
+### Fixed
+
+- Interactive tutorial input guards (inline `WASM error:` before any WASM
+  call instead of NaN passthrough): deck-editor density / material / universe /
+  lattice / fill / mode setters reject non-finite input
+  (`website/src/components/interactive/DeckEditor.tsx`,
+  `docs/tutorials/interactive/deck-editor.mdx`); variance-reduction tally /
+  tolerance / null value plus alias-table PDF tokens reject non-finite input
+  instead of silently dropping bad tokens
+  (`website/src/components/interactive/VrDemo.tsx`,
+  `docs/tutorials/interactive/variance-reduction.mdx`); depletion atom counts
+  / time step / burnup steps require finite (and positive where applicable)
+  values (`website/src/components/interactive/DepletionStep.tsx`,
+  `docs/tutorials/interactive/depletion.mdx`).
 
 ## [0.3.0] - 2026-09-08
 

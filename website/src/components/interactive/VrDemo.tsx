@@ -58,6 +58,9 @@ export function VrDemo() {
   function runMagic() {
     if (!wasm) return;
     try {
+      if (!Number.isInteger(tallyNumber)) throw new Error(`bad tally number \`${tallyNumber}\``);
+      if (!Number.isFinite(tolerance)) throw new Error(`bad tolerance \`${tolerance}\``);
+      if (!Number.isFinite(nullValue)) throw new Error(`bad null value \`${nullValue}\``);
       const out = wasm.magicBounds(meshtalText, tallyNumber, selection, tolerance, nullValue);
       setMagic(out);
       setLocalError(null);
@@ -70,7 +73,13 @@ export function VrDemo() {
   function runAlias() {
     if (!wasm) return;
     try {
-      const pdf = pdfInput.split(/\s+/).map(parseFloat).filter(Number.isFinite);
+      const tokens = pdfInput.split(/\s+/).filter((t) => t.length > 0);
+      if (tokens.length === 0) throw new Error(`bad PDF \`${pdfInput}\``);
+      const pdf = tokens.map((t) => {
+        const v = parseFloat(t);
+        if (!Number.isFinite(v)) throw new Error(`bad PDF value \`${t}\``);
+        return v;
+      });
       const r1 = Math.random();
       const r2 = Math.random();
       setAliasResult(wasm.aliasTableSample(pdf, r1, r2));
@@ -84,6 +93,7 @@ export function VrDemo() {
   function runSample() {
     if (!wasm) return;
     try {
+      if (!Number.isInteger(tallyNumber)) throw new Error(`bad tally number \`${tallyNumber}\``);
       const r1 = Math.random();
       const r2 = Math.random();
       setSample(wasm.meshSourceSample(meshtalText, tallyNumber, sampleMode, r1, r2));

@@ -46,126 +46,7 @@ impl DepletionSystem {
     /// `rates`; missing entries contribute zero (pure-loss-only channels).
     pub fn build(chain: Chain, rates: &ReactionRates) -> Result<Self, Error> {
         let n = chain.len();
-        // Accumulate dense-map then flatten deterministically.
-        let mut acc: BTreeMap<(usize, usize), f64> = BTreeMap::new();
-        let mut add = |r: usize, c: usize, v: f64| {
-            *acc.entry((r, c)).or_insert(0.0) += v;
-        };
-
-        for i in 0..n {
-            let nuc = &chain.nuclides[i];
-            let lambda = nuc.decay_constant()?;
-
-            if lambda > 0.0 {
-                add(i, i, -lambda);
-                for mode in &nuc.decay_modes {
-                    let branch_val = lambda * mode.branching_ratio;
-                    if branch_val == 0.0 {
-                        continue;
-                    }
-                    // Gain from explicit decay daughter (skip spontaneous fission).
-                    if !mode.kind.contains("sf") {
-                        let j =
-                            chain
-                                .index_of(&mode.target)
-                                .ok_or_else(|| Error::UnknownNuclide {
-                                    name: mode.target.clone(),
-                                    context: "decay target",
-                                })?;
-                        add(j, i, branch_val);
-                    }
-                    // Light-particle secondaries from alpha / proton decay,
-                    // mirroring OpenMC chain.py:648-657.
-                    if mode.kind.contains("alpha") {
-                        if let Some(j) = chain.index_of("He4") {
-                            let count = mode.kind.matches("alpha").count();
-                            add(j, i, count as f64 * branch_val);
-                        }
-                    } else if mode.kind.contains('p') {
-                        if let Some(j) = chain.index_of("H1") {
-                            let count = mode.kind.matches('p').count();
-                            add(j, i, count as f64 * branch_val);
-                        }
-                    }
-                }
-            }
-
-            // Track reaction types already debited for loss on this nuclide.
-            let mut seen_reactions: HashSet<&str> = HashSet::new();
-            let nuc_rates = rates.get(&i);
-
-            for reaction in &nuc.reactions {
-                let sigma_phi = nuc_rates
-                    .and_then(|m| m.get(reaction.kind.as_str()))
-                    .copied()
-                    .unwrap_or(0.0);
-                if sigma_phi == 0.0 {
-                    continue;
-                }
-
-                // Loss term: subtract once per reaction type, not once per
-                // <reaction> entry (OpenMC chain.py:720-723).
-                if seen_reactions.insert(reaction.kind.as_str()) {
-                    add(i, i, -sigma_phi);
-                }
-
-                match reaction.kind.as_str() {
-                    "fission" => {
-                        // Single-energy yield set drives production. Like
-                        // OpenMC's `get_default_fission_yields`, use the set
-                        // at the lowest incident neutron energy.
-                        if let Some(fy) = nuc
-                            .neutron_fission_yields
-                            .iter()
-                            .min_by(|a, b| a.energy.total_cmp(&b.energy))
-                        {
-                            for (product, y) in &fy.products {
-                                if *y == 0.0 {
-                                    continue;
-                                }
-                                let j = chain.index_of(product).ok_or_else(|| {
-                                    Error::UnknownNuclide {
-                                        name: product.clone(),
-                                        context: "fission yield product",
-                                    }
-                                })?;
-                                add(j, i, sigma_phi * y);
-                            }
-                        } else if let Some(t) = &reaction.target {
-                            // Yield-less fission with explicit target acts
-                            // like a transmutation channel.
-                            let j = chain.index_of(t).ok_or_else(|| Error::UnknownNuclide {
-                                name: t.clone(),
-                                context: "reaction target",
-                            })?;
-                            add(j, i, sigma_phi);
-                        }
-                    }
-                    _ => {
-                        let br = reaction.branching_ratio;
-                        if let Some(t) = &reaction.target {
-                            let j = chain.index_of(t).ok_or_else(|| Error::UnknownNuclide {
-                                name: t.clone(),
-                                context: "reaction target",
-                            })?;
-                            add(j, i, sigma_phi * br);
-                        }
-                        // Light-particle production for reactions like (n,a),
-                        // (n,p), (n,d), etc., mirroring OpenMC chain.py:733-738.
-                        for secondary in reaction_secondaries(&reaction.kind) {
-                            if let Some(j) = chain.index_of(secondary) {
-                                add(j, i, sigma_phi * br);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Ensure every diagonal exists even for isolated stable nuclides.
-        for i in 0..n {
-            acc.entry((i, i)).or_insert(0.0);
-        }
+        let acc = assemble_entries(&chain, rates)?;
 
         let entries: Vec<Entry> = acc
             .keys()
@@ -198,6 +79,38 @@ impl DepletionSystem {
                 .collect(),
             diag_entry,
         })
+    }
+
+    /// Recompute the matrix values for a new rate set, reusing the existing
+    /// sparse pattern and entry layout when the sparsity is unchanged.
+    ///
+    /// Returns `Ok(true)` when the pattern was reused (only `base_values`
+    /// recomputed) and `Ok(false)` when the sparsity changed and the system
+    /// was fully rebuilt. The chain template is never modified; unknown
+    /// nuclides or backend failures propagate exactly as in [`Self::build`].
+    ///
+    /// Pattern equality is checked exactly (entry-by-entry against the
+    /// freshly accumulated key set), so reuse is bit-identical to a fresh
+    /// [`Self::build`] with the same arguments.
+    pub fn refresh_rates(&mut self, rates: &ReactionRates) -> Result<bool, Error> {
+        let acc = assemble_entries(&self.chain, rates)?;
+        let same = acc.len() == self.entries.len()
+            && acc
+                .keys()
+                .zip(self.entries.iter())
+                .all(|(&(r, c), e)| e.row == r && e.col == c);
+        if same {
+            self.base_values = acc
+                .values()
+                .copied()
+                .map(nucleide_linalg::C64::from)
+                .collect();
+            Ok(true)
+        } else {
+            let fresh = Self::build(self.chain.clone(), rates)?;
+            *self = fresh;
+            Ok(false)
+        }
     }
 
     /// Values of `A*dt - theta*I` in entry order, written into `out`.
@@ -256,6 +169,138 @@ impl std::fmt::Debug for DepletionSystem {
             .field("entries", &self.entries.len())
             .finish()
     }
+}
+
+/// Accumulate the `(row, col) → value` transmutation entries for `chain`
+/// under `rates` (decay section plus live reaction/fission channels).
+/// Shared by [`DepletionSystem::build`] and [`DepletionSystem::refresh_rates`]
+/// so both compute bit-identical value maps from the same inputs.
+fn assemble_entries(
+    chain: &Chain,
+    rates: &ReactionRates,
+) -> Result<BTreeMap<(usize, usize), f64>, Error> {
+    let n = chain.len();
+    // Accumulate dense-map then flatten deterministically.
+    let mut acc: BTreeMap<(usize, usize), f64> = BTreeMap::new();
+    let mut add = |r: usize, c: usize, v: f64| {
+        *acc.entry((r, c)).or_insert(0.0) += v;
+    };
+
+    for i in 0..n {
+        let nuc = &chain.nuclides[i];
+        let lambda = nuc.decay_constant()?;
+
+        if lambda > 0.0 {
+            add(i, i, -lambda);
+            for mode in &nuc.decay_modes {
+                let branch_val = lambda * mode.branching_ratio;
+                if branch_val == 0.0 {
+                    continue;
+                }
+                // Gain from explicit decay daughter (skip spontaneous fission).
+                if !mode.kind.contains("sf") {
+                    let j = chain
+                        .index_of(&mode.target)
+                        .ok_or_else(|| Error::UnknownNuclide {
+                            name: mode.target.clone(),
+                            context: "decay target",
+                        })?;
+                    add(j, i, branch_val);
+                }
+                // Light-particle secondaries from alpha / proton decay,
+                // mirroring OpenMC chain.py:648-657.
+                if mode.kind.contains("alpha") {
+                    if let Some(j) = chain.index_of("He4") {
+                        let count = mode.kind.matches("alpha").count();
+                        add(j, i, count as f64 * branch_val);
+                    }
+                } else if mode.kind.contains('p') {
+                    if let Some(j) = chain.index_of("H1") {
+                        let count = mode.kind.matches('p').count();
+                        add(j, i, count as f64 * branch_val);
+                    }
+                }
+            }
+        }
+
+        // Track reaction types already debited for loss on this nuclide.
+        let mut seen_reactions: HashSet<&str> = HashSet::new();
+        let nuc_rates = rates.get(&i);
+
+        for reaction in &nuc.reactions {
+            let sigma_phi = nuc_rates
+                .and_then(|m| m.get(reaction.kind.as_str()))
+                .copied()
+                .unwrap_or(0.0);
+            if sigma_phi == 0.0 {
+                continue;
+            }
+
+            // Loss term: subtract once per reaction type, not once per
+            // <reaction> entry (OpenMC chain.py:720-723).
+            if seen_reactions.insert(reaction.kind.as_str()) {
+                add(i, i, -sigma_phi);
+            }
+
+            match reaction.kind.as_str() {
+                "fission" => {
+                    // Single-energy yield set drives production. Like
+                    // OpenMC's `get_default_fission_yields`, use the set
+                    // at the lowest incident neutron energy.
+                    if let Some(fy) = nuc
+                        .neutron_fission_yields
+                        .iter()
+                        .min_by(|a, b| a.energy.total_cmp(&b.energy))
+                    {
+                        for (product, y) in &fy.products {
+                            if *y == 0.0 {
+                                continue;
+                            }
+                            let j =
+                                chain
+                                    .index_of(product)
+                                    .ok_or_else(|| Error::UnknownNuclide {
+                                        name: product.clone(),
+                                        context: "fission yield product",
+                                    })?;
+                            add(j, i, sigma_phi * y);
+                        }
+                    } else if let Some(t) = &reaction.target {
+                        // Yield-less fission with explicit target acts
+                        // like a transmutation channel.
+                        let j = chain.index_of(t).ok_or_else(|| Error::UnknownNuclide {
+                            name: t.clone(),
+                            context: "reaction target",
+                        })?;
+                        add(j, i, sigma_phi);
+                    }
+                }
+                _ => {
+                    let br = reaction.branching_ratio;
+                    if let Some(t) = &reaction.target {
+                        let j = chain.index_of(t).ok_or_else(|| Error::UnknownNuclide {
+                            name: t.clone(),
+                            context: "reaction target",
+                        })?;
+                        add(j, i, sigma_phi * br);
+                    }
+                    // Light-particle production for reactions like (n,a),
+                    // (n,p), (n,d), etc., mirroring OpenMC chain.py:733-738.
+                    for secondary in reaction_secondaries(&reaction.kind) {
+                        if let Some(j) = chain.index_of(secondary) {
+                            add(j, i, sigma_phi * br);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Ensure every diagonal exists even for isolated stable nuclides.
+    for i in 0..n {
+        acc.entry((i, i)).or_insert(0.0);
+    }
+    Ok(acc)
 }
 
 /// Light-particle secondaries emitted by a transmutation reaction. Mirrors a

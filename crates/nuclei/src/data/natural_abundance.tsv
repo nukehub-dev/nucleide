@@ -1,4 +1,11 @@
 # GNDS name	fraction
+# Natural isotopic compositions as fractions in [0, 1], including the lone
+# naturally occurring isomer Ta180_m1. Vendored table: no generator path in
+# this repo emits it (scripts/gen-nuclear-data.py only reads it for
+# monoisotopic-element detection). Values cross-check identical to the
+# OpenMC NATURAL_ABUNDANCE tabulation (see validation/results.md: 289
+# isotopes, max abs diff 0.0); the exact transcription path is TO BE SOURCED.
+# Screening-level only: use evaluated libraries for transport.
 Ag107	0.51839
 Ag109	0.48161
 Al27	1.0

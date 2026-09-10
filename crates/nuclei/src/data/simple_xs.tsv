@@ -2,7 +2,7 @@
 # Thermal totals: NIST NCNR bound XS converted to free-atom via
 # xs*(A/(A+1))^2 + xs_a. Fast totals: ENDF/B-VII.1 MF3/MT1 at 14 MeV.
 # Screening-level only: use evaluated libraries for transport.
-# Regenerate: python3 scripts/gen-nuclear-data.py --help.
+# Regenerate: python3 scripts/gen-nuclear-data.py --endf-neutrons <vii1-neutrons-dir> --endf-decay <vii1-decay-dir> --nist-html <scattering_lengths.html> --out <dir>.
 Ag107	44.7654	4.258
 Ag109	93.4548	4.39596
 Al27	1.62856	1.744

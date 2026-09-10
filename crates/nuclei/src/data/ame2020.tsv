@@ -1,6 +1,10 @@
 # nucid	mass_u	uncertainty_u
 # Ground states: AME2020 (Huang et al., Chinese Physics C 45,
-# 030002/030003, 2021). Isomer rows (state > 0, full nucid):
+# 030002/030003, 2021), condensed from the mass.mas20 table
+# and carried verbatim by read_ame_grounds (this script has
+# no AME2020 re-parse path: refresh grounds from mass.mas20,
+# then re-run --endf-decay8 to re-append isomers).
+# Isomer rows (state > 0, full nucid):
 # m = m_ground(AME2020) + E*/931.49410242 with E* (eV) = ELIS
 # from the ENDF/B-VIII.0 decay tape's File 1 MT451 record
 # (LIS/LISO identify the level). ENDF excitation energies only;
@@ -8,7 +12,7 @@
 # the ground-state mass. Uncertainty column carries the ground-state
 # AME2020 uncertainty.
 # dec-061_Pm_137m1.endf absent from ENDF/B-VIII.0: no Pm137_m1 row (no fill-in).
-# Regenerate: python3 scripts/gen-nuclear-data.py --endf-decay8 <dir>.
+# Regenerate: python3 scripts/gen-nuclear-data.py --endf-decay8 <dir> --out <dir>.
 10010000	1.007825031898	1.4e-11
 10020000	2.014101777844	1.5e-11
 10030000	3.01604928132	8e-11

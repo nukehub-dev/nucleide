@@ -801,6 +801,15 @@ fn parse_cell_fill(
     })
 }
 
+/// Maximum total cells in one cell-`FILL` universe matrix.
+///
+/// A matrix carries one explicit universe entry per cell, so legitimate
+/// lattices stay far below this; anything above is a hostile `i:j` range
+/// (e.g. `-2147483648:2147483647`, whose width overflows `i32`) and fails
+/// with a cap error instead of panicking or allocating gigabytes. Lattices
+/// larger than the cap must be built programmatically, not spelled per cell.
+const MAX_FILL_MATRIX_CELLS: usize = 1_000_000;
+
 /// `FILL i1:i2 j1:j2 k1:k2 u...` matrix.
 fn parse_fill_matrix(cell: &CellCard, words: &[&str]) -> Result<FillTarget, Error> {
     let error = |message: String| bad(cell.line, format!("cell {} FILL {message}", cell.num));
@@ -843,11 +852,26 @@ fn parse_fill_matrix(cell: &CellCard, words: &[&str]) -> Result<FillTarget, Erro
             ranges.len()
         )));
     }
-    let sizes: Vec<usize> = ranges
-        .iter()
-        .map(|(lo, hi)| (hi - lo + 1) as usize)
-        .collect();
-    let need: usize = sizes.iter().product();
+    // Widths are computed in i64: `hi - lo` overflows i32 for hostile ranges
+    // such as `-2147483648:2147483647`. The total cell count uses checked
+    // multiplication and is capped: a matrix is an explicit per-cell universe
+    // list, so anything above the cap is a hostile range, not a lattice.
+    let mut need: usize = 1;
+    for (lo, hi) in &ranges {
+        let width = (*hi as i64) - (*lo as i64) + 1;
+        debug_assert!(width >= 1, "lo <= hi checked above");
+        need = need
+            .checked_mul(width as usize)
+            .filter(|&n| n <= MAX_FILL_MATRIX_CELLS)
+            .ok_or_else(|| {
+                error(format!(
+                    "matrix {w0} x {w1} x {w2} exceeds the {MAX_FILL_MATRIX_CELLS}-cell cap",
+                    w0 = ranges[0].1 as i64 - ranges[0].0 as i64 + 1,
+                    w1 = ranges[1].1 as i64 - ranges[1].0 as i64 + 1,
+                    w2 = ranges[2].1 as i64 - ranges[2].0 as i64 + 1,
+                ))
+            })?;
+    }
     if universes.len() != need {
         return Err(error(format!(
             "matrix needs {need} universes, found {}",
@@ -1268,15 +1292,18 @@ pub fn parse_importances(
             }
         }
     }
-    if !data_cards.is_empty() && mods.iter().any(|m| !m.importances.is_empty()) {
-        let first = mods.iter().find(|m| !m.importances.is_empty()).unwrap();
-        return Err(bad(
-            first.line,
-            format!(
-                "cell {} provided IMP data when those data were in the data block",
-                first.cell
-            ),
-        ));
+    // Single pass: the old `any()` + `find().unwrap()` pair scanned `mods`
+    // twice and panicked when the two scans disagreed.
+    if let Some(first) = mods.iter().find(|m| !m.importances.is_empty()) {
+        if !data_cards.is_empty() {
+            return Err(bad(
+                first.line,
+                format!(
+                    "cell {} provided IMP data when those data were in the data block",
+                    first.cell
+                ),
+            ));
+        }
     }
     let mut out = Vec::new();
     for m in &mods {
@@ -2019,6 +2046,33 @@ mod tests {
         let deck = parse_deck(text).unwrap();
         let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
         assert!(err.to_string().contains("simple per-cell universe list"));
+    }
+
+    #[test]
+    fn hostile_fill_matrix_ranges_fail_with_cap_error() {
+        // `hi - lo` overflows i32 here; old code panicked in debug and
+        // wrapped in release. Checked i64 arithmetic fails identically in
+        // both profiles with the cap error, before any allocation.
+        let text = "msg\ntitle\n1 0 -1 fill=-2147483648:2147483647 0:0 0:0 1 1\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
+        assert!(
+            err.to_string().contains("exceeds the 1000000-cell cap"),
+            "{err}"
+        );
+        // Moderate ranges whose checked product still exceeds the cap.
+        let text = "msg\ntitle\n1 0 -1 fill=0:999 0:999 0:999 1 1\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
+        assert!(
+            err.to_string().contains("exceeds the 1000000-cell cap"),
+            "{err}"
+        );
+        // A matrix at exactly the cap still parses (universes then mismatch).
+        let text = "msg\ntitle\n1 0 -1 fill=0:999 0:999 0:0 1 1\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("needs 1000000 universes"), "{err}");
     }
 
     #[test]

@@ -4,7 +4,7 @@
 # Daughter gammas belong to the daughter row: chain codes must sum
 # members (e.g. Cs137 prompt + Ba137_m1 662 keV). Mean-field decay
 # data evaluation; not for spectroscopy or safety calculations.
-# Regenerate: python3 scripts/gen-nuclear-data.py --help.
+# Regenerate: python3 scripts/gen-nuclear-data.py --endf-neutrons <vii1-neutrons-dir> --endf-decay <vii1-decay-dir> --nist-html <scattering_lengths.html> --out <dir>.
 Ac206	7.9446
 Ac206_m1	7.9446
 Ac207	7.84166

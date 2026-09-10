@@ -2,7 +2,7 @@
 # Bound lengths (fm) from the NIST NCNR tabulation (Sears 1992).
 # Complex coherent lengths kept by real part; incoherent derived
 # via b = 10*sqrt(sigma_i/4*pi) where the table gives only sigma.
-# Regenerate: python3 scripts/gen-nuclear-data.py --help.
+# Regenerate: python3 scripts/gen-nuclear-data.py --endf-neutrons <vii1-neutrons-dir> --endf-decay <vii1-decay-dir> --nist-html <scattering_lengths.html> --out <dir>.
 Ag107	7.555	1
 Ag109	4.165	-1.6
 Al27	3.449	0.256

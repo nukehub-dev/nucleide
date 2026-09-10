@@ -104,8 +104,63 @@ impl NuclideId {
     /// This is a raw bit-cast: invalid bit patterns yield meaningless
     /// components from [`z`](Self::z), [`a`](Self::a), and [`state`](Self::state).
     /// Use [`new`](Self::new) for validated construction.
+    ///
+    /// The id stays usable: [`to_name`](Self::to_name) and
+    /// [`armi::nucid_to_armi_label`](crate::armi::nucid_to_armi_label) render
+    /// such ids with a diagnostic `Z{z}A{a}[m{s}]` fallback instead of
+    /// panicking. Use [`try_from_nucid`](Self::try_from_nucid) (or
+    /// [`is_valid`](Self::is_valid)) when the integer comes from untrusted
+    /// input.
     pub const fn from_nucid(nucid: u32) -> Self {
         Self(nucid)
+    }
+
+    /// Reconstruct from a nucid integer with validation.
+    ///
+    /// Decomposes the integer into `(Z, A, state)` and applies the same
+    /// `1 <= Z <= 118`, `Z <= A <= 999`, `S <= 9` checks as
+    /// [`new`](Self::new) (kept in sync by inspection; the checks are
+    /// inlined because `const fn` cannot match on the `Result`); integers
+    /// with a non-canonical tail (the four low digits above 9, so no
+    /// single-digit state can explain them) fail with [`Error::BadState`].
+    /// Out-of-domain integers fail with the matching [`Error`] instead of
+    /// producing an id whose name rendering falls back to the diagnostic form.
+    pub const fn try_from_nucid(nucid: u32) -> Result<Self, Error> {
+        let tail = nucid % 10_000;
+        if tail > 9 {
+            return Err(Error::BadState(tail));
+        }
+        let z = nucid / 10_000_000;
+        let a = (nucid % 10_000_000) / 10_000;
+        let state = nucid % 10;
+        if z == 0 || z > 118 {
+            return Err(Error::BadZ(z));
+        }
+        if a < z {
+            return Err(Error::BadA { z, a });
+        }
+        if a > 999 {
+            return Err(Error::MassNumberTooLarge(a));
+        }
+        if state > 9 {
+            return Err(Error::BadState(state));
+        }
+        Ok(Self(nucid))
+    }
+
+    /// Whether this id decomposes into validated `(Z, A, state)` components
+    /// (`1 <= Z <= 118`, `Z <= A <= 999`, `S <= 9`, canonical tail).
+    ///
+    /// Raw ids built by [`from_nucid`](Self::from_nucid) may fail this; every
+    /// other constructor guarantees it.
+    pub const fn is_valid(&self) -> bool {
+        if self.0 % 10_000 > 9 {
+            return false;
+        }
+        let z = self.z();
+        let a = self.a();
+        let state = self.state();
+        z != 0 && z <= 118 && a >= z && a <= 999 && state <= 9
     }
 
     /// Raw nucid integer (`(Z*1000 + A)*10_000 + state`).
@@ -186,11 +241,23 @@ impl NuclideId {
     }
 
     /// GNDS-style name: `"U235"`, `"Am242_m1"`.
+    ///
+    /// Total over every raw id: validated ids render the canonical name
+    /// (unchanged historical spelling, re-parseable by [`from_name`](Self::from_name));
+    /// raw ids outside the validated `(Z, A, state)` domain render the
+    /// diagnostic fallback `"Z{z}A{a}[m{s}]"`, which `from_name` does not
+    /// parse. The fallback exists so display paths over unchecked integers
+    /// (decay-table progeny, FFI) can never index `ELEMENTS` out of bounds.
     pub fn to_name(&self) -> String {
-        let sym = ELEMENTS[self.z() as usize];
-        match self.state() {
-            0 => format!("{}{}", sym, self.a()),
-            s => format!("{}{}_m{}", sym, self.a(), s),
+        if self.is_valid() {
+            // `is_valid` pins `1 <= Z <= 118`, so this index is in bounds.
+            let sym = ELEMENTS[self.z() as usize];
+            match self.state() {
+                0 => format!("{}{}", sym, self.a()),
+                s => format!("{}{}_m{}", sym, self.a(), s),
+            }
+        } else {
+            format!("Z{}A{}[m{}]", self.z(), self.a(), self.state())
         }
     }
 }
@@ -315,5 +382,114 @@ mod tests {
             NuclideId::from_name("Am-242M").unwrap().nucid(),
             952_420_001
         );
+    }
+
+    #[test]
+    fn try_from_nucid_validates_raw_integers() {
+        // Valid integers pass through untouched.
+        assert_eq!(
+            NuclideId::try_from_nucid(922_350_000).unwrap(),
+            NuclideId::from_nucid(922_350_000)
+        );
+        assert!(NuclideId::try_from_nucid(10_010_000).unwrap().is_valid());
+        assert!(NuclideId::from_nucid(922_350_000).is_valid());
+        // Z out of ELEMENTS range (the `to_name` OOB family).
+        assert!(!NuclideId::from_nucid(0).is_valid());
+        assert!(matches!(NuclideId::try_from_nucid(0), Err(Error::BadZ(0))));
+        assert!(matches!(
+            NuclideId::try_from_nucid(u32::MAX),
+            Err(Error::BadState(7295))
+        ));
+        assert!(matches!(
+            NuclideId::try_from_nucid(1_190_000_000),
+            Err(Error::BadZ(119))
+        ));
+        // A below Z, non-canonical tail (no single-digit state), Z=0 tail.
+        assert!(matches!(
+            NuclideId::try_from_nucid(920_050_000),
+            Err(Error::BadA { z: 92, a: 5 })
+        ));
+        assert!(matches!(
+            NuclideId::try_from_nucid(922_350_010),
+            Err(Error::BadState(10))
+        ));
+        assert!(!NuclideId::from_nucid(920_050_000).is_valid());
+        assert!(!NuclideId::from_nucid(922_350_010).is_valid());
+    }
+
+    #[test]
+    fn to_name_falls_back_for_invalid_raw_ids() {
+        // Formerly `ELEMENTS[z]` out-of-bounds panics; now diagnostics.
+        assert_eq!(NuclideId::from_nucid(0).to_name(), "Z0A0[m0]");
+        assert_eq!(
+            NuclideId::from_nucid(u32::MAX).to_name(),
+            format!(
+                "Z{}A{}[m{}]",
+                NuclideId::from_nucid(u32::MAX).z(),
+                NuclideId::from_nucid(u32::MAX).a(),
+                NuclideId::from_nucid(u32::MAX).state()
+            )
+        );
+        assert_eq!(NuclideId::from_nucid(920_050_000).to_name(), "Z92A5[m0]");
+        assert_eq!(NuclideId::from_nucid(922_350_010).to_name(), "Z92A235[m0]");
+        // The fallback is diagnostic-only: `from_name` rejects it.
+        for raw in [0, u32::MAX, 920_050_000, 1_190_000_000] {
+            let name = NuclideId::from_nucid(raw).to_name();
+            assert!(NuclideId::from_name(&name).is_err(), "{name}");
+            assert_eq!(
+                NuclideId::from_nucid(raw).to_string(),
+                name,
+                "Display follows to_name"
+            );
+        }
+    }
+
+    #[test]
+    fn every_validated_id_round_trips_through_name() {
+        // Canonical construction paths (incl. the checked raw-integer path).
+        let mut ids = vec![
+            NuclideId::new(1, 1, 0).unwrap(),
+            NuclideId::new(92, 235, 0).unwrap(),
+            NuclideId::new(95, 242, 9).unwrap(),
+            NuclideId::new(118, 294, 0).unwrap(),
+            NuclideId::from_name("Am242_m1").unwrap(),
+            NuclideId::from_zzaaam(922_350).unwrap(),
+            NuclideId::try_from_nucid(922_350_000).unwrap(),
+        ];
+        for z in [1, 2, 26, 92, 95, 118] {
+            for a in [z, z + 1, 999] {
+                for s in [0, 1, 9] {
+                    if let Ok(id) = NuclideId::new(z, a.min(999), s) {
+                        ids.push(id);
+                    }
+                }
+            }
+        }
+        for id in ids {
+            assert!(id.is_valid());
+            assert_eq!(NuclideId::from_name(&id.to_name()).unwrap(), id);
+        }
+    }
+
+    #[test]
+    fn error_arms_construct_and_display() {
+        assert!(matches!(
+            NuclideId::new(92, 235, 10),
+            Err(Error::BadState(10))
+        ));
+        assert!(matches!(
+            NuclideId::from_name("U235_mX"),
+            Err(Error::BadNumber(_))
+        ));
+        assert!(NuclideId::from_name("U235_mX")
+            .unwrap_err()
+            .to_string()
+            .contains("MX"));
+        assert!(matches!(
+            NuclideId::from_name("U23X5"),
+            Err(Error::BadNumber(_))
+        ));
+        assert!(!Error::BadState(10).to_string().is_empty());
+        assert!(!Error::BadNumber("MX".to_string()).to_string().is_empty());
     }
 }

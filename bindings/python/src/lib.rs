@@ -1910,96 +1910,147 @@ impl PyCascade {
     }
 
     #[getter]
-    fn alpha(&self) -> f64 {
-        self.inner.lock().unwrap().alpha
+    fn alpha(&self) -> PyResult<f64> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?
+            .alpha)
     }
     #[getter]
     #[allow(non_snake_case)]
-    fn Mstar(&self) -> f64 {
-        self.inner.lock().unwrap().Mstar
+    fn Mstar(&self) -> PyResult<f64> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?
+            .Mstar)
     }
     #[getter]
     #[allow(non_snake_case)]
-    fn N(&self) -> f64 {
-        self.inner.lock().unwrap().N
+    fn N(&self) -> PyResult<f64> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?
+            .N)
     }
     #[getter]
     #[allow(non_snake_case)]
-    fn M(&self) -> f64 {
-        self.inner.lock().unwrap().M
+    fn M(&self) -> PyResult<f64> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?
+            .M)
     }
     #[getter]
-    fn x_feed_j(&self) -> f64 {
-        self.inner.lock().unwrap().x_feed_j
+    fn x_feed_j(&self) -> PyResult<f64> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?
+            .x_feed_j)
     }
     #[getter]
-    fn x_prod_j(&self) -> f64 {
-        self.inner.lock().unwrap().x_prod_j
+    fn x_prod_j(&self) -> PyResult<f64> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?
+            .x_prod_j)
     }
     #[getter]
-    fn x_tail_j(&self) -> f64 {
-        self.inner.lock().unwrap().x_tail_j
+    fn x_tail_j(&self) -> PyResult<f64> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?
+            .x_tail_j)
     }
     #[getter]
-    fn l_t_per_feed(&self) -> f64 {
-        self.inner.lock().unwrap().l_t_per_feed
+    fn l_t_per_feed(&self) -> PyResult<f64> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?
+            .l_t_per_feed)
     }
     #[getter]
-    fn swu_per_feed(&self) -> f64 {
-        self.inner.lock().unwrap().swu_per_feed
+    fn swu_per_feed(&self) -> PyResult<f64> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?
+            .swu_per_feed)
     }
     #[getter]
-    fn swu_per_prod(&self) -> f64 {
-        self.inner.lock().unwrap().swu_per_prod
+    fn swu_per_prod(&self) -> PyResult<f64> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?
+            .swu_per_prod)
     }
     /// Feed composition as {nuclide_name: mass_fraction}.
     #[getter]
-    fn mat_feed(&self) -> BTreeMap<String, f64> {
-        self.inner
+    fn mat_feed(&self) -> PyResult<BTreeMap<String, f64>> {
+        Ok(self
+            .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?
             .mat_feed
             .comp
             .iter()
             .map(|(id, frac)| (id.to_name(), *frac))
-            .collect()
+            .collect())
     }
     /// Product composition as {nuclide_name: mass_fraction}.
     #[getter]
-    fn mat_prod(&self) -> BTreeMap<String, f64> {
-        self.inner
+    fn mat_prod(&self) -> PyResult<BTreeMap<String, f64>> {
+        Ok(self
+            .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?
             .mat_prod
             .comp
             .iter()
             .map(|(id, frac)| (id.to_name(), *frac))
-            .collect()
+            .collect())
     }
     /// Tails composition as {nuclide_name: mass_fraction}.
     #[getter]
-    fn mat_tail(&self) -> BTreeMap<String, f64> {
-        self.inner
+    fn mat_tail(&self) -> PyResult<BTreeMap<String, f64>> {
+        Ok(self
+            .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?
             .mat_tail
             .comp
             .iter()
             .map(|(id, frac)| (id.to_name(), *frac))
-            .collect()
+            .collect())
     }
     /// Separative work per product [kg SWU/kg] from the key assays.
-    fn separative_work_per_product(&self) -> f64 {
-        let c = self.inner.lock().unwrap();
-        nucleide_enrichment::swu_per_prod(c.x_feed_j, c.x_prod_j, c.x_tail_j)
+    fn separative_work_per_product(&self) -> PyResult<f64> {
+        let c = self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?;
+        Ok(nucleide_enrichment::swu_per_prod(
+            c.x_feed_j, c.x_prod_j, c.x_tail_j,
+        ))
     }
 
-    fn __repr__(&self) -> String {
-        let c = self.inner.lock().unwrap();
-        format!(
+    fn __repr__(&self) -> PyResult<String> {
+        let c = self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("cascade lock poisoned"))?;
+        Ok(format!(
             "Cascade(alpha={}, Mstar={}, x_prod_j={:.5})",
             c.alpha, c.Mstar, c.x_prod_j
-        )
+        ))
     }
 }
 
@@ -3155,36 +3206,48 @@ impl PyDeckProblem {
 
     /// Message (first) line.
     #[getter]
-    fn message(&self) -> String {
-        self.inner.lock().unwrap().message.clone()
+    fn message(&self) -> PyResult<String> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
+            .message
+            .clone())
     }
 
     /// Title card (second line).
     #[getter]
-    fn title(&self) -> String {
-        self.inner.lock().unwrap().title.clone()
+    fn title(&self) -> PyResult<String> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
+            .title
+            .clone())
     }
 
     /// Cell cards as `{num, mat, dens, geom, params}` dicts (`dens` is `""`
     /// for void cells).
     #[getter]
-    fn cells(&self) -> Vec<BTreeMap<String, String>> {
-        self.inner
+    fn cells(&self) -> PyResult<Vec<BTreeMap<String, String>>> {
+        Ok(self
+            .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .cells
             .iter()
             .map(deck_cell_dict)
-            .collect()
+            .collect())
     }
 
     /// Surface cards as `{num, reflecting, transform, periodic, kind, coeffs}`
     /// dicts (`transform`/`periodic` are `""` when absent).
     #[getter]
-    fn surfs(&self) -> Vec<BTreeMap<String, String>> {
-        self.inner
+    fn surfs(&self) -> PyResult<Vec<BTreeMap<String, String>>> {
+        Ok(self
+            .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .surfs
             .iter()
             .map(|s| {
@@ -3210,43 +3273,49 @@ impl PyDeckProblem {
                 );
                 d
             })
-            .collect()
+            .collect())
     }
 
     /// Material numbers in file order.
     #[getter]
-    fn material_numbers(&self) -> Vec<u32> {
-        self.inner
+    fn material_numbers(&self) -> PyResult<Vec<u32>> {
+        Ok(self
+            .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .materials
             .iter()
             .map(|m| m.number)
-            .collect()
+            .collect())
     }
 
     /// Data-card names in file order (`MODE`, `M1`, `KCODE`, ...).
     #[getter]
-    fn data_names(&self) -> Vec<String> {
-        self.inner
+    fn data_names(&self) -> PyResult<Vec<String>> {
+        Ok(self
+            .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .data
             .iter()
             .map(|d| d.name.clone())
-            .collect()
+            .collect())
     }
 
     /// Serialize back to MCNP input text (byte-identical when unedited).
-    fn dumps(&self) -> String {
-        nucleide_mcnp_io::problem::write_deck(&self.inner.lock().unwrap())
+    fn dumps(&self) -> PyResult<String> {
+        let guard = self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?;
+        Ok(nucleide_mcnp_io::problem::write_deck(&guard))
     }
 
     /// Set a cell's density (re-renders that card canonically).
     fn set_cell_density(&self, cell: u32, dens: f64) -> PyResult<()> {
         self.inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .set_cell_density(cell, dens)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -3255,7 +3324,7 @@ impl PyDeckProblem {
     fn set_cell_material(&self, cell: u32, mat: u32) -> PyResult<()> {
         self.inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .set_cell_material(cell, mat)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -3266,7 +3335,7 @@ impl PyDeckProblem {
         let mode = self
             .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .mode()
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         let mut d = BTreeMap::new();
@@ -3281,7 +3350,7 @@ impl PyDeckProblem {
         let transforms = self
             .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .transforms()
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(transforms
@@ -3320,7 +3389,7 @@ impl PyDeckProblem {
         let universes = self
             .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .universes()
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(universes
@@ -3355,7 +3424,7 @@ impl PyDeckProblem {
         let lattices = self
             .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .lattices()
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(lattices
@@ -3378,7 +3447,7 @@ impl PyDeckProblem {
         let fills = self
             .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .fills()
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(fills
@@ -3458,7 +3527,7 @@ impl PyDeckProblem {
         let importances = self
             .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .importances()
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(importances
@@ -3479,7 +3548,7 @@ impl PyDeckProblem {
         let volumes = self
             .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .volumes()
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(volumes
@@ -3500,7 +3569,7 @@ impl PyDeckProblem {
         let tallies = self
             .inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .tallies()
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(tallies
@@ -3526,21 +3595,25 @@ impl PyDeckProblem {
     fn validate(&self) -> PyResult<()> {
         self.inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .validate()
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Non-fatal validation notes (particle/mode mismatches).
-    fn validation_notes(&self) -> Vec<String> {
-        self.inner.lock().unwrap().validation_notes()
+    fn validation_notes(&self) -> PyResult<Vec<String>> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
+            .validation_notes())
     }
 
     /// Set the `MODE` card particles (re-renders that card canonically).
     fn set_mode(&self, particles: Vec<String>) -> PyResult<()> {
         self.inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .set_mode(particles)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -3549,7 +3622,7 @@ impl PyDeckProblem {
     fn set_cell_universe(&self, cell: u32, universe: u32, not_truncated: bool) -> PyResult<()> {
         self.inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .set_cell_universe(cell, universe, not_truncated)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -3558,7 +3631,7 @@ impl PyDeckProblem {
     fn set_cell_lattice(&self, cell: u32, lattice: Option<u8>) -> PyResult<()> {
         self.inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .set_cell_lattice(cell, lattice)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -3567,7 +3640,7 @@ impl PyDeckProblem {
     fn set_cell_fill(&self, cell: u32, universe: u32) -> PyResult<()> {
         self.inner
             .lock()
-            .unwrap()
+            .map_err(|_| PyValueError::new_err("deck lock poisoned"))?
             .set_cell_fill(cell, universe)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }

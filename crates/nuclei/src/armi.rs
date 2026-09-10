@@ -73,12 +73,23 @@ pub fn armi_name_to_nucid(s: &str) -> Result<NuclideId, Error> {
 
 /// Emit the ARMI database name for `id` (`U235` → `nU235`,
 /// Am-242m → `nAm242m`), matching ARMI's `f"n{name.capitalize()}"`.
+///
+/// Total over every raw id (one invalid-id policy shared with
+/// [`NuclideId::to_name`](crate::NuclideId::to_name)): validated ids keep the
+/// exact historical spelling; raw ids outside the validated `(Z, A, state)`
+/// domain render the `to_name` diagnostic fallback with the same `n` prefix
+/// and capitalization, so label pipelines (`emit`, `r2s` snapshot,
+/// `material` checks) can never panic on an unchecked integer.
 pub fn nucid_to_armi_label(id: NuclideId) -> String {
-    let sym = element_symbol(id.z()).expect("NuclideId carries a validated atomic number");
-    let name = match id.state() {
-        0 => format!("{}{}", sym.to_ascii_uppercase(), id.a()),
-        1 => format!("{}{}M", sym.to_ascii_uppercase(), id.a()),
-        st => format!("{}{}M{st}", sym.to_ascii_uppercase(), id.a()),
+    let name = match (id.is_valid(), element_symbol(id.z())) {
+        // `is_valid` pins `1 <= Z <= 118`, so the symbol lookup succeeds;
+        // the pair match keeps this total even if the table ever shrinks.
+        (true, Some(sym)) => match id.state() {
+            0 => format!("{}{}", sym.to_ascii_uppercase(), id.a()),
+            1 => format!("{}{}M", sym.to_ascii_uppercase(), id.a()),
+            st => format!("{}{}M{st}", sym.to_ascii_uppercase(), id.a()),
+        },
+        _ => id.to_name(),
     };
     let mut chars = name.chars();
     let mut out = String::with_capacity(name.len() + 1);
@@ -172,7 +183,10 @@ fn mcc3_dash(orig: &str, sym: &str, tail: &str) -> Result<NuclideId, Error> {
         return Err(Error::BadNumber(orig.to_string()));
     }
     let (mass_str, tag) = digits.split_at(digits.len() - 1);
-    if !LIB_TAGS.contains(&tag.chars().next().unwrap()) {
+    let Some(tag_char) = tag.chars().next() else {
+        return Err(Error::BadNumber(orig.to_string()));
+    };
+    if !LIB_TAGS.contains(&tag_char) {
         return Err(Error::BadNumber(orig.to_string()));
     }
     let z = z_of_upper(sym).ok_or_else(|| Error::UnknownElement(sym.to_string()))?;
@@ -233,7 +247,8 @@ fn mcc3_compact(u: &str) -> Option<Result<NuclideId, Error>> {
         return None;
     }
     let (mass_str, tag) = digits.split_at(3);
-    if !LIB_TAGS.contains(&tag.chars().next().unwrap()) {
+    let tag_char = tag.chars().next()?;
+    if !LIB_TAGS.contains(&tag_char) {
         return None;
     }
     Some((|| {
@@ -326,6 +341,21 @@ mod tests {
         assert_eq!(nucid_to_armi_label(nid(95, 242, 1)), "nAm242m");
         assert_eq!(nucid_to_armi_label(nid(95, 242, 2)), "nAm242m2");
         assert_eq!(nucid_to_armi_label(nid(1, 1, 0)), "nH1");
+    }
+
+    #[test]
+    fn invalid_raw_ids_get_fallback_labels() {
+        // Formerly `.expect()` panics on the element-symbol lookup; now the
+        // `to_name` diagnostic with the ARMI `n`-prefix treatment.
+        assert_eq!(nucid_to_armi_label(NuclideId::from_nucid(0)), "nZ0a0[m0]");
+        assert_eq!(
+            nucid_to_armi_label(NuclideId::from_nucid(920_050_000)),
+            "nZ92a5[m0]"
+        );
+        assert_eq!(
+            nucid_to_armi_label(NuclideId::from_nucid(u32::MAX)),
+            "nZ429a496[m5]"
+        );
     }
 
     #[test]

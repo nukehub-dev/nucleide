@@ -165,6 +165,43 @@ export function DeckEditor() {
     return n;
   }
 
+  function parseDensity(): number {
+    const v = parseFloat(density);
+    if (!Number.isFinite(v)) throw new Error(`bad density \`${density}\``);
+    return v;
+  }
+
+  function parseMaterial(): number {
+    const n = parseInt(material, 10);
+    if (!Number.isInteger(n)) throw new Error(`bad material number \`${material}\``);
+    return n;
+  }
+
+  function parseUniverse(): number {
+    const n = parseInt(universe, 10);
+    if (!Number.isInteger(n)) throw new Error(`bad universe \`${universe}\``);
+    return n;
+  }
+
+  function parseLattice(): number | undefined {
+    if (lattice.trim() === "") return undefined;
+    const n = parseInt(lattice, 10);
+    if (!Number.isInteger(n)) throw new Error(`bad lattice \`${lattice}\``);
+    return n;
+  }
+
+  function parseFill(): number {
+    const n = parseInt(fill, 10);
+    if (!Number.isInteger(n)) throw new Error(`bad fill universe \`${fill}\``);
+    return n;
+  }
+
+  function parseMode(): string[] {
+    const parts = modeInput.split(/\s+/).filter((p) => p.length > 0);
+    if (parts.length === 0) throw new Error(`bad mode particles \`${modeInput}\``);
+    return parts;
+  }
+
   const displayError = error ?? localError;
 
   return (
@@ -319,9 +356,7 @@ export function DeckEditor() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() =>
-                      applyEdit((d) => d.setCellDensity(parseCell(), parseFloat(density)))
-                    }
+                    onClick={() => applyEdit((d) => d.setCellDensity(parseCell(), parseDensity()))}
                   >
                     Set density
                   </Button>
@@ -329,7 +364,7 @@ export function DeckEditor() {
                     size="sm"
                     variant="outline"
                     onClick={() =>
-                      applyEdit((d) => d.setCellMaterial(parseCell(), parseInt(material, 10)))
+                      applyEdit((d) => d.setCellMaterial(parseCell(), parseMaterial()))
                     }
                   >
                     Set material
@@ -381,7 +416,7 @@ export function DeckEditor() {
                     variant="outline"
                     onClick={() =>
                       applyEdit((d) =>
-                        d.setCellUniverse(parseCell(), parseInt(universe, 10), notTruncated),
+                        d.setCellUniverse(parseCell(), parseUniverse(), notTruncated),
                       )
                     }
                   >
@@ -390,21 +425,14 @@ export function DeckEditor() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() =>
-                      applyEdit((d) =>
-                        d.setCellLattice(
-                          parseCell(),
-                          lattice.trim() === "" ? undefined : parseInt(lattice, 10),
-                        ),
-                      )
-                    }
+                    onClick={() => applyEdit((d) => d.setCellLattice(parseCell(), parseLattice()))}
                   >
                     Set lattice
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => applyEdit((d) => d.setCellFill(parseCell(), parseInt(fill, 10)))}
+                    onClick={() => applyEdit((d) => d.setCellFill(parseCell(), parseFill()))}
                   >
                     Set fill
                   </Button>
@@ -425,11 +453,7 @@ export function DeckEditor() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() =>
-                        applyEdit((d) =>
-                          d.setMode(modeInput.split(/\s+/).filter((p) => p.length > 0)),
-                        )
-                      }
+                      onClick={() => applyEdit((d) => d.setMode(parseMode()))}
                     >
                       Set mode
                     </Button>

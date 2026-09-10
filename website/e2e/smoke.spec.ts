@@ -24,7 +24,22 @@ async function assertNoWasmError(page) {
   await expect(page.getByText("WASM error:", { exact: false })).not.toBeVisible();
 }
 
-const INTERACTIVE_PAGES = [
+interface ExtraStep {
+  button: string;
+  output?: string;
+}
+
+interface InteractivePage {
+  path: string;
+  button: string;
+  output: string;
+  cell?: string;
+  paste?: string;
+  chart?: { button?: string; actions?: string[]; selector: string };
+  extraSteps?: ExtraStep[];
+}
+
+const INTERACTIVE_PAGES: InteractivePage[] = [
   {
     path: "tutorials/interactive/nuclides",
     button: "Look up",
@@ -38,18 +53,24 @@ const INTERACTIVE_PAGES = [
     // empty tables (Object.entries on a JS Map yields no rows).
     cell: "H1",
     chart: { selector: ".js-plotly-plot" },
+    extraSteps: [
+      { button: "Mix", output: "text=Mixed atom fractions" },
+      { button: "To XML", output: "text=density" },
+    ],
   },
   {
     path: "tutorials/interactive/enrichment",
     button: "Solve cascade",
     output: "text=Enriching stages",
     chart: { button: "Solve cascade", selector: ".js-plotly-plot" },
+    extraSteps: [{ button: "Optimize M*", output: "text=Enriching stages" }],
   },
   {
     path: "tutorials/interactive/depletion",
     button: "Deplete",
     output: "text=Atom count",
     chart: { button: "Burnup curve", selector: ".js-plotly-plot" },
+    extraSteps: [{ button: "Load sample chain" }, { button: "Deplete", output: "text=Atom count" }],
   },
   {
     path: "tutorials/interactive/mcnp-io",
@@ -59,12 +80,17 @@ const INTERACTIVE_PAGES = [
       actions: ["meshtal", "Load sample meshtal", "Parse", "xsdir", "Load sample xsdir", "Parse"],
       selector: ".js-plotly-plot",
     },
+    extraSteps: [{ button: "wwinp" }, { button: "Parse", output: "text=ni:" }],
   },
   {
     path: "tutorials/interactive/variance-reduction",
     button: "Generate MAGIC bounds",
     output: "text=Groups per voxel:",
     chart: { button: "Generate MAGIC bounds", selector: ".js-plotly-plot" },
+    extraSteps: [
+      { button: "Sample index", output: "text=Sampled index:" },
+      { button: "Sample voxel", output: "text=index=" },
+    ],
   },
   {
     path: "tutorials/interactive/activation",
@@ -87,6 +113,14 @@ end
 cooling
 1 d
 end`,
+    extraSteps: [
+      { button: "ALARA output" },
+      { button: "Parse", output: "text=Rows:" },
+      { button: "FISPACT output" },
+      { button: "Parse", output: "text=Rows:" },
+      { button: "R2S workflow" },
+      { button: "Parse", output: "text=Top schedule:" },
+    ],
   },
   {
     path: "tutorials/interactive/deterministic",
@@ -102,10 +136,16 @@ NUCLIDE PU239 94239 2
     path: "tutorials/interactive/deck-editor",
     button: "Parse",
     output: "text=Cell 1",
+    extraSteps: [
+      { button: "Validate", output: "text=✓ valid" },
+      { button: "Set density", output: "text=Cell 1" },
+      { button: "Load L3 sample" },
+      { button: "Parse", output: "text=Cell 1" },
+    ],
   },
 ];
 
-for (const { path, button, output, cell, chart, paste } of INTERACTIVE_PAGES) {
+for (const { path, button, output, cell, chart, paste, extraSteps } of INTERACTIVE_PAGES) {
   test(`interactive demo: ${path}`, async ({ page }) => {
     await page.goto(path);
     await waitForWasmReady(page);
@@ -140,6 +180,21 @@ for (const { path, button, output, cell, chart, paste } of INTERACTIVE_PAGES) {
       }
       await assertNoWasmError(page);
       await expect(page.locator(chart.selector).first()).toBeVisible({ timeout: 10_000 });
+    }
+
+    if (extraSteps) {
+      for (const step of extraSteps) {
+        const stepButton = page.getByRole("button", { name: step.button });
+        await stepButton.scrollIntoViewIfNeeded();
+        await stepButton.click();
+        // Sample loaders disable their button while fetching; wait for the
+        // fetch to land before the next step (instant for other buttons).
+        await expect(stepButton).toBeEnabled({ timeout: 10_000 });
+        await assertNoWasmError(page);
+        if (step.output) {
+          await expect(page.locator(step.output).first()).toBeVisible();
+        }
+      }
     }
   });
 }

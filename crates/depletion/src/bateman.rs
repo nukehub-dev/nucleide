@@ -306,8 +306,8 @@ impl BatemanCache {
     /// Solve `N(dt) = C·diag(e^{−λdt})·C⁻¹·N₀` (E5).
     ///
     /// `dt == 0.0` returns the input exactly. Non-positive (other than
-    /// exactly zero), non-finite `dt` and length mismatches are errors like
-    /// the CRAM entry points.
+    /// exactly zero), non-finite `dt`, length mismatches, and non-finite or
+    /// negative `n0` entries are errors like the CRAM entry points.
     ///
     /// Index loops below are intentional (paired dense-triangle addressing).
     #[allow(clippy::needless_range_loop)]
@@ -324,6 +324,11 @@ impl BatemanCache {
         }
         if dt <= 0.0 || !dt.is_finite() {
             return Err(CramError::Linalg(format!("invalid timestep dt: {dt}")));
+        }
+        if n0.iter().any(|v| !v.is_finite() || *v < 0.0) {
+            return Err(CramError::Linalg(
+                "n0 must hold finite atom counts >= 0".to_string(),
+            ));
         }
         // y = C⁻¹·N₀ (forward substitution; C⁻¹_ii = 1).
         let mut y = vec![0.0; self.n];
@@ -616,6 +621,33 @@ mod tests {
         let n0 = vec![1.0e14, 5e13, 1e10];
         assert_eq!(cache.solve(&n0, 0.0, false).unwrap(), n0);
         assert_eq!(cache.solve(&n0, 0.0, true).unwrap(), n0);
+    }
+
+    #[test]
+    fn solve_rejects_bad_dt_and_bad_n0() {
+        let sys = DepletionSystem::build(abc_chain(), &ReactionRates::new()).unwrap();
+        let cache = BatemanCache::build(&sys).unwrap();
+        let good = vec![1.0e14, 5e13, 1e10];
+        // dt=0 echoes; every other non-positive or non-finite dt errors
+        // (inf/NaN already errored before this change).
+        assert_eq!(cache.solve(&good, 0.0, false).unwrap(), good);
+        for dt in [-1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(cache.solve(&good, dt, false).is_err(), "dt={dt}");
+            assert!(cache.solve(&good, dt, true).is_err(), "dt={dt}");
+        }
+        // NaN/infinite/negative n0 entries error with the Linalg style.
+        for bad in [
+            vec![f64::NAN, 0.0, 0.0],
+            vec![1.0e14, f64::INFINITY, 0.0],
+            vec![1.0e14, 5e13, -1.0],
+        ] {
+            let err = cache.solve(&bad, 1.0e5, false).unwrap_err();
+            assert!(err.to_string().contains("n0"), "{err}");
+            assert!(cache.solve(&bad, 1.0e5, true).is_err());
+        }
+        // Length mismatch still errors; valid input still solves.
+        assert!(cache.solve(&[1.0], 1.0e5, false).is_err());
+        assert!(cache.solve(&good, 1.0e5, false).is_ok());
     }
 
     #[test]

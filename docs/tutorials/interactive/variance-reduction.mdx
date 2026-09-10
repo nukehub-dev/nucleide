@@ -31,7 +31,9 @@ logarithmic energy axis.
 non-negative PDF and two uniform random numbers in $[0, 1)$, it returns a bin
 index in $O(1)$ time. `MeshSourceSampler` applies this to a mesh tally,
 supporting analog, uniform, and user-biased modes (the browser demo below
-exposes the analog and uniform modes).
+exposes the analog and uniform modes). Non-finite tally, tolerance,
+null-value, or PDF entries are rejected with an inline error before any
+computation runs.
 
 <InteractiveDemo kind="variance-reduction" />
 

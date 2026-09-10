@@ -40,11 +40,32 @@ Each table is derived from a primary evaluated source — no hand-copied values:
   energy, one row keyed by the full state-bearing nucid:
   ``m = m_ground(AME2020) + ELIS[eV]/1e6/931.49410242``.  Ground rows are
   preserved verbatim; no NUBASE import (ENDF excitation energies only).
+- ``half_life.tsv``: ``T1/2`` in seconds for every ENDF/B-VIII.0 decay tape
+  with a usable MF8/MT457 NDK half-life (stable tapes flagged ``NST != 0``
+  and zero-half-life evaluation dummies yield no rows — the same
+  stable-absent convention as the branch table).  ``T1/2`` is the first
+  value of the MT457 summary LIST record (ENDF-102 section 8.4.1:
+  ``[MAT, 8,457/ T1/2, dT1/2, 0, 0, 2*NC, 0 / ...]``; units are seconds
+  per the ENDF-102 quantity dictionary).  Values are emitted with
+  ``repr`` (shortest round-trip) so the writer reproduces the committed
+  table byte-identically (data rows).
+  Upstream: https://www.nndc.bnl.gov/endf-b8.0/
+  (``zips/ENDF-B-VIII.0_decay.zip``).
 
 Per-table evaluation bases (kept distinct on purpose): ``decay_energy.tsv``
 stays on ENDF/B-VII.1 while ``decay_branches.tsv``, ``half_life.tsv``, and
 the ``ame2020.tsv`` isomer rows use ENDF/B-VIII.0.  Each TSV header records
 its own basis.
+
+Generator path for ``ame2020.tsv`` (so the ground rows are never orphaned):
+ground-state rows are condensed once from the AME2020 mass table
+(``mass.mas20``; Huang et al., Chinese Physics C 45, 030002/030003, 2021)
+and carried verbatim by ``read_ame_grounds`` on every ``--endf-decay8``
+run; ``gen_isomer_masses`` only appends isomer rows
+(``m_ground + ELIS/931.49410242``) and never rewrites grounds.  There is
+no AME2020 re-parse path in this script: to refresh grounds, replace the
+verbatim block in ``ame2020.tsv`` from a new ``mass.mas20`` and re-run
+``--endf-decay8`` to re-append isomers.
 
 Usage::
 
@@ -63,7 +84,7 @@ All inputs are local checkouts (see help for download URLs); nothing is
 fetched over the network.  Exit nonzero if any hard spot-check fails.
 Pass only the ``--dose-*`` flags (plus ``--out``) for a dose-only run;
 pass only the ENDF/NIST flags for the legacy tables; pass only
-``--endf-decay8`` (plus ``--out``) for the VIII.0 branch/isomer tables.
+``--endf-decay8`` (plus ``--out``) for the VIII.0 branch/half-life/isomer tables.
 """
 
 from __future__ import annotations
@@ -75,8 +96,8 @@ import os
 import re
 import sys
 
-THERMAL_EV = 0.0253
-FAST_EV = 14.0e6
+THERMAL_EV = 0.0253  # NIST 2200 m/s thermal energy (NCNR n-lengths page).
+FAST_EV = 14.0e6  # ENDF 14-MeV reference energy for fast totals (MF3/MT1).
 
 # Spot-checks: (table, name, lo, hi, unit).  Failure aborts the run.
 SPOTS = [
@@ -670,6 +691,14 @@ def ame_isomer_lines(ground_lines: list[str], isomers: dict[int, tuple[float, st
     return [merged[k] for k in sorted(merged)]
 
 
+# ENDF/B-VIII.0 decay-sublibrary source pin for the branch/isomer/half-life
+# tables.  Download URL + MD5 of the zip as served (verified 2026-09-10):
+# the writer below reproduces the committed half_life.tsv data rows
+# byte-identically from an unpack of this artifact (3,821 decay tapes,
+# 3,561 with usable MF8/MT457 NDK half-lives).
+DECAY8_ZIP_URL = "https://www.nndc.bnl.gov/endf-b8.0/zips/ENDF-B-VIII.0_decay.zip"
+DECAY8_ZIP_MD5 = "aa80cd0a880d9d7e0905940b868370c3"
+
 # Spot-checks on the VIII.0 branch/isomer tables. Failure aborts the run.
 # All values are read off the ENDF/B-VIII.0 decay tapes themselves (see the
 # per-branch notes); K-40 additionally pins the half-life table's K40 entry.
@@ -969,7 +998,12 @@ def write_branch_tsv(path: str, header: list[str], rows: list[tuple[str, str, fl
 
 
 def run_decay8(out_dir: str, decay8_dir: str) -> int:
-    """Generate ``decay_branches.tsv`` + extended ``ame2020.tsv``. Nonzero on spot failure."""
+    """Generate ``decay_branches.tsv`` + ``half_life.tsv`` + extended ``ame2020.tsv``.
+
+    Nonzero on spot failure.  The half-life writer emits ``repr`` values
+    straight from ``ndk_modes`` (same stable-absent rule as the branch
+    table), which reproduces the committed data rows byte-identically.
+    """
     branches, branch_half, br_log = gen_decay_branches(decay8_dir)
 
     by_parent: dict[str, list[tuple[str, str, float, str]]] = {}
@@ -1029,7 +1063,10 @@ def run_decay8(out_dir: str, decay8_dir: str) -> int:
             return 1
         print(f"spot ok: isomer     {name:10s} {got_mass:.9f} u (ELIS {elis_ev:.6g} eV)")
 
-    print(f"rows: branches={len(branches)} parents={len(by_parent)} isomers={len(isomers)}")
+    print(
+        f"rows: branches={len(branches)} parents={len(by_parent)}"
+        f" isomers={len(isomers)} halflives={len(branch_half)}"
+    )
     for line in br_log + iso_log:
         print(f"note: {line}")
 
@@ -1064,6 +1101,34 @@ def run_decay8(out_dir: str, decay8_dir: str) -> int:
         branches,
     )
 
+    half_body = [f"{name}\t{branch_half[name]}" for name in sorted(branch_half)]
+    with open(os.path.join(out_dir, "half_life.tsv"), "w") as fh:
+        fh.write(
+            "\n".join(
+                [
+                    "# GNDS name\thalf_life_seconds",
+                    "# Half-lives (T1/2) in seconds from the ENDF/B-VIII.0 decay",
+                    "# sublibrary (MF8/MT457): T1/2 is the first value of the",
+                    "# summary LIST record (ENDF-102 section 8.4.1: [MAT, 8,457/",
+                    "# T1/2, dT1/2, 0, 0, 2*NC, 0 / ...]; seconds per the",
+                    "# ENDF-102 quantity dictionary). Stable tapes (NST != 0)",
+                    "# and zero-half-life evaluation dummies (e.g. Te123, Ca46)",
+                    "# yield no rows: stable nuclides are simply absent.",
+                    "# Basis note: this table and decay_branches.tsv use",
+                    "# ENDF/B-VIII.0 while decay_energy.tsv stays on ENDF/B-VII.1.",
+                    f"# Source: {DECAY8_ZIP_URL}",
+                    f"# Source zip MD5 (as served): {DECAY8_ZIP_MD5}",
+                    "# Screening-level only: use evaluated libraries for",
+                    "# transport; not for safety calculations (no warranty).",
+                    "# Regenerate: python3 scripts/gen-nuclear-data.py --endf-decay8"
+                    " <dir> --out <dir>.",
+                ]
+            )
+            + "\n"
+        )
+        for line in half_body:
+            fh.write(line + "\n")
+
     isomer_body = ame_isomer_lines(ground_lines, isomers)
     with open(ame_path, "w") as fh:
         fh.write(
@@ -1071,7 +1136,11 @@ def run_decay8(out_dir: str, decay8_dir: str) -> int:
                 [
                     "# nucid\tmass_u\tuncertainty_u",
                     "# Ground states: AME2020 (Huang et al., Chinese Physics C 45,",
-                    "# 030002/030003, 2021). Isomer rows (state > 0, full nucid):",
+                    "# 030002/030003, 2021), condensed from the mass.mas20 table",
+                    "# and carried verbatim by read_ame_grounds (this script has",
+                    "# no AME2020 re-parse path: refresh grounds from mass.mas20,",
+                    "# then re-run --endf-decay8 to re-append isomers).",
+                    "# Isomer rows (state > 0, full nucid):",
                     "# m = m_ground(AME2020) + E*/931.49410242 with E* (eV) = ELIS",
                     "# from the ENDF/B-VIII.0 decay tape's File 1 MT451 record",
                     "# (LIS/LISO identify the level). ENDF excitation energies only;",
@@ -1079,7 +1148,8 @@ def run_decay8(out_dir: str, decay8_dir: str) -> int:
                     "# the ground-state mass. Uncertainty column carries the ground-state",
                     "# AME2020 uncertainty.",
                     f"# {pm_note}",
-                    "# Regenerate: python3 scripts/gen-nuclear-data.py --endf-decay8 <dir>.",
+                    "# Regenerate: python3 scripts/gen-nuclear-data.py --endf-decay8"
+                    " <dir> --out <dir>.",
                 ]
             )
             + "\n"
@@ -1107,9 +1177,11 @@ def main() -> int:
         "--endf-decay8",
         required=False,
         default=None,
-        help="ENDF/B-VIII.0 decay tapes dir for the branch/isomer tables "
+        help="ENDF/B-VIII.0 decay tapes dir for the branch/half-life/isomer tables "
         "(download: https://www.nndc.bnl.gov/endf-b8.0/ "
-        "zips/ENDF-B-VIII.0_decay.zip)",
+        "zips/ENDF-B-VIII.0_decay.zip). Ground rows of ame2020.tsv are "
+        "carried verbatim (condensed from AME2020 mass.mas20, no re-parse "
+        "path); only isomer rows are re-appended.",
     )
     ap.add_argument(
         "--nist-html",
@@ -1205,7 +1277,9 @@ def main() -> int:
                 "Air is EPA-only: GENII/DOE air rows are -1 sentinels (PyNE convention);",
                 "accessors treat negative factors as missing. Liability: not for safety",
                 "decisions (upstream PyNE disclaimer).",
-                "Regenerate: python3 scripts/gen-nuclear-data.py --help.",
+                "Regenerate: python3 scripts/gen-nuclear-data.py --dose-air <air.csv>"
+                " --dose-soil <soil.csv> --dose-ingest <ingest.csv>"
+                " --dose-inhale <inhale.csv> --out <dir>.",
             ],
             dose_rows,
         )
@@ -1247,6 +1321,9 @@ def main() -> int:
             xs_extra[name] = bundle
             sl_log.append(f"monoisotopic element row attributed: {sym} -> {name}")
     xs, xs_log = gen_simple_xs(args.endf_neutrons, xs_extra)
+    # Legacy VII.1 half-life dict intentionally unused: the canonical
+    # half-life table is the VIII.0 writer in run_decay8 (repr values from
+    # ndk_modes, same stable-absent rule as the branch table).
     de, _half, de_log = gen_decay(args.endf_decay)
     sl = xs_nist
 
@@ -1273,7 +1350,8 @@ def main() -> int:
             "Thermal totals: NIST NCNR bound XS converted to free-atom via",
             "xs*(A/(A+1))^2 + xs_a. Fast totals: ENDF/B-VII.1 MF3/MT1 at 14 MeV.",
             "Screening-level only: use evaluated libraries for transport.",
-            "Regenerate: python3 scripts/gen-nuclear-data.py --help.",
+            "Regenerate: python3 scripts/gen-nuclear-data.py --endf-neutrons <vii1-neutrons-dir>"
+            " --endf-decay <vii1-decay-dir> --nist-html <scattering_lengths.html> --out <dir>.",
         ],
         xs,
         lambda v: f"{v[0]:.6g}\t{v[1]:.6g}",
@@ -1287,7 +1365,8 @@ def main() -> int:
             "Daughter gammas belong to the daughter row: chain codes must sum",
             "members (e.g. Cs137 prompt + Ba137_m1 662 keV). Mean-field decay",
             "data evaluation; not for spectroscopy or safety calculations.",
-            "Regenerate: python3 scripts/gen-nuclear-data.py --help.",
+            "Regenerate: python3 scripts/gen-nuclear-data.py --endf-neutrons <vii1-neutrons-dir>"
+            " --endf-decay <vii1-decay-dir> --nist-html <scattering_lengths.html> --out <dir>.",
         ],
         de,
         lambda v: f"{v:.6g}",
@@ -1299,7 +1378,8 @@ def main() -> int:
             "Bound lengths (fm) from the NIST NCNR tabulation (Sears 1992).",
             "Complex coherent lengths kept by real part; incoherent derived",
             "via b = 10*sqrt(sigma_i/4*pi) where the table gives only sigma.",
-            "Regenerate: python3 scripts/gen-nuclear-data.py --help.",
+            "Regenerate: python3 scripts/gen-nuclear-data.py --endf-neutrons <vii1-neutrons-dir>"
+            " --endf-decay <vii1-decay-dir> --nist-html <scattering_lengths.html> --out <dir>.",
         ],
         sl,
         lambda v: f"{v[0]:.6g}\t{v[1]:.6g}",

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useWasm } from "../../lib/wasm";
 import type {
   McnpMaterialJson,
@@ -312,29 +312,32 @@ function MeshtalHeatmap({ tallies }: { tallies: Record<string, MeshTallySummary>
   const [selectedKey, setSelectedKey] = useState<string>(tallyKeys[0] ?? "");
   const [field, setField] = useState<"result" | "relError">("result");
 
-  if (tallyKeys.length === 0) return null;
-
   const tally = tallies[selectedKey];
-  if (!tally) return null;
 
-  const [nx, ny, nz] = tally.dims;
-  if (nx * ny * nz === 0) return null;
-
-  // Mid-slice through z.
-  const k = Math.floor(nz / 2);
-  const values: number[][] = [];
-  for (let j = 0; j < ny; j++) {
-    const row: number[] = [];
-    for (let i = 0; i < nx; i++) {
-      const ve = i + nx * (j + ny * k);
-      row.push(field === "result" ? tally.totalResult[ve] : tally.totalRelError[ve]);
+  const slice = useMemo(() => {
+    if (!tally) return null;
+    const [nx, ny, nz] = tally.dims;
+    if (nx * ny * nz === 0) return null;
+    // Mid-slice through z.
+    const k = Math.floor(nz / 2);
+    const values: number[][] = [];
+    for (let j = 0; j < ny; j++) {
+      const row: number[] = [];
+      for (let i = 0; i < nx; i++) {
+        const ve = i + nx * (j + ny * k);
+        row.push(field === "result" ? tally.totalResult[ve] : tally.totalRelError[ve]);
+      }
+      values.push(row);
     }
-    values.push(row);
-  }
+    const xMids = midpoints(tally.xBounds);
+    const yMids = midpoints(tally.yBounds);
+    const { z, tickvals, ticktext } = logTransform(values);
+    return { k, xMids, yMids, z, tickvals, ticktext };
+  }, [tally, field]);
 
-  const xMids = midpoints(tally.xBounds);
-  const yMids = midpoints(tally.yBounds);
-  const { z, tickvals, ticktext } = logTransform(values);
+  if (tallyKeys.length === 0) return null;
+  if (!slice) return null;
+  const { k, xMids, yMids, z, tickvals, ticktext } = slice;
 
   return (
     <div className="space-y-2">

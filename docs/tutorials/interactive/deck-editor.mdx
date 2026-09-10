@@ -21,7 +21,8 @@ L3 counts, and the validation verdict. Edit a cell's density, material,
 universe, lattice, or fill, or change the `MODE` card, and the re-rendered
 deck text updates below. `✓ valid` means every L3 semantic rule passes;
 bulleted notes are particle/mode mismatches, which are warnings rather than
-errors.
+errors. Numeric edits that are not finite numbers are rejected with an inline
+error before they reach the solver.
 
 <InteractiveDemo kind="deck-editor" />
 
