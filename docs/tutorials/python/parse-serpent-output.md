@@ -19,14 +19,14 @@ from nucleide.serpent import read_serpent
 r = read_serpent("fixtures/serpent/serp2_res.m", "res")
 print(r["VERSION"][0], r["POP"][0])
 
-keff = r["ABS_KEFF"][0]  # one [mean, stdev] row per cycle block
+keff = r["ABS_KEFF"]  # one [mean, stdev] row per cycle block
 print(keff[0])
 ```
 
 `read_serpent(path, kind)` returns a plain dict keyed by variable name.
 Vectors (`VERSION`, `POP`, ...) are flat lists. Matrix-valued variables
-come back as a one-element list of row lists, so index `[0]` first to reach
-the rows — the same indexing the tests use.
+come back as 2-D lists of row lists (one row per Serpent block), so index
+`keff[cycle]` directly to reach a row.
 
 ## `_dep.m`: depletion inventories
 
@@ -38,7 +38,7 @@ hold the large density matrices.
 d = read_serpent("fixtures/serpent/sample1_dep.m", "dep")
 print(len(d["ZAI"]), d["DAYS"], d["BU"])
 
-adens = d["TOT_ADENS"][0]  # rows align with ZAI; one column per step
+adens = d["TOT_ADENS"]  # rows align with ZAI; one column per step
 print(adens[0])
 ```
 
@@ -53,9 +53,9 @@ into rows of bin indices plus a tally value and relative error.
 
 ```python
 det = read_serpent("fixtures/serpent/serp2_det.m", "det")
-bins = det["DET1"][0]  # one 13-column row per detector bin
+bins = det["DET1"]  # one 13-column row per detector bin
 print(bins[2][11], bins[2][12])  # tally value, relative error
-print(det["DET1E"][0][0])  # energy bin: [lower, upper, midpoint]
+print(det["DET1E"][0])  # energy bin: [lower, upper, midpoint]
 ```
 
 The bin-grid arrays keep Serpent's naming: `DET1E` energies, `DET1T`

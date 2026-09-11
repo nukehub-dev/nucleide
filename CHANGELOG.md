@@ -61,6 +61,13 @@ workspace crates from tags.
 
 ### Fixed
 
+- `nucleide.serpent.read_serpent` no longer wraps matrix variables in a
+  spurious one-element outer list: matrices now map directly to 2-D lists of
+  row lists (`r["ABS_KEFF"][cycle]` instead of `r["ABS_KEFF"][0][cycle]`,
+  same for `_dep.m`/`_det.m` matrices), matching the scalar/vector mapping.
+  A matrix holding non-numeric values now raises `ValueError` instead of
+  silently reading as an empty list. The Serpent tutorial and the parser
+  cross-validation script were updated to the faithful shapes.
 - Interactive demos: the Serpent parser demo no longer crashes on a
   one-column `IMP_KEFF` row, and the FLUKA/MCNP mesh views no longer
   overflow the browser argument limit on meshes above ~65k bins (min/max now

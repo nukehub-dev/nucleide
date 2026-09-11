@@ -106,7 +106,7 @@ def compare_serpent_det(path: Path, st_reader) -> list[list[str]]:
         base = f"DET{det_name}"
         if base not in nuc:
             continue
-        bins = np.asarray(nuc[base], dtype=float).reshape(-1, 13)
+        bins = np.asarray(nuc[base], dtype=float)
         d, n = arr_max_rel_diff(bins[:, 11], st_det.tallies)
         rows.append([f"{base} tallies", str(n), fmt(d)])
         d, n = arr_max_rel_diff(bins[:, 12], st_det.errors)
@@ -172,9 +172,12 @@ def serpent_section(report: Report) -> None:
         report.prose(note)
 
 
-def compare_xsdir() -> list[list[str]]:
+def compare_xsdir() -> tuple[list[list[str]], list[str]]:
     """Compare xsdir table entries against pyne.mcnp.Xsdir."""
-    from pyne import mcnp
+    try:
+        from pyne import mcnp
+    except ImportError as exc:
+        return [], [_note(f"SKIPPED xsdir: PyNE oracle unavailable ({exc})")]
 
     path = MCNP_DIR / "xsdir" / "dummy_xsdir"
     nuc = nucleide.mcnp.read_xsdir(str(path))
@@ -199,12 +202,15 @@ def compare_xsdir() -> list[list[str]]:
         if not (str_ok and int_ok):
             _track(1.0)
         rows.append([f"{rt.name} (awr, temperature, name/dir/ints)", "2 + 5", status])
-    return rows
+    return rows, []
 
 
 def compare_surfsrc() -> tuple[list[list[str]], list[str]]:
     """Compare SSW surface-source files against pyne.mcnp.SurfSrc."""
-    from pyne import mcnp
+    try:
+        from pyne import mcnp
+    except ImportError as exc:
+        return [], [_note(f"SKIPPED ssw: PyNE oracle unavailable ({exc})")]
 
     rows: list[list[str]] = []
     skips: list[str] = []
@@ -251,7 +257,10 @@ def compare_ptrac() -> tuple[list[list[str]], list[str]]:
     helper, so only the header scalars it exposes (problem title, per-record
     variable counts) are compared.
     """
-    from pyne.mcnp import PtracReader
+    try:
+        from pyne.mcnp import PtracReader
+    except ImportError as exc:
+        return [], [_note(f"SKIPPED ptrac: PyNE oracle unavailable ({exc})")]
 
     rows: list[list[str]] = []
     skips: list[str] = []
@@ -342,7 +351,8 @@ def mcnp_section(report: Report) -> None:
     )
 
     rows: list[list[str]] = []
-    for name, fileds, status in compare_xsdir():
+    xsdir_rows, xsdir_skips = compare_xsdir()
+    for name, fileds, status in xsdir_rows:
         rows.append(["xsdir", name, fileds, status])
     ssw_rows, ssw_skips = compare_surfsrc()
     for name, n_vals, status in ssw_rows:
@@ -352,7 +362,7 @@ def mcnp_section(report: Report) -> None:
         rows.append(["ptrac", name, what, status])
     report.table(["Format", "Item", "Values compared", "Max rel diff / status"], rows)
 
-    skips = ssw_skips + ptrac_skips
+    skips = xsdir_skips + ssw_skips + ptrac_skips
     for what, reason in [
         ("wwinp", "`pyne.mcnp.Wwinp` requires PyMOAB to build its mesh (nomoab build)"),
         ("meshtal", "`pyne.mcnp.Meshtal` requires PyMOAB (nomoab build)"),

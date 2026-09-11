@@ -15,8 +15,8 @@ class TestSerpent:
         assert "ABS_KEFF" in r and "CONVERSION_RATIO" in r
         # Matrix entry [cycle][mean, stdev]
         keff = r["ABS_KEFF"]
-        assert keff[0][0][0] == pytest.approx(1.01503, abs=1e-4)
-        assert keff[0][0][1] == pytest.approx(0.00324, abs=1e-5)
+        assert keff[0][0] == pytest.approx(1.01503, abs=1e-4)
+        assert keff[0][1] == pytest.approx(0.00324, abs=1e-5)
 
     def test_dep(self) -> None:
         d = nucleide.serpent.read_serpent(str(FIX / "serpent" / "sample1_dep.m"), "dep")

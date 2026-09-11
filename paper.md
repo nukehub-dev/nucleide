@@ -157,11 +157,11 @@ The repository contains a runnable cross-code validation harness
   carries per-isomer excitation masses alongside the AME2020 grounds); all name-dialect conversions match `pyne.nucname`
   exactly. Screening scattering lengths follow Sears [@sears1992], and prompt
   decay energies plus 14-MeV totals follow ENDF/B-VII.1 [@chadwick2011endf71].
-- **Performance**: single-step CRAM-48 solves run in $\sim$133 µs from Python
+- **Performance**: single-step CRAM-48 solves run in $\sim$134 µs from Python
   ($\sim$85 µs native) versus $\sim$3.0 ms for OpenMC's Python path; the
-  default uranium enrichment solve runs in $\sim$110 µs versus $\sim$5.5 ms
+  default uranium enrichment solve runs in $\sim$110 µs versus $\sim$5.8 ms
   for PyNE; MAGIC weight-window generation runs in $\sim$0.6 µs versus
-  $\sim$3.9 µs for an equivalent pure-Python implementation.
+  $\sim$4.0 µs for an equivalent pure-Python implementation.
 
 Beyond the measured comparisons above, the harness also covers activation and
 deterministic I/O through `validation/activation_vs_refs.py`, described here

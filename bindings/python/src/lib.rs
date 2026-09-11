@@ -1353,8 +1353,10 @@ fn deplete(
 // Serpent / FLUKA / variance reduction + writers
 // ---------------------------------------------------------------------------
 
-/// Parse a Serpent .m output file ("res", "dep", or "det") into a nested
-/// Python dict.
+/// Parse a Serpent .m output file ("res", "dep", or "det") into a plain
+/// Python dict keyed by variable name. Scalars become floats/strings, vectors
+/// become 1-D lists, and matrices become 2-D lists of row lists (one row per
+/// Serpent block). A matrix holding non-numeric values raises `ValueError`.
 #[pyfunction]
 fn read_serpent(path: &str, kind: &str) -> PyResult<Py<PyAny>> {
     let text = std::fs::read_to_string(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -1369,9 +1371,9 @@ fn read_serpent(path: &str, kind: &str) -> PyResult<Py<PyAny>> {
         }
     }
     .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    fn entry_to_py(py: Python<'_>, e: &nucleide_serpent_io::Entry) -> Py<PyAny> {
+    fn entry_to_py(py: Python<'_>, e: &nucleide_serpent_io::Entry) -> PyResult<Py<PyAny>> {
         use nucleide_serpent_io::Entry as E;
-        match e {
+        let value = match e {
             E::Scalar(nucleide_serpent_io::Value::Num(n)) => {
                 n.into_pyobject(py).unwrap().unbind().into_any()
             }
@@ -1393,23 +1395,23 @@ fn read_serpent(path: &str, kind: &str) -> PyResult<Py<PyAny>> {
                 .unwrap()
                 .unbind()
                 .into_any(),
-            E::Matrix(m) => {
-                let rows: Vec<Py<PyAny>> = m
-                    .to_rows_f64()
-                    .iter()
-                    .map(|row| row.into_pyobject(py).unwrap().unbind().into_any())
-                    .collect();
-                rows.into_pyobject(py).unwrap().unbind().into_any()
-            }
-        }
+            E::Matrix(m) => m
+                .to_rows_f64()
+                .map_err(|err| PyValueError::new_err(err.to_string()))?
+                .into_pyobject(py)
+                .unwrap()
+                .unbind()
+                .into_any(),
+        };
+        Ok(value)
     }
-    Ok(Python::attach(|py| {
+    Python::attach(|py| {
         let dict = pyo3::types::PyDict::new(py);
         for (k, e) in table.iter() {
-            dict.set_item(k, entry_to_py(py, e)).ok();
+            dict.set_item(k, entry_to_py(py, e)?)?;
         }
-        dict.into_any().unbind()
-    }))
+        Ok(dict.into_any().unbind())
+    })
 }
 
 /// One FLUKA USRBIN detector.

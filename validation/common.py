@@ -14,6 +14,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
 
+def _dist_version(name: str) -> str:
+    """Installed distribution version, or "not installed"."""
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return "not installed"
+
+
 def _pyne_version() -> str:
     """Return the true PyNE package version.
 
@@ -35,7 +43,7 @@ def _pyne_version() -> str:
                 return str(version)
     except Exception:
         pass
-    return importlib.metadata.version("pyne")
+    return _dist_version("pyne")
 
 
 def environment() -> dict[str, str]:
@@ -46,7 +54,7 @@ def environment() -> dict[str, str]:
         "platform": platform.platform(),
         "nucleide": importlib.metadata.version("nucleide"),
         "pyne": _pyne_version(),
-        "openmc": importlib.metadata.version("openmc"),
+        "openmc": _dist_version("openmc"),
     }
 
 
