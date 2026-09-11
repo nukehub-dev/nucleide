@@ -200,6 +200,24 @@ mod tests {
     }
 
     #[test]
+    fn det_reshape_error_arms() {
+        // Indexed assignments have no meaning in det files.
+        assert!(parse_det("A(idx, 1) = 1;\n").is_err());
+        // Values that fit no Serpent layout are rejected.
+        let err = parse_det("DET1 = [1 2 3 4];\n").unwrap_err();
+        assert!(err.to_string().contains("do not fit"));
+        // Serpent-2 energy-only detectors use 12 columns.
+        let det = parse_det("DET1 = [1 2 3 4 5 6 7 8 9 10 11 12];\nDET1E = [0 1 2];\n").unwrap();
+        let m = det.get_matrix("DET1").unwrap();
+        assert_eq!((m.rows(), m.cols()), (1, 12));
+        // Serpent-1 detectors without an energy array use 3 columns.
+        let det =
+            parse_det("DETphiE = [1 2 3 4 5 6];\nDETphi_VALS = 2;\nDETphi_EBINS = 2;\n").unwrap();
+        let m = det.get_matrix("DETphiE").unwrap();
+        assert_eq!((m.rows(), m.cols()), (2, 3));
+    }
+
+    #[test]
     fn garbage_det_is_rejected() {
         assert!(parse_det("nope nope\n").is_err());
         assert!(parse_det("DET1 = [1 2\n").is_err());

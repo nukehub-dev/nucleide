@@ -723,12 +723,14 @@ dependencies = [
  "nucleide-enrichment",
  "nucleide-fispact-io",
  "nucleide-fluka-io",
+ "nucleide-kinetics",
  "nucleide-material",
  "nucleide-mcnp-io",
  "nucleide-nuclei",
  "nucleide-origen-io",
  "nucleide-r2s",
  "nucleide-serpent-io",
+ "nucleide-spectroscopy",
  "nucleide-vr-tools",
  "numpy",
  "pyo3",
@@ -795,6 +797,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nucleide-kinetics"
+version = "0.4.0"
+dependencies = [
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "nucleide-linalg"
 version = "0.4.0"
 dependencies = [
@@ -857,6 +867,14 @@ dependencies = [
 [[package]]
 name = "nucleide-serpent-io"
 version = "0.4.0"
+
+[[package]]
+name = "nucleide-spectroscopy"
+version = "0.4.0"
+dependencies = [
+ "serde_json",
+ "thiserror 2.0.20",
+]
 
 [[package]]
 name = "nucleide-vr-tools"

@@ -23,11 +23,14 @@ after adding fixtures (CI enforces freshness via `--check`).
 | `cccc/` | 2 | 285 bytes | cccc — Synthetic ISOTXS/RTFLUX samples authored for Nucleide (no license needed) |
 | `data/` | 2 | 7,859,273 bytes | data — DOE/PNNL Materials Compendium JSON (+ its license) |
 | `depletion/` | 4 | 37,843 bytes | depletion — Depletion-chain XML files (simple chains, Ni chain) |
+| `endl/` | 1 | 762 bytes | endl — Synthetic EEDL-style tables authored for Nucleide (no license needed) |
 | `fispact/` | 1 | 1,058 bytes | fispact — Synthetic FISPACT-II-style inventory authored for Nucleide (no license needed) |
 | `fluka/` | 4 | 7,685 bytes | fluka — USRBIN `.lis` files (single/multiple/degenerate) + test input |
+| `kinetics/` | 3 | 2,493 bytes | fixtures/kinetics/ — synthetic point-kinetics inputs and oracles |
 | `mcnp/` | 24 | 470,008 bytes | mcnp — MCNP input decks, tallies, and binary-format oracles |
 | `origen/` | 3 | 681 bytes | origen — Synthetic ORIGEN TAPE samples authored for Nucleide (no license needed) |
 | `serpent/` | 6 | 653,120 bytes | serpent — Serpent 1 & 2 res/dep/det outputs |
+| `spectroscopy/` | 3 | 1,873 bytes | fixtures/spectroscopy/ — synthetic gamma-spectroscopy inputs and oracles |
 
 <!-- GEN:fixture-index:END -->
 

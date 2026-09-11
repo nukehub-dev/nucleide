@@ -610,6 +610,112 @@ impl PyWwinp {
     fn ww_column(&self, particle: usize, ve: usize) -> Vec<f64> {
         self.inner.ww_column(particle, ve)
     }
+    /// Lower bounds for one group as a 1-D float64 NumPy array.
+    ///
+    /// Shape is `(nft,)` with `nft = nf[0] * nf[1] * nf[2]` in file order
+    /// (z slowest → x fastest), C-order float64. The array is owned,
+    /// writable, and decoupled from the file data. Requires NumPy installed
+    /// at runtime. Raises `ValueError` on out-of-range particle/group.
+    /// See `ww_row` for the plain-copy list over the same data; use that
+    /// when NumPy is unavailable.
+    fn ww_row_array<'py>(
+        &self,
+        py: Python<'py>,
+        particle: usize,
+        group: usize,
+    ) -> PyResult<Bound<'py, PyArray1<f64>>> {
+        let row = self
+            .inner
+            .ww
+            .get(particle)
+            .and_then(|groups| groups.get(group))
+            .ok_or_else(|| {
+                PyValueError::new_err(format!(
+                    "ww_row_array: particle {particle} group {group} out of range"
+                ))
+            })?;
+        Ok(row.clone().into_pyarray(py))
+    }
+    /// Lower-bound vector for one volume element as a 1-D float64 NumPy array.
+    ///
+    /// Shape is `(n_groups,)` for the selected particle (one entry per
+    /// energy group at volume element `ve`). Owned, writable, decoupled;
+    /// requires NumPy at runtime. Raises `ValueError` on out-of-range
+    /// particle/ve. See `ww_column` for the plain-copy list.
+    fn ww_column_array<'py>(
+        &self,
+        py: Python<'py>,
+        particle: usize,
+        ve: usize,
+    ) -> PyResult<Bound<'py, PyArray1<f64>>> {
+        let groups = self.inner.ww.get(particle).ok_or_else(|| {
+            PyValueError::new_err(format!("ww_column_array: particle {particle} out of range"))
+        })?;
+        if groups.is_empty() {
+            return Err(PyValueError::new_err(format!(
+                "ww_column_array: particle {particle} has no groups"
+            )));
+        }
+        let nft = groups[0].len();
+        if ve >= nft {
+            return Err(PyValueError::new_err(format!(
+                "ww_column_array: ve {ve} out of range for {nft} volume elements"
+            )));
+        }
+        for (g, row) in groups.iter().enumerate() {
+            if row.len() != nft {
+                return Err(PyValueError::new_err(format!(
+                    "ww particle {particle}: group {g} has {} values, expected {nft}",
+                    row.len()
+                )));
+            }
+        }
+        let col: Vec<f64> = groups.iter().map(|row| row[ve]).collect();
+        Ok(col.into_pyarray(py))
+    }
+    /// All lower bounds for one particle as a 2-D float64 NumPy array.
+    ///
+    /// Shape is `(n_groups, nft)` with `nft = nf[0] * nf[1] * nf[2]`; row `g`
+    /// is the `ww_row(particle, g)` vector in file order (z slowest → x
+    /// fastest), C-order (row-major) float64. The array is owned, writable,
+    /// and decoupled from the file data. Requires NumPy installed at
+    /// runtime. Raises `ValueError` on out-of-range particle or on ragged
+    /// group rows (the parser guarantees rectangular data; this is
+    /// defensive). Particles have independent group counts, so each
+    /// particle gets its own array rather than one ragged 3-D stack.
+    fn ww_particle_array<'py>(
+        &self,
+        py: Python<'py>,
+        particle: usize,
+    ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+        let groups = self.inner.ww.get(particle).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "ww_particle_array: particle {particle} out of range"
+            ))
+        })?;
+        if groups.is_empty() {
+            return Err(PyValueError::new_err(format!(
+                "ww_particle_array: particle {particle} has no groups"
+            )));
+        }
+        let nft = groups[0].len();
+        let mut flat = Vec::with_capacity(groups.len() * nft);
+        for (g, row) in groups.iter().enumerate() {
+            if row.len() != nft {
+                return Err(PyValueError::new_err(format!(
+                    "ww particle {particle}: group {g} has {} values, expected {nft}",
+                    row.len()
+                )));
+            }
+            flat.extend_from_slice(row);
+        }
+        let n_g = groups.len();
+        m_err(
+            flat.into_pyarray(py)
+                .reshape((n_g, nft))
+                .map_err(|e| e.to_string()),
+        )
+    }
 }
 
 /// Parse an MCNP WWINP weight-window file.
@@ -703,6 +809,73 @@ impl PyMctal {
             })
             .collect()
     }
+    /// Per-cycle kcode series as 1-D float64 NumPy arrays.
+    ///
+    /// Returns `(k_col, k_abs, k_path, prompt_life_col, prompt_life_path)`,
+    /// each of shape `(n_cycles,)` in cycle order, C-order float64. Each
+    /// array is owned, writable, and decoupled from the file data (the
+    /// `Vec` is cloned then moved into the array; later mutation is not
+    /// reflected). Requires NumPy installed at runtime. See the `k_col`,
+    /// `k_abs`, `k_path`, `prompt_life_col`, `prompt_life_path` getters for
+    /// the plain-copy lists over the same data; use those when NumPy is
+    /// unavailable.
+    #[allow(clippy::type_complexity)]
+    fn k_arrays<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> PyResult<(
+        Bound<'py, PyArray1<f64>>,
+        Bound<'py, PyArray1<f64>>,
+        Bound<'py, PyArray1<f64>>,
+        Bound<'py, PyArray1<f64>>,
+        Bound<'py, PyArray1<f64>>,
+    )> {
+        Ok((
+            self.inner.k_col.clone().into_pyarray(py),
+            self.inner.k_abs.clone().into_pyarray(py),
+            self.inner.k_path.clone().into_pyarray(py),
+            self.inner.prompt_life_col.clone().into_pyarray(py),
+            self.inner.prompt_life_path.clone().into_pyarray(py),
+        ))
+    }
+    /// Running averages as a 2-D float64 NumPy array.
+    ///
+    /// Shape is `(n_cycles, 14)` (empty `averages` yields `(0, 14)`) with
+    /// one row per cycle in cycle order, C-order float64. Columns are
+    /// `avg_k_col`, `avg_k_col_stdev`, `avg_k_abs`, `avg_k_abs_stdev`,
+    /// `avg_k_path`, `avg_k_path_stdev`, `avg_k_combined`,
+    /// `avg_k_combined_stdev`, `avg_k_combined_active`,
+    /// `avg_k_combined_active_stdev`, `prompt_life_combined`,
+    /// `prompt_life_combined_stdev`, `cycle_histories`, `fom` — the same
+    /// values as the `averages` dicts, in a fixed column order. The array
+    /// is owned, writable, and decoupled. Requires NumPy at runtime.
+    fn averages_array<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
+        let n = self.inner.averages.len();
+        let mut flat = Vec::with_capacity(n * 14);
+        for a in &self.inner.averages {
+            flat.extend_from_slice(&[
+                a.avg_k_col.0,
+                a.avg_k_col.1,
+                a.avg_k_abs.0,
+                a.avg_k_abs.1,
+                a.avg_k_path.0,
+                a.avg_k_path.1,
+                a.avg_k_combined.0,
+                a.avg_k_combined.1,
+                a.avg_k_combined_active.0,
+                a.avg_k_combined_active.1,
+                a.prompt_life_combined.0,
+                a.prompt_life_combined.1,
+                a.cycle_histories,
+                a.fom,
+            ]);
+        }
+        m_err(
+            flat.into_pyarray(py)
+                .reshape((n, 14))
+                .map_err(|e| e.to_string()),
+        )
+    }
 }
 
 /// Parse an MCNP MCTAL file (kcode subset, upstream parity).
@@ -730,6 +903,11 @@ impl PySurfSrc {
     #[getter]
     fn np1(&self) -> i64 {
         self.inner.header.np1
+    }
+    /// Signed stored `np1` (negative ⇒ the file carries table 2).
+    #[getter]
+    fn orignp1(&self) -> i64 {
+        self.inner.header.orignp1
     }
     #[getter]
     fn nrss(&self) -> i64 {
@@ -838,13 +1016,172 @@ impl PyPtracFile {
             })
             .collect())
     }
+    /// All events as a 2-D float64 NumPy array.
+    ///
+    /// Shape is `(n_events, 19)` in file order, C-order float64. Columns
+    /// follow `nucleide.mcnp.ptrac_event_columns()` (`event_type` plus the
+    /// 18 `PtracEvent`-order data columns `node` … `tme`); variables absent
+    /// from the file's variable list read as 0.0, matching
+    /// `ptrac_event_rows`. The array is owned, writable, and decoupled from
+    /// the file data. Requires NumPy installed at runtime. See `events`
+    /// for the plain-copy dicts over the same data; use those when NumPy
+    /// is unavailable.
+    fn events_array<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
+        let events = self
+            .inner
+            .events()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let n = events.len();
+        let mut flat = Vec::with_capacity(n * PTRAC_EVENT_COLUMNS.len());
+        for ev in &events {
+            flat.push(ev.event_type as f64);
+            for col in &PTRAC_EVENT_COLUMNS[1..] {
+                flat.push(ev.get(col).unwrap_or(0.0));
+            }
+        }
+        m_err(
+            flat.into_pyarray(py)
+                .reshape((n, PTRAC_EVENT_COLUMNS.len()))
+                .map_err(|e| e.to_string()),
+        )
+    }
+    /// One event-table column as a 1-D float64 NumPy array.
+    ///
+    /// `field` is one of `ptrac_event_columns()` (`event_type` or any of
+    /// the 18 data columns). Shape is `(n_events,)` in file order; absent
+    /// variables read as 0.0, matching `ptrac_event_rows`. Owned, writable,
+    /// decoupled; requires NumPy at runtime. Raises `ValueError` for an
+    /// unknown field name.
+    fn event_field_array<'py>(
+        &self,
+        py: Python<'py>,
+        field: &str,
+    ) -> PyResult<Bound<'py, PyArray1<f64>>> {
+        if !PTRAC_EVENT_COLUMNS.contains(&field) {
+            return Err(PyValueError::new_err(format!(
+                "unknown PTRAC field `{field}` (expected one of {})",
+                PTRAC_EVENT_COLUMNS.join(", ")
+            )));
+        }
+        let events = self
+            .inner
+            .events()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let col: Vec<f64> = events
+            .iter()
+            .map(|ev| {
+                if field == "event_type" {
+                    ev.event_type as f64
+                } else {
+                    ev.get(field).unwrap_or(0.0)
+                }
+            })
+            .collect();
+        Ok(col.into_pyarray(py))
+    }
 }
+
+/// PTRAC event-table columns in `pyne.mcnp.PtracEvent` order: `event_type`
+/// plus the 18 mapped data columns (`node` … `tme`).
+///
+/// Mirrors `nucleide.mcnp.ptrac_event_columns()`; `events_array` columns
+/// follow this order.
+const PTRAC_EVENT_COLUMNS: [&str; 19] = [
+    "event_type",
+    "node",
+    "nsr",
+    "nsf",
+    "nxs",
+    "ntyn",
+    "ipt",
+    "ncl",
+    "mat",
+    "ncp",
+    "xxx",
+    "yyy",
+    "zzz",
+    "uuu",
+    "vvv",
+    "www",
+    "erg",
+    "wgt",
+    "tme",
+];
 
 /// Read an MCNP PTRAC event file.
 #[pyfunction]
 fn read_ptrac(path: &str) -> PyResult<PyPtracFile> {
     nucleide_mcnp_io::ptrac::PtracFile::open(path)
         .map(|inner| PyPtracFile { inner })
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Parsed ENDL evaluation file (EEDL/EPDL scope).
+#[pyclass(name = "EndlLibrary")]
+struct PyEndlLibrary {
+    inner: nucleide_mcnp_io::endl::Library,
+}
+
+#[pymethods]
+impl PyEndlLibrary {
+    /// Distinct nucleus ids in file order.
+    fn nuclides(&self) -> Vec<i64> {
+        self.inner.nuclides()
+    }
+    /// Reaction data for one selector set.
+    ///
+    /// `nuc` is an integer nucleus id (e.g. `820000000` for natural Pb) or a
+    /// fully-specified isotope name (`"Pb208"`); bare element names do not
+    /// resolve. `x1`/`p_out` filter by subshell/outgoing particle when given.
+    /// Returns rows of `fields_for_rprop(rprop)` floats.
+    #[pyo3(signature = (nuc, p_in, rdesc, rprop, x1=None, p_out=None))]
+    fn get_rx(
+        &self,
+        nuc: &Bound<'_, PyAny>,
+        p_in: i32,
+        rdesc: i32,
+        rprop: i32,
+        x1: Option<i32>,
+        p_out: Option<i32>,
+    ) -> PyResult<Vec<Vec<f64>>> {
+        let id = if let Ok(n) = nuc.extract::<i64>() {
+            n
+        } else if let Ok(name) = nuc.extract::<&str>() {
+            NuclideId::from_name(name).map_err(wrap_nucid_err)?.nucid() as i64
+        } else {
+            return Err(PyTypeError::new_err("expected int nucleus id or str name"));
+        };
+        self.inner
+            .get_rx(id, p_in, rdesc, rprop, x1, p_out)
+            .map(|rows| rows.to_vec())
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+}
+
+/// Read an ENDL evaluation file (EEDL/EPDL scope).
+#[pyfunction]
+fn read_endl(path: &str) -> PyResult<PyEndlLibrary> {
+    nucleide_mcnp_io::endl::Library::open(path)
+        .map(|inner| PyEndlLibrary { inner })
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Convert one 11-character ENDL number field to float.
+#[pyfunction]
+fn endl_endftod(field: &str) -> f64 {
+    nucleide_mcnp_io::endl::endftod(field)
+}
+
+/// Combine several SSW surface-source files into one (`ssw_combine.py` port).
+///
+/// Headers must agree on kod/ver/loddat, particle type, surface counts and
+/// per-surface records; the output header carries the signed `orignp1` sum
+/// and the plain `nrss` sum, with later files' track `nps` shifted
+/// sign-preservingly. Raises `ValueError` on incompatible inputs (upstream
+/// returns `False`).
+#[pyfunction]
+fn combine_ssw_files(output: &str, inputs: Vec<String>) -> PyResult<()> {
+    nucleide_mcnp_io::surfsrc::combine_files(&inputs, output)
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
@@ -2974,8 +3311,8 @@ fn r2s_from_snapshot(
 // - `simple_xs` / `scattering_length` / `decay_energy` / `decay_heat` are
 //   thin wrappers over the vendored TSV tables + material analytics.
 // - `MeshTally::to_list` / `totals_list` are plain-copy helpers alongside the
-//   landed zero-copy NumPy bridge (`result_array()` / `totals_array()`,
-//   roadmap "ndarray/NumPy zero-copy"): `numpy = "0.28"` is a bindings-only
+//   landed zero-copy NumPy bridge (`result_array()` / `totals_array()`):
+//   `numpy = "0.28"` is a bindings-only
 //   dependency (abi3-py310 inherited from the workspace PyO3).
 
 /// Supported `deplete_series` integrators (core `Integrator` variants).
@@ -4372,6 +4709,416 @@ fn emit_armi_drift_table(
     drift_table_to_py(table)
 }
 
+// ---------------------------------------------------------------------------
+// Point kinetics (thin glue over `nucleide-kinetics`; solver stays in core)
+// ---------------------------------------------------------------------------
+
+/// Parse a reactivity-spec dict into the core [`Reactivity`].
+///
+/// `kind` selects the schedule (`"constant"`, `"step"`, `"impulse"`,
+/// `"ramp"`, `"polyline"`); all reactivities are in Δk and all times in
+/// seconds. Keys per kind: constant (`rho`); step (`t_step`, `rho_init`,
+/// `rho_final`); impulse (`t_start`, `t_end`, `rho_init`, `rho_max`); ramp
+/// (`t_start`, `t_end`, `rho_init`, `rho_rise`, `rho_final`); polyline
+/// (`times`, `values`).
+fn parse_reactivity(
+    spec: &BTreeMap<String, Py<PyAny>>,
+    py: Python<'_>,
+) -> PyResult<nucleide_kinetics::Reactivity> {
+    use nucleide_kinetics::Reactivity as R;
+    let kind: String = get_str(spec, py, "kind", "reactivity spec needs a `kind`")?;
+    let num = |key: &str| -> PyResult<f64> { get_num(spec, py, key) };
+    let vec = |key: &str| -> PyResult<Vec<f64>> { get_vec(spec, py, key) };
+    let r = match kind.as_str() {
+        "constant" => R::Constant { rho: num("rho")? },
+        "step" => R::Step {
+            t_step: num("t_step")?,
+            rho_init: num("rho_init")?,
+            rho_final: num("rho_final")?,
+        },
+        "impulse" => R::Impulse {
+            t_start: num("t_start")?,
+            t_end: num("t_end")?,
+            rho_init: num("rho_init")?,
+            rho_max: num("rho_max")?,
+        },
+        "ramp" => R::Ramp {
+            t_start: num("t_start")?,
+            t_end: num("t_end")?,
+            rho_init: num("rho_init")?,
+            rho_rise: num("rho_rise")?,
+            rho_final: num("rho_final")?,
+        },
+        "polyline" => R::Polyline {
+            times: vec("times")?,
+            values: vec("values")?,
+        },
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown reactivity kind `{other}` (supported: constant, step, impulse, ramp, polyline)"
+            )))
+        }
+    };
+    r.validate()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(r)
+}
+
+fn get_str(
+    spec: &BTreeMap<String, Py<PyAny>>,
+    py: Python<'_>,
+    key: &str,
+    missing: &str,
+) -> PyResult<String> {
+    spec.get(key)
+        .ok_or_else(|| PyValueError::new_err(missing.to_string()))?
+        .extract::<String>(py)
+        .map_err(|_| PyValueError::new_err(format!("`{key}` must be a string")))
+}
+
+fn get_num(spec: &BTreeMap<String, Py<PyAny>>, py: Python<'_>, key: &str) -> PyResult<f64> {
+    spec.get(key)
+        .ok_or_else(|| PyValueError::new_err(format!("reactivity spec missing `{key}`")))?
+        .extract::<f64>(py)
+        .map_err(|_| PyValueError::new_err(format!("`{key}` must be a number")))
+}
+
+fn get_vec(spec: &BTreeMap<String, Py<PyAny>>, py: Python<'_>, key: &str) -> PyResult<Vec<f64>> {
+    spec.get(key)
+        .ok_or_else(|| PyValueError::new_err(format!("reactivity spec missing `{key}`")))?
+        .extract::<Vec<f64>>(py)
+        .map_err(|_| PyValueError::new_err(format!("`{key}` must be a list of numbers")))
+}
+
+fn kinetics_params(
+    betas: Vec<f64>,
+    lambdas: Vec<f64>,
+    lambda_gen: f64,
+) -> PyResult<nucleide_kinetics::KineticParams> {
+    nucleide_kinetics::KineticParams::new(betas, lambdas, lambda_gen)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Solve a prescribed-reactivity point-kinetics transient.
+///
+/// Thin wrapper over `nucleide_kinetics::solve`: `betas`/`lambdas`/`Lambda`
+/// carry the delayed-neutron data (see `KineticParams::from_ifp` for the
+/// OpenMC provenance note — decay constants are caller-supplied), `rho` is
+/// a spec dict (see `parse_reactivity`), `t` the output grid in seconds,
+/// `n0` the initial neutron level, `C0` the optional initial precursors
+/// (defaults to equilibrium). `method` is `"trapezoidal"` (default) or
+/// `"backward_euler"`. Returns a dict with `times`, `n`, `C`
+/// (`[time][group]`), and the echo of the initial state (`n0`, `C0`).
+#[pyfunction]
+#[pyo3(signature = (betas, lambdas, lambda_gen, rho, t, n0, c0=None, method="trapezoidal", rtol=1e-9, atol=1e-12, dt_min=1e-14, dt_max=None, max_steps=1000000))]
+#[allow(clippy::too_many_arguments)]
+fn kinetics_solve(
+    py: Python<'_>,
+    betas: Vec<f64>,
+    lambdas: Vec<f64>,
+    lambda_gen: f64,
+    rho: BTreeMap<String, Py<PyAny>>,
+    t: Vec<f64>,
+    n0: f64,
+    c0: Option<Vec<f64>>,
+    method: &str,
+    rtol: f64,
+    atol: f64,
+    dt_min: f64,
+    dt_max: Option<f64>,
+    max_steps: usize,
+) -> PyResult<Py<PyAny>> {
+    use nucleide_kinetics::{Method as M, SolverOptions};
+    let params = kinetics_params(betas, lambdas, lambda_gen)?;
+    let rho = parse_reactivity(&rho, py)?;
+    let grid =
+        nucleide_kinetics::TimeGrid::new(t).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let state = nucleide_kinetics::State::new(&params, n0, c0)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let method = if method.eq_ignore_ascii_case("trapezoidal") {
+        M::Trapezoidal
+    } else if method.eq_ignore_ascii_case("backward_euler") {
+        M::BackwardEuler
+    } else {
+        return Err(PyValueError::new_err(format!(
+            "unknown kinetics method `{method}` (supported: trapezoidal, backward_euler)"
+        )));
+    };
+    let opts = SolverOptions {
+        method,
+        rtol,
+        atol,
+        dt_min,
+        dt_max: dt_max.unwrap_or(f64::INFINITY),
+        max_steps,
+    };
+    let sol = nucleide_kinetics::solve(&params, &rho, &grid, &state, &opts)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    out.set_item("times", &sol.times).ok();
+    out.set_item("n", &sol.n).ok();
+    out.set_item("C", &sol.c).ok();
+    out.set_item("n0", sol.initial.n0).ok();
+    out.set_item("C0", &sol.initial.c0).ok();
+    Ok(out.into_any().unbind())
+}
+
+/// Equilibrium precursor populations `C_i = beta_i/(lambda_i*Lambda)*n0`.
+#[pyfunction]
+fn kinetics_equilibrium(
+    betas: Vec<f64>,
+    lambdas: Vec<f64>,
+    lambda_gen: f64,
+    n0: f64,
+) -> PyResult<Vec<f64>> {
+    kinetics_params(betas, lambdas, lambda_gen)?
+        .equilibrium_precursors(n0)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Initial rate `dn/dt` at `t = 0` for the given schedule and initials.
+#[pyfunction]
+#[pyo3(signature = (betas, lambdas, lambda_gen, rho, n0, c0=None))]
+fn kinetics_initial_rate(
+    py: Python<'_>,
+    betas: Vec<f64>,
+    lambdas: Vec<f64>,
+    lambda_gen: f64,
+    rho: BTreeMap<String, Py<PyAny>>,
+    n0: f64,
+    c0: Option<Vec<f64>>,
+) -> PyResult<f64> {
+    let params = kinetics_params(betas, lambdas, lambda_gen)?;
+    let rho = parse_reactivity(&rho, py)?;
+    let state = nucleide_kinetics::State::new(&params, n0, c0)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(nucleide_kinetics::solve::initial_rate(
+        &params, &rho, &state,
+    ))
+}
+
+/// Inhour right-hand side `rho(omega)` [Δk] for the given data.
+#[pyfunction]
+fn kinetics_inhour_rho(
+    betas: Vec<f64>,
+    lambdas: Vec<f64>,
+    lambda_gen: f64,
+    omega: f64,
+) -> PyResult<f64> {
+    let params = kinetics_params(betas, lambdas, lambda_gen)?;
+    nucleide_kinetics::rho_of_omega(&params, omega)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Stable period `T = 1/omega` [s] at reactivity `rho` [Δk] (`0 < rho < beta`).
+#[pyfunction]
+fn kinetics_stable_period(
+    betas: Vec<f64>,
+    lambdas: Vec<f64>,
+    lambda_gen: f64,
+    rho: f64,
+) -> PyResult<f64> {
+    let params = kinetics_params(betas, lambdas, lambda_gen)?;
+    nucleide_kinetics::stable_period(&params, rho).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Prompt-jump estimate `n_before*(beta - rho_before)/(beta - rho_after)`.
+///
+/// Needs `rho_after < beta_total`; `beta_total` is the caller's total
+/// delayed fraction (pass `sum(betas)`).
+#[pyfunction]
+fn kinetics_prompt_jump(
+    n_before: f64,
+    rho_before: f64,
+    rho_after: f64,
+    beta_total: f64,
+) -> PyResult<f64> {
+    nucleide_kinetics::prompt_jump(n_before, rho_before, rho_after, beta_total)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+// ---------------------------------------------------------------------------
+// Spectroscopy (thin glue over `nucleide-spectroscopy`; algorithms stay in core)
+// ---------------------------------------------------------------------------
+
+/// Rectangular smoothing (E1): `m` must be odd and at least 3.
+#[pyfunction]
+fn spectroscopy_rect_smooth(counts: Vec<f64>, m: i64) -> PyResult<Vec<f64>> {
+    let w = usize::try_from(m).map_err(|_| {
+        PyValueError::new_err(format!("spectroscopy: smoothing width {m} is less than 3"))
+    })?;
+    nucleide_spectroscopy::rect_smooth(&counts, w).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Five-point smoothing (E2); the first/last two channels are copied.
+#[pyfunction]
+fn spectroscopy_five_point_smooth(counts: Vec<f64>) -> PyResult<Vec<f64>> {
+    nucleide_spectroscopy::five_point_smooth(&counts)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Background under a peak (E3, `m == 1` only).
+#[pyfunction]
+fn spectroscopy_calc_bg(
+    counts: Vec<f64>,
+    channels: Vec<f64>,
+    c1: i64,
+    c2: i64,
+    m: i64,
+) -> PyResult<f64> {
+    nucleide_spectroscopy::calc_bg(&counts, &channels, c1, c2, m)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Gross counts between two channels, half-open (E4, excludes `c2`).
+#[pyfunction]
+fn spectroscopy_gross_count(
+    counts: Vec<f64>,
+    channels: Vec<f64>,
+    c1: i64,
+    c2: i64,
+) -> PyResult<f64> {
+    nucleide_spectroscopy::gross_count(&counts, &channels, c1, c2)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Net counts: gross minus background (E5).
+#[pyfunction]
+fn spectroscopy_net_counts(
+    counts: Vec<f64>,
+    channels: Vec<f64>,
+    c1: i64,
+    c2: i64,
+    m: i64,
+) -> PyResult<f64> {
+    nucleide_spectroscopy::net_counts(&counts, &channels, c1, c2, m)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Energy per channel from the `[a0, a1, a2]` fit (E6).
+#[pyfunction]
+fn spectroscopy_energy_bins(channels: Vec<f64>, calib_e_fit: Vec<f64>) -> PyResult<Vec<f64>> {
+    nucleide_spectroscopy::energy_bins(&channels, &calib_e_fit)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Detector efficiency at `energy_mev` (E7, energy in MeV, `eff_fit` 1 or 2).
+#[pyfunction]
+fn spectroscopy_detector_efficiency(
+    energy_mev: f64,
+    eff_coeff: Vec<f64>,
+    eff_fit: i64,
+) -> PyResult<f64> {
+    nucleide_spectroscopy::detector_efficiency(energy_mev, &eff_coeff, eff_fit)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Fetch one caller-supplied atomic constant or raise a `ValueError`.
+fn atomic_key(atomic: &BTreeMap<String, f64>, key: &str) -> PyResult<f64> {
+    atomic
+        .get(key)
+        .copied()
+        .ok_or_else(|| PyValueError::new_err(format!("atomic constants missing `{key}`")))
+}
+
+/// X-ray lines (E8) as `[(energy_kev, intensity); Ka1, Ka2, Kb, L]`.
+///
+/// `atomic` carries the nine caller-supplied constants (`k_shell_fluor`,
+/// `l_shell_fluor`, `prob`, `kb_to_ka`, `ka2_to_ka1`, `ka1_en_kev`,
+/// `ka2_en_kev`, `kb_en_kev`, `l_en_kev`). `None` (or NaN, the upstream
+/// sentinel) marks a conversion absent. Upstream exposes no combined
+/// function for this routine — only a material method — so this explicit
+/// entry point is the documented Nucleide surface.
+#[pyfunction]
+#[pyo3(signature = (atomic, k_conv=None, l_conv=None))]
+fn spectroscopy_xray_lines(
+    atomic: BTreeMap<String, f64>,
+    k_conv: Option<f64>,
+    l_conv: Option<f64>,
+) -> PyResult<Vec<(f64, f64)>> {
+    let data = nucleide_spectroscopy::AtomicData {
+        k_shell_fluor: atomic_key(&atomic, "k_shell_fluor")?,
+        l_shell_fluor: atomic_key(&atomic, "l_shell_fluor")?,
+        prob: atomic_key(&atomic, "prob")?,
+        kb_to_ka: atomic_key(&atomic, "kb_to_ka")?,
+        ka2_to_ka1: atomic_key(&atomic, "ka2_to_ka1")?,
+        ka1_en_kev: atomic_key(&atomic, "ka1_en_kev")?,
+        ka2_en_kev: atomic_key(&atomic, "ka2_en_kev")?,
+        kb_en_kev: atomic_key(&atomic, "kb_en_kev")?,
+        l_en_kev: atomic_key(&atomic, "l_en_kev")?,
+    };
+    // NaN plays the upstream "conversion absent" sentinel role.
+    let present = |v: Option<f64>| v.filter(|x| !x.is_nan());
+    Ok(
+        nucleide_spectroscopy::xray_lines(&data, present(k_conv), present(l_conv))
+            .iter()
+            .map(|l| (l.energy_kev, l.intensity))
+            .collect(),
+    )
+}
+
+/// Render a parsed spectrum as a Python dict.
+fn spectrum_to_py(
+    py: Python<'_>,
+    spec: &nucleide_spectroscopy::GammaSpectrum,
+) -> PyResult<Py<PyAny>> {
+    use pyo3::types::PyDict;
+    let d = PyDict::new(py);
+    let s = &spec.spectrum;
+    d.set_item("spec_name", &s.spec_name)?;
+    d.set_item("start_chan_num", s.start_chan_num)?;
+    d.set_item("num_channels", s.num_channels)?;
+    d.set_item("channels", &s.channels)?;
+    d.set_item("counts", &s.counts)?;
+    d.set_item("ebin", &s.ebin)?;
+    d.set_item("real_time", spec.real_time)?;
+    d.set_item("live_time", spec.live_time)?;
+    d.set_item("dead_time", spec.dead_time())?;
+    d.set_item("det_id", &spec.det_id)?;
+    d.set_item("det_descp", &spec.det_descp)?;
+    d.set_item("start_date", &spec.start_date)?;
+    d.set_item("start_time", &spec.start_time)?;
+    d.set_item("calib_e_fit", &spec.calib_e_fit)?;
+    d.set_item("calib_fwhm_fit", &spec.calib_fwhm_fit)?;
+    d.set_item("file_name", &spec.file_name)?;
+    Ok(d.into_any().unbind())
+}
+
+/// Parse dollar-format `.spe` text (first line must be `$SPEC_ID:`).
+#[pyfunction]
+fn spectroscopy_parse_dollar_spe(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
+    let spec = nucleide_spectroscopy::parse_dollar_spe(text, "")
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    spectrum_to_py(py, &spec)
+}
+
+/// Parse plain-format `.spe` text (rejects the `$SPEC_ID:` magic).
+#[pyfunction]
+fn spectroscopy_parse_spe(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
+    let spec = nucleide_spectroscopy::parse_plain_spe(text, "")
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    spectrum_to_py(py, &spec)
+}
+
+/// Read a dollar-format `.spe` file.
+#[pyfunction]
+fn spectroscopy_read_dollar_spe(py: Python<'_>, path: &str) -> PyResult<Py<PyAny>> {
+    let text = std::fs::read_to_string(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let spec = nucleide_spectroscopy::parse_dollar_spe(&text, path)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    spectrum_to_py(py, &spec)
+}
+
+/// Read a plain-format `.spe` file.
+#[pyfunction]
+fn spectroscopy_read_spe(py: Python<'_>, path: &str) -> PyResult<Py<PyAny>> {
+    let text = std::fs::read_to_string(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let spec = nucleide_spectroscopy::parse_plain_spe(&text, path)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    spectrum_to_py(py, &spec)
+}
+
 /// Python module entry point.
 #[pymodule]
 fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -4388,6 +5135,9 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(read_mctal, m)?)?;
     m.add_function(wrap_pyfunction!(read_ssw, m)?)?;
     m.add_function(wrap_pyfunction!(read_ptrac, m)?)?;
+    m.add_function(wrap_pyfunction!(read_endl, m)?)?;
+    m.add_function(wrap_pyfunction!(endl_endftod, m)?)?;
+    m.add_function(wrap_pyfunction!(combine_ssw_files, m)?)?;
     m.add_function(wrap_pyfunction!(read_chain, m)?)?;
     m.add_function(wrap_pyfunction!(build_depletion_system, m)?)?;
     m.add_function(wrap_pyfunction!(deplete, m)?)?;
@@ -4431,6 +5181,24 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(r2s_validate, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_expand, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_assemble, m)?)?;
+    m.add_function(wrap_pyfunction!(kinetics_solve, m)?)?;
+    m.add_function(wrap_pyfunction!(kinetics_equilibrium, m)?)?;
+    m.add_function(wrap_pyfunction!(kinetics_initial_rate, m)?)?;
+    m.add_function(wrap_pyfunction!(kinetics_inhour_rho, m)?)?;
+    m.add_function(wrap_pyfunction!(kinetics_stable_period, m)?)?;
+    m.add_function(wrap_pyfunction!(kinetics_prompt_jump, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_rect_smooth, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_five_point_smooth, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_calc_bg, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_gross_count, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_net_counts, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_energy_bins, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_detector_efficiency, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_xray_lines, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_parse_dollar_spe, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_parse_spe, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_read_dollar_spe, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_read_spe, m)?)?;
     m.add_function(wrap_pyfunction!(parse_deck, m)?)?;
     m.add_function(wrap_pyfunction!(read_deck, m)?)?;
     m.add_function(wrap_pyfunction!(cumulative_decays, m)?)?;
@@ -4457,6 +5225,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyMctal>()?;
     m.add_class::<PySurfSrc>()?;
     m.add_class::<PyPtracFile>()?;
+    m.add_class::<PyEndlLibrary>()?;
     m.add_class::<PyChain>()?;
     m.add_class::<PyDepletionSystem>()?;
     m.add_class::<PyUsrbinTally>()?;

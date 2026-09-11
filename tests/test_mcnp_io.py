@@ -116,6 +116,36 @@ class TestWwinp:
         assert w.ni == 2
         assert len(w.e) == 2
 
+    def test_arrays(self) -> None:
+        np = pytest.importorskip("numpy")
+        w = nucleide.mcnp.read_wwinp(str(FIXTURES / "wwinp" / "mcnp_wwinp_wwinp_n.txt"))
+        assert list(w.ne) == [7]
+        nft = 15 * 8 * 6
+        row = w.ww_row_array(0, 0)
+        assert isinstance(row, np.ndarray)
+        assert row.shape == (nft,)
+        assert row.dtype == np.dtype("float64")
+        assert row.flags["C_CONTIGUOUS"]
+        assert row.flags["WRITEABLE"]
+        np.testing.assert_allclose(row, np.asarray(w.ww_row(0, 0)), rtol=1e-12)
+        mat = w.ww_particle_array(0)
+        assert mat.shape == (7, nft)
+        assert mat.dtype == np.dtype("float64")
+        assert mat.flags["C_CONTIGUOUS"]
+        np.testing.assert_allclose(mat[0], row, rtol=1e-12)
+        for g in range(7):
+            np.testing.assert_allclose(mat[g], np.asarray(w.ww_row(0, g)), rtol=1e-12)
+        col = w.ww_column_array(0, 0)
+        assert col.shape == (7,)
+        np.testing.assert_allclose(col, np.asarray(w.ww_column(0, 0)), rtol=1e-12)
+        np.testing.assert_allclose(col, mat[:, 0], rtol=1e-12)
+        with pytest.raises(ValueError):
+            w.ww_row_array(0, 99)
+        with pytest.raises(ValueError):
+            w.ww_particle_array(99)
+        with pytest.raises(ValueError):
+            w.ww_column_array(0, nft)
+
 
 class TestMctal:
     def test_kcode5(self) -> None:
@@ -129,6 +159,57 @@ class TestMctal:
         m = nucleide.mcnp.read_mctal(str(FIXTURES / "mctal" / "synthetic_kcode19.mctal"))
         assert len(m.averages) == 6
         assert m.averages[0]["fom"] == 42.0
+
+    def test_k_arrays(self) -> None:
+        np = pytest.importorskip("numpy")
+        m = nucleide.mcnp.read_mctal(str(FIXTURES / "mctal" / "synthetic_kcode5.mctal"))
+        assert m.n_cycles == 8
+        k_col, k_abs, k_path, plc, plp = m.k_arrays()
+        for arr in (k_col, k_abs, k_path, plc, plp):
+            assert isinstance(arr, np.ndarray)
+            assert arr.shape == (8,)
+            assert arr.dtype == np.dtype("float64")
+            assert arr.flags["C_CONTIGUOUS"]
+            assert arr.flags["WRITEABLE"]
+        np.testing.assert_allclose(k_col, np.asarray(m.k_col), rtol=1e-12)
+        np.testing.assert_allclose(k_abs, np.asarray(m.k_abs), rtol=1e-12)
+        np.testing.assert_allclose(k_path, np.asarray(m.k_path), rtol=1e-12)
+        np.testing.assert_allclose(plc, np.asarray(m.prompt_life_col), rtol=1e-12)
+        np.testing.assert_allclose(plp, np.asarray(m.prompt_life_path), rtol=1e-12)
+        assert float(k_col[0]) == pytest.approx(0.985)
+        empty = m.averages_array()
+        assert empty.shape == (0, 14)
+        assert empty.dtype == np.dtype("float64")
+
+    def test_averages_array(self) -> None:
+        np = pytest.importorskip("numpy")
+        m = nucleide.mcnp.read_mctal(str(FIXTURES / "mctal" / "synthetic_kcode19.mctal"))
+        arr = m.averages_array()
+        assert arr.shape == (6, 14)
+        assert arr.dtype == np.dtype("float64")
+        assert arr.flags["C_CONTIGUOUS"]
+        cols = [
+            "avg_k_col",
+            "avg_k_col_stdev",
+            "avg_k_abs",
+            "avg_k_abs_stdev",
+            "avg_k_path",
+            "avg_k_path_stdev",
+            "avg_k_combined",
+            "avg_k_combined_stdev",
+            "avg_k_combined_active",
+            "avg_k_combined_active_stdev",
+            "prompt_life_combined",
+            "prompt_life_combined_stdev",
+            "cycle_histories",
+            "fom",
+        ]
+        for j, col in enumerate(cols):
+            np.testing.assert_allclose(
+                arr[:, j], np.asarray([row[col] for row in m.averages]), rtol=1e-12
+            )
+        assert float(arr[0, 0]) == pytest.approx(1.0021)
+        assert float(arr[0, 13]) == pytest.approx(42.0)
 
 
 class TestSsw:
@@ -161,3 +242,29 @@ class TestPtrac:
         p = nucleide.mcnp.read_ptrac(str(FIXTURES / "ptrac" / "mcnp_ptrac_i8_little.ptrac"))
         assert p.width_code == 1
         assert len(p.events()) == len(p.events())
+
+    def test_events_array(self) -> None:
+        np = pytest.importorskip("numpy")
+        p = nucleide.mcnp.read_ptrac(str(FIXTURES / "ptrac" / "mcnp_ptrac_i4_little.ptrac"))
+        cols = nucleide.mcnp.ptrac_event_columns()
+        assert len(cols) == 19
+        arr = p.events_array()
+        assert isinstance(arr, np.ndarray)
+        events = p.events()
+        assert arr.shape == (len(events), 19)
+        assert arr.dtype == np.dtype("float64")
+        assert arr.flags["C_CONTIGUOUS"]
+        assert arr.flags["WRITEABLE"]
+        expected = np.asarray(
+            [[float(ev.get(col, 0.0)) for col in cols] for ev in events], dtype=float
+        )
+        np.testing.assert_allclose(arr, expected, rtol=1e-12)
+        assert float(arr[0, 0]) == pytest.approx(1000.0)
+        assert float(arr[0, cols.index("xxx")]) == pytest.approx(0.0)
+        erg = p.event_field_array("erg")
+        assert erg.shape == (len(events),)
+        assert erg.dtype == np.dtype("float64")
+        np.testing.assert_allclose(erg, arr[:, cols.index("erg")], rtol=1e-12)
+        np.testing.assert_allclose(p.event_field_array("event_type"), arr[:, 0], rtol=1e-12)
+        with pytest.raises(ValueError):
+            p.event_field_array("no_such_field")

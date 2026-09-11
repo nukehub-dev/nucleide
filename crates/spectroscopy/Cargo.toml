@@ -1,0 +1,14 @@
+[package]
+name = "nucleide-spectroscopy"
+description = "Gamma-ray spectrum smoothing, peak counting, energy/efficiency calibration, and SPE parsing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

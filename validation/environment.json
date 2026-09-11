@@ -2,5 +2,6 @@
   "Nucleide": "abi3 release wheel (maturin container)",
   "PyNE": "conda-forge `nomoab_noopenmc` build",
   "OpenMC": "built from the upstream `v0.16.0` release tag",
+  "PyRK": "upstream git `c2bfebf9` (point-kinetics oracle only)",
   "Python": "miniforge3 base"
 }

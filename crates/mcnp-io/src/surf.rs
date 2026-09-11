@@ -361,4 +361,93 @@ mod tests {
         assert!(parse_surf_line("1", 3).is_err());
         assert!(parse_surf_line("x px 1", 3).is_err());
     }
+
+    #[test]
+    fn keywords_round_trip() {
+        for keyword in [
+            "PX", "PY", "PZ", "P", "S", "SO", "SX", "SY", "SZ", "CX", "CY", "CZ", "KX", "KY", "KZ",
+            "SQ", "GQ", "TX", "TY", "TZ", "X", "Y", "Z", "BOX", "RHP", "HEX", "WED", "RPP", "SPH",
+            "RCC", "REC", "TRC", "ELL", "ARB",
+        ] {
+            let kind = SurfKind::from_keyword(keyword).unwrap();
+            assert_eq!(kind.keyword(), keyword);
+            assert_eq!(
+                SurfKind::from_keyword(&keyword.to_ascii_lowercase()),
+                Some(kind)
+            );
+        }
+        assert_eq!(SurfKind::from_keyword("nope"), None);
+    }
+
+    #[test]
+    fn arities_cover_every_family() {
+        let one = |kind| assert_eq!(SurfKind::from_keyword(kind).unwrap().arity(), Some(1));
+        for keyword in ["PX", "PY", "PZ", "X", "Y", "Z", "CX", "CY", "CZ", "SO"] {
+            one(keyword);
+        }
+        for (keyword, arity) in [
+            ("SX", 2),
+            ("SY", 2),
+            ("SZ", 2),
+            ("S", 4),
+            ("KX", 5),
+            ("KY", 5),
+            ("KZ", 5),
+            ("TX", 6),
+            ("TY", 6),
+            ("TZ", 6),
+            ("P", 9),
+            ("SQ", 10),
+            ("GQ", 16),
+            ("RPP", 6),
+            ("SPH", 4),
+            ("RCC", 7),
+            ("TRC", 8),
+            ("ELL", 7),
+            ("BOX", 12),
+            ("REC", 12),
+            ("WED", 12),
+            ("RHP", 15),
+            ("HEX", 15),
+        ] {
+            assert_eq!(
+                SurfKind::from_keyword(keyword).unwrap().arity(),
+                Some(arity),
+                "{keyword}"
+            );
+        }
+        // ARB accepts a variable tail.
+        assert_eq!(SurfKind::Arb.arity(), None);
+        let card = parse_surf_line("1 arb 1 2 3", 1).unwrap();
+        assert_eq!(card.coeffs, vec![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn render_carries_transform_and_periodic_pointers() {
+        let card = parse_surf_line("1 7 PX 180", 1).unwrap();
+        assert_eq!(card.transform, Some(7));
+        assert_eq!(card.periodic, None);
+        assert_eq!(card.render(), "1 7 PX 180");
+        let card = parse_surf_line("1 -7 PX 180", 1).unwrap();
+        assert_eq!(card.transform, None);
+        assert_eq!(card.periodic, Some(7));
+        assert_eq!(card.render(), "1 -7 PX 180");
+    }
+
+    #[test]
+    fn surface_block_and_pointer_errors() {
+        // Multi-card blocks parse with per-card line numbers.
+        let cards = parse_surfs("1 px 1\n2 py 2\n").unwrap();
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[1].line, 2);
+        assert_eq!(cards[1].raw_lines.len(), 1);
+        // Empty cards, reflecting markers without numbers, and bad pointers.
+        assert!(parse_surf_line("", 3).is_err());
+        assert!(parse_surf_line("* px 1", 3).is_err());
+        assert!(parse_surf_line("1 0 px 1", 3).is_err());
+        assert!(parse_surf_line("1 7", 3).is_err());
+        assert!(parse_surf_line("1 7 zz 1", 3).is_err());
+        assert!(parse_surf_line("1 xx 1", 3).is_err());
+        assert!(parse_surf_line("1 px X", 3).is_err());
+    }
 }

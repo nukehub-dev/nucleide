@@ -1,0 +1,34 @@
+$SPEC_ID:
+SYNTHETIC-DOLLAR
+$SPEC_REM:
+DET# 7
+DETDESC# SYNDET
+AP# Nucleide synthetic fixture
+$DATE_MEA:
+02/03/2026 09:15:00
+$MEAS_TIM:
+90 100
+$DATA:
+0 7
+       4
+       9
+      25
+      60
+      25
+       9
+       4
+       1
+$ROI:
+0
+$PRESETS:
+None
+0
+0
+$ENER_FIT:
+1.5 2.0
+$MCA_CAL:
+3
+1.500000E+000 2.000000E+000 5.000000E-001 keV
+$SHAPE_CAL:
+3
+7.000000E-001 5.000000E-004 2.000000E-007

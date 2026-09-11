@@ -1,6 +1,6 @@
 [package]
 name = "nucleide-mcnp-io"
-description = "MCNP-family file I/O: xsdir, meshtal, SSW, PTRAC readers/writers"
+description = "MCNP-family file I/O: xsdir, meshtal, SSW, PTRAC, ENDL readers/writers plus shared Fortran-record framing and SSW combining"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

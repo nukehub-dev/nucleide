@@ -170,6 +170,15 @@ mod tests {
     }
 
     #[test]
+    fn dep_indexed_assignments_are_rejected() {
+        assert!(parse_dep("A(idx, 1) = 1;\n").is_err());
+        // Non-letter `i`-names and non-integer `i`-values stay in the table.
+        let dep = parse_dep("i9 = 1;\niX = [1];\n").unwrap();
+        assert_eq!(dep.get_f64("i9").unwrap(), 1.0);
+        assert!(dep.get("iX").is_some());
+    }
+
+    #[test]
     fn garbage_dep_is_rejected() {
         assert!(parse_dep("not matlab at all\n").is_err());
         assert!(parse_dep("A = zeros(2,\n").is_err());

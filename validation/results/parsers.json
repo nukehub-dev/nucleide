@@ -3,10 +3,10 @@
   "name": "parsers",
   "title": "Parser cross-validation (`parsers_vs_refs.py`)",
   "environment": {
-    "date": "2026-09-10",
+    "date": "2026-09-11",
     "python": "3.12.14",
     "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
-    "nucleide": "0.3.0",
+    "nucleide": "0.4.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
@@ -292,6 +292,40 @@
     {
       "kind": "prose",
       "text": "SKIPPED mcnp_meshtal_single_meshtal.txt: `pyne.mcnp.Meshtal` requires PyMOAB (nomoab build)"
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "ENDL vs PyNE"
+    },
+    {
+      "kind": "prose",
+      "text": "PyNE `pyne.endl.Library` (EEDL/EPDL scope) runs on the committed\n`fixtures/endl/synthetic_eedl.txt` file. Compared fields \u2014 nucleus-id\nset plus `get_rx` arrays for the integrated (`rdesc=10`, `rprop=0`)\nand spectra (`rdesc=82`, `rprop=21`) tables."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Item",
+        "Values compared",
+        "Max rel diff / status"
+      ],
+      "rows": [
+        [
+          "nuclides",
+          "1",
+          "0.000000e+00"
+        ],
+        [
+          "get_rx(820000000, 9, 10, 0)",
+          "6",
+          "0.000000e+00"
+        ],
+        [
+          "get_rx(820000000, 9, 82, 21)",
+          "6",
+          "0.000000e+00"
+        ]
+      ]
     },
     {
       "kind": "heading",

@@ -224,6 +224,25 @@ mod tests {
     }
 
     #[test]
+    fn res_accumulation_error_arms() {
+        // Non-indexed statements pass through to the plain table.
+        let table = parse_res("A = 5;\n").unwrap();
+        assert_eq!(table.get_f64("A").unwrap(), 5.0);
+        // Commented-line arrays accumulate as flattened rows.
+        let table = parse_res("A(idx, [1: 2]) = [1 2 % c\n3 4];\n").unwrap();
+        let m = table.get_matrix("A").unwrap();
+        assert_eq!((m.rows(), m.cols()), (1, 4));
+        // Indexed expressions must stay scalar.
+        assert!(parse_res("V = [1 2];\nA(idx, 1) = V;\n").is_err());
+        // A scalar first, then an indexed push, is a shape conflict.
+        assert!(parse_res("A = 1;\nA(idx, 1) = 2;\n").is_err());
+        // A flat vector cannot grow matrix rows.
+        assert!(parse_res("A = [1 2];\nA(idx, [1: 2]) = [3 4];\n").is_err());
+        // Rows must match the established column count.
+        assert!(parse_res("A(idx, [1: 2]) = [1 2];\nA(idx, [1: 3]) = [1 2 3];\n").is_err());
+    }
+
+    #[test]
     fn garbage_res_is_rejected() {
         assert!(parse_res("this is not matlab\n").is_err());
         assert!(parse_res("X = [1 2 3;\n").is_err());

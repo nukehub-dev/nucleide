@@ -1,0 +1,21 @@
+{
+  "description": "Synthetic 1-group step oracle: hand-built params plus closed-form values.",
+  "provenance": "Params are hand-picked (beta=0.0065, lambda=0.08 1/s, Lambda=1e-4 s). initial_rate is the algebraic identity n0*rho/Lambda from E1+E2. prompt_jump_factor is beta/(beta-rho) from E4. analytic_since_step lists the two-exponential closed form n(t) = A*exp(s1*t) + B*exp(s2*t) with s1=0.03546455778928248, s2=-45.115464557789274, A=1.4421733025937287, B=-0.44217330259372867 (roots of s^2 + [lambda + (beta-rho)/Lambda] s - lambda*rho/Lambda = 0), evaluated in float64; t is seconds since the step.",
+  "params": {
+    "betas": [0.0065],
+    "lambdas": [0.08],
+    "Lambda": 0.0001
+  },
+  "step": {
+    "t_step": 1.0,
+    "rho_init": 0.0,
+    "rho_final": 0.002
+  },
+  "n0": 1.0,
+  "initial_rate": 20.0,
+  "prompt_jump_factor": 1.4444444444444444,
+  "analytic_since_step": {
+    "t": [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+    "n": [1.0019955067597075, 1.0195566916890546, 1.161068063433468, 1.4424412760174448, 1.4942370939381002, 2.056070818176571, 50.029207889957654]
+  }
+}

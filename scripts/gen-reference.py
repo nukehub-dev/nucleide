@@ -90,6 +90,8 @@ CRATE_ORDER = [
     "nucleide-origen-io",
     "nucleide-enrichment",
     "nucleide-depletion",
+    "nucleide-kinetics",
+    "nucleide-spectroscopy",
     "nucleide-vr-tools",
     "nucleide-r2s",
     "nucleide-emit",
@@ -106,6 +108,8 @@ MODULE_ORDER = [
     "vr",
     "enrichment",
     "depletion",
+    "kinetics",
+    "spectroscopy",
     "alara",
     "cccc",
     "fispact",
@@ -325,7 +329,10 @@ def parse_facade(mod: str) -> dict[str, object]:
     all_names: list[str] = []
     aliases: dict[str, str] = {}
     alias_lines: dict[str, int] = {}
+    defs: dict[str, tuple[str, int]] = {}
     for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            defs[node.name] = (_func_sig(node.name, node, strip_self=False), node.lineno)
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
             target = node.targets[0]
             if (
@@ -353,6 +360,7 @@ def parse_facade(mod: str) -> dict[str, object]:
         "all": all_names,
         "aliases": aliases,
         "alias_lines": alias_lines,
+        "defs": defs,
     }
 
 
@@ -552,6 +560,7 @@ def render_module(
     all_names = list(facade["all"])  # type: ignore[arg-type]
     aliases = dict(facade["aliases"])  # type: ignore[arg-type]
     alias_lines = dict(facade["alias_lines"])  # type: ignore[arg-type]
+    facade_defs = dict(facade["defs"])  # type: ignore[arg-type]
     lines: list[str] = []
     missing: list[str] = []
     for name in all_names:
@@ -597,6 +606,12 @@ def render_module(
         elif name in data_consts:
             text, lineno = data_consts[name]
             lines.append(f"- [`{text}`]({_data_url(lineno)})")
+        elif name in facade_defs:
+            # Facade-defined thin adapter (def wrapper with its own public
+            # signature, e.g. friendlier kwarg names than the _internal
+            # spelling): signature comes from the facade itself.
+            sig, lineno = facade_defs[name]
+            lines.extend(_sig_bullet(name, sig, None, _facade_url(mod, lineno)))
         else:
             missing.append(name)
     if missing:

@@ -70,6 +70,13 @@ module = ["pytest", "_pytest", "_pytest.*", "numpy", "numpy.*"]
 follow_imports = "skip"
 ignore_missing_imports = true
 
+# `h5py` is an optional runtime dependency of `write_ptrac_hdf5` only
+# (imported lazily inside the function); treat it as opaque like pytest.
+[[tool.mypy.overrides]]
+module = ["h5py", "h5py.*"]
+follow_imports = "skip"
+ignore_missing_imports = true
+
 [tool.coverage.run]
 source = ["nucleide", "tests"]
 

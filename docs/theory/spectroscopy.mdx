@@ -1,0 +1,147 @@
+---
+title: Gamma-Ray Spectroscopy
+description: Spectrum smoothing, peak counting, energy/efficiency calibration, X-ray line algebra, and the SPE readers behind Nucleide's spectroscopy toolkit.
+sidebar:
+  order: 6
+references:
+  - id: phillips-1978
+    title: "G.W. Phillips, Nucl. Instrum. Methods 153 (1978), 449"
+    source: Upstream citation string (unverified)
+    date: "1978"
+    type: article
+  - id: nucleide-spectroscopy
+    title: Nucleide spectroscopy implementation
+    url: https://github.com/nukehub-dev/nucleide/tree/main/crates/spectroscopy
+    source: Nucleide implementation
+    date: "2026"
+    type: misc
+---
+
+## Overview
+
+Gamma-ray pulse-height spectra arrive as counts per channel plus a header
+(recording times, detector id, calibration fits). Answering "how many counts
+sit under this peak, and at what energy" needs a small pipeline: smooth the
+spectrum, delimit the peak, subtract the background, map channels to energies,
+correct for detector efficiency, and account for X-ray lines. Nucleide
+implements exactly the upstream analysis subset (E1–E8) in
+`crates/spectroscopy`, with every caller-side constant kept explicit.
+
+## Mathematical details
+
+### E1 — Rectangular smoothing
+
+With window width `m` (odd, `m >= 3`) and `ext = (m - 1) / 2`:
+
+`smooth[i] = (1/m) * sum(counts[i-ext..=i+ext])` for `ext <= i < N - ext`.
+
+The first and last `ext` channels have no full neighbourhood and are copied
+unchanged.
+
+### E2 — Five-point smoothing
+
+`smooth[i] = (c[i-2] + c[i+2] + 2*c[i+1] + 2*c[i-1] + 3*c[i]) / 9`
+for `2 <= i < N - 2`; the first and last two channels are copied. The
+weights are the low-statistics recommendation cited by the upstream module
+as "G.W. Phillips, Nucl. Instrum. Methods 153 (1978), 449" — carried here as
+a citation string only, with no journal-verification claim.
+
+### E3 — Background under a peak (`m == 1` only)
+
+`low = sum(counts[c1-2..c1])`, `high = sum(counts[c2..c2+2])`, and
+`bg = (low + high) * (c2 - c1 + 1) / 6`. Only the `m == 1` two-sided
+estimator exists; any other `m` is an error. There is no Compton-continuum
+or step model.
+
+### E4 — Gross counts
+
+`gc = sum(counts[c1..c2])`, half-open: channel `c2` is excluded.
+
+### E5 — Net counts
+
+`nc = gc - bg`.
+
+### E6 — Energy calibration
+
+`ebin[ch] = a0 + a1*ch + a2*ch^2` from the `calib_e_fit` triplet. FWHM
+coefficients are parsed from the file header but never evaluated.
+
+### E7 — Detector-efficiency evaluation (energy in MeV)
+
+With caller-supplied coefficients `a_i`:
+
+- `fit == 1`: `eff = exp(sum a_i * (ln E)^i)`;
+- `fit == 2`: `eff = exp(sum a_i * (1/E)^i)`;
+- anything else is an error.
+
+Coefficients are evaluation inputs only: the upstream module has no
+efficiency-calibration fitting routine, so neither does this crate.
+
+### E8 — X-ray line algebra
+
+From caller-supplied atomic constants (K/L fluorescence yields, the
+`kb_to_ka` / `ka2_to_ka1` ratios, the K-fill probability, and the four line
+energies) plus K/L conversion coefficients:
+
+- with `k_conv`: `xk = k_fluor * k_conv`, `xka = xk / (1 + kb_to_ka)`,
+  `xka1 = xka / (1 + ka2_to_ka1)`, `xka2 = xka - xka1`, `xkb = xk - xka`,
+  and — when `l_conv` is also present —
+  `xl = (l_conv + k_conv * prob) * l_fluor`;
+- with only `l_conv`: `xl = l_conv * l_fluor`;
+- with neither, all intensities are zero.
+
+Output order is always Ka1, Ka2, Kb, L. No atomic table is vendored, so
+every constant is an explicit input; an absent conversion is `None`
+(the upstream NaN sentinel).
+
+## Algorithm
+
+Smoothing and counting are single passes over plain vectors. Channel bounds
+`c1`/`c2` index the counts vector **positionally**: a nonzero
+`start_chan_num` never shifts the slice (the upstream quirk), while the
+`c2 <= max(channels)` range check runs first and out-of-range slice stops
+clamp like Python slices.
+
+The `.spe` readers reproduce the upstream grammars quirk-for-quirk. Dollar
+format requires the `$SPEC_ID:` magic (else an unsupported-format error),
+resolves duplicate tags first-wins, raises on missing tags, reads `$MEAS_TIM:`
+as live-then-real, takes `$DATA: start last` with `last + 1` one-float lines
+after it, and reads the `$MCA_CAL:`/`$SHAPE_CAL:` triplets two lines below
+each tag (a trailing `keV` token is ignored). `$ROI:`, `$PRESETS:`, and
+`$ENER_FIT:` are never read. Plain format rejects the dollar magic, reads
+`key: value` headers (unknown keys ignored, later keys overwrite), parses
+`channel: counts` lines after the `SPECTRUM` marker, splits double-spaced
+`Energy Fit:`/`FWHM Fit:` values at single-space indices 0/2/4, and re-joins
+the three colon parts of the acquisition time.
+
+## Worked example
+
+Counts `[2, 5, 1, 6, 3, 8, 4]`, peak window `c1 = 2`, `c2 = 5`:
+
+- E1 (`m = 5`): `[2, 5, 17/5, 23/5, 22/5, 8, 4]`.
+- E2: `[2, 5, 30/9, 39/9, 42/9, 8, 4]`.
+- E3: `low = 7`, `high = 12`, `bg = 19 * 4 / 6 = 76/6`.
+- E4: `gc = 1 + 6 + 3 = 10`. E5: `nc = 10 - 76/6 = -16/6`.
+
+## Assumptions and limitations
+
+- Counts, channels, fits, coefficients, and atomic constants are all caller
+  inputs; nothing is fetched or fitted.
+- FWHM fits are parsed, never evaluated.
+- X-ray energies are in keV; efficiency energies are in MeV.
+- Smoothing edges copy rather than extrapolate.
+
+## Related work beyond Nucleide
+
+Peak search, peak fitting, activity calculations, decay-spectra and SDEF
+sources, and plotting all sit outside this toolkit: none exist in the
+upstream analysis subset, and plotting stays user-side (the upstream plot
+helpers are an isolated GUI module).
+
+## References
+
+- The five-point weights carry the upstream citation string<Citation id="phillips-1978" />
+  as text only, with no journal-verification claim.
+- The Nucleide implementation<Citation id="nucleide-spectroscopy" /> and the
+  `validation/spectroscopy_vs_pyne.py` two-tier harness (synthetic gates plus
+  container PyNE cross-check).

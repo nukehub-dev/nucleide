@@ -13,6 +13,77 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Added
+
+- Legacy I/O completion (`nucleide-mcnp-io` + `nucleide.mcnp`):
+  ENDL EEDL/EPDL table reader (`endl` module: `END_OF_TABLE` framing, header
+  slices, `NFIELDS_RPROP` body widths, `get_rx` selector lookup, and an
+  `endftod` matching the PyNE C++ semantics) exposed as
+  `nucleide.mcnp.read_endl` / `EndlLibrary.get_rx` / `endl_endftod`, with a
+  synthetic `fixtures/endl/` oracle; shared Fortran unformatted-record
+  framework (`fortran` module: typed `BadRecordMarker` instead of the
+  upstream `AttributeError` path, little-endian only) now backing the SSW
+  reader/writer; SSW combining (`combine_files` port of
+  `scripts/ssw_combine.py`: signed-`orignp1` sum, plain-`nrss` sum,
+  sign-preserving `nps` shift, typed incompatibility errors) exposed as
+  `nucleide.mcnp.combine_ssw_files` (+ `ssw_combine_main` CLI); Python-side
+  PTRAC event-row stream (`ptrac_event_rows` over `read_ptrac`, pinned
+  against the 19-column `PtracEvent` schema) with an `h5py` table writer
+  (`write_ptrac_hdf5`, `ptrac_to_hdf5_main` CLI; HDF5 bytes never asserted)
+  and a MOAB-free meshtal mesh-data extractor (`meshtal_mesh_data`, MOAB
+  tagging stays caller-side). Validation gains an ENDL-vs-`pyne.endl` oracle
+  section (loud skips preserved). Known parity quirks stay documented, not
+  fixed: SSW `SF_00001` split and negative-`np1`⇒table-2, `ncrd` sign⇒abs
+  width, PTRAC echo-repack to 8-byte mode, meshtal single-group total mirror
+  and `Rel_` column map, WWINP `{0:13.5E}` fields. Big-endian real-bytes
+  input stays unsupported (no fixture oracle).
+- Prescribed-reactivity point kinetics (new `nucleide-kinetics` crate):
+  PKE solver for 1+ delayed-neutron groups under constant/step/impulse/
+  ramp/polyline reactivity schedules in Δk, equilibrium initials, the
+  inhour relation with stable-period solve, and the prompt-jump
+  approximation. The integrator is an adaptive implicit θ-method
+  (trapezoidal default, backward Euler on request) with exact stepping to
+  schedule knots — no explicit-solver parity. All delayed data are
+  caller-supplied (`from_ifp` documents the OpenMC provenance note);
+  thermal feedback, flux coupling, and WASM exposure are out of scope.
+- Python API: `nucleide.kinetics.solve` / `equilibrium` / `initial_rate` /
+   `inhour_rho` / `stable_period` / `prompt_jump` thin wrappers over the new
+   core, plus `tests/test_kinetics.py` and the `validation/kinetics_vs_pyrk.py`
+   two-tier oracle (synthetic-fixture analytic gates O1–O4 plus a container
+   PyRK ramp cross-check at 1e-3).
+- Gamma-ray spectroscopy and measurement (new `nucleide-spectroscopy`
+  crate): E1 rectangular / E2 five-point smoothing (edges copied), E3
+  `m == 1` background / E4 half-open gross / E5 net counts with positional
+  indexing, E6 quadratic energy bins, E7 log-polynomial efficiency
+  evaluation in MeV (caller coefficients only, no fitting), E8 X-ray line
+  algebra over caller-supplied atomic constants (no vendored tables), and
+  the dollar/plain `.spe` readers with the upstream quirks pinned
+  (duplicate-tag first-wins, missing-tag errors, live-real `$MEAS_TIM:`,
+  last-plus-one `$DATA:`, `keV`-suffixed triplets, ignored `$ROI:`/
+  `$PRESETS:`/`$ENER_FIT:`, positional 0-based dollar labels). FWHM fits
+  are parsed, never evaluated; peak search/fit, activities, decay spectra,
+  and plotting stay out of scope.
+- Python API: `nucleide.spectroscopy.rect_smooth` / `five_point_smooth` /
+  `calc_bg` / `gross_count` / `net_counts` / `energy_bins` /
+  `detector_efficiency` / `xray_lines` / `parse_dollar_spe` / `parse_spe` /
+  `read_dollar_spe` / `read_spe` thin wrappers over the new core, plus
+  `tests/test_spectroscopy.py` and the
+  `validation/spectroscopy_vs_pyne.py` two-tier oracle (synthetic E1–E8
+  gates plus a container PyNE cross-check at 1e-12).
+- NumPy bridges for MCTAL/WWINP/PTRAC (bindings-only, same
+  `result_array` pattern as the meshtal bridge: flatten → `Vec::into_pyarray`
+  → reshape view, float64 C-order, `ValueError` on ragged/out-of-range):
+  `Wwinp.ww_row_array` / `ww_column_array` / `ww_particle_array` (`(nft,)`,
+  `(n_groups,)`, `(n_groups, nft)` with `nft = nf[0] * nf[1] * nf[2]`),
+  `Mctal.k_arrays` (five `(n_cycles,)` series) / `averages_array`
+  (`(n_cycles, 14)`, `(0, 14)` when empty), `PtracFile.events_array`
+  (`(n_events, 19)` in `ptrac_event_columns` order, absent variables as 0.0)
+  / `event_field_array` (`(n_events,)`). All arrays are owned, writable, and
+  decoupled from the file data; the wheel stays NumPy-free (NumPy required
+  only at call time, `pytest.importorskip` in `tests/test_mcnp_io.py`).
+  Plain-copy helpers (`ww_row`, `ww_column`, the `k_col`/`averages` getters,
+  `events`) are unchanged.
+
 ### Fixed
 
 - Stable-as-zero analytics (`nucleide-material`): a known nuclide with mass

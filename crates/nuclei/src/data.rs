@@ -1127,9 +1127,11 @@ mod tests {
         // Cs-135: 7.25825e13 s (≈ 2.3 Myr).
         let t_cs135 = half_life_by_name("Cs135").unwrap();
         assert!((t_cs135 - 7.258_25e13).abs() / t_cs135 < 1e-12);
-        // Cs-137: 30.08 yr ≈ 9.49e8 s.
+        // Cs-137: 30.08 yr ≈ 9.49e8 s, in the production Julian-year
+        // convention (AD-11: 31,557,600 s/yr; the Gregorian divisor it
+        // replaces differed by ~6e-4 yr against this 0.01 yr tolerance).
         let t_cs137 = half_life(CS137).unwrap();
-        assert!((t_cs137 / 3.155_695_2e7 - 30.08).abs() < 0.01, "{t_cs137}");
+        assert!((t_cs137 / 3.155_76e7 - 30.08).abs() < 0.01, "{t_cs137}");
         // Isomers carry their own rows.
         assert_eq!(half_life_by_name("Am242_m1"), Some(4_449_622_000.0));
     }

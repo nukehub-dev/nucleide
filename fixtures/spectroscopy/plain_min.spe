@@ -1,0 +1,40 @@
+ACQUISITION INFORMATION
+
+Laboratory name:
+Operator name:
+Spectrum name:  SYNTHETIC-PLAIN
+Detector ID:  7
+Detector description: SYNDET
+
+Sample description:
+
+Mystery Key:  ignored entirely
+Real Time:  100.5
+Live Time:  90.25
+Acquisition start date:  03-Feb-2026
+Acquisition start time:  09:15:00
+Starting channel number:  0
+Number of channels:  8
+
+
+CALIBRATION INFORMATION
+
+Spectrum File Name:  synthetic_plain.Spc
+Date Calibrated:  03-Feb-2026
+Time Calibrated:  09:20:00
+
+ENERGY CALIBRATION
+Energy Fit:  1.500000E+000  2.000000E+000  5.000000E-001
+FWHM Fit:  7.000000E-001  5.000000E-004  2.000000E-007
+
+
+SPECTRUM
+
+     0:    4.00000E+000
+     1:    9.00000E+000
+     2:    2.50000E+001
+     3:    6.00000E+001
+     4:    2.50000E+001
+     5:    9.00000E+000
+     6:    4.00000E+000
+     7:    1.00000E+000

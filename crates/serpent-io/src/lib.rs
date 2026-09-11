@@ -554,4 +554,160 @@ mod tests {
             other => panic!("expected Io error, got {other:?}"),
         }
     }
+
+    #[test]
+    fn value_accessors_reject_the_other_kind() {
+        use super::{Entry, Matrix, Value};
+        assert_eq!(Value::Num(1.5).as_f64().unwrap(), 1.5);
+        assert_eq!(Value::Str("s".into()).as_str().unwrap(), "s");
+        assert!(Value::Str("s".into()).as_f64().is_err());
+        assert!(Value::Num(1.0).as_str().is_err());
+        // Entry shape errors name the shape found.
+        assert!(Entry::Scalar(Value::Num(1.0)).as_f64().is_ok());
+        assert!(Entry::Scalar(Value::Str("a".into())).as_str().is_ok());
+        assert!(Entry::Vector(vec![Value::Num(1.0)]).as_slice().is_ok());
+        assert!(
+            Entry::Matrix(Matrix::from_rows(vec![vec![Value::Num(1.0)]]).unwrap())
+                .as_matrix()
+                .is_ok()
+        );
+        for entry in [
+            Entry::Vector(vec![]),
+            Entry::Matrix(Matrix::from_rows(vec![vec![Value::Num(1.0)]]).unwrap()),
+        ] {
+            assert!(entry.as_f64().is_err());
+            assert!(entry.as_str().is_err());
+        }
+        assert!(Entry::Vector(vec![]).as_matrix().is_err());
+        assert!(Entry::Scalar(Value::Num(1.0)).as_str().is_err());
+        assert!(Entry::Scalar(Value::Num(1.0)).as_slice().is_err());
+        assert!(Entry::Scalar(Value::Num(1.0)).as_vec_f64().is_err());
+        assert!(Entry::Scalar(Value::Num(1.0)).as_matrix().is_err());
+        assert_eq!(Entry::Scalar(Value::Num(1.0)).type_name(), "scalar");
+        assert_eq!(Entry::Vector(vec![]).type_name(), "vector");
+        assert!(Entry::Vector(vec![Value::Str("x".into())])
+            .as_vec_f64()
+            .is_err());
+    }
+
+    #[test]
+    fn matrix_builders_and_indexing() {
+        use super::{Entry, Matrix, Table, Value};
+        assert!(Matrix::from_rows(Vec::new()).is_err());
+        assert!(Matrix::from_rows(vec![Vec::new()]).is_err());
+        assert!(Matrix::from_rows(vec![
+            vec![Value::Num(1.0)],
+            vec![Value::Num(1.0), Value::Num(2.0)]
+        ])
+        .is_err());
+        let m = Matrix::from_rows(vec![
+            vec![Value::Num(1.0), Value::Num(2.0)],
+            vec![Value::Num(3.0), Value::Num(4.0)],
+        ])
+        .unwrap();
+        assert_eq!((m.rows(), m.cols()), (2, 2));
+        assert_eq!(m.data().len(), 4);
+        assert_eq!(m.get(0, 1), Some(&Value::Num(2.0)));
+        assert_eq!(m.get(2, 0), None);
+        assert_eq!(m.get(0, 2), None);
+        assert_eq!(m.row(0).unwrap().len(), 2);
+        assert!(m.row(2).is_err());
+        assert_eq!(m.row_f64(1).unwrap(), vec![3.0, 4.0]);
+        assert_eq!(m.get_f64(0, 0).unwrap(), 1.0);
+        assert!(m.get_f64(5, 0).is_err());
+        assert_eq!(
+            m.to_rows_f64().unwrap(),
+            vec![vec![1.0, 2.0], vec![3.0, 4.0]]
+        );
+        // String cells fail numeric copies with a row-shaped error.
+        let s = Matrix::from_rows(vec![vec![Value::Str("x".into())]]).unwrap();
+        assert!(s.row_f64(0).is_err());
+        assert!(s.get_f64(0, 0).is_err());
+        assert!(s.to_rows_f64().is_err());
+        // Table map behaviour: insert/get_mut/contains/iter/keys/len.
+        let mut table = Table::new();
+        assert!(table.is_empty());
+        assert_eq!(table.len(), 0);
+        assert!(table
+            .insert("B".to_string(), Entry::Scalar(Value::Num(2.0)))
+            .is_none());
+        assert!(table
+            .insert("A".to_string(), Entry::Scalar(Value::Num(1.0)))
+            .is_none());
+        assert!(table.contains_key("A") && !table.contains_key("Z"));
+        assert_eq!(table.len(), 2);
+        assert_eq!(
+            table.keys().cloned().collect::<Vec<_>>(),
+            vec!["A".to_string(), "B".to_string()]
+        );
+        assert_eq!(table.iter().count(), 2);
+        assert_eq!((&table).into_iter().count(), 2);
+        if let Some(e) = table.get_mut("A") {
+            *e = Entry::Scalar(Value::Num(9.0));
+        }
+        assert_eq!(table.get_f64("A").unwrap(), 9.0);
+        assert_eq!(
+            table.get_str("S").unwrap_err().to_string(),
+            "variable `S` not found"
+        );
+        table.insert("S".to_string(), Entry::Scalar(Value::Str("hi".into())));
+        assert_eq!(table.get_str("S").unwrap(), "hi");
+        assert!(table
+            .get_f64("S")
+            .unwrap_err()
+            .to_string()
+            .contains("expected number"));
+        assert!(table.get_vec_f64("S").is_err());
+        assert!(table.get_vec_str("S").is_err());
+        assert!(table.get_matrix("S").is_err());
+        assert!(table.get_vec_str("A").is_err());
+        table.insert(
+            "V".to_string(),
+            Entry::Vector(vec![Value::Str("a".into()), Value::Str("b".into())]),
+        );
+        assert_eq!(
+            table.get_vec_str("V").unwrap(),
+            vec!["a".to_string(), "b".to_string()]
+        );
+        assert!(table
+            .get_vec_f64("V")
+            .unwrap_err()
+            .to_string()
+            .contains("expected number"));
+        // Owned iteration and FromIterator round-trip.
+        let rebuilt: Table = table.clone().into_iter().collect();
+        assert_eq!(rebuilt, table);
+        assert!(rebuilt.get_vec_f64("A").is_err());
+        // Error display shapes and sources.
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "gone");
+        let err = super::Error::from(io_err);
+        assert!(err.to_string().starts_with("I/O error"));
+        assert!(std::error::Error::source(&err).is_some());
+        assert!(super::Error::Syntax {
+            line: 3,
+            message: "bad".into()
+        }
+        .to_string()
+        .contains("line 3"));
+        assert!(super::Error::Index {
+            index: 9,
+            length: 2
+        }
+        .to_string()
+        .contains("index 9"));
+        assert!(super::Error::UnsupportedExpr("a*b".into())
+            .to_string()
+            .contains("unsupported"));
+        assert!(std::error::Error::source(&super::Error::Missing("x".into())).is_none());
+    }
+
+    #[test]
+    fn from_file_dispatches_on_kind() {
+        use super::{from_file, Kind};
+        use std::path::PathBuf;
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/serpent");
+        assert!(from_file(dir.join("sample_res.m"), Kind::Res).is_ok());
+        assert!(from_file(dir.join("sample1_dep.m"), Kind::Dep).is_ok());
+        assert!(from_file(dir.join("sample_det.m"), Kind::Det).is_ok());
+    }
 }

@@ -72,6 +72,33 @@ conventions, and checks expected for code changes.
 - Prefer `#!/usr/bin/env bash`.
 - Use `set -euo pipefail`.
 
+## API stability (pre-1.0 deprecation policy)
+
+All workspace crates are `0.x`, so minor releases may break the Rust and
+Python APIs. Breaking changes are signaled, never silent:
+
+1. Record every breaking change under `CHANGELOG.md → [Unreleased] →
+   Changed` in the same PR that makes it.
+2. Prefer deprecating over removing: `#[deprecated(since = "…", note =
+   "…")]` on Rust items (removed no earlier than the next minor) and
+   `warnings.warn(..., DeprecationWarning)` on the Python facade for the
+   same window.
+3. Pure additions (new functions, modules, error variants, struct fields)
+   need no deprecation period, but error enums stay exhaustive within a
+   minor line so downstream `match`es keep compiling — a new variant is a
+   breaking change and gets a changelog entry like any other.
+4. Stabilized crates carry `#![warn(missing_docs)]`: every public item
+   ships documented, types with invariants construct through validating
+   constructors (record-style structs may keep public fields, validated at
+   use), and fallible paths return `Result` — no user-reachable panics
+   (private `expect`/`unwrap` on validated invariants must cite why the
+   input cannot occur).
+
+The 0.5.0 API freeze covered (`nucleide-kinetics`,
+`nucleide-spectroscopy`, the `nucleide-mcnp-io` `endl`/`fortran` modules,
+and the numpy bridges): doc-comment and attribute edits only, no signature
+or behavior changes.
+
 ## Documentation
 
 Documentation is a first-class deliverable. Update docs when your change affects:

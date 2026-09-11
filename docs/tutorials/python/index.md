@@ -21,3 +21,7 @@ and assumes you have already installed the project (see
    and write PARTISN decks.
 7. [Emit code cards](emit-cards.md) — render one material to MCNP, Serpent,
    FLUKA, ALARA, and PARTISN cards with a mass-drift report.
+8. [Run kinetics](run-kinetics.md) — solve prescribed-reactivity
+   point-kinetics transients.
+9. [Run spectroscopy](run-spectroscopy.md) — smooth spectra, count peaks,
+   calibrate energy/efficiency, evaluate X-ray lines, and read `.spe` files.

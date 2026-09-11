@@ -1,0 +1,192 @@
+---
+title: Point Kinetics
+description: Prescribed-reactivity point-kinetics equations, the inhour relation, the prompt-jump approximation, and Nucleide's stiff-aware solver.
+sidebar:
+  order: 5
+references:
+  - id: huff-2015
+    title: "PyRK: A Python Package For Nuclear Reactor Kinetics"
+    url: https://doi.org/10.25080/Majora-7b98e3ed-00d
+    authors: ["K. Huff"]
+    source: Proceedings of the 14th Python in Science Conference (SciPy 2015)
+    journal: Proceedings of the 14th Python in Science Conference
+    pages: "87–90"
+    date: "2015"
+    type: article
+    doi: "10.25080/Majora-7b98e3ed-00d"
+  - id: pyrk-repo
+    title: PyRK source (BSD-3)
+    url: https://github.com/pyrk/pyrk
+    source: Upstream implementation
+    date: "2026"
+    type: misc
+  - id: nucleide-kinetics
+    title: Nucleide kinetics implementation
+    url: https://github.com/nukehub-dev/nucleide/tree/main/crates/kinetics
+    source: Nucleide implementation
+    date: "2026"
+    type: misc
+---
+
+Nucleide solves prescribed-reactivity **point-kinetics transients**: the
+neutron population `n(t)` and `G` delayed-neutron precursor groups `C_i(t)`
+driven by a caller-supplied reactivity schedule `ρ(t)` in Δk. The equation
+set reproduces the PyRK neutronics block (Huff, SciPy 2015)<Citation id="huff-2015" />
+with a stiff-aware integrator instead of the explicit driver loop.
+
+## Overview
+
+Point kinetics collapses the spatial flux shape to a scalar magnitude and
+tracks only total neutron population plus precursor inventories. Reactivity
+is prescribed (step, ramp, pulse, or table) rather than solved from thermal
+feedback, so each transient is a small stiff ODE system with caller-supplied
+delayed-neutron data (`betas`, `lambdas`, `Lambda`).
+
+<Callout type="info" title="Where this lives in the code">
+  Data and equilibrium initials are in `crates/kinetics/src/params.rs`, the
+  insertion taxonomy in `crates/kinetics/src/reactivity.rs`, the integrator
+  and prompt jump in `crates/kinetics/src/solve.rs`, and the inhour relation
+  in `crates/kinetics/src/inhour.rs`. The Python surface is
+  `nucleide.kinetics` (thin wrappers over `nucleide._internal`).
+</Callout>
+
+## Mathematical details
+
+### E1 — Point-kinetics equations
+
+For `G ≥ 1` precursor groups with total delayed fraction `β = Σ β_i`:
+
+$$
+\frac{dn}{dt} = \frac{\rho - \beta}{\Lambda}\,n + \sum_i \lambda_i C_i,
+\qquad
+\frac{dC_i}{dt} = \frac{\beta_i}{\Lambda}\,n - \lambda_i C_i.
+\tag{E1}
+$$
+
+These are the upstream `Neutronics.dpdt` / `dzetadt` right-hand sides with
+the same state vector and the same Δk reactivity units; Nucleide adds no
+terms (no decay-heat block, no feedback).
+
+### E2 — Equilibrium initial conditions
+
+At steady state with constant reactivity, `dC_i/dt = 0` in (E1b) gives
+
+$$
+C_i(0) = \frac{\beta_i}{\lambda_i \Lambda}\,n_0,
+\tag{E2}
+$$
+
+the steady-state precursor ratio used by the upstream driver initial
+conditions (power normalized, precursors at equilibrium). An algebraic
+consequence checked by the O1 gate: at (E2) initials the precursor source
+cancels the `(ρ−β)` term exactly, so `dn/dt|₀ = n₀·ρ(0)/Λ`.
+
+### E3 — Inhour equation
+
+Assuming exponential solutions `n, C_i ∼ e^{ωt}` at constant reactivity in
+(E1) gives `C_i = β_i n / (Λ(ω + λ_i))`; substituting into (E1a) yields
+
+$$
+\rho(\omega) = \Lambda\,\omega + \sum_i \frac{\beta_i\,\omega}{\omega + \lambda_i}.
+\tag{E3}
+$$
+
+For `0 < ρ < β` the right-hand side is strictly increasing on `ω > 0`
+(derivative `Λ + Σ β_i λ_i/(ω+λ_i)² > 0`), so there is exactly one positive
+root — the stable (asymptotic) period `T = 1/ω`. (E3) is a textbook
+algebraic consequence of (E1); the crate verifies it by direct substitution
+(residual below `1e-10`).
+
+### E4 — Prompt-jump approximation
+
+In the `Λ → 0` limit with precursors frozen across a step `ρ⁻ → ρ⁺`,
+prompt equilibrium `0 = (ρ−β)n + ΛS` before and after (same source
+`S = ΣλC`) gives
+
+$$
+n^+ = n^-\,\frac{\beta - \rho^-}{\beta - \rho^+},
+\qquad \rho^+ < \beta.
+\tag{E4}
+$$
+
+Approximate (percent-level gate), not an identity: it neglects the finite
+prompt transient and precursor motion during the jump.
+
+## Algorithm
+
+The system `dy/dt = A(t)y` with `y = [n, C]` is **stiff**: the prompt
+timescale `Λ/(β−ρ)` is microseconds against precursor times of seconds, so
+the upstream explicit `dopri5` driver loop is not reproduced. The `solve`
+routine in `crates/kinetics/src/solve.rs` uses an adaptive implicit scheme
+instead:
+
+- **θ-method step** (`θ = 1/2` trapezoidal by default, `θ = 1` backward
+  Euler on request): `(I − hθA₁)y₁ = (I + h(1−θ)A₀)y₀` via small-dense
+  partial-pivot elimination (`G+1 ≤ 9`, no new dependencies).
+- **Step-doubling error control** with caller tolerances (`rtol`, `atol`),
+  a step budget, and exact landing on reactivity knots (step edges,
+  ramp/polyline kinks) and output times.
+
+Reactivity insertions mirror the upstream taxonomy — constant (default),
+Heaviside step, finite-width impulse, linear ramp with independent
+post-ramp level — plus a `polyline` extension for table-driven schedules.
+Knot comparisons are right-continuous (`t ≥ t_step` reads the post-step
+level), matching the upstream index semantics.
+
+## Worked example: 1-group step
+
+With `β = 0.0065`, `λ = 0.08 s⁻¹`, `Λ = 10⁻⁴ s`, a step `0 → 0.002 Δk`
+reduces (E1) to `n″ + [λ + (β−ρ)/Λ]n′ − λρ/Λ·n = 0` with `n(0) = n₀`,
+`n′(0) = n₀ρ/Λ`. The roots are `s₁ = 0.03546 s⁻¹`, `s₂ = −45.115 s⁻¹` and
+
+$$
+n(t) = 1.44217\,e^{s_1 t} - 0.44217\,e^{s_2 t}.
+$$
+
+At `t = 0.1 s` after the step, `n ≈ 1.44244` — already on the prompt-jump
+plateau `β/(β−ρ) = 1.44444` (E4) to 0.2%. This exact transient is pinned in
+`fixtures/kinetics/step_oracle.json` and replayed by the solver tests at
+`1e-6` (O3).
+
+## Assumptions and limitations
+
+- **Prescribed reactivity only**: no thermal-hydraulic feedback, no
+  flux-coupled transients, no time-dependent tallies.
+- **Caller-supplied delayed data**: the crate ships no precursor tables.
+  OpenMC iterated-fission-probability runs report effective `β`/`Λ` but no
+  decay constants — `KineticParams::from_ifp` documents that the caller
+  supplies `λᵢ` from the same data library (adapter note, not a data
+  source).
+- **1/6/8-group support**: any `G ≥ 1` validates; the oracle set pins
+  1-group (closed form) and 6-group (period tail) behavior.
+- **Prompt jump is approximate**: valid only for `ρ⁺ < β`; past prompt
+  critical the formula has no solution and the solver must be used.
+- **Tolerances are caller-chosen**: the O1–O5 gates (`1e-12` algebraic,
+  `1e-10` inhour residual, `1e-6` 1-group, 1–2% 6-group tail, `1e-3` PyRK
+  cross-check) are integration settings, not intrinsic accuracy claims.
+- **No WASM exposure** in v1 (deferred unless a tutorial needs it).
+
+## Related work beyond Nucleide
+
+Adjacent capabilities Nucleide does not implement:
+
+- **Thermal-hydraulic feedback and decay-heat blocks**: the upstream
+  package couples lumped-parameter thermal hydraulics and an 11-group
+  decay-heat model to the same neutronics block; Nucleide takes only the
+  neutronics equations, insertion taxonomy, and initial-condition pattern.
+- **ANSI precursor data tables**: the upstream package ships tabulated
+  `βᵢ/λᵢ/Λ` per isotope and spectrum; Nucleide fixtures stay synthetic.
+- **Transport-coupled depletion**: OpenMC recomputes reaction rates between
+  steps; kinetics here is a pure prescribed-`ρ(t)` ODE solve.
+- **Alternative stiff solvers**: matrix-exponential (CRAM-style) or
+  exponential integrators for the PKE linear system are future options;
+  the current θ-method needs no factorization reuse machinery.
+
+## References
+
+- Huff (2015) PyRK proceedings paper<Citation id="huff-2015" /> and the
+  upstream BSD-3 sources<Citation id="pyrk-repo" /> (neutronics block,
+  reactivity insertions, driver initial conditions).
+- The Nucleide implementation<Citation id="nucleide-kinetics" /> and the
+  `validation/kinetics_vs_pyrk.py` two-tier harness (analytic gates plus
+  container PyRK cross-check).

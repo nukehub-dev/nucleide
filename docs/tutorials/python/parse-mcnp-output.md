@@ -128,3 +128,35 @@ deck.validate()
 
 Golden-byte reference files live under `fixtures/mcnp/`. Tests assert that
 Nucleide reproduces them byte-for-byte where parity is intended.
+
+## ENDL, SSW combining, PTRAC export, and mesh data
+
+The same module covers the remaining legacy touchpoints (all Python-side
+except where noted):
+
+```python
+from nucleide.mcnp import (
+    combine_ssw_files,
+    meshtal_mesh_data,
+    ptrac_event_rows,
+    read_endl,
+    write_ptrac_hdf5,
+)
+
+lib = read_endl("fixtures/endl/synthetic_eedl.txt")
+print(lib.nuclides())  # [820000000]
+print(lib.get_rx(820000000, 9, 10, 0)[:1])  # integrated table rows
+
+combine_ssw_files("merged.w", ["part1.w", "part2.w"])
+
+rows = ptrac_event_rows("run.ptrac")  # 19 PtracEvent columns, no HDF5 needed
+write_ptrac_hdf5("run.ptrac", "run.h5")  # needs h5py; bytes never asserted
+
+mesh = meshtal_mesh_data("run_meshtal.txt", as_numpy=True)
+print(mesh["tallies"][4]["result"].shape)  # (ve, groups)
+```
+
+`meshtal_mesh_data` returns plain dicts/arrays only — MOAB tagging stays
+caller-side. See the
+[Python API reference](../../reference/python-api.mdx#nucleidemcnp) for the
+full signatures.

@@ -2124,6 +2124,595 @@ mod tests {
     }
 
     #[test]
+    fn shortcut_nj_bare_r_and_multiply_edges() {
+        // `nJ` multi-jumps.
+        let slots = expand_shortcuts(&["3J".to_string()], 1, "U card").unwrap();
+        assert!(slots.iter().all(|s| *s == Slot::Jump));
+        assert_eq!(slots.len(), 3);
+        // Bare `R` repeats the previous entry once.
+        let slots = expand_shortcuts(&["5".to_string(), "R".to_string()], 1, "U card").unwrap();
+        assert_eq!(
+            slots,
+            vec![Slot::Text("5".to_string()), Slot::Text("5".to_string())]
+        );
+        // Unparseable repeat counts fail instead of repeating.
+        let err = expand_shortcuts(
+            &["1".to_string(), "99999999999999999999999R".to_string()],
+            1,
+            "U card",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("cannot parse repeat"));
+        // Repeats and multiplies right after a jump have no previous entry.
+        let err = expand_shortcuts(&["J".to_string(), "2R".to_string()], 1, "U card").unwrap_err();
+        assert!(err.to_string().contains("follows a jump"));
+        let err = expand_shortcuts(&["J".to_string(), "2M".to_string()], 1, "U card").unwrap_err();
+        assert!(err.to_string().contains("follows a jump"));
+        // Bare `M` never parses as a multiply.
+        let err = expand_shortcuts(&["M".to_string()], 1, "U card").unwrap_err();
+        assert!(err.to_string().contains("cannot parse multiply"));
+        // Interpolation shorthands are rejected; nearby literals are kept.
+        let err = expand_shortcuts(&["3ILOG".to_string()], 1, "E4 card").unwrap_err();
+        assert!(err.to_string().contains("interpolation"));
+        let slots =
+            expand_shortcuts(&["2LOG".to_string(), "MID".to_string()], 1, "E4 card").unwrap();
+        assert_eq!(
+            slots,
+            vec![
+                Slot::Text("2LOG".to_string()),
+                Slot::Text("MID".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn shortcut_multiply_float_paths() {
+        // Integer spelling is kept when both sides are integers.
+        let slots = expand_shortcuts(&["2".to_string(), "3M".to_string()], 1, "U card").unwrap();
+        assert_eq!(slots[1], Slot::Text("6".to_string()));
+        // Mixed integer/float factors go through the float path.
+        let slots = expand_shortcuts(&["2".to_string(), "0.5M".to_string()], 1, "U card").unwrap();
+        assert_eq!(slots[1], Slot::Text("1".to_string()));
+        let slots = expand_shortcuts(&["1.5".to_string(), "2M".to_string()], 1, "U card").unwrap();
+        assert_eq!(slots[1], Slot::Text("3".to_string()));
+        let slots =
+            expand_shortcuts(&["1.5".to_string(), "0.5M".to_string()], 1, "U card").unwrap();
+        assert_eq!(slots[1], Slot::Text("0.75".to_string()));
+        // Very large products keep the full float rendering.
+        let slots = expand_shortcuts(&["1e16".to_string(), "2M".to_string()], 1, "U card").unwrap();
+        assert_eq!(slots[1], Slot::Text("20000000000000000".to_string()));
+        // Non-numeric previous entries cannot be multiplied.
+        let err = expand_shortcuts(&["X".to_string(), "2M".to_string()], 1, "U card").unwrap_err();
+        assert!(err.to_string().contains("cannot multiply non-numeric"));
+    }
+
+    #[test]
+    fn transform_number_and_entry_errors() {
+        // Transform numbers start at 1.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\ntr0 0 0 0\n";
+        let err = parse_transforms(&data_cards(text)).unwrap_err();
+        assert!(err.to_string().contains("invalid transform number"));
+        // Entries must be numeric.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\ntr1 0 0 X\n";
+        let err = parse_transforms(&data_cards(text)).unwrap_err();
+        assert!(err.to_string().contains("cannot parse `X`"));
+        // At most 13 entries (3 displacement + 9 rotation + direction flag).
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\ntr1 0 0 0 0 0 0 0 0 0 0 0 0 0 1\n";
+        let err = parse_transforms(&data_cards(text)).unwrap_err();
+        assert!(err.to_string().contains("too many entries"));
+        // A 13th entry must be 1 or -1.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\ntr1 0 0 0 0 0 1 0 1 0 1 0 0 0\n";
+        let err = parse_transforms(&data_cards(text)).unwrap_err();
+        assert!(err.to_string().contains("trailing entry must be 1 or -1"));
+        // Numberless TR cards are not transforms.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nTR 0 0 0\n";
+        assert!(parse_transforms(&data_cards(text)).unwrap().is_empty());
+    }
+
+    #[test]
+    fn cell_param_classifier_and_value_errors() {
+        // U/LAT/TRCL take no particle classifier.
+        for key in ["u:n=1", "lat:n=1", "trcl:n=5"] {
+            let text = format!("msg\ntitle\n1 0 -1 {key}\n\n1 so 1\n\n");
+            let deck = parse_deck(&text).unwrap();
+            let err = parse_cell_params(&deck.cells).unwrap_err();
+            assert!(
+                err.to_string().contains("takes no particle classifier"),
+                "{key}: {err}"
+            );
+        }
+        // TRCL is a raw passthrough token span.
+        let text = "msg\ntitle\n1 0 -1 trcl=5\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let params = parse_cell_params(&deck.cells).unwrap();
+        assert_eq!(params[0].trcl, Some("5".to_string()));
+        // Universe values must be integers; negatives mark no-truncate.
+        let text = "msg\ntitle\n1 0 -1 u=X\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_cell_params(&deck.cells).unwrap_err();
+        assert!(err.to_string().contains("universe must be an integer"));
+        let text = "msg\ntitle\n1 0 -1 u=-2\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let params = parse_cell_params(&deck.cells).unwrap();
+        assert_eq!(params[0].universe, Some((2, true)));
+        // LAT values must parse and be 1 or 2.
+        let text = "msg\ntitle\n1 0 -1 lat=X\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_cell_params(&deck.cells).unwrap_err();
+        assert!(err.to_string().contains("LAT must be 1 or 2"));
+        // IMP needs a classifier of known particles with a non-negative value.
+        let text = "msg\ntitle\n1 0 -1 imp=1\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_cell_params(&deck.cells).unwrap_err();
+        assert!(err.to_string().contains("needs a particle classifier"));
+        let text = "msg\ntitle\n1 0 -1 imp:q2=1\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_cell_params(&deck.cells).unwrap_err();
+        assert!(err.to_string().contains("unknown particle `q2`"));
+        let text = "msg\ntitle\n1 0 -1 imp:n=X\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_cell_params(&deck.cells).unwrap_err();
+        assert!(err.to_string().contains("importance must be a number"));
+        let text = "msg\ntitle\n1 0 -1 imp:n=-1\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_cell_params(&deck.cells).unwrap_err();
+        assert!(err.to_string().contains("importance must be a number"));
+        // VOL values must parse and be non-negative.
+        let text = "msg\ntitle\n1 0 -1 vol=X\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_cell_params(&deck.cells).unwrap_err();
+        assert!(err.to_string().contains("volume must be a number"));
+        let text = "msg\ntitle\n1 0 -1 vol=-1\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_cell_params(&deck.cells).unwrap_err();
+        assert!(err.to_string().contains("volume must be a number"));
+        // Bare VOL means MCNP calculates it; unknown keys are ignored.
+        let text = "msg\ntitle\n1 0 -1 vol foo=1\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let params = parse_cell_params(&deck.cells).unwrap();
+        assert_eq!(params[0].volume, Some(None));
+        assert!(params[0].importances.is_empty());
+    }
+
+    #[test]
+    fn fill_paren_and_value_errors() {
+        for (fill, fragment) in [
+            ("1 (2", "unbalanced parentheses"),
+            ("1 2)", "unbalanced parentheses"),
+            ("1 (1) extra", "trailing text"),
+            ("1 ((1))", "nested parentheses"),
+            ("X", "universe must be an integer"),
+            ("-1", "universe must be an integer"),
+            ("1 (X)", "must be a positive integer"),
+        ] {
+            let text = format!("msg\ntitle\n1 0 -1 fill={fill}\n\n1 so 1\n\n");
+            let deck = parse_deck(&text).unwrap();
+            let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
+            assert!(err.to_string().contains(fragment), "{fill}: {err}");
+        }
+        // A closing paren before any opening paren is unbalanced too.
+        let text = "msg\ntitle\n1 0 -1 fill=) (1\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("unbalanced parentheses"), "{err}");
+        // Transform reference zero is not positive.
+        let text = "msg\ntitle\n1 0 -1 fill=1 (0)\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
+        assert!(
+            err.to_string().contains("must be a positive integer"),
+            "{err}"
+        );
+        // Empty FILL values and non-numeric hidden coordinates fail.
+        let text = "msg\ntitle\n1 0 -1 fill=\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
+        assert!(
+            err.to_string().contains("needs exactly one universe"),
+            "{err}"
+        );
+        let text = "msg\ntitle\n1 0 -1 fill=1 (X Y Z)\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("cannot parse `X`"), "{err}");
+    }
+
+    #[test]
+    fn fill_matrix_range_errors() {
+        for (fill, fragment) in [
+            ("0:X 0:0 0:0 1", "bad range"),
+            ("1:0 0:0 0:0 1", "exceeds maximum"),
+            ("0:1 0:0 1", "three i:j ranges"),
+            ("0:0 0:0 0:0", "needs 1 universes"),
+            ("0:0 0:0 0:0 X", "must be ≥ 0"),
+            ("0:0 0:0 0:0 -1", "must be ≥ 0"),
+        ] {
+            let text = format!("msg\ntitle\n1 0 -1 fill={fill}\n\n1 so 1\n\n");
+            let deck = parse_deck(&text).unwrap();
+            let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
+            assert!(err.to_string().contains(fragment), "{fill}: {err}");
+        }
+        // Zero entries (`0`) in a matrix mean empty slots.
+        let text = "msg\ntitle\n1 0 -1 fill=0:0 0:0 0:0 0\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let fills = parse_fills(&deck.cells, &deck.data).unwrap();
+        assert!(matches!(
+            fills[0].target,
+            FillTarget::Matrix { ref universes, .. } if universes == &vec![None]
+        ));
+    }
+
+    #[test]
+    fn data_column_dup_overflow_and_bad_values() {
+        // At most one U/LAT/FILL/VOL card per problem.
+        for (cards, fragment) in [
+            ("U 0\nU 1\n", "two universe inputs"),
+            ("LAT 1\nLAT 2\n", "two lattice inputs"),
+            ("FILL 1\nFILL 2\n", "two fill inputs"),
+            ("VOL 1\nVOL 2\n", "two volume inputs"),
+        ] {
+            let text = format!("msg\ntitle\n1 0 -1\n\n1 so 1\n\n{cards}");
+            let deck = parse_deck(&text).unwrap();
+            let err = validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data)
+                .unwrap_err();
+            assert!(err.to_string().contains(fragment), "{cards}: {err}");
+        }
+        // Columns longer than the cell list are rejected.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nU 0 1\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_universes(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("more entries"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nLAT 1 1\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_lattices(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("more entries"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nFILL 1 1\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("more entries"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nVOL 1 1\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_volumes(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("more entries"));
+        // Cell-level and data-level definitions for the same cell conflict.
+        let text = "msg\ntitle\n1 0 -1 lat=1 fill=1\n\n1 so 1\n\nLAT 1\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_lattices(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("in the data block"));
+        let text = "msg\ntitle\n1 0 -1 fill=1\n2 0 -2 u=1\n\n1 so 1\n2 so 2\n\nFILL 1 2\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("in the data block"));
+        let text = "msg\ntitle\n1 0 -1 vol=2\n\n1 so 1\n\nVOL 3\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_volumes(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("in the data block"));
+        // Bad column entries fail with the column's message.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nU X\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_universes(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("U card entries must be integers"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nLAT X\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_lattices(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("LAT card entries must be 1 or 2"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nLAT 3\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_lattices(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("LAT card entries must be 1 or 2"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nFILL -1\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("valid universes"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nFILL X\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_fills(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("valid universes"));
+        // Data-block LAT/FILL lists participate in the views.
+        let text = "msg\ntitle\n1 0 -1\n2 0 -2\n\n1 so 1\n2 so 2\n\nLAT J 2\nFILL J 1\n";
+        let deck = parse_deck(text).unwrap();
+        let lattices = parse_lattices(&deck.cells, &deck.data).unwrap();
+        assert_eq!(lattices.len(), 1);
+        assert_eq!(lattices[0].cell, 2);
+        let fills = parse_fills(&deck.cells, &deck.data).unwrap();
+        assert_eq!(fills.len(), 1);
+        assert_eq!(fills[0].target, FillTarget::Single(1));
+    }
+
+    #[test]
+    fn imp_data_card_errors_and_views() {
+        // IMP data cards need a particle classifier of known particles.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nIMP 1\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_importances(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("needs a particle classifier"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nIMP:Q2 1\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_importances(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("unknown particle `Q2`"));
+        // The same particle twice is a duplicate importance input.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nIMP:N 1\nIMP:N 2\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_importances(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("two importance inputs"));
+        // Cell-level and data-level IMP for the same problem conflict.
+        let text = "msg\ntitle\n1 0 -1 imp:n=1\n\n1 so 1\n\nIMP:N 1\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_importances(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("in the data block"));
+        // Entry counts, values, and signs are checked per card.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nIMP:N 1 2\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_importances(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("more entries"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nIMP:N X\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_importances(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("importances must be"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nIMP:N -1\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_importances(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("importances must be"));
+        // Shortcut errors inside IMP cards propagate with the card name.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nIMP:N 2I\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_importances(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("IMP:N card"));
+        // Multi-particle classifiers fan out; jumps are skipped.
+        let text = "msg\ntitle\n1 0 -1\n2 0 -2\n\n1 so 1\n2 so 2\n\nIMP:N,P J 1\n";
+        let deck = parse_deck(text).unwrap();
+        let importances = parse_importances(&deck.cells, &deck.data).unwrap();
+        assert_eq!(importances.len(), 2);
+        assert!(importances.iter().all(|v| v.cell == 2 && v.value == 1.0));
+        // Cell-level importances land in the view.
+        let text = "msg\ntitle\n1 0 -1 imp:n=2 imp:p=0\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let importances = parse_importances(&deck.cells, &deck.data).unwrap();
+        assert_eq!(importances.len(), 2);
+    }
+
+    #[test]
+    fn vol_no_prefix_and_data_errors() {
+        // A leading NO disables volume calculation; the rest align per cell.
+        let text = "msg\ntitle\n1 0 -1\n2 0 -2\n\n1 so 1\n2 so 2\n\nVOL NO 5 J\n";
+        let deck = parse_deck(text).unwrap();
+        let volumes = parse_volumes(&deck.cells, &deck.data).unwrap();
+        assert_eq!(volumes.len(), 1);
+        assert_eq!(volumes[0].cell, 1);
+        assert_eq!(volumes[0].volume, 5.0);
+        // Cell-level volumes win per cell; bare VOL stays out of the view.
+        let text = "msg\ntitle\n1 0 -1 vol=2\n2 0 -2 vol\n\n1 so 1\n2 so 2\n\n";
+        let deck = parse_deck(text).unwrap();
+        let volumes = parse_volumes(&deck.cells, &deck.data).unwrap();
+        assert_eq!(volumes.len(), 1);
+        assert_eq!(volumes[0].cell, 1);
+        // Data VOL entries must be non-negative numbers.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nVOL X\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_volumes(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("volumes must be numbers"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nVOL -1\n";
+        let deck = parse_deck(text).unwrap();
+        let err = parse_volumes(&deck.cells, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("volumes must be numbers"));
+    }
+
+    #[test]
+    fn tally_fm_e_error_arms() {
+        // Duplicate F cards conflict.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nF4:N 1\nF4:N 2\n";
+        let err = parse_tallies(&data_cards(text)).unwrap_err();
+        assert!(err.to_string().contains("duplicate F4 card"));
+        // F particles must be known shorthands.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nF4:Q2 1\n";
+        let err = parse_tallies(&data_cards(text)).unwrap_err();
+        assert!(err.to_string().contains("unknown particle `Q2`"));
+        // Numberless FM/E cards stay generic data.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nF4:N 1\nFM 1 1\nE 1 2\n";
+        let tallies = parse_tallies(&data_cards(text)).unwrap();
+        assert_eq!(tallies.len(), 1);
+        assert!(tallies[0].fm.is_none() && tallies[0].e_bins.is_none());
+        // FM without a matching F card is an error; duplicates conflict.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nF4:N 1\nFM4 2\nFM4 3\n";
+        let err = parse_tallies(&data_cards(text)).unwrap_err();
+        assert!(err.to_string().contains("duplicate FM4 card"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nF4:N 1\nE4 0 1\nE4 0 2\n";
+        let err = parse_tallies(&data_cards(text)).unwrap_err();
+        assert!(err.to_string().contains("duplicate E4 card"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nE5 0 1\n";
+        let err = parse_tallies(&data_cards(text)).unwrap_err();
+        assert!(err.to_string().contains("E5 has no matching F5 card"));
+        // E bins accept shortcut spellings but must otherwise be numeric.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nF4:N 1\nE4 J 2J R 2R 2M M\n";
+        let tallies = parse_tallies(&data_cards(text)).unwrap();
+        assert_eq!(
+            tallies[0].e_bins,
+            Some(
+                vec!["J", "2J", "R", "2R", "2M", "M"]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect()
+            )
+        );
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nF4:N 1\nE4 X\n";
+        let err = parse_tallies(&data_cards(text)).unwrap_err();
+        assert!(err.to_string().contains("bins must be numbers"));
+    }
+
+    #[test]
+    fn validation_dangling_and_state_checks() {
+        // Duplicate surfaces and materials conflict.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n1 so 2\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err =
+            validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap_err();
+        assert_eq!(
+            err,
+            Error::DuplicateNumber {
+                kind: "surface",
+                number: 1
+            }
+        );
+        let text = "msg\ntitle\n1 1 -1.0 -1\n\n1 so 1\n\nm1 92235 1.0\nm1 92238 1.0\n";
+        let deck = parse_deck(text).unwrap();
+        let err =
+            validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap_err();
+        assert_eq!(
+            err,
+            Error::DuplicateNumber {
+                kind: "material",
+                number: 1
+            }
+        );
+        // Complements reference cells, not surfaces.
+        let text = "msg\ntitle\n1 0 -1 (#9)\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err =
+            validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("missing cell 9"));
+        // Unions walk both branches.
+        let text = "msg\ntitle\n1 0 1 : -9\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err =
+            validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("missing surface 9"));
+        // Surfaces link transforms and periodic partners.
+        let text = "msg\ntitle\n1 0 -1\n\n1 5 px 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err =
+            validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("missing transform 5"));
+        let text = "msg\ntitle\n1 0 -1\n\n1 -5 px 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err =
+            validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("missing periodic surface 5"));
+        // Fills link universes and transforms.
+        let text = "msg\ntitle\n1 0 -1 fill=7\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err =
+            validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("missing universe 7"));
+        let text = "msg\ntitle\n1 0 -1 fill=1 (3)\n2 0 -2 u=1\n\n1 so 1\n2 so 2\n\nTR3 0 0 0\n";
+        let deck = parse_deck(text).unwrap();
+        validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap();
+        let text = "msg\ntitle\n1 0 -1 fill=1 (3)\n2 0 -2 u=1\n\n1 so 1\n2 so 2\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err =
+            validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("missing transform 3"));
+        // Material/density pairing is enforced both ways. The parser never
+        // produces these states (void cells carry no density token; missing
+        // densities fail at parse time), so they are built directly.
+        use crate::cell::{CellCard, GeomExpr, HalfSpace};
+        use crate::inp::{FracKind, McnpMaterial};
+        use crate::surf::{SurfCard, SurfKind};
+        fn card(num: u32, mat: u32, dens: Option<f64>, geom: GeomExpr) -> CellCard {
+            CellCard {
+                num,
+                mat,
+                dens,
+                geom,
+                params: Vec::new(),
+                line: 1,
+                raw_lines: Vec::new(),
+                prefix_lines: Vec::new(),
+            }
+        }
+        fn halfspace(surf: i32) -> GeomExpr {
+            GeomExpr::HalfSpace(HalfSpace {
+                surf,
+                reflecting: false,
+            })
+        }
+        fn surf(num: u32) -> SurfCard {
+            SurfCard {
+                num,
+                reflecting: false,
+                transform: None,
+                periodic: None,
+                kind: SurfKind::So,
+                coeffs: vec![1.0],
+                line: 1,
+                raw_lines: Vec::new(),
+                prefix_lines: Vec::new(),
+            }
+        }
+        let err = validate_problem(
+            &[card(1, 0, Some(1.0), halfspace(-1))],
+            &[surf(1)],
+            &[],
+            &[],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("density set but no material"));
+        let err = validate_problem(
+            &[card(1, 1, None, halfspace(-1))],
+            &[surf(1)],
+            &[McnpMaterial {
+                number: 1,
+                fractions: vec![(nucleide_nuclei::NuclideId::from_name("U235").unwrap(), 1.0)],
+                fraction_type: FracKind::Mass,
+                density: None,
+                comments: Vec::new(),
+            }],
+            &[],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("no density"));
+        // Empty geometry and empty materials are rejected the same way.
+        let err = validate_problem(
+            &[card(1, 0, None, GeomExpr::Intersect(vec![]))],
+            &[surf(1)],
+            &[],
+            &[],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("no geometry defined"));
+        let err = validate_problem(
+            &[card(1, 0, None, halfspace(-1))],
+            &[surf(1)],
+            &[McnpMaterial {
+                number: 1,
+                fractions: Vec::new(),
+                fraction_type: FracKind::Mass,
+                density: None,
+                comments: Vec::new(),
+            }],
+            &[],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("does not have any components"));
+        // A FILL matrix without LAT is rejected.
+        let text = "msg\ntitle\n1 0 -1 fill=0:0 0:0 0:0 1\n2 0 -2 u=1\n\n1 so 1\n2 so 2\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err =
+            validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("FILL matrix but no LAT"));
+        // Surface number zero is rejected.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n0 so 2\n\n";
+        let deck = parse_deck(text).unwrap();
+        let err =
+            validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap_err();
+        assert!(err.to_string().contains("valid number set"));
+    }
+
+    #[test]
+    fn validation_notes_cover_tallies_and_parse_errors() {
+        // Tally particles outside MODE are notes, not errors.
+        let text = "msg\ntitle\n1 0 -1\n\n1 so 1\n\nmode n\nF4:P 1\n";
+        let deck = parse_deck(text).unwrap();
+        validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap();
+        let notes = validation_notes_for(&deck.cells, &deck.data);
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].contains("F4:P is not in MODE"));
+        // Unparseable problems yield no notes at all.
+        let text = "msg\ntitle\n1 0 -1 imp:n=X\n\n1 so 1\n\n";
+        let deck = parse_deck(text).unwrap();
+        assert!(validation_notes_for(&deck.cells, &deck.data).is_empty());
+    }
+
+    #[test]
     fn l3_fixture_validates_clean() {
         let deck = parse_deck(&deck_l3()).unwrap();
         validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap();

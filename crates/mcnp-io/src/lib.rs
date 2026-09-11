@@ -7,6 +7,8 @@
 
 pub mod cell;
 pub mod deck;
+pub mod endl;
+pub mod fortran;
 pub mod inp;
 pub mod mctal;
 pub mod meshtal;

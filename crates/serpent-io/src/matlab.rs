@@ -646,3 +646,171 @@ fn div(a: Numeric, b: Numeric, line: usize) -> Result<Numeric> {
         }
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn table_with(entries: Vec<(String, Entry)>) -> Table {
+        entries.into_iter().collect()
+    }
+
+    #[test]
+    fn scan_counts_counter_blocks_and_skips_comments() {
+        let parsed = scan("% a comment\nA = 1;\n% another\nB = [1 2];\n").unwrap();
+        assert_eq!(parsed.statements.len(), 2);
+        assert_eq!(parsed.blocks, 0);
+        let parsed =
+            scan("if (exist('idx', 'var')); idx = idx + 1; else; idx = 1; end;\nA = 1;\n").unwrap();
+        assert_eq!(parsed.blocks, 1);
+        assert_eq!(parsed.statements.len(), 1);
+        assert!(scan("if (exist('idx', 'var')); A = 1;\n").is_err());
+    }
+
+    #[test]
+    fn scan_rejects_malformed_statements() {
+        assert!(scan("1A = 2;\n").is_err());
+        assert!(scan("A(1 = 2;\n").is_err());
+        assert!(scan("A 1;\n").is_err());
+        assert!(scan("A = 'abc;\n").is_err());
+        assert!(scan("A = '';\n").is_err());
+        assert!(scan("A = [1 2;\n").is_err());
+        assert!(scan("A = [];\n").is_err());
+        assert!(scan("A = [\n% only\n];\n").is_err());
+        // Quoted spans survive separators inside brackets.
+        let parsed = scan("A = ['a b' 'c,d'];\n").unwrap();
+        match &parsed.statements[0].rhs {
+            Rhs::Flat(tokens) => {
+                let values = tokens_to_values(tokens, 1).unwrap();
+                assert_eq!(
+                    values,
+                    vec![Value::Str("a b".into()), Value::Str("c,d".into())]
+                );
+            }
+            _ => panic!("expected flat tokens"),
+        }
+        assert!(tokens_to_values(&["1.0".to_string(), "nope".to_string()], 1).is_err());
+        assert!(parse_number("nope", 1).is_err());
+        // Nested brackets scan (values fail later); text before a quote
+        // closes the pending token first.
+        assert!(scan("A = [[1] 2];\n").is_ok());
+        assert!(scan("A = [x'y];\n").is_ok());
+    }
+
+    #[test]
+    fn apply_simple_covers_every_rhs_shape() {
+        let mut table = Table::new();
+        apply_simple(
+            &mut table,
+            &Statement {
+                name: "Q".into(),
+                indexed: false,
+                line: 1,
+                rhs: Rhs::Quoted("hi".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(table.get_str("Q").unwrap(), "hi");
+        apply_simple(
+            &mut table,
+            &Statement {
+                name: "V".into(),
+                indexed: false,
+                line: 1,
+                rhs: Rhs::Flat(vec!["1".into(), "2".into()]),
+            },
+        )
+        .unwrap();
+        assert_eq!(table.get_vec_f64("V").unwrap(), vec![1.0, 2.0]);
+        apply_simple(
+            &mut table,
+            &Statement {
+                name: "M".into(),
+                indexed: false,
+                line: 1,
+                rhs: Rhs::Rows(vec![vec!["1".into()], vec!["2".into()]]),
+            },
+        )
+        .unwrap();
+        assert_eq!(table.get_matrix("M").unwrap().rows(), 2);
+        apply_simple(
+            &mut table,
+            &Statement {
+                name: "E".into(),
+                indexed: false,
+                line: 1,
+                rhs: Rhs::Expr("1 + 2".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(table.get_f64("E").unwrap(), 3.0);
+        assert!(matrix_from_rows(&[vec!["1".into()], vec!["1".into(), "2".into()]], 1).is_err());
+    }
+
+    #[test]
+    fn expressions_evaluate_zeros_and_elementwise_ops() {
+        let table = table_with(vec![
+            (
+                "V".into(),
+                Entry::Vector(vec![Value::Num(2.0), Value::Num(4.0)]),
+            ),
+            (
+                "W".into(),
+                Entry::Vector(vec![Value::Num(1.0), Value::Num(2.0)]),
+            ),
+        ]);
+        assert!(eval_expr("", &table, 1).is_err());
+        let entry = eval_expr("zeros(2, 2)", &table, 1).unwrap();
+        assert_eq!(entry.as_matrix().unwrap().rows(), 2);
+        let entry = eval_expr("V + W", &table, 1).unwrap();
+        assert_eq!(entry.as_vec_f64().unwrap(), vec![3.0, 6.0]);
+        let entry = eval_expr("V.*W", &table, 1).unwrap();
+        assert_eq!(entry.as_vec_f64().unwrap(), vec![2.0, 8.0]);
+        let entry = eval_expr("V./W", &table, 1).unwrap();
+        assert_eq!(entry.as_vec_f64().unwrap(), vec![2.0, 2.0]);
+        let entry = eval_expr("2 + V", &table, 1).unwrap();
+        assert_eq!(entry.as_vec_f64().unwrap(), vec![4.0, 6.0]);
+        let entry = eval_expr("V + 2", &table, 1).unwrap();
+        assert_eq!(entry.as_vec_f64().unwrap(), vec![4.0, 6.0]);
+        let entry = eval_expr("2.*V", &table, 1).unwrap();
+        assert_eq!(entry.as_vec_f64().unwrap(), vec![4.0, 8.0]);
+        let entry = eval_expr("V./2", &table, 1).unwrap();
+        assert_eq!(entry.as_vec_f64().unwrap(), vec![1.0, 2.0]);
+        let entry = eval_expr("zeros(1, 2) + zeros(1, 2)", &table, 1).unwrap();
+        assert_eq!(entry.as_matrix().unwrap().cols(), 2);
+        let entry = eval_expr("2 + zeros(1, 2)", &table, 1).unwrap();
+        assert_eq!(entry.as_matrix().unwrap().cols(), 2);
+        let entry = eval_expr("2.*3", &table, 1).unwrap();
+        assert_eq!(entry.as_f64().unwrap(), 6.0);
+        let entry = eval_expr("zeros(1, 2).*zeros(1, 2)", &table, 1).unwrap();
+        assert_eq!(entry.as_matrix().unwrap().cols(), 2);
+        assert!(eval_expr("V + ", &table, 1).is_err());
+        // Empty operands and scalar/tensor division shapes.
+        assert!(eval_expr("V.*", &table, 1).is_err());
+        let entry = eval_expr("6./2", &table, 1).unwrap();
+        assert_eq!(entry.as_f64().unwrap(), 3.0);
+        assert!(eval_expr("zeros(2, 2)./zeros(2, 2)", &table, 1).is_ok());
+        // Shape and kind errors name the mismatch.
+        assert!(eval_expr("V + zeros(1, 3)", &table, 1).is_err());
+        assert!(eval_expr("V + zeros(2, 2)", &table, 1).is_err());
+        assert!(eval_expr("V.*zeros(2, 2)", &table, 1).is_err());
+        assert!(eval_expr("V./zeros(2, 2)", &table, 1).is_err());
+        assert!(eval_expr("zeros(1, 2) + zeros(2, 1)", &table, 1).is_err());
+        assert!(eval_expr("zeros(2, 2).*zeros(1, 2)", &table, 1).is_err());
+        assert!(eval_expr("zeros(2, 2)./zeros(1, 2)", &table, 1).is_err());
+        assert!(eval_expr("2./V", &table, 1).is_err());
+        assert!(eval_expr("V + V.*W + zeros(1, 3)", &table, 1).is_err());
+        assert!(eval_expr("MISSING + 1", &table, 1).is_err());
+        assert!(eval_expr("A*B", &table, 1).is_err());
+        assert!(eval_expr(" + ", &table, 1).is_err());
+        assert!(eval_expr("zeros(2", &table, 1).is_err());
+        assert!(eval_expr("zeros(X, 2)", &table, 1).is_err());
+        assert!(eval_expr("zeros(2, X)", &table, 1).is_err());
+        assert!(eval_expr("-", &table, 1).is_err());
+        let strings = table_with(vec![(
+            "S".into(),
+            Entry::Vector(vec![Value::Str("x".into())]),
+        )]);
+        assert!(eval_expr("S + 1", &strings, 1).is_err());
+    }
+}

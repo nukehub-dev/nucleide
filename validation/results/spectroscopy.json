@@ -1,0 +1,185 @@
+{
+  "schema": 1,
+  "name": "spectroscopy",
+  "title": "Spectroscopy (`spectroscopy_vs_pyne.py`)",
+  "environment": {
+    "date": "2026-09-11",
+    "python": "3.12.14",
+    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
+    "nucleide": "0.4.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "text": "Two-tier oracle for `nucleide.spectroscopy`: synthetic E1-E8 gates on hand-built fixtures (tier 1, always run), and a cross-check against the upstream `pyne.spectanalysis` / `pyne.gammaspec` routines on identical runtime inputs (tier 2)."
+    },
+    {
+      "kind": "prose",
+      "text": "E1 rect m=5: worst rel err 0.000e+00 (hand values)."
+    },
+    {
+      "kind": "prose",
+      "text": "E2 five-point: worst rel err 0.000e+00 (hand values)."
+    },
+    {
+      "kind": "prose",
+      "text": "E7 golden: 6-coefficient fit-1 efficiency at 1 MeV."
+    },
+    {
+      "kind": "prose",
+      "text": "E8 X-ray: k=2/l=3 hand intensities (Ka1, Ka2, Kb, L)."
+    },
+    {
+      "kind": "prose",
+      "text": "SPE fixtures: cross-format counts equality over 8 channels."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Rel err",
+        "Tol",
+        "Status"
+      ],
+      "rows": [
+        [
+          "E1 rect smooth",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "E2 five-point smooth",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "E3 background",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "E4 gross count",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "E5 net counts",
+          "1.665335e-16",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "E6 energy bins",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "E7 efficiency golden",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "E8 xray lines",
+          "1.850372e-16",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "SPE cross-format counts",
+          "n=8",
+          "equal",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "X-ray algebra has no container check: the upstream routine reads its HDF5 atomic table at run time and no atomic values are vendored here, so E8 is pinned by the synthetic hand values above."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Rel err",
+        "Tol",
+        "Status"
+      ],
+      "rows": [
+        [
+          "rect m=5 vs PyNE",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "five-point vs PyNE",
+          "1.903239e-16",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "bg vs PyNE",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "gross vs PyNE",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "net vs PyNE",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "ebins vs PyNE",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "efficiency vs PyNE",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "dollar counts vs PyNE",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "dollar ebin vs PyNE",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "plain counts vs PyNE",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "plain ebin vs PyNE",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ]
+      ]
+    }
+  ]
+}

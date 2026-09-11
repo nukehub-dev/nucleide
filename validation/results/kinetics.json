@@ -1,0 +1,151 @@
+{
+  "schema": 1,
+  "name": "kinetics",
+  "title": "Point kinetics (`kinetics_vs_pyrk.py`)",
+  "environment": {
+    "date": "2026-09-11",
+    "python": "3.12.14",
+    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
+    "nucleide": "0.4.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "text": "Two-tier oracle for `nucleide.kinetics`: analytic gates O1-O4 plus invariants on synthetic fixtures (tier 1, always run), and a ramp cross-check against the upstream PyRK neutronics block on runtime-read precursor data (tier 2 / O5)."
+    },
+    {
+      "kind": "prose",
+      "text": "O1 initial rate: got 2.000000e+01, want 2.000000e+01."
+    },
+    {
+      "kind": "prose",
+      "text": "O2 prompt-jump factor: got 1.444444e+00."
+    },
+    {
+      "kind": "prose",
+      "text": "O2 plateau: solver 1.885243e+00 vs PJA 1.857143e+00."
+    },
+    {
+      "kind": "prose",
+      "text": "O3 1-group closed form: worst rel err 8.149e-08 over 7 nodes."
+    },
+    {
+      "kind": "prose",
+      "text": "O4 stable period: got 1.783982e+01 s."
+    },
+    {
+      "kind": "prose",
+      "text": "O4 tail slope: got 5.608273e-02 1/s vs inhour root 5.605439e-02 1/s."
+    },
+    {
+      "kind": "prose",
+      "text": "Ramp-table transient: n(10 s) = 2.798304e+00, all positive."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Rel err",
+        "Tol",
+        "Status"
+      ],
+      "rows": [
+        [
+          "O1 initial rate",
+          "3.552714e-16",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "O2 jump factor (algebraic)",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "O2 prompt plateau",
+          "1.490555e-02",
+          "< 2e-2",
+          "PASS"
+        ],
+        [
+          "O3 1-group transient",
+          "8.149450e-08",
+          "< 1e-6",
+          "PASS"
+        ],
+        [
+          "O4 stable period",
+          "3.982904e-14",
+          "< 1e-9",
+          "PASS"
+        ],
+        [
+          "O4 tail slope",
+          "5.052649e-04",
+          "< 2e-2",
+          "PASS"
+        ],
+        [
+          "Invariant: rho=0 stationary",
+          "1.776357e-16",
+          "< 1e-9",
+          "PASS"
+        ],
+        [
+          "Invariant: ramp positivity/growth",
+          "n_end=2.798304e+00",
+          "> 1",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "PyRK u235/thermal runtime data: beta=8.723000e-03, Lambda=1.080e-05 s."
+    },
+    {
+      "kind": "prose",
+      "text": "PyRK driver loop mirrors upstream driver.solve (dopri5, per-step)."
+    },
+    {
+      "kind": "prose",
+      "text": "O5 ramp vs PyRK: worst rel err 1.556e-04 at 3 probes."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "PyRK n",
+        "Nucleide n",
+        "Rel err",
+        "Status"
+      ],
+      "rows": [
+        [
+          "O5 ramp t=2.00 s",
+          "1.611464e+00",
+          "1.611213e+00",
+          "1.556062e-04",
+          "PASS"
+        ],
+        [
+          "O5 ramp t=3.50 s",
+          "1.847717e+00",
+          "1.847736e+00",
+          "1.048574e-05",
+          "PASS"
+        ],
+        [
+          "O5 ramp t=5.00 s",
+          "2.041719e+00",
+          "2.041736e+00",
+          "8.650656e-06",
+          "PASS"
+        ]
+      ]
+    }
+  ]
+}

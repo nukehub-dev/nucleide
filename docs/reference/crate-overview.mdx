@@ -47,7 +47,7 @@ Python: -
 
 `crates/mcnp-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/mcnp-io)
 
-MCNP-family file I/O: xsdir, meshtal, SSW, PTRAC readers/writers
+MCNP-family file I/O: xsdir, meshtal, SSW, PTRAC, ENDL readers/writers plus shared Fortran-record framing and SSW combining
 
 Depends on:
   [<span class="ref-pill"><code>nucleide-nuclei</code></span>](../architecture/crate-responsibilities.md#nucleide-nuclei)
@@ -152,6 +152,28 @@ Depends on:
 Python:
   [<span class="ref-pill"><code>nucleide.depletion</code></span>](./python-api.mdx#nucleidedepletion)
 
+### nucleide-kinetics
+
+`crates/kinetics` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/kinetics)
+
+Prescribed-reactivity point-kinetics solver (PKE + inhour + prompt-jump)
+
+Depends on: -
+
+Python:
+  [<span class="ref-pill"><code>nucleide.kinetics</code></span>](./python-api.mdx#nucleidekinetics)
+
+### nucleide-spectroscopy
+
+`crates/spectroscopy` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/spectroscopy)
+
+Gamma-ray spectrum smoothing, peak counting, energy/efficiency calibration, and SPE parsing
+
+Depends on: -
+
+Python:
+  [<span class="ref-pill"><code>nucleide.spectroscopy</code></span>](./python-api.mdx#nucleidespectroscopy)
+
 ### nucleide-vr-tools
 
 `crates/vr-tools` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/vr-tools)
@@ -210,6 +232,8 @@ Depends on:
   [<span class="ref-pill"><code>nucleide-material</code></span>](../architecture/crate-responsibilities.md#nucleide-material)
   [<span class="ref-pill"><code>nucleide-mcnp-io</code></span>](../architecture/crate-responsibilities.md#nucleide-mcnp-io)
   [<span class="ref-pill"><code>nucleide-depletion</code></span>](../architecture/crate-responsibilities.md#nucleide-depletion)
+  [<span class="ref-pill"><code>nucleide-kinetics</code></span>](../architecture/crate-responsibilities.md#nucleide-kinetics)
+  [<span class="ref-pill"><code>nucleide-spectroscopy</code></span>](../architecture/crate-responsibilities.md#nucleide-spectroscopy)
   [<span class="ref-pill"><code>nucleide-serpent-io</code></span>](../architecture/crate-responsibilities.md#nucleide-serpent-io)
   [<span class="ref-pill"><code>nucleide-fluka-io</code></span>](../architecture/crate-responsibilities.md#nucleide-fluka-io)
   [<span class="ref-pill"><code>nucleide-vr-tools</code></span>](../architecture/crate-responsibilities.md#nucleide-vr-tools)

@@ -34,6 +34,8 @@ license.
 | [Activation analysis](tutorials/python/activation-analysis.md) | Read ALARA, FISPACT-II, and ORIGEN files and assemble an R2S workflow, including ARMI snapshots |
 | [Deterministic I/O](tutorials/python/deterministic-io.md) | Read ISOTXS and flux files and write PARTISN decks |
 | [Emit code cards](tutorials/python/emit-cards.md) | Render one material to MCNP, Serpent, FLUKA, ALARA, and PARTISN cards, including ARMI blueprint keys |
+| [Run kinetics](tutorials/python/run-kinetics.md) | Solve prescribed-reactivity point-kinetics transients |
+| [Run spectroscopy](tutorials/python/run-spectroscopy.md) | Smooth spectra, count peaks, calibrate energy/efficiency, evaluate X-ray lines, read `.spe` files |
 | [Interactive tutorials](tutorials/interactive/index.mdx) | Run Nucleide in the browser through the WASM build |
 | [Interactive — nuclides](tutorials/interactive/nuclides.mdx) | Nuclide identifiers and nuclear data |
 | [Interactive — materials](tutorials/interactive/materials.mdx) | Formulas, fractions, mixing, and XML export |
@@ -54,6 +56,8 @@ license.
 | [Enrichment cascades](theory/enrichment.mdx) | MARC cascades, separation factors, and SWU |
 | [Variance reduction](theory/variance-reduction.mdx) | MAGIC weight windows and alias-table source sampling |
 | [Nuclear data](theory/nuclear-data.mdx) | Nuclide IDs, name dialects, masses, half-lives, and screening data |
+| [Point kinetics](theory/kinetics.mdx) | Prescribed-reactivity PKE system, inhour relation, prompt jump, and the stiff-aware solver |
+| [Gamma-ray spectroscopy](theory/spectroscopy.mdx) | Smoothing, peak counting, energy/efficiency calibration, X-ray lines, and SPE readers |
 
 ### Reference
 

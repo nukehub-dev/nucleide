@@ -254,6 +254,8 @@ Use `scripts/bump-version.sh X.Y.Z` to bump the workspace version and stamp
 ## Child NAD Index
 
 - `crates/emit/AGENTS.md` — five-emitter card emission + mass-drift contracts.
+- `crates/kinetics/AGENTS.md` — prescribed-reactivity point kinetics (PKE + inhour + prompt jump) + oracle-gate contracts.
+- `crates/spectroscopy/AGENTS.md` — spectroscopy toolkit (smoothing, counting, calibration, X-ray, SPE readers).
 - `website/AGENTS.md` — website build, preview, sync, and E2E test workflow.
 - `validation/AGENTS.md` — cross-code validation harness workflow and the
   generated-results contract.

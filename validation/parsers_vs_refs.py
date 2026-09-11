@@ -275,6 +275,59 @@ def compare_ptrac() -> tuple[list[list[str]], list[str]]:
     return rows, skips
 
 
+def compare_endl() -> tuple[list[list[str]], list[str]]:
+    """Compare ENDL tables against `pyne.endl.Library` (EEDL/EPDL scope)."""
+    try:
+        from pyne.endl import Library as PyneEndl
+    except ImportError as exc:
+        return [], [_note(f"SKIPPED endl: PyNE endl oracle unavailable ({exc})")]
+    import numpy as np_mod
+
+    path = REPO_ROOT / "fixtures" / "endl" / "synthetic_eedl.txt"
+    try:
+        ref = PyneEndl(str(path))
+    except Exception as exc:
+        return [], [_note(f"SKIPPED endl: PyNE Library failed ({type(exc).__name__}: {exc})")]
+    nuc = nucleide.mcnp.read_endl(str(path))
+    rows: list[list[str]] = []
+    skips: list[str] = []
+    ref_nucs = sorted(int(k) for k in ref.structure)
+    if sorted(nuc.nuclides()) != ref_nucs:
+        _track(1.0)
+        rows.append(["nuclides", str(len(ref_nucs)), "MISMATCH"])
+    else:
+        rows.append(["nuclides", str(len(ref_nucs)), fmt(0.0)])
+    for key in [(820000000, 9, 10, 0, None, None), (820000000, 9, 82, 21, None, None)]:
+        nuc_id, p_in, rdesc, rprop, x1, p_out = key
+        try:
+            expected = np_mod.asarray(
+                ref.get_rx(nuc_id, p_in, rdesc, rprop, x1=x1, p_out=p_out), dtype=float
+            )
+        except Exception as exc:
+            skips.append(_note(f"SKIPPED endl {key}: PyNE get_rx failed ({exc})"))
+            continue
+        got = nuc.get_rx(nuc_id, p_in, rdesc, rprop, x1=x1, p_out=p_out)
+        d, n = arr_max_rel_diff(np_mod.asarray(got, dtype=float), expected)
+        rows.append([f"get_rx{nuc_id, p_in, rdesc, rprop}", str(n), fmt(d)])
+    return rows, skips
+
+
+def endl_section(report: Report) -> None:
+    """ENDL fixtures vs `pyne.endl`."""
+    report.heading("ENDL vs PyNE")
+    report.prose(
+        "PyNE `pyne.endl.Library` (EEDL/EPDL scope) runs on the committed"
+        "\n`fixtures/endl/synthetic_eedl.txt` file. Compared fields — nucleus-id"
+        "\nset plus `get_rx` arrays for the integrated (`rdesc=10`, `rprop=0`)"
+        "\nand spectra (`rdesc=82`, `rprop=21`) tables."
+    )
+    rows, skips = compare_endl()
+    if rows:
+        report.table(["Item", "Values compared", "Max rel diff / status"], rows)
+    for note in skips:
+        report.prose(note)
+
+
 def mcnp_section(report: Report) -> None:
     """MCNP fixtures vs pyne.mcnp."""
     report.heading("MCNP vs PyNE")
@@ -332,6 +385,7 @@ def main() -> int:
     )
     serpent_section(report)
     mcnp_section(report)
+    endl_section(report)
     fluka_section(report)
     report.emit()
 

@@ -18,6 +18,8 @@ use std::fmt;
 use std::io::{Read, Write};
 use std::path::Path;
 
+use crate::fortran::{self, read_record, RecordSink};
+
 /// Errors raised while reading or writing SSW data.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
@@ -48,6 +50,21 @@ pub enum Error {
         expected: usize,
         found: usize,
     },
+    /// `combine_files`: headers disagree on a compared field, carry
+    /// unsupported `niwr` extras, or promise an unrepresentable layout.
+    Incompatible(String),
+}
+
+impl From<fortran::Error> for Error {
+    fn from(e: fortran::Error) -> Self {
+        match e {
+            fortran::Error::Io(m) => Error::Io(m),
+            fortran::Error::BadRecordMarker { lead, trailer } => {
+                Error::BadRecordMarker { lead, trailer }
+            }
+            fortran::Error::ShortRecord { need, left } => Error::ShortRecord { need, left },
+        }
+    }
 }
 
 impl fmt::Display for Error {
@@ -76,90 +93,12 @@ impl fmt::Display for Error {
                 f,
                 "track {index} holds {found} values, ncrd says {expected}"
             ),
+            Error::Incompatible(m) => write!(f, "surface-source files incompatible: {m}"),
         }
     }
 }
 
 impl std::error::Error for Error {}
-
-/// One Fortran unformatted record payload with a sequential cursor.
-struct Record {
-    bytes: Vec<u8>,
-    pos: usize,
-}
-
-impl Record {
-    fn take(&mut self, n: usize) -> Result<&[u8], Error> {
-        if self.pos + n > self.bytes.len() {
-            return Err(Error::ShortRecord {
-                need: self.pos + n,
-                left: self.bytes.len(),
-            });
-        }
-        let s = &self.bytes[self.pos..self.pos + n];
-        self.pos += n;
-        Ok(s)
-    }
-
-    fn get_string(&mut self, n: usize) -> String {
-        String::from_utf8_lossy(self.take(n).unwrap_or_default()).into_owned()
-    }
-
-    fn get_i32(&mut self) -> Result<i32, Error> {
-        let b = self.take(4)?;
-        Ok(i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-    }
-
-    fn get_i64(&mut self) -> Result<i64, Error> {
-        let b = self.take(8)?;
-        Ok(i64::from_le_bytes([
-            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
-        ]))
-    }
-
-    fn get_f64(&mut self) -> Result<f64, Error> {
-        let b = self.take(8)?;
-        Ok(f64::from_le_bytes([
-            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
-        ]))
-    }
-
-    fn get_f64_n(&mut self, n: usize) -> Result<Vec<f64>, Error> {
-        (0..n).map(|_| self.get_f64()).collect()
-    }
-
-    fn remaining(&self) -> usize {
-        self.bytes.len() - self.pos
-    }
-
-    fn drain_i32_extras(&mut self) -> Result<Vec<i32>, Error> {
-        let mut v = Vec::new();
-        while self.remaining() >= 4 {
-            v.push(self.get_i32()?);
-        }
-        Ok(v)
-    }
-}
-
-fn read_record<R: Read>(r: &mut R) -> Result<Record, Error> {
-    let mut marker = [0u8; 4];
-    r.read_exact(&mut marker)
-        .map_err(|e| Error::Io(e.to_string()))?;
-    let lead = i32::from_le_bytes(marker);
-    let mut payload = vec![0u8; lead.max(0) as usize];
-    r.read_exact(&mut payload)
-        .map_err(|e| Error::Io(e.to_string()))?;
-    r.read_exact(&mut marker)
-        .map_err(|e| Error::Io(e.to_string()))?;
-    let trailer = i32::from_le_bytes(marker);
-    if lead != trailer {
-        return Err(Error::BadRecordMarker { lead, trailer });
-    }
-    Ok(Record {
-        bytes: payload,
-        pos: 0,
-    })
-}
 
 /// One surface entry from the header's per-surface records.
 #[derive(Debug, Clone, PartialEq)]
@@ -574,10 +513,10 @@ fn read_header<R: Read>(f: &mut R) -> Result<SurfSrcHeader, Error> {
     })
 }
 
-// ── Writer ──────────────────────────────────────────────────────────────────
-//
 // Writer for `put_header` / `put_table_1` / `put_table_2` /
-// `put_surface_info` / `put_summary` / `write_tracklist`. Every record is
+// `put_surface_info` / `put_summary` / `write_tracklist`, built on the shared
+// [`RecordSink`] accumulator (`_FortranRecord.put_*`); only the
+// version-specific counter widths below are SSW-specific. Every record is
 // framed as `[i32 len][payload][i32 len]` little-endian and the version-
 // specific counter widths are preserved: MCNPX-2.6.0 stores `np1`/`nrss`
 // as i32 while plain MCNP5 and MCNP6 (`SF_00001`) store them as i64 (the
@@ -594,60 +533,16 @@ fn read_header<R: Read>(f: &mut R) -> Result<SurfSrcHeader, Error> {
 //   so round trips
 //   stay byte-exact.
 
-/// Accumulates a single Fortran record payload (`_FortranRecord.put_*`).
-struct RecSink {
-    bytes: Vec<u8>,
-}
-
-impl RecSink {
-    fn new() -> Self {
-        RecSink { bytes: Vec::new() }
-    }
-
-    fn put_str(&mut self, s: &str) {
-        self.bytes.extend_from_slice(s.as_bytes());
-    }
-
-    /// `put_int`: little-endian i32.
-    fn put_int(&mut self, v: i32) {
-        self.bytes.extend_from_slice(&v.to_le_bytes());
-    }
-
-    /// `put_long`: little-endian i64.
-    fn put_long(&mut self, v: i64) {
-        self.bytes.extend_from_slice(&v.to_le_bytes());
-    }
-
-    fn put_double(&mut self, v: f64) {
-        self.bytes.extend_from_slice(&v.to_le_bytes());
-    }
-
-    fn frame(self) -> Vec<u8> {
-        frame_record(&self.bytes)
-    }
-}
-
-fn frame_record(payload: &[u8]) -> Vec<u8> {
-    let len = i32::try_from(payload.len())
-        .unwrap_or(i32::MAX)
-        .to_le_bytes();
-    let mut out = Vec::with_capacity(payload.len() + 8);
-    out.extend_from_slice(&len);
-    out.extend_from_slice(payload);
-    out.extend_from_slice(&len);
-    out
-}
-
 fn put_header(out: &mut Vec<u8>, h: &SurfSrcHeader, layout: &Layout) {
     match layout {
         Layout::SplitHeader => {
             // First record holds only the code identifier.
-            let mut rec = RecSink::new();
+            let mut rec = RecordSink::new();
             rec.put_str(&h.kod);
             *out = rec.frame();
 
             // Second record carries everything else plus the dump number.
-            let mut rec = RecSink::new();
+            let mut rec = RecordSink::new();
             rec.put_str(&h.ver);
             rec.put_str(&h.loddat);
             rec.put_str(&h.idtm);
@@ -657,7 +552,7 @@ fn put_header(out: &mut Vec<u8>, h: &SurfSrcHeader, layout: &Layout) {
             out.extend_from_slice(&rec.frame());
         }
         Layout::Mcnpx260 | Layout::Mcnp5 => {
-            let mut rec = RecSink::new();
+            let mut rec = RecordSink::new();
             rec.put_str(&h.kod);
             rec.put_str(&h.ver);
             rec.put_str(&h.loddat);
@@ -671,7 +566,7 @@ fn put_header(out: &mut Vec<u8>, h: &SurfSrcHeader, layout: &Layout) {
 }
 
 fn put_table_1(out: &mut Vec<u8>, h: &SurfSrcHeader, layout: &Layout) {
-    let mut rec = RecSink::new();
+    let mut rec = RecordSink::new();
     match layout {
         // MCNPX 2.6.0 keeps the two big counters narrow.
         Layout::Mcnpx260 => {
@@ -700,7 +595,7 @@ fn put_table_2(out: &mut Vec<u8>, h: &SurfSrcHeader) -> Result<(), Error> {
     let (Some(niwr), Some(mipts), Some(kjaq)) = (h.niwr, h.mipts, h.kjaq) else {
         return Err(Error::MissingTable2);
     };
-    let mut rec = RecSink::new();
+    let mut rec = RecordSink::new();
     rec.put_int(niwr);
     rec.put_int(mipts);
     rec.put_int(kjaq);
@@ -713,7 +608,7 @@ fn put_table_2(out: &mut Vec<u8>, h: &SurfSrcHeader) -> Result<(), Error> {
 
 fn put_surface_info(out: &mut Vec<u8>, h: &SurfSrcHeader) {
     for s in &h.surflist {
-        let mut rec = RecSink::new();
+        let mut rec = RecordSink::new();
         rec.put_int(s.id);
         if h.kjaq == Some(1) {
             rec.put_int(s.facet_id); // macrobody facet flag present
@@ -728,7 +623,7 @@ fn put_surface_info(out: &mut Vec<u8>, h: &SurfSrcHeader) {
 }
 
 fn put_summary(out: &mut Vec<u8>, h: &SurfSrcHeader) {
-    let mut rec = RecSink::new();
+    let mut rec = RecordSink::new();
     for v in h.summary_table.iter().chain(h.summary_extra.iter()) {
         rec.put_int(*v);
     }
@@ -846,13 +741,143 @@ fn encode_file(header: &SurfSrcHeader, tracks: &[TrackData]) -> Result<Vec<u8>, 
 
     // Track records: `ncrd` doubles each, in particle order.
     for t in tracks {
-        let mut rec = RecSink::new();
+        let mut rec = RecordSink::new();
         for v in &t.record {
             rec.put_double(*v);
         }
         out.extend_from_slice(&rec.frame());
     }
     Ok(out)
+}
+
+// ── Combine ───────────────────────────────────────────────────────────────
+//
+// Port of `scripts/ssw_combine.py::combine_multiple_ss_files`: merges several
+// SSW files into one with a combined header. Header compatibility follows
+// `_compare_compatible` (kod/ver/loddat, mipts, njsw/niwr/kjaq, per-surface
+// records); unlike `cmp_semantics` — and like upstream — counters
+// (`np1`/`nrss`/`niss`/`ncrd`) are *not* compared.
+//
+// Combined header rules (upstream `:65-66`):
+// - `orignp1` is the *signed* sum of the inputs' `orignp1` (note `orignp1`,
+//   not the absolute `np1`); `np1` is its absolute value. `nrss` is the plain
+//   sum. Everything else comes from the first file.
+// - Track `nps` values of files after the first shift by the cumulative
+//   *absolute* `np1` (`:46-49`), preserving each track's sign via `copysign`
+//   (`:98-104`).
+//
+// Deviations from upstream (documented, not silent):
+// - Incompatible headers are a typed [`Error::Incompatible`] instead of
+//   printing and returning `False`.
+// - Table 2 follows this crate's `orignp1 < 0` rule, not the legacy
+//   always-emit: combining table-2-carrying files whose signed `orignp1` sum
+//   is non-negative is rejected, since the writer could not reproduce the
+//   table-2 record the inputs carried.
+// - `njsw..njsw+niwr` extras are unsupported on both sides (upstream prints
+//   "unsupported entries" and drops them too); combining files with
+//   `niwr != 0` is rejected so no combine silently discards records.
+
+/// Combine several SSW files into one (`scripts/ssw_combine.py` port).
+///
+/// Reads every input header, rejects incompatible sets, then writes `output`
+/// with the summed header and concatenated (nps-shifted) tracklists.
+pub fn combine_files<P: AsRef<Path>>(inputs: &[P], output: impl AsRef<Path>) -> Result<(), Error> {
+    if inputs.is_empty() {
+        return Err(Error::Incompatible("need at least one input file".into()));
+    }
+    let srcs: Vec<SurfSrc> = inputs
+        .iter()
+        .map(SurfSrc::open)
+        .collect::<Result<Vec<_>, _>>()?;
+    let first = &srcs[0].header;
+    for other in srcs.iter().skip(1) {
+        check_compatible(first, &other.header)?;
+    }
+    if first.niwr.unwrap_or(0) != 0 {
+        return Err(Error::Incompatible(format!(
+            "niwr = {} extras are unsupported for combine (would be dropped)",
+            first.niwr.unwrap_or(0)
+        )));
+    }
+
+    let mut header = first.clone();
+    let orignp1_sum: i64 = srcs.iter().map(|s| s.header.orignp1).sum();
+    let carried_table2 = srcs.iter().any(|s| s.header.orignp1 < 0);
+    if carried_table2 && orignp1_sum >= 0 {
+        return Err(Error::Incompatible(format!(
+            "signed orignp1 sum {orignp1_sum} >= 0 cannot carry the inputs' table-2 record"
+        )));
+    }
+    header.orignp1 = orignp1_sum;
+    header.np1 = orignp1_sum.abs();
+    header.nrss = srcs.iter().map(|s| s.header.nrss).sum();
+
+    // Cumulative absolute-np1 offsets; the first file's tracks are unshifted.
+    let mut tracks = Vec::with_capacity(header.nrss.max(0) as usize);
+    let mut offset: i64 = 0;
+    for (file_idx, src) in srcs.iter().enumerate() {
+        for mut t in src.read_tracklist()? {
+            if file_idx > 0 {
+                let shifted = t.nps + (offset as f64).copysign(t.nps);
+                if !t.record.is_empty() {
+                    t.record[0] = shifted;
+                }
+                t.nps = shifted;
+            }
+            tracks.push(t);
+        }
+        offset += src.header.np1;
+    }
+
+    write_to_path(output, &header, &tracks)
+}
+
+/// Header compatibility for combining (`_compare_compatible`).
+fn check_compatible(first: &SurfSrcHeader, other: &SurfSrcHeader) -> Result<(), Error> {
+    let bad = |what: &str| Error::Incompatible(what.to_string());
+    if other.kod != first.kod {
+        return Err(bad(&format!(
+            "kod {:?} != {:?}",
+            other.kod.trim_end(),
+            first.kod.trim_end()
+        )));
+    }
+    if other.ver != first.ver {
+        return Err(bad(&format!(
+            "ver {:?} != {:?}",
+            other.ver.trim_end(),
+            first.ver.trim_end()
+        )));
+    }
+    if other.loddat != first.loddat {
+        return Err(bad("loddat mismatch"));
+    }
+    if other.mipts != first.mipts {
+        return Err(bad("mipts (particle type) mismatch"));
+    }
+    if other.njsw != first.njsw {
+        return Err(bad("njsw (surface count) mismatch"));
+    }
+    if other.niwr != first.niwr {
+        return Err(bad("niwr (cell count) mismatch"));
+    }
+    if other.kjaq != first.kjaq {
+        return Err(bad("kjaq (macrobody facet flag) mismatch"));
+    }
+    if other.surflist.len() != first.surflist.len() {
+        return Err(bad("surface list length mismatch"));
+    }
+    for (n, (a, b)) in first.surflist.iter().zip(other.surflist.iter()).enumerate() {
+        if a.id != b.id
+            || a.facet_id != b.facet_id
+            || a.surface_type != b.surface_type
+            || a.num_params != b.num_params
+            || a.surf_params != b.surf_params
+        {
+            return Err(bad(&format!("surface record {n} mismatch")));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1133,5 +1158,84 @@ mod tests {
                 found: 10
             }
         );
+    }
+
+    // ── Combine (`ssw_combine.py` port) ───────────────────────────────────
+
+    #[test]
+    fn combine_onetrack_with_itself_sums_signed_headers() {
+        let dir = std::env::temp_dir();
+        let out = dir.join("nucleide_combine_pair.w");
+        combine_files(
+            &[
+                fixture("mcnp_surfsrc_onetrack.w"),
+                fixture("mcnp_surfsrc_onetrack.w"),
+            ],
+            &out,
+        )
+        .unwrap();
+
+        let first = SurfSrc::open(fixture("mcnp_surfsrc_onetrack.w")).unwrap();
+        let merged = SurfSrc::open(&out).unwrap();
+        // orignp1 sums signed; np1 is its absolute value; nrss sums plain.
+        assert_eq!(
+            merged.header.orignp1,
+            first.header.orignp1 + first.header.orignp1
+        );
+        assert_eq!(merged.header.np1, 2 * first.header.np1);
+        assert_eq!(merged.header.nrss, 2 * first.header.nrss);
+
+        // First file's tracks verbatim; later tracks shift nps by the
+        // cumulative absolute np1, preserving each track's sign.
+        let before = first.read_tracklist().unwrap();
+        let after = merged.read_tracklist().unwrap();
+        assert_eq!(after.len(), 2);
+        assert_eq!(after[0], before[0]);
+        let want = before[0].nps + (first.header.np1 as f64).copysign(before[0].nps);
+        assert_eq!(after[1].nps, want);
+        assert_eq!(after[1].record[0], want);
+
+        // The merged file re-parses and round-trips byte-exactly.
+        let tracks = merged.read_tracklist().unwrap();
+        let dir2 = std::env::temp_dir();
+        let rt = dir2.join("nucleide_combine_pair_rt.w");
+        write_to_path(&rt, &merged.header, &tracks).unwrap();
+        assert_eq!(std::fs::read(&rt).unwrap(), std::fs::read(&out).unwrap());
+        std::fs::remove_file(&out).ok();
+        std::fs::remove_file(&rt).ok();
+    }
+
+    #[test]
+    fn combine_single_file_is_identity() {
+        let dir = std::env::temp_dir();
+        let out = dir.join("nucleide_combine_single.w");
+        combine_files(&[fixture("mcnp5_surfsrc.w")], &out).unwrap();
+        assert_eq!(
+            std::fs::read(&out).unwrap(),
+            std::fs::read(fixture("mcnp5_surfsrc.w")).unwrap()
+        );
+        std::fs::remove_file(&out).ok();
+    }
+
+    #[test]
+    fn combine_incompatible_versions_rejected() {
+        let dir = std::env::temp_dir();
+        let out = dir.join("nucleide_combine_bad.w");
+        let err = combine_files(
+            &[fixture("mcnp5_surfsrc.w"), fixture("mcnpx_surfsrc.w")],
+            &out,
+        )
+        .unwrap_err();
+        assert!(matches!(err, Error::Incompatible(_)));
+        std::fs::remove_file(&out).ok();
+    }
+
+    #[test]
+    fn combine_needs_at_least_one_input() {
+        let dir = std::env::temp_dir();
+        let out = dir.join("nucleide_combine_empty.w");
+        let err = combine_files::<String>(&[], &out).unwrap_err();
+        assert!(matches!(err, Error::Incompatible(_)));
+        std::fs::remove_file(&out).ok();
     }
 }

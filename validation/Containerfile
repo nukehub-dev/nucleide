@@ -51,3 +51,12 @@ RUN git clone --depth 1 -b ${OPENMC_VERSION} https://github.com/openmc-dev/openm
 # pip has the current 0.11.0. Pinned for reproducibility.
 RUN pip install --no-cache-dir serpenttools==0.11.0 \
  && python -c "import serpentTools; print('serpentTools', serpentTools.__version__)"
+
+# PyRK: independent point-kinetics oracle for
+# validation/kinetics_vs_pyrk.py (tier 2 / O5 ramp cross-check). The PyPI
+# `pyrk` name is an unrelated package, so install from the upstream Git
+# history instead (BSD-3, github.com/pyrk/pyrk), pinned to a commit hash for
+# reproducibility. Only `pint` (units) is needed on top of the numpy/scipy
+# already installed above; the package declares no install dependencies.
+RUN pip install --no-cache-dir pint "pyrk @ git+https://github.com/pyrk/pyrk@c2bfebf90f5cd36449b6f553675763a23f53aa06" \
+ && python -c "import pyrk.neutronics, pyrk.reactivity_insertion; print('pyrk oracle available')"

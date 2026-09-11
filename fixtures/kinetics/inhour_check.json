@@ -1,0 +1,12 @@
+{
+  "description": "Synthetic 6-group inhour check: hand-built params plus the stable period.",
+  "provenance": "Params are hand-picked round numbers (NOT a data-library evaluation). stable_period_s is the unique positive root of rho = Lambda*w + sum beta_i*w/(w + lambda_i) at rho=0.002, found by Newton iteration in float64 (residual 0.0); the 1e-10 residual gate re-verifies it inside the crate.",
+  "params": {
+    "betas": [0.00021, 0.00141, 0.00127, 0.00255, 0.00074, 0.00032],
+    "lambdas": [0.01, 0.03, 0.1, 0.3, 1.0, 3.0],
+    "Lambda": 0.00001
+  },
+  "rho": 0.002,
+  "omega": 0.05605439092656976,
+  "stable_period_s": 17.839815641025908
+}
