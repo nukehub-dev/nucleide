@@ -1,0 +1,184 @@
+{
+ "provenance": "Hand-built synthetic decay lines (E9); no evaluated data. Lines are small round numbers chosen for this repo. expected_bins are the closed-form normalized intensities p_i = I_i / sum(I); expected_cards are the byte-exact renderings (field order: POS, optional VEC/DIR=1, ERG, WGT, PAR; single line -> inline ERG=<E>; multiple lines -> ERG=D1 with SI1 L energies and SP1 D probabilities, wrapped at 80 columns onto 5-space continuations; numbers in C++ defaultfloat precision-6 form, e.g. 1/78 -> 0.0128205).",
+ "single_isotropic": {
+  "lines": [
+   [
+    0.662,
+    2.0
+   ]
+  ],
+  "source": {},
+  "version": 5,
+  "expected_bins": [
+   [
+    0.662,
+    1.0
+   ]
+  ],
+  "expected_card": "SDEF POS=0 0 0\n     ERG=0.662\n     WGT=1\n     PAR=n"
+ },
+ "single_beam": {
+  "lines": [
+   [
+    0.662,
+    2.0
+   ]
+  ],
+  "source": {
+   "x": 1.0,
+   "y": 2.0,
+   "z": 3.0,
+   "u": 0.0,
+   "v": 0.0,
+   "w": 1.0,
+   "weight": 0.5,
+   "particle": "Photon"
+  },
+  "version": 5,
+  "expected_bins": [
+   [
+    0.662,
+    1.0
+   ]
+  ],
+  "expected_card": "SDEF POS=1 2 3\n     VEC=0 0 1 DIR=1\n     ERG=0.662\n     WGT=0.5\n     PAR=p"
+ },
+ "multi_distribution": {
+  "lines": [
+   [
+    1.17,
+    1.0
+   ],
+   [
+    0.662,
+    2.0
+   ],
+   [
+    1.33,
+    1.0
+   ]
+  ],
+  "source": {},
+  "version": 5,
+  "expected_bins": [
+   [
+    0.662,
+    0.5
+   ],
+   [
+    1.17,
+    0.25
+   ],
+   [
+    1.33,
+    0.25
+   ]
+  ],
+  "expected_card": "SDEF POS=0 0 0\n     ERG=D1\n     WGT=1\n     PAR=n\nSI1 L 0.662 1.17 1.33\nSP1 D 0.5 0.25 0.25"
+ },
+ "wrapped": {
+  "lines": [
+   [
+    0.1,
+    1.0
+   ],
+   [
+    0.2,
+    2.0
+   ],
+   [
+    0.30000000000000004,
+    3.0
+   ],
+   [
+    0.4,
+    4.0
+   ],
+   [
+    0.5,
+    5.0
+   ],
+   [
+    0.6000000000000001,
+    6.0
+   ],
+   [
+    0.7000000000000001,
+    7.0
+   ],
+   [
+    0.8,
+    8.0
+   ],
+   [
+    0.9,
+    9.0
+   ],
+   [
+    1.0,
+    10.0
+   ],
+   [
+    1.1,
+    11.0
+   ],
+   [
+    1.2000000000000002,
+    12.0
+   ]
+  ],
+  "source": {},
+  "version": 5,
+  "expected_bins": [
+   [
+    0.1,
+    0.01282051282051282
+   ],
+   [
+    0.2,
+    0.02564102564102564
+   ],
+   [
+    0.30000000000000004,
+    0.038461538461538464
+   ],
+   [
+    0.4,
+    0.05128205128205128
+   ],
+   [
+    0.5,
+    0.0641025641025641
+   ],
+   [
+    0.6000000000000001,
+    0.07692307692307693
+   ],
+   [
+    0.7000000000000001,
+    0.08974358974358974
+   ],
+   [
+    0.8,
+    0.10256410256410256
+   ],
+   [
+    0.9,
+    0.11538461538461539
+   ],
+   [
+    1.0,
+    0.1282051282051282
+   ],
+   [
+    1.1,
+    0.14102564102564102
+   ],
+   [
+    1.2000000000000002,
+    0.15384615384615385
+   ]
+  ],
+  "expected_card": "SDEF POS=0 0 0\n     ERG=D1\n     WGT=1\n     PAR=n\nSI1 L 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 1.1 1.2\nSP1 D 0.0128205 0.025641 0.0384615 0.0512821 0.0641026 0.0769231 0.0897436\n      0.102564 0.115385 0.128205 0.141026 0.153846"
+ }
+}

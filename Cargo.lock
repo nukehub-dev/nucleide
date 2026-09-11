@@ -872,6 +872,7 @@ version = "0.5.0"
 name = "nucleide-spectroscopy"
 version = "0.5.0"
 dependencies = [
+ "nucleide-nuclei",
  "serde_json",
  "thiserror 2.0.20",
 ]
@@ -895,11 +896,14 @@ dependencies = [
  "nucleide-emit",
  "nucleide-enrichment",
  "nucleide-fispact-io",
+ "nucleide-fluka-io",
  "nucleide-kinetics",
  "nucleide-linalg",
  "nucleide-material",
  "nucleide-mcnp-io",
  "nucleide-nuclei",
+ "nucleide-origen-io",
+ "nucleide-serpent-io",
  "nucleide-spectroscopy",
  "nucleide-vr-tools",
  "serde",

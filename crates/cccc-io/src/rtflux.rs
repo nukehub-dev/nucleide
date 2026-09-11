@@ -271,6 +271,112 @@ mod tests {
     }
 
     #[test]
+    fn keyword_round_trips_for_all_flavors() {
+        for kind in [FluxKind::Rtflux, FluxKind::Atflux, FluxKind::Rzflux] {
+            assert_eq!(FluxKind::from_keyword(kind.keyword()), Some(kind));
+        }
+    }
+
+    #[test]
+    fn header_shape_errors_report_line() {
+        // Too few header tokens.
+        let err = FluxFile::parse(FluxKind::Rtflux, "RTFLUX 1\n1.0\n").unwrap_err();
+        match err {
+            Error::Parse { line, msg } => {
+                assert_eq!(line, 1);
+                assert!(msg.contains("RTFLUX|ATFLUX|RZFLUX"), "{msg}");
+            }
+            err => panic!("expected Parse error, got {err:?}"),
+        }
+
+        // Unknown header keyword.
+        let err = FluxFile::parse(FluxKind::Rtflux, "NOPE 1 2\n1.0 2.0\n").unwrap_err();
+        match err {
+            Error::Parse { line, msg } => {
+                assert_eq!(line, 1);
+                assert!(msg.contains("RTFLUX|ATFLUX|RZFLUX"), "{msg}");
+            }
+            err => panic!("expected Parse error, got {err:?}"),
+        }
+
+        // Non-numeric point count.
+        let err = FluxFile::parse(FluxKind::Rtflux, "RTFLUX x 2\n1.0 2.0\n").unwrap_err();
+        match err {
+            Error::Parse { line, msg } => {
+                assert_eq!(line, 1);
+                assert!(msg.contains("point count"), "{msg}");
+            }
+            err => panic!("expected Parse error, got {err:?}"),
+        }
+
+        // Non-numeric group count.
+        let err = FluxFile::parse(FluxKind::Rtflux, "RTFLUX 1 y\n1.0\n").unwrap_err();
+        match err {
+            Error::Parse { line, msg } => {
+                assert_eq!(line, 1);
+                assert!(msg.contains("group count"), "{msg}");
+            }
+            err => panic!("expected Parse error, got {err:?}"),
+        }
+
+        // Zero counts are rejected.
+        for header in ["RTFLUX 0 2", "RTFLUX 1 0"] {
+            let err =
+                FluxFile::parse(FluxKind::Rtflux, &format!("{header}\n1.0 2.0\n")).unwrap_err();
+            match err {
+                Error::Parse { line, msg } => {
+                    assert_eq!(line, 1);
+                    assert!(msg.contains("positive"), "{msg}");
+                }
+                err => panic!("expected Parse error, got {err:?}"),
+            }
+        }
+
+        // Point/group product overflow.
+        let max = usize::MAX;
+        let huge = format!("RTFLUX {max} {max}\n");
+        let err = FluxFile::parse(FluxKind::Rtflux, &huge).unwrap_err();
+        match err {
+            Error::Parse { line, msg } => {
+                assert_eq!(line, 1);
+                assert!(msg.contains("overflow"), "{msg}");
+            }
+            err => panic!("expected Parse error, got {err:?}"),
+        }
+    }
+
+    #[test]
+    fn point_math_guards_overflow() {
+        // per_point of zero yields no points instead of trapping on division.
+        let empty = FluxFile {
+            kind: FluxKind::Rtflux,
+            groups: 0,
+            values: Vec::new(),
+            per_point: 0,
+        };
+        assert_eq!(empty.npoints(), 0);
+
+        // A huge index overflows the offset and reports None.
+        let flux = FluxFile {
+            kind: FluxKind::Rtflux,
+            groups: 2,
+            values: vec![1.0, 2.0],
+            per_point: 2,
+        };
+        assert_eq!(flux.point(usize::MAX), None);
+    }
+
+    #[test]
+    fn from_file_io_error_surfaces() {
+        let missing = format!(
+            "{}/../../fixtures/cccc/definitely_missing",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let err = FluxFile::from_file(FluxKind::Rtflux, missing).unwrap_err();
+        assert!(matches!(err, Error::Io(_)), "got {err:?}");
+    }
+
+    #[test]
     fn bad_float_reports_line() {
         let err = FluxFile::parse(FluxKind::Rzflux, "RZFLUX 1 2\n1.0 banana\n").unwrap_err();
         match err {

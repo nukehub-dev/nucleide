@@ -1,5 +1,6 @@
-"""Python-side tests for the spectroscopy core (E1-E8 gates + format quirks)."""
+"""Python-side tests for the spectroscopy core (E1-E9 gates + format quirks)."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -131,3 +132,74 @@ def test_spe_magic_rejected_by_other_reader() -> None:
         sp.parse_spe(dollar_text)
     with pytest.raises(ValueError):
         sp.parse_dollar_spe(plain_text)
+
+
+def test_e9_sdef_fixture_goldens() -> None:
+    # Byte-exact card text for the hand-built synthetic line lists in
+    # sdef_oracle.json (provenance recorded in the fixture).
+    fix = json.loads((FIX / "sdef_oracle.json").read_text())
+    for case in ("single_isotropic", "single_beam", "multi_distribution", "wrapped"):
+        c = fix[case]
+        kwargs = dict(c["source"].items())
+        bins, card = sp.sdef_decay_source(
+            [(float(e), float(i)) for e, i in c["lines"]],
+            version=c["version"],
+            **kwargs,
+        )
+        assert [e for e, _ in bins] == pytest.approx([e for e, _ in c["expected_bins"]])
+        assert [p for _, p in bins] == pytest.approx(
+            [p for _, p in c["expected_bins"]], rel=1e-12, abs=1e-15
+        )
+        assert card == c["expected_card"]
+        # Every emitted card line stays inside MCNP's 80-column fixed width.
+        assert all(len(line) <= 80 for line in card.splitlines())
+
+
+def test_e9_normalization_merges_duplicates_and_sorts() -> None:
+    bins, card = sp.sdef_decay_source([(1.0, 2.0), (0.5, 1.0), (1.0, 1.0)])
+    assert bins == pytest.approx([(0.5, 0.25), (1.0, 0.75)])
+    assert "\nSI1 L 0.5 1\nSP1 D 0.25 0.75" in card
+
+
+def test_e9_single_line_isotropic_and_beam() -> None:
+    _, iso = sp.sdef_decay_source([(0.662, 2.0)])
+    assert iso == "SDEF POS=0 0 0\n     ERG=0.662\n     WGT=1\n     PAR=n"
+    _, beam = sp.sdef_decay_source([(0.662, 2.0)], z=3.0, w=1.0, weight=0.5, particle="Photon")
+    assert beam == (
+        "SDEF POS=0 0 3\n     VEC=0 0 1 DIR=1\n     ERG=0.662\n     WGT=0.5\n     PAR=p"
+    )
+
+
+def test_e9_particle_version_dialect() -> None:
+    # Proton gains an MCNP designator only in version 6.
+    with pytest.raises(ValueError):
+        sp.sdef_decay_source([(0.662, 1.0)], particle="Proton", version=5)
+    _, card = sp.sdef_decay_source([(0.662, 1.0)], particle="Proton", version=6)
+    assert card.endswith("\n     PAR=h")
+    with pytest.raises(ValueError):
+        sp.sdef_decay_source([(0.662, 1.0)], particle="Waka waka")
+    with pytest.raises(ValueError):
+        sp.sdef_decay_source([(0.662, 1.0)], version=4)
+
+
+def test_e9_rejected_inputs() -> None:
+    for lines in [
+        [],
+        [(0.662, 0.0)],
+        [(0.662, -1.0)],
+        [(-0.5, 1.0)],
+        [(float("nan"), 1.0)],
+        [(0.662, float("inf"))],
+    ]:
+        with pytest.raises(ValueError):
+            sp.sdef_decay_source(lines)
+    with pytest.raises(ValueError):
+        sp.sdef_decay_source([(0.662, 1.0)], weight=0.0)
+    with pytest.raises(ValueError):
+        sp.sdef_decay_source([(0.662, 1.0)], z=float("nan"))
+
+
+def test_e9_zero_intensity_line_drops_to_single_line_form() -> None:
+    bins, card = sp.sdef_decay_source([(0.662, 2.0), (1.17, 0.0)])
+    assert bins == pytest.approx([(0.662, 1.0)])
+    assert card == "SDEF POS=0 0 0\n     ERG=0.662\n     WGT=1\n     PAR=n"

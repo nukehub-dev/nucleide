@@ -574,6 +574,70 @@ mod tests {
         PtracFile::open(fixture("mcnp_ptrac_i4_little.ptrac")).unwrap()
     }
 
+    // Synthetic-file builders: hand-constructed little-endian records via the
+    // crate's own `RecordSink`, so every test below controls the exact byte
+    // layout it feeds `from_bytes`.
+    use crate::fortran::{frame_record, RecordSink};
+
+    fn rec_i32(vals: &[i32]) -> Vec<u8> {
+        let mut s = RecordSink::new();
+        for v in vals {
+            s.put_int(*v);
+        }
+        s.frame()
+    }
+
+    fn rec_i64(vals: &[i64]) -> Vec<u8> {
+        let mut s = RecordSink::new();
+        for v in vals {
+            s.put_long(*v);
+        }
+        s.frame()
+    }
+
+    fn rec_f32(vals: &[f32]) -> Vec<u8> {
+        let mut s = RecordSink::new();
+        for v in vals {
+            s.put_float(*v);
+        }
+        s.frame()
+    }
+
+    fn rec_f64(vals: &[f64]) -> Vec<u8> {
+        let mut s = RecordSink::new();
+        for v in vals {
+            s.put_double(*v);
+        }
+        s.frame()
+    }
+
+    fn rec_str(s: &str) -> Vec<u8> {
+        let mut k = RecordSink::new();
+        k.put_str(s);
+        k.frame()
+    }
+
+    /// Header bytes shared by the synthetic files: 4-byte sentinel, banner,
+    /// title, then `echo` (exactly 10 f32) followed by any extra spec
+    /// records, the 20-integer count record, and the variable-id list.
+    fn synth_i4_prefix(
+        echo: &[f32],
+        extra_specs: &[Vec<u8>],
+        counts: &[i32],
+        ids: &[i32],
+    ) -> Vec<u8> {
+        let mut bytes = rec_i32(&[-1]);
+        bytes.extend_from_slice(&rec_str("mcnp    5"));
+        bytes.extend_from_slice(&rec_str("  synthetic title   "));
+        bytes.extend_from_slice(&rec_f32(echo));
+        for spec in extra_specs {
+            bytes.extend_from_slice(spec);
+        }
+        bytes.extend_from_slice(&rec_i32(counts));
+        bytes.extend_from_slice(&rec_i32(ids));
+        bytes
+    }
+
     #[test]
     fn titles_match_oracle_both_widths() {
         // The fixture decks carry a fixed problem-title card; assert its
@@ -656,7 +720,11 @@ mod tests {
     #[test]
     fn truncated_bytes_error_not_panic() {
         let full = std::fs::read(fixture("mcnp_ptrac_i4_little.ptrac")).unwrap();
-        for cut in [4usize, 40] {
+        let header_len = i4().events_start;
+        // The deepest cut also eats into the variable-id record, so the
+        // header parse itself must fail with Truncated (not panic, not a
+        // silent Ok).
+        for cut in [4usize, 40, full.len() - header_len + 4] {
             let r = PtracFile::from_bytes(full[..full.len() - cut].to_vec());
             match r {
                 Ok(p) => {
@@ -685,5 +753,256 @@ mod tests {
         assert_eq!(mapping(27), Some("wgt"));
         assert_eq!(mapping(28), Some("tme"));
         assert_eq!(mapping(999), None);
+    }
+
+    // ── Synthetic files (hand-built records, no fixtures) ────────────────
+
+    #[test]
+    fn synthetic_i4_event_stream_decodes() {
+        // counts: nps=2, src=3, bnk=2, col=2, ter=2 (sur absent).
+        let counts = [2, 3, 0, 2, 0, 0, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let ids = [1, 20, 1, 20, 26, 20, 26, 20, 26, 20, 27];
+        let mut bytes = synth_i4_prefix(
+            &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            &[],
+            &counts,
+            &ids,
+        );
+        // One history: NPS line primes a src event, which chains through a
+        // bank and a collision event into a termination event via each
+        // record's first value.
+        bytes.extend_from_slice(&rec_i32(&[7, 1000]));
+        bytes.extend_from_slice(&rec_f32(&[2000.0, 5.0, 6.0, 7.0]));
+        bytes.extend_from_slice(&rec_f32(&[4000.0, 8.0, 9.0]));
+        bytes.extend_from_slice(&rec_f32(&[5000.0, 3.0, 4.0]));
+        bytes.extend_from_slice(&rec_f32(&[9000.0, 1.0, 2.0]));
+
+        let p = PtracFile::from_bytes(bytes).unwrap();
+        assert_eq!(p.format, Format::I4LittleEndian);
+        assert_eq!(p.mcnp_version_info, "mcnp    5");
+        // The title card's surrounding whitespace is stripped on both sides.
+        assert_eq!(p.problem_title, "synthetic title");
+        assert_eq!(
+            p.variable_nums,
+            VariableNums {
+                nps: 2,
+                src: 3,
+                bnk: 2,
+                sur: 0,
+                col: 2,
+                ter: 2
+            }
+        );
+        assert_eq!(p.variable_ids.nps, vec![1, 20]);
+        assert_eq!(p.variable_ids.src, vec![1, 20, 26]);
+        assert_eq!(p.variable_ids.bnk, vec![20, 26]);
+        assert_eq!(p.variable_ids.col, vec![20, 26]);
+        assert_eq!(p.variable_ids.ter, vec![20, 27]);
+
+        let events = p.events().unwrap();
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[0].event_type, 1000);
+        assert_eq!(events[0].get("xxx"), Some(5.0));
+        assert_eq!(events[0].get("erg"), Some(6.0));
+        assert_eq!(events[1].event_type, 2000); // bank event
+        assert_eq!(events[1].get("erg"), Some(8.0));
+        assert_eq!(events[2].event_type, 4000); // collision event
+        assert_eq!(events[2].get("erg"), Some(3.0));
+        assert_eq!(events[3].event_type, 5000);
+        assert_eq!(events[3].get("wgt"), Some(1.0));
+        assert_eq!(events[3].get("xxx"), None);
+        // Field iterator preserves variable order.
+        let fields: Vec<_> = events[0].iter().collect();
+        assert_eq!(fields, vec![("xxx", 5.0), ("erg", 6.0)]);
+    }
+
+    #[test]
+    fn synthetic_i8_natural_width_parses() {
+        // A genuine 16-byte sentinel ([4][-1 i64][4], lead value 4 with the
+        // 8-byte body — the MCNP quirk the probe looks for) selects I8 mode
+        // before the echo record is read; the 80-byte echo then holds exactly
+        // 10 f64 and needs no repack.
+        let mut sentinel = 4i32.to_le_bytes().to_vec();
+        sentinel.extend_from_slice(&(-1i64).to_le_bytes());
+        sentinel.extend_from_slice(&4i32.to_le_bytes());
+        let mut bytes = sentinel;
+        bytes.extend_from_slice(&rec_str("mcnp    5"));
+        bytes.extend_from_slice(&rec_str("synthetic i8"));
+        bytes.extend_from_slice(&rec_f64(&[
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        ]));
+        bytes.extend_from_slice(&rec_i64(&[2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+        // I8 id list: the first n_q (= counts[0]) ids are 8-byte, the rest
+        // 4-byte.
+        let mut id_rec = RecordSink::new();
+        id_rec.put_long(1);
+        id_rec.put_long(20);
+        id_rec.put_int(1);
+        id_rec.put_int(20);
+        id_rec.put_int(26);
+        bytes.extend_from_slice(&id_rec.frame());
+
+        let p = PtracFile::from_bytes(bytes).unwrap();
+        assert_eq!(p.format, Format::I8LittleEndian);
+        assert_eq!(p.variable_nums.nps, 2);
+        assert_eq!(p.variable_nums.src, 3);
+        assert_eq!(p.variable_ids.nps, vec![1, 20]);
+        assert_eq!(p.variable_ids.src, vec![1, 20, 26]);
+        assert!(p.events().unwrap().is_empty());
+    }
+
+    #[test]
+    fn synthetic_i8_short_id_record_is_truncated() {
+        let mut sentinel = 4i32.to_le_bytes().to_vec();
+        sentinel.extend_from_slice(&(-1i64).to_le_bytes());
+        sentinel.extend_from_slice(&4i32.to_le_bytes());
+        let mut bytes = sentinel;
+        bytes.extend_from_slice(&rec_str("mcnp    5"));
+        bytes.extend_from_slice(&rec_str("synthetic i8"));
+        bytes.extend_from_slice(&rec_f64(&[
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        ]));
+        bytes.extend_from_slice(&rec_i64(&[2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+        // Payload holds 1 i64 + 2 i32, but 2 i64 + 3 i32 are declared.
+        let mut id_rec = RecordSink::new();
+        id_rec.put_long(1);
+        id_rec.put_int(20);
+        id_rec.put_int(26);
+        bytes.extend_from_slice(&id_rec.frame());
+
+        assert!(matches!(
+            PtracFile::from_bytes(bytes),
+            Err(Error::Truncated)
+        ));
+    }
+
+    #[test]
+    fn variable_spec_out_of_range_is_bad_structure() {
+        for bad in [0.0f32, 65.0] {
+            let bytes = synth_i4_prefix(
+                &[bad, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                &[],
+                &[0; 20],
+                &[],
+            );
+            match PtracFile::from_bytes(bytes) {
+                Err(Error::BadStructure(m)) => {
+                    assert!(m.contains("input spec declares"), "{m}");
+                }
+                other => panic!("expected BadStructure, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn variable_spec_walk_extends_past_echo_record() {
+        // num_variables=2 with a spec entry declaring n=18 floats: the walk
+        // runs off the 10-float echo record and pulls a second record, then a
+        // third once the second spec entry lands exactly on the boundary.
+        let echo = [2.0, 18.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let spec2 = rec_f32(&[0.0; 10]);
+        let spec3 = rec_f32(&[0.0; 10]);
+        let counts = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let bytes = synth_i4_prefix(&echo, &[spec2, spec3], &counts, &[1]);
+        let p = PtracFile::from_bytes(bytes).unwrap();
+        assert_eq!(p.variable_nums.nps, 1);
+        assert_eq!(p.variable_ids.nps, vec![1]);
+    }
+
+    #[test]
+    fn short_extended_spec_record_is_truncated() {
+        // Same walk, but the record pulled after the boundary holds only 5
+        // floats instead of the required 10.
+        let echo = [2.0, 18.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let spec2 = rec_f32(&[0.0; 10]);
+        let short = rec_f32(&[0.0; 5]);
+        let counts = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let bytes = synth_i4_prefix(&echo, &[spec2, short], &counts, &[1]);
+        assert!(matches!(
+            PtracFile::from_bytes(bytes),
+            Err(Error::Truncated)
+        ));
+    }
+
+    #[test]
+    fn short_counts_record_is_truncated() {
+        // The I4 count record must carry 20 integers; 10 is not enough.
+        let echo = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let mut bytes = rec_i32(&[-1]);
+        bytes.extend_from_slice(&rec_str("mcnp    5"));
+        bytes.extend_from_slice(&rec_str("t"));
+        bytes.extend_from_slice(&rec_f32(&echo));
+        bytes.extend_from_slice(&rec_i32(&[0; 10]));
+        assert!(matches!(
+            PtracFile::from_bytes(bytes),
+            Err(Error::Truncated)
+        ));
+    }
+
+    #[test]
+    fn unrecognised_sentinel_layout_is_bad_structure() {
+        // Lead marker 4 but neither the 4-byte nor the 8-byte sentinel body
+        // follows: a 12-byte buffer cannot hold the I8 layout's trailer.
+        let mut bytes = 4i32.to_le_bytes().to_vec();
+        bytes.extend_from_slice(&[0xAA; 8]);
+        match PtracFile::from_bytes(bytes) {
+            Err(Error::BadStructure(m)) => assert_eq!(m, "unrecognised sentinel layout"),
+            other => panic!("expected BadStructure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mid_file_marker_mismatch_is_bad_structure() {
+        let echo = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let mut bytes = rec_i32(&[-1]);
+        bytes.extend_from_slice(&rec_str("mcnp    5"));
+        // Corrupt the trailing marker of the banner record just appended.
+        let n = bytes.len();
+        bytes[n - 1] ^= 0xFF;
+        bytes.extend_from_slice(&rec_str("t"));
+        bytes.extend_from_slice(&rec_f32(&echo));
+        bytes.extend_from_slice(&rec_i32(&[
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]));
+        bytes.extend_from_slice(&rec_i32(&[1]));
+        match PtracFile::from_bytes(bytes) {
+            Err(Error::BadStructure(m)) => {
+                assert!(m.contains("record markers disagree"), "{m}");
+            }
+            other => panic!("expected BadStructure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn trailing_junk_in_event_stream_is_truncated() {
+        let echo = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let counts = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let mut bytes = synth_i4_prefix(&echo, &[], &counts, &[1]);
+        bytes.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
+        let p = PtracFile::from_bytes(bytes).unwrap();
+        assert_eq!(p.events(), Err(Error::Truncated));
+    }
+
+    #[test]
+    fn empty_event_line_is_bad_structure() {
+        let echo = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let counts = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let mut bytes = synth_i4_prefix(&echo, &[], &counts, &[1]);
+        bytes.extend_from_slice(&rec_i32(&[7, 1000]));
+        bytes.extend_from_slice(&frame_record(&[]));
+        match PtracFile::from_bytes(bytes).unwrap().events() {
+            Err(Error::BadStructure(m)) => assert_eq!(m, "empty event line"),
+            other => panic!("expected BadStructure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn error_display_messages() {
+        assert!(format!("{}", Error::Io("x".into())).contains("io error"));
+        assert!(format!("{}", Error::Unsupported("y".into())).contains("unsupported PTRAC format"));
+        assert!(format!("{}", Error::Truncated).contains("truncated"));
+        assert!(
+            format!("{}", Error::BadStructure("z".into())).contains("malformed PTRAC structure")
+        );
     }
 }

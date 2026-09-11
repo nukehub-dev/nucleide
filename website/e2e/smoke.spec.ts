@@ -89,6 +89,25 @@ const INTERACTIVE_PAGES: InteractivePage[] = [
     extraSteps: [{ button: "wwinp" }, { button: "Parse", output: "text=ni:" }],
   },
   {
+    path: "tutorials/interactive/serpent-io",
+    button: "Parse",
+    output: "text=Variables:",
+    extraSteps: [
+      { button: "dep" },
+      { button: "Load sample dep" },
+      { button: "Parse", output: "text=Nuclides:" },
+      { button: "det" },
+      { button: "Load sample det" },
+      { button: "Parse", output: "text=Detectors:" },
+    ],
+  },
+  {
+    path: "tutorials/interactive/fluka-io",
+    button: "Parse",
+    output: "text=Tallies:",
+    chart: { actions: ["Load sample USRBIN", "Parse"], selector: ".js-plotly-plot" },
+  },
+  {
     path: "tutorials/interactive/variance-reduction",
     button: "Generate MAGIC bounds",
     output: "text=Groups per voxel:",
@@ -124,6 +143,12 @@ end`,
       { button: "Parse", output: "text=Rows:" },
       { button: "FISPACT output" },
       { button: "Parse", output: "text=Rows:" },
+      { button: "ORIGEN TAPE5" },
+      { button: "Parse", output: "text=Materials:" },
+      { button: "ORIGEN TAPE6" },
+      { button: "Parse", output: "text=total activity:" },
+      { button: "ORIGEN TAPE9" },
+      { button: "Parse", output: "text=Entries:" },
       { button: "R2S workflow" },
       { button: "Parse", output: "text=Top schedule:" },
       { button: "R2S snapshot" },
@@ -225,7 +250,7 @@ for (const { path, button, output, cell, chart, paste, extraSteps } of INTERACTI
           await input.scrollIntoViewIfNeeded();
           await input.fill(step.fill.text);
         }
-        const stepButton = page.getByRole("button", { name: step.button });
+        const stepButton = page.getByRole("button", { name: step.button, exact: true });
         await stepButton.scrollIntoViewIfNeeded();
         await stepButton.click();
         // Sample loaders disable their button while fetching; wait for the

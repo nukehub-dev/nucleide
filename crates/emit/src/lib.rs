@@ -44,10 +44,15 @@ use nucleide_nuclei::NuclideId;
 /// One of the five supported transport-code dialects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Code {
+    /// MCNP `m<number>` material card.
     Mcnp,
+    /// Serpent `mat <name> <-density>` material card.
     Serpent,
+    /// FLUKA `COMPOUND` card.
     Fluka,
+    /// ALARA `mixture` block.
     Alara,
+    /// PARTISN single-zone deck.
     Partisn,
 }
 
@@ -128,7 +133,7 @@ impl EmitOptions {
 pub struct Dropped {
     /// Nuclide that was skipped.
     pub id: NuclideId,
-    /// Mass [g] left out of the emitted cards.
+    /// Mass \[g\] left out of the emitted cards.
     pub mass: f64,
     /// Machine-readable reason (e.g. `"no-fluka-name"`, `"no-atomic-mass"`).
     pub reason: String,
@@ -141,7 +146,7 @@ pub struct Emitted {
     pub code: Code,
     /// Card text, ready to paste into a deck.
     pub text: String,
-    /// Mass [g] accounted per emitted nuclide, in [`Material`] order.
+    /// Mass \[g\] accounted per emitted nuclide, in [`Material`] order.
     pub accounted: Vec<(NuclideId, f64)>,
     /// Nuclides skipped with reasons.
     pub dropped: Vec<Dropped>,
@@ -151,7 +156,7 @@ pub struct Emitted {
 }
 
 impl Emitted {
-    /// Mass [g] represented by these cards.
+    /// Mass \[g\] represented by these cards.
     pub fn mass_out(&self) -> f64 {
         self.accounted.iter().map(|(_, m)| m).sum()
     }
@@ -162,9 +167,9 @@ impl Emitted {
 pub struct DriftRow {
     /// Dialect this row covers.
     pub code: Code,
-    /// Input mass [g].
+    /// Input mass \[g\].
     pub mass_in: f64,
-    /// Mass represented in the emitted cards [g].
+    /// Mass represented in the emitted cards \[g\].
     pub mass_out: f64,
     /// `(mass_in - mass_out) / mass_in`; zero for lossless emission.
     pub rel_drift: f64,

@@ -528,4 +528,239 @@ mod tests {
         assert_eq!(py_exp(-2.5e-3, 3), "-2.500e-03");
         assert_eq!(py_exp(1.0, 1), "1.0e+00");
     }
+
+    #[test]
+    fn error_display_smoke() {
+        let cases = [
+            (Error::Io("boom".to_string()), "io error: boom"),
+            (
+                Error::BadHeader("nope".to_string()),
+                "malformed xsdir header: nope",
+            ),
+            (
+                Error::BadNumber {
+                    field: "awr",
+                    text: "xx".to_string(),
+                },
+                "cannot parse awr from `xx`",
+            ),
+            (
+                Error::TooFewFields { got: 3 },
+                "directory entry needs >= 7 fields, found 3",
+            ),
+            (
+                Error::MissingTemperature,
+                "table has no temperature; cannot convert to Serpent form",
+            ),
+        ];
+        for (err, want) in cases {
+            assert_eq!(err.to_string(), want);
+        }
+    }
+
+    #[test]
+    fn alias_returns_full_table_name() {
+        let x = gen_xsdir();
+        assert_eq!(x.tables[0].alias(), "1001.44c");
+    }
+
+    #[test]
+    fn serpent_type_and_metastable_edges() {
+        let text = "\natomic weight ratios\ndirectory\n\
+                    1001.55y 1.0 f 0 1 4 5\n\
+                    lwtr.20t 1.0 f 0 1 4 5\n\
+                    1001.44x 1.0 f 0 1 4 5\n";
+        let x = Xsdir::parse(text).unwrap();
+        assert_eq!(x.tables[0].serpent_type(), Some(2));
+        assert_eq!(x.tables[1].serpent_type(), Some(3));
+        assert_eq!(x.tables[2].serpent_type(), None);
+        // Metastable flags are only meaningful for `c` tables.
+        assert_eq!(x.tables[0].metastable(), None);
+        assert_eq!(x.tables[2].metastable(), None);
+    }
+
+    #[test]
+    fn metastable_am242_special_cases_and_high_a_heuristic() {
+        let text = "\natomic weight ratios\ndirectory\n\
+                    95242.44c 1.0 f 0 1 4 5\n\
+                    95642.44c 1.0 f 0 1 4 5\n\
+                    109601.44c 1.0 f 0 1 4 5\n";
+        let x = Xsdir::parse(text).unwrap();
+        assert_eq!(x.tables[0].metastable(), Some(true));
+        assert_eq!(x.tables[1].metastable(), Some(false));
+        assert_eq!(x.tables[2].metastable(), Some(true));
+    }
+
+    #[test]
+    fn to_serpent_keeps_directory_trailing_slash() {
+        let x = gen_xsdir();
+        let line = x.tables[0].to_serpent("mydir/").unwrap();
+        assert_eq!(
+            line,
+            "1001.44c 1001.44c 1 1001 0 1.111111 6.44688328094e+15 0 mydir/many_xs/1001.555nc"
+        );
+    }
+
+    #[test]
+    fn datapath_without_equals_errors() {
+        let text = "datapath_without_equals\natomic weight ratios\ndirectory\n";
+        assert!(matches!(
+            Xsdir::parse(text),
+            Err(Error::BadHeader(msg)) if msg.contains("lacks '='")
+        ));
+    }
+
+    #[test]
+    fn non_datapath_first_line_is_skipped() {
+        // A non-blank line 1 that is not DATAPATH= is ignored; the AWR
+        // header still has to be the following line.
+        let text = "xsdir\natomic weight ratios\ndirectory\n1001.44c 1.0 f 0 1 4 5\n";
+        let x = Xsdir::parse(text).unwrap();
+        assert_eq!(x.datapath, None);
+        assert_eq!(x.tables.len(), 1);
+    }
+
+    #[test]
+    fn empty_file_and_missing_awr_header_errors() {
+        assert!(matches!(
+            Xsdir::parse(""),
+            Err(Error::BadHeader(msg)) if msg == "empty file"
+        ));
+        assert!(matches!(
+            Xsdir::parse("datapath=/x\n"),
+            Err(Error::BadHeader(msg)) if msg == "missing AWR section"
+        ));
+    }
+
+    #[test]
+    fn bad_awr_pair_numbers_report_their_fields() {
+        let text = "\natomic weight ratios\nxx 1.0\ndirectory\n";
+        assert!(matches!(
+            Xsdir::parse(text),
+            Err(Error::BadNumber {
+                field: "awr zaid",
+                ..
+            })
+        ));
+        let text = "\natomic weight ratios\n1000 yy\ndirectory\n";
+        assert!(matches!(
+            Xsdir::parse(text),
+            Err(Error::BadNumber { field: "awr", .. })
+        ));
+    }
+
+    #[test]
+    fn from_file_io_and_parse_errors() {
+        assert!(matches!(
+            Xsdir::from_file("/definitely/not/here_xsdir"),
+            Err(Error::Io(_))
+        ));
+        let p = std::env::temp_dir().join("nucleide_xsdir_bad.txt");
+        std::fs::write(&p, "not\nan xsdir\n").unwrap();
+        assert!(matches!(Xsdir::from_file(&p), Err(Error::BadHeader(_))));
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn to_serpent_requires_serpent_type_and_temperature() {
+        // Unmapped table suffix: no Serpent table type.
+        let text = "\natomic weight ratios\ndirectory\n1001.44x 1.0 f 0 1 4 5\n";
+        let x = Xsdir::parse(text).unwrap();
+        assert!(matches!(
+            x.tables[0].to_serpent(""),
+            Err(Error::MissingTemperature)
+        ));
+        // Continuous table without a temperature field.
+        let text = "\natomic weight ratios\ndirectory\n1001.44c 1.0 f 0 1 4 5\n";
+        let x = Xsdir::parse(text).unwrap();
+        assert!(matches!(
+            x.tables[0].to_serpent(""),
+            Err(Error::MissingTemperature)
+        ));
+    }
+
+    #[test]
+    fn metastable_non_numeric_zaid_is_none() {
+        // e.g. thermal `lwtr` tables: no integer zaid to test A > 600 on.
+        let text = "\natomic weight ratios\ndirectory\nlwtr.44c 1.0 f 0 1 4 5\n";
+        let x = Xsdir::parse(text).unwrap();
+        assert_eq!(x.tables[0].metastable(), None);
+    }
+
+    #[test]
+    fn blank_line_inside_awr_errors() {
+        let text = "\natomic weight ratios\n\n";
+        assert!(matches!(
+            Xsdir::parse(text),
+            Err(Error::BadHeader(msg)) if msg.contains("blank line inside AWR")
+        ));
+    }
+
+    #[test]
+    fn odd_awr_line_then_eof_errors() {
+        // Odd-count line ends the AWR section; EOF before `directory` errors.
+        let text = "\natomic weight ratios\n1000\n";
+        assert!(matches!(
+            Xsdir::parse(text),
+            Err(Error::BadHeader(msg)) if msg == "no `directory` section found"
+        ));
+    }
+
+    #[test]
+    fn blank_line_terminates_directory_entries() {
+        let text = "\natomic weight ratios\ndirectory\n\
+                    1001.44c 1.0 f 0 1 4 5\n\
+                    \n\
+                    trailing junk ignored\n";
+        let x = Xsdir::parse(text).unwrap();
+        assert_eq!(x.tables.len(), 1);
+    }
+
+    #[test]
+    fn continuation_plus_at_eof_errors() {
+        let text = "\natomic weight ratios\ndirectory\n1001.44c 1.0 f 0 1 4 5 +\n";
+        assert!(matches!(
+            Xsdir::parse(text),
+            Err(Error::BadHeader(msg)) if msg.contains("continuation '+' ends file")
+        ));
+    }
+
+    #[test]
+    fn bad_numeric_fields_report_their_names() {
+        for (field, entry) in [
+            ("filetype", "1001.44c 1.0 f 0 xx 4 5"),
+            ("recordlength", "1001.44c 1.0 f 0 1 4 5 xx"),
+            ("entries", "1001.44c 1.0 f 0 1 4 5 0 xx"),
+            ("temperature", "1001.44c 1.0 f 0 1 4 5 0 0 xx"),
+        ] {
+            let text = format!("\natomic weight ratios\ndirectory\n{entry}\n");
+            assert!(
+                matches!(
+                    Xsdir::parse(&text),
+                    Err(Error::BadNumber { field: f, .. }) if f == field
+                ),
+                "expected {field} error for {entry}"
+            );
+        }
+    }
+
+    #[test]
+    fn write_xsdata_file_matches_oracle_lines() {
+        let x = gen_xsdir();
+        let p = std::env::temp_dir().join("nucleide_xsdir_xsdata.txt");
+        x.write_xsdata(&p).unwrap();
+        let written = std::fs::read_to_string(&p).unwrap();
+        std::fs::remove_file(&p).ok();
+        assert_eq!(
+            written,
+            "1001.44c 1001.44c 1 1001 0 1.111111 6.44688328094e+15 0 many_xs/1001.555nc\n\
+             1001.66c 1001.66c 1 1001 0 1.111111 6.44688328094e+15 0 such_data/1001.777nc\n\
+             1001.70c 1001.70c 1 1001 0 1.111111 6.44688328094e+15 0 more_data/1001.999nc\n"
+        );
+
+        let bad = std::env::temp_dir()
+            .join("nucleide_no_such_dir")
+            .join("xsdata.txt");
+        assert!(matches!(x.write_xsdata(&bad), Err(Error::Io(_))));
+    }
 }

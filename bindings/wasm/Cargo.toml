@@ -30,6 +30,9 @@ nucleide-spectroscopy.workspace = true
 nucleide-alara-io.workspace = true
 nucleide-cccc-io.workspace = true
 nucleide-fispact-io.workspace = true
+nucleide-serpent-io.workspace = true
+nucleide-fluka-io.workspace = true
+nucleide-origen-io.workspace = true
 nucleide-vr-tools.workspace = true
 nucleide-linalg = { workspace = true, default-features = false }
 

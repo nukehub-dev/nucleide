@@ -150,4 +150,38 @@ mod tests {
             Err(Error::Degenerate)
         ));
     }
+
+    #[test]
+    fn mcnp_natural_placeholders_round_trip_by_z() {
+        // Elemental placeholder ids (the mcnp-io natural-element convention,
+        // a == 0) emit as Z000 zaids; the reader keeps them as placeholders,
+        // so the round-trip comparison matches recovered fractions by Z.
+        let mut mat = Material::new();
+        mat.add_nuclide(NuclideId::from_nucid(10_000_000), 2.0); // H
+        mat.add_nuclide(NuclideId::from_nucid(80_000_000), 16.0); // O
+        let out = emit_mcnp(&mat, &EmitOptions::new("water")).unwrap();
+        assert!(out.text.starts_with("m1 "));
+        assert!(out.text.contains("1000.80c"));
+        assert!(out.text.contains("8000.80c"));
+        assert!(out.reparsed);
+        assert!((out.mass_out() - 18.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn mcnp_broken_suffix_fails_reparse_verification() {
+        // A caller-supplied suffix containing whitespace corrupts the card,
+        // so the MCNP reader rejects the emitted text and the failure
+        // surfaces as a re-parse error.
+        let opts = EmitOptions {
+            xs_suffix: "80c broken".to_string(),
+            ..EmitOptions::new("uo2")
+        };
+        match emit_mcnp(&uo2(), &opts).unwrap_err() {
+            Error::Reparse { code, detail } => {
+                assert_eq!(code, Code::Mcnp);
+                assert!(!detail.is_empty());
+            }
+            other => panic!("{other:?}"),
+        }
+    }
 }

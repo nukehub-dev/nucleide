@@ -332,4 +332,82 @@ mod tests {
             })
         ));
     }
+
+    #[test]
+    fn error_display_messages() {
+        use std::error::Error as _;
+
+        let io = Error::Io("disk".into());
+        assert_eq!(io.to_string(), "io error: disk");
+        assert!(io.source().is_none());
+        assert_eq!(
+            Error::BadStructure("no kcode".into()).to_string(),
+            "malformed MCTAL: no kcode"
+        );
+        assert_eq!(
+            Error::BadNumber {
+                context: "n_cycles",
+                text: "xx".into(),
+            }
+            .to_string(),
+            "cannot parse n_cycles from `xx`"
+        );
+    }
+
+    #[test]
+    fn bad_tally_line_errors() {
+        let text = "mcnp v d t 1 10 5\nc\nnot_a_tally 0\n\nkcode 1 0 0 5\n1 1 1 1 1\n";
+        assert!(matches!(
+            Mctal::parse(text),
+            Err(Error::BadStructure(m)) if m.contains("expected `tally` line")
+        ));
+    }
+
+    #[test]
+    fn eof_after_tally_line_still_searches_kcode() {
+        // No tally-numbers line at all: tally_nums defaults to empty, then
+        // the kcode search hits EOF.
+        let text = "mcnp v d t 1 10 5\nc\ntally 0\n";
+        assert!(matches!(
+            Mctal::parse(text),
+            Err(Error::BadStructure(m)) if m.contains("kcode")
+        ));
+    }
+
+    #[test]
+    fn junk_lines_before_kcode_are_skipped() {
+        let text = "mcnp v d t 1 10 5\nc\ntally 0\n4 14\nversion junk\nmore junk\nkcode 2 1 0 5\n 1 1 1 1 1\n 2 2 2 2 2\n";
+        let m = Mctal::parse(text).unwrap();
+        assert_eq!(m.tally_nums, vec![4, 14]);
+        assert_eq!(m.n_tallies, "0");
+        assert_eq!(m.k_col, vec![1.0, 2.0]);
+    }
+
+    #[test]
+    fn unsupported_vars_per_cycle_errors() {
+        let text = "mcnp v d t 1 10 5\nc\ntally 0\n\nkcode 1 0 7 5\n1 1 1 1 1\n";
+        assert!(matches!(
+            Mctal::parse(text),
+            Err(Error::BadStructure(m)) if m.contains("unsupported vars_per_cycle 7")
+        ));
+    }
+
+    #[test]
+    fn short_cycle_row_errors() {
+        let text = "mcnp v d t 1 10 5\nc\ntally 0\n\nkcode 1 0 5 5\n1 2 3\n";
+        assert!(matches!(
+            Mctal::parse(text),
+            Err(Error::BadStructure(m)) if m.contains("cycle row has 3 values, need >= 5")
+        ));
+    }
+
+    #[test]
+    fn incomplete_19var_row_errors() {
+        // Four physical lines per cycle, but only 10 values total.
+        let text = "mcnp v d t 1 10 5\nc\ntally 0\n\nkcode 1 0 19\n1 2 3 4 5 6 7 8 9 10\n\n\n\n";
+        assert!(matches!(
+            Mctal::parse(text),
+            Err(Error::BadStructure(m)) if m.contains("19-var cycle row incomplete")
+        ));
+    }
 }

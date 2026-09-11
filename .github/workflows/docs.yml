@@ -65,6 +65,7 @@ jobs:
             --timeout 30
             --max-retries 3
             --retry-wait-time 5
+            --root-dir 'docs'
             --exclude-path 'target'
             --exclude-path '.mypy_cache'
             --exclude-path '.pytest_cache'

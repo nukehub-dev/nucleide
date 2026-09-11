@@ -1,7 +1,8 @@
 //! ALARA `mixture` block emission.
 //!
 //! Each nuclide becomes an `element <name> 1.0 <massfrac>` entry using the
-//! canonical [`NuclideId`] name (which the deck reader parses back). The
+//! canonical [`nucleide_nuclei::NuclideId`] name (which the deck reader
+//! parses back). The
 //! block text matches [`AlaraDeck`] display formatting and is verified by
 //! re-parsing the fragment with [`AlaraDeck::parse`].
 
@@ -89,5 +90,37 @@ mod tests {
         assert!(out.text.ends_with("end\n"));
         assert!(out.reparsed);
         assert!((out.mass_out() - 4.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn alara_multiword_name_fails_reparse_verification() {
+        // A caller-supplied name that the deck parser rejects (a mixture
+        // header needs exactly one name argument) surfaces as a re-parse
+        // error rather than a silent pass.
+        let mut mat = Material::new();
+        mat.add_nuclide(NuclideId::from_name("Fe56").unwrap(), 3.0);
+        match emit_alara(&mat, &EmitOptions::new("two names")).unwrap_err() {
+            Error::Reparse { code, detail } => {
+                assert_eq!(code, Code::Alara);
+                assert!(detail.contains("exactly one name"), "{detail}");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn alara_comment_stripped_name_is_missing_after_reparse() {
+        // `#` starts a comment in ALARA decks, so a name containing one is
+        // truncated by the reader; the mixture then no longer matches and
+        // the verifier reports it as missing.
+        let mut mat = Material::new();
+        mat.add_nuclide(NuclideId::from_name("Fe56").unwrap(), 3.0);
+        match emit_alara(&mat, &EmitOptions::new("steel #1")).unwrap_err() {
+            Error::Reparse { code, detail } => {
+                assert_eq!(code, Code::Alara);
+                assert!(detail.contains("steel #1"), "{detail}");
+            }
+            other => panic!("{other:?}"),
+        }
     }
 }

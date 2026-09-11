@@ -1,7 +1,7 @@
 ---
 title: Emit Code Cards
 sidebar:
-  order: 7
+  order: 9
 ---
 
 Nucleide renders one material through five legacy transport-code dialects —

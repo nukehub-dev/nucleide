@@ -1,8 +1,8 @@
-//! ARMI blueprint mass fractions → [`Material`](nucleide_material::Material).
+//! ARMI blueprint mass fractions → [`Material`].
 //!
 //! One-way bridge from ARMI-side `material.massFrac` dicts (post-expansion
 //! nuclide keys) into the emission pipeline. Keys resolve through the
-//! already-landed [`armi_name_to_nucid`](nucleide_nuclei::armi::armi_name_to_nucid)
+//! already-landed [`armi_name_to_nucid`]
 //! bridge, so every documented precedence there applies here unchanged:
 //! `nU235` database names, bare `U235`/`AM242M`, MCNP ZAIDs-as-strings
 //! (`92235`), AAAZZZS ids (`2350920`), and unambiguous MC2-3 labels

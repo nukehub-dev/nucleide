@@ -1,0 +1,31 @@
+---
+title: Serpent output
+description: Parse Serpent _res.m, _dep.m, and _det.m files in the browser.
+sidebar:
+  order: 13
+---
+
+The `serpent-io` crate reads Serpent's MATLAB-style output files, where every
+quantity is a `NAME = [...];` assignment. The browser binding parses the text
+and returns a JSON summary of every variable with its kind and shape, plus a
+few headline values for results files.
+
+## Supported formats
+
+- **`_res.m` results** — run metadata, k-eigenvalues, and cycle statistics,
+  accumulated across burnup blocks.
+- **`_dep.m` depletion** — `ZAI`/`NAMES` inventories and per-material
+  density, burnup, and source matrices.
+- **`_det.m` detectors** — bin counts and per-detector tally tables with
+  values and relative errors.
+
+## Try it
+
+Pick a file kind, paste a snippet, or load a sample Serpent 1/2 output and
+inspect the parsed variables.
+
+<InteractiveDemo kind="serpent-io" />
+
+## See also
+
+- Crate docs: [`crates/serpent-io/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/serpent-io/src/lib.rs)

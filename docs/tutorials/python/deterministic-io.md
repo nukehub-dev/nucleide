@@ -1,7 +1,7 @@
 ---
 title: Deterministic I/O
 sidebar:
-  order: 6
+  order: 8
 ---
 
 Nucleide reads deterministic-code data files and writes minimal PARTISN

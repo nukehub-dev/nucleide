@@ -140,7 +140,7 @@ pub enum QuantityUnit {
 impl std::str::FromStr for QuantityUnit {
     type Err = Error;
 
-    /// Parse via [`QuantityUnit::parse`]; also reachable as
+    /// Parse via `QuantityUnit::parse`; also reachable as
     /// `QuantityUnit::from_str` with `std::str::FromStr` in scope.
     fn from_str(s: &str) -> Result<Self, Error> {
         Self::parse(s)
@@ -332,7 +332,7 @@ impl DecayInventory {
     /// Build from quantities in `unit`, converting to atom counts.
     ///
     /// `sys` supplies chain membership and chain-first decay constants (see
-    /// [`decay_constant_for`]); masses and fallback half-lives come from the
+    /// `decay_constant_for`); masses and fallback half-lives come from the
     /// nuclei tables. Unknown nuclides and missing masses are errors, never
     /// silent zero — except a stable nuclide at zero activity, which is
     /// legitimately zero atoms. A non-zero activity for a stable nuclide is
@@ -373,10 +373,12 @@ impl DecayInventory {
         Ok(Self { atoms })
     }
 
-    /// Decay the inventory by `dt` in `unit` with an explicit [`Method`].
+    /// Decay the inventory by `dt` in `unit` with an explicit
+    /// [`Method`](crate::bateman::Method).
     ///
     /// The solve is decay-only: the system is rebuilt from `sys.chain` with
-    /// empty reaction rates, so [`Method::Bateman`]/[`Method::BatemanHp`]
+    /// empty reaction rates, so [`Method::Bateman`](crate::bateman::Method::Bateman)
+    /// / [`Method::BatemanHp`](crate::bateman::Method::BatemanHp)
     /// stay on the fast path here. Result covers all chain nuclides (missing
     /// inputs start at zero); inventory names absent from the chain are an
     /// error.
@@ -424,7 +426,8 @@ impl DecayInventory {
     /// Decay the inventory by `dt` in `unit` with a single CRAM-48 solve.
     ///
     /// Thin shim over [`DecayInventory::decay_with_method`] keeping the
-    /// pre-`Method` call shape; new code should pass an explicit [`Method`].
+    /// pre-`Method` call shape; new code should pass an explicit
+    /// [`Method`](crate::bateman::Method).
     ///
     /// The solve is decay-only: the system is rebuilt from `sys.chain` with
     /// empty reaction rates. Result covers all chain nuclides (missing

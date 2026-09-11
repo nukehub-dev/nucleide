@@ -38,7 +38,7 @@ pub type FormulaResult<T> = std::result::Result<T, FormulaError>;
 
 /// Errors from formula parsing and element expansion.
 ///
-/// Distinct from the crate-level [`crate::Error`] so that the parser can
+/// Distinct from the crate-level [`enum@crate::Error`] so that the parser can
 /// report byte positions and unknown symbols without polluting the shared
 /// composition-error set; mass-table failures are wrapped in [`Self::Core`].
 #[derive(Debug, Error)]
@@ -357,7 +357,7 @@ impl Material {
     ///
     /// Placeholders follow the `mcnp-io` inp convention: a bare elemental
     /// zaid (`z*1000`, `AAA == 0`) becomes the nucid `z * 10_000_000`
-    /// ([`is_elemental`]). Each placeholder of element `z` holding `g`
+    /// (`is_elemental`). Each placeholder of element `z` holding `g`
     /// grams is replaced by isotope masses `g * x_i * M_i / M̄`, where `x_i`
     /// are the (normalized) natural-abundance fractions and `M̄` the
     /// abundance-weighted mean atomic mass — i.e. the same number of atoms

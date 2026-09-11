@@ -14,6 +14,7 @@ from nucleide._internal import (
     spectroscopy_read_dollar_spe,
     spectroscopy_read_spe,
     spectroscopy_rect_smooth,
+    spectroscopy_sdef_decay_source,
     spectroscopy_xray_lines,
 )
 
@@ -26,6 +27,7 @@ __all__ = [
     "energy_bins",
     "detector_efficiency",
     "xray_lines",
+    "sdef_decay_source",
     "parse_dollar_spe",
     "parse_spe",
     "read_dollar_spe",
@@ -84,6 +86,35 @@ def xray_lines(
     explicit entry point is the documented Nucleide surface.
     """
     return spectroscopy_xray_lines(atomic, k_conv, l_conv)
+
+
+def sdef_decay_source(
+    lines: list[tuple[float, float]],
+    *,
+    x: float = 0.0,
+    y: float = 0.0,
+    z: float = 0.0,
+    u: float = 0.0,
+    v: float = 0.0,
+    w: float = 0.0,
+    weight: float = 1.0,
+    particle: str = "Neutron",
+    version: int = 5,
+) -> tuple[list[tuple[float, float]], str]:
+    """SDEF decay-source card (E9) as ``(normalized_bins, card_text)``.
+
+    ``lines`` carries caller-supplied ``(energy_mev, intensity)`` pairs; no
+    decay data is vendored. Duplicate energies merge by summing, bins sort
+    ascending, and intensities normalize to probabilities summing to 1.0.
+    The card keeps the upstream monoenergetic point-source field order
+    (``POS``, optional ``VEC ... DIR=1``, ``ERG``, ``WGT``, ``PAR``): one
+    surviving line renders inline ``ERG=<E>``, several render the
+    discrete-distribution form ``ERG=D1`` with paired ``SI1 L`` / ``SP1 D``
+    cards (80-column wrapped). The distribution *syntax* is verified surface;
+    MCNP sampling *semantics* are the caller's responsibility. ``particle``
+    parses through the ``nucleide.nuclei`` dialect; ``version`` is 5 or 6.
+    """
+    return spectroscopy_sdef_decay_source(lines, x, y, z, u, v, w, weight, particle, version)
 
 
 def parse_dollar_spe(text: str) -> dict[str, Any]:

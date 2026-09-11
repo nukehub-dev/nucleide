@@ -713,4 +713,200 @@ mod tests {
             Err(Error::Invalid(_))
         ));
     }
+
+    #[test]
+    fn from_deck_requires_flux_blocks() {
+        let deck = nucleide_alara_io::deck::AlaraDeck::parse(
+            "geometry rectangular\n\
+             mat_loading\n\
+             zone_a mix_a\n\
+             end\n\
+             mixture mix_a\n\
+             element U235 1.0 1.0\n\
+             end\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            R2sWorkflow::from_deck(&deck),
+            Err(Error::Invalid(msg)) if msg.contains("no `flux` blocks")
+        ));
+    }
+
+    #[test]
+    fn from_deck_requires_schedules() {
+        let deck = nucleide_alara_io::deck::AlaraDeck::parse(
+            "geometry rectangular\n\
+             mat_loading\n\
+             zone_a mix_a\n\
+             end\n\
+             mixture mix_a\n\
+             element U235 1.0 1.0\n\
+             end\n\
+             flux flux_a data/flux 1.0 0 default\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            R2sWorkflow::from_deck(&deck),
+            Err(Error::Invalid(msg)) if msg.contains("no schedules")
+        ));
+    }
+
+    #[test]
+    fn top_schedule_cycle_is_rejected() {
+        let deck = nucleide_alara_io::deck::AlaraDeck::parse(
+            "geometry rectangular\n\
+             mat_loading\n\
+             zone_a mix_a\n\
+             end\n\
+             mixture mix_a\n\
+             element U235 1.0 1.0\n\
+             end\n\
+             flux flux_a data/flux 1.0 0 default\n\
+             schedule a\n\
+             b ph 1 d\n\
+             end\n\
+             schedule b\n\
+             a ph 1 d\n\
+             end\n\
+             pulsehistory ph\n\
+             1 0 s\n\
+             end\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            R2sWorkflow::from_deck(&deck),
+            Err(Error::CrossRef(msg)) if msg.contains("no top-level schedule")
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_blank_step_fields() {
+        let blank_zone = R2sWorkflow {
+            steps: vec![R2sStep {
+                zone: "  ".to_string(),
+                flux: "flux_a".to_string(),
+            }],
+            cooling_s: vec![86_400.0],
+            top_schedule: "top_sched".to_string(),
+        };
+        assert!(matches!(
+            blank_zone.validate(),
+            Err(Error::Invalid(msg)) if msg.contains("empty zone")
+        ));
+
+        let blank_flux = R2sWorkflow {
+            steps: vec![R2sStep {
+                zone: "zone_a".to_string(),
+                flux: " ".to_string(),
+            }],
+            cooling_s: vec![86_400.0],
+            top_schedule: "top_sched".to_string(),
+        };
+        assert!(matches!(
+            blank_flux.validate(),
+            Err(Error::Invalid(msg)) if msg.contains("empty flux") && msg.contains("zone_a")
+        ));
+    }
+
+    #[test]
+    fn expand_with_empty_top_discovers_single_schedule() {
+        let deck = minimal_deck();
+        let workflow = R2sWorkflow {
+            steps: vec![R2sStep {
+                zone: "zone_a".to_string(),
+                flux: "flux_a".to_string(),
+            }],
+            cooling_s: vec![86_400.0],
+            top_schedule: String::new(),
+        };
+        let steps = workflow.expand(&deck, &[]).unwrap();
+        assert_eq!(steps.len(), 1);
+        assert_eq!(nucleide_alara_io::schedule::total_time(&steps), 86_400.0);
+    }
+
+    #[test]
+    fn expand_converts_sub_schedule_items() {
+        let deck = nucleide_alara_io::deck::AlaraDeck::parse(
+            "geometry rectangular\n\
+             mat_loading\n\
+             zone_a mix_a\n\
+             end\n\
+             mixture mix_a\n\
+             element U235 1.0 1.0\n\
+             end\n\
+             flux flux_a data/flux 1.0 0 default\n\
+             schedule top\n\
+             inner once 0 s\n\
+             end\n\
+             schedule inner\n\
+             1 d flux_a once 0 s\n\
+             end\n\
+             pulsehistory once\n\
+             1 0 s\n\
+             end\n\
+             cooling\n\
+             1 d\n\
+             end\n",
+        )
+        .unwrap();
+        let workflow = R2sWorkflow::from_deck(&deck).unwrap();
+        assert_eq!(workflow.top_schedule, "top");
+        let steps = workflow.expand(&deck, &[]).unwrap();
+        assert_eq!(nucleide_alara_io::schedule::total_time(&steps), 86_400.0);
+        assert!(steps.iter().any(|step| step.flux == "flux_a"));
+    }
+
+    #[test]
+    fn expand_rejects_malformed_schedule_items() {
+        // Tokens are validated at deck-parse time, so mutate the typed view
+        // to exercise the conversion error paths.
+        let mut deck = minimal_deck();
+        deck.schedules[0].items[0].tokens = vec![
+            "1".to_string(),
+            "d".to_string(),
+            "flux_a".to_string(),
+            "once".to_string(),
+            "0".to_string(),
+        ];
+        let workflow = R2sWorkflow {
+            top_schedule: "top_sched".to_string(),
+            ..R2sWorkflow::from_deck(&minimal_deck()).unwrap()
+        };
+        assert!(matches!(
+            workflow.expand(&deck, &[]),
+            Err(Error::Invalid(msg)) if msg.contains("malformed item")
+        ));
+    }
+
+    #[test]
+    fn expand_rejects_bad_operating_time_values() {
+        let mut deck = minimal_deck();
+        deck.schedules[0].items[0].tokens[0] = "abc".to_string();
+        let workflow = R2sWorkflow::from_deck(&minimal_deck()).unwrap();
+        assert!(matches!(
+            workflow.expand(&deck, &[]),
+            Err(Error::Invalid(msg)) if msg.contains("expected operating time")
+        ));
+    }
+
+    #[test]
+    fn expand_maps_bad_units_to_invalid() {
+        let workflow = R2sWorkflow::from_deck(&minimal_deck()).unwrap();
+
+        // Unknown unit rejected by the schedule vocabulary.
+        let mut deck = minimal_deck();
+        deck.schedules[0].items[0].tokens[1] = "q".to_string();
+        assert!(matches!(
+            workflow.expand(&deck, &[]),
+            Err(Error::Invalid(msg)) if msg.contains("unknown time unit")
+        ));
+
+        // Negative operating time rejected by the schedule vocabulary.
+        let mut deck = minimal_deck();
+        deck.schedules[0].items[0].tokens[0] = "-1".to_string();
+        assert!(matches!(
+            workflow.expand(&deck, &[]),
+            Err(Error::Invalid(msg)) if msg.contains("negative or non-finite")
+        ));
+    }
 }

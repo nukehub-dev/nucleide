@@ -462,4 +462,128 @@ mod tests {
             Err(Error::BadStructure(m)) if m.contains("EOF")
         ));
     }
+
+    #[test]
+    fn error_display_messages() {
+        use std::error::Error as _;
+
+        let io = Error::Io("disk".into());
+        assert_eq!(io.to_string(), "io error: disk");
+        assert!(io.source().is_none());
+        assert_eq!(
+            Error::Unsupported("cylindrical").to_string(),
+            "unsupported: cylindrical"
+        );
+        assert_eq!(
+            Error::BadStructure("block".into()).to_string(),
+            "malformed WWINP: block"
+        );
+        assert_eq!(
+            Error::BadNumber {
+                context: "ni",
+                text: "xx".into(),
+            }
+            .to_string(),
+            "cannot parse ni from `xx`"
+        );
+    }
+
+    #[test]
+    fn block1_line1_short_errors() {
+        let text = "         1         1\n";
+        assert!(matches!(
+            Wwinp::parse(text),
+            Err(Error::BadStructure(m)) if m.contains("block-1 line 1 too short")
+        ));
+    }
+
+    #[test]
+    fn block1_number_errors() {
+        // ni fails to parse as a number before any structural check.
+        let text = "         1         1        xx        10\n";
+        assert!(matches!(
+            Wwinp::parse(text),
+            Err(Error::BadNumber { context: "ni", .. })
+        ));
+    }
+
+    #[test]
+    fn bad_ne_length_errors() {
+        let empty = "         1         1         1        10\n\n";
+        assert!(matches!(
+            Wwinp::parse(empty),
+            Err(Error::BadStructure(m)) if m.contains("bad ne length 0")
+        ));
+        let three = "         1         1         1        10\n         1         1         1\n";
+        assert!(matches!(
+            Wwinp::parse(three),
+            Err(Error::BadStructure(m)) if m.contains("bad ne length 3")
+        ));
+    }
+
+    #[test]
+    fn block1_line3_short_errors() {
+        let text = "         1         1         1        10\n         1\n   1.0000       1.0000       1.0000       0.0000       0.0000    \n";
+        assert!(matches!(
+            Wwinp::parse(text),
+            Err(Error::BadStructure(m)) if m.contains("block-1 line 3 too short")
+        ));
+    }
+
+    #[test]
+    fn block1_line4_short_errors() {
+        let text = "         1         1         1        10\n         1\n   1.0000       1.0000       1.0000       0.0000       0.0000       0.0000    \n   1.0000       1.0000       1.0000    \n";
+        assert!(matches!(
+            Wwinp::parse(text),
+            Err(Error::BadStructure(m)) if m.contains("block-1 line 4 too short")
+        ));
+    }
+
+    #[test]
+    fn missing_date_time_parses_and_round_trips() {
+        // Block-1 line 1 with exactly four fields leaves date_time empty;
+        // the writer re-emits it as padding, so the round trip holds.
+        let text = "1 1 1 10\n1\n1 1 1 0 0 0\n1 1 1 1\n0.0 1.0 1.0 1.0\n0.0 1.0 1.0 1.0\n0.0 1.0 1.0 1.0\n1.0\n1.0\n";
+        let w = Wwinp::parse(text).unwrap();
+        assert_eq!(w.date_time, "");
+        assert_eq!(w.nf, [1, 1, 1]);
+        assert_eq!(w.nft, 1);
+        assert_eq!(w.origin, [0.0; 3]);
+        assert_eq!(
+            w.bounds,
+            vec![vec![0.0, 1.0], vec![0.0, 1.0], vec![0.0, 1.0]]
+        );
+        assert_eq!(w.cm, vec![vec![1.0], vec![1.0], vec![1.0]]);
+        assert_eq!(w.fm, vec![vec![1.0], vec![1.0], vec![1.0]]);
+        assert_eq!(w.e, vec![vec![1.0]]);
+        assert_eq!(w.ww, vec![vec![vec![1.0]]]);
+        let reparsed = Wwinp::parse(&w.to_text().unwrap()).unwrap();
+        assert_eq!(w, reparsed);
+    }
+
+    #[test]
+    fn write_file_round_trip() {
+        let w = Wwinp::from_file(fixture("mcnp_wwinp_wwinp_n.txt")).unwrap();
+        let p = std::env::temp_dir().join("nucleide_wwinp_rt.txt");
+        w.write_file(&p).unwrap();
+        let reread = Wwinp::from_file(&p).unwrap();
+        assert_eq!(w, reread);
+        std::fs::remove_file(&p).ok();
+
+        let bad = std::env::temp_dir()
+            .join("nucleide_no_such_dir")
+            .join("x.txt");
+        assert!(matches!(w.write_file(&bad), Err(Error::Io(_))));
+    }
+
+    #[test]
+    fn fmt13_pins_python_wide_exponents() {
+        // Python "{0:13.5E}": two-digit exponents pass through with plain
+        // left padding; wider exponents overflow the field from the left.
+        let wide = fmt13(1.0e10);
+        assert_eq!(wide, "  1.00000E+10");
+        let wider = fmt13(1.0e-100);
+        assert_eq!(wider, " 1.00000E-100");
+        assert_eq!(wider.len(), 13);
+    }
 }

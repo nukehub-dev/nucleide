@@ -20,40 +20,69 @@ use crate::NuclideId;
 /// Fundamental particles (Berkeley PDC numbering).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ParticleId {
+    /// Electron; aliases `"Beta"` / `"Beta-"` / `"e"` / `"e-"`.
     Electron,
+    /// Positron; aliases `"Beta+"` / `"e+"`.
     Positron,
+    /// Electron neutrino.
     ElectronNeutrino,
+    /// Electron antineutrino.
     ElectronAntiNeutrino,
+    /// Muon.
     Muon,
+    /// Antimuon.
     AntiMuon,
+    /// Muon neutrino.
     MuonNeutrino,
+    /// Muon antineutrino.
     MuonAntiNeutrino,
+    /// Tau lepton.
     Tauon,
+    /// Antitau lepton.
     AntiTauon,
+    /// Tau neutrino.
     TauNeutrino,
+    /// Tau antineutrino.
     TauAntiNeutrino,
     /// Gauge boson; aliases `"Gamma"` / `"X-Ray"` / `"g"`.
     Photon,
     /// Charged pion (identified with the negative pion).
     Pion,
+    /// Antipion (positive charged pion).
     AntiPion,
+    /// Positive kaon.
     Kaon,
+    /// Negative kaon.
     AntiKaon,
+    /// Short-lived neutral kaon.
     KaonZeroShort,
+    /// Neutral kaon.
     KaonZero,
+    /// Neutral antikaon; no Geant4 string upstream (see module docs).
     AntiKaonZero,
+    /// Neutron; alias `"n"`.
     Neutron,
+    /// Antineutron.
     AntiNeutron,
     /// Aliases `"Hydrogen"` / `"Protium"` / `"p"`; also any H-1 nuclide spec.
     Proton,
+    /// Antiproton.
     AntiProton,
+    /// Lambda baryon.
     Lambda,
+    /// Antilambda baryon.
     AntiLambda,
+    /// Sigma-minus baryon; canonical name `"Sigma-"`.
     SigmaMinus,
+    /// Anti-sigma-minus baryon; carries PDC `-3112` (see module docs).
     AntiSigmaMinus,
+    /// Sigma-plus baryon; canonical name `"Sigma+"`.
     SigmaPlus,
+    /// Anti-sigma-plus baryon.
     AntiSigmaPlus,
+    /// Neutral sigma baryon; canonical name `"Sigma"`.
     SigmaZero,
+    /// Anti-sigma-zero baryon.
     AntiSigmaZero,
 }
 
@@ -602,6 +631,51 @@ mod tests {
     }
 
     #[test]
+    fn parses_numeric_edge_cases() {
+        // A pure-digit spec that is a valid non-hydrogen nucid is still not a
+        // fundamental particle.
+        assert!(matches!(
+            ParticleId::parse("922350000"),
+            Err(Error::NotAParticle(_))
+        ));
+        // Beyond i32: no PDC match; beyond u32: no nucid match either.
+        assert!(matches!(
+            ParticleId::parse("2147483648"),
+            Err(Error::NotAParticle(_))
+        ));
+        assert!(matches!(
+            ParticleId::parse("99999999999"),
+            Err(Error::NotAParticle(_))
+        ));
+        // Beyond i64 the digit string cannot parse as a number at all.
+        assert!(matches!(
+            ParticleId::parse("99999999999999999999"),
+            Err(Error::NotAParticle(_))
+        ));
+        // A bare sign leaves no digits and no nuclide.
+        assert!(matches!(
+            ParticleId::parse("-"),
+            Err(Error::NotAParticle(_))
+        ));
+        // Digit-led specs with overlong or non-alphabetic symbol tails fail
+        // the reversed-nuclide path.
+        assert!(matches!(
+            ParticleId::parse("123Abc"),
+            Err(Error::NotAParticle(_))
+        ));
+        assert!(matches!(
+            ParticleId::parse("12H2"),
+            Err(Error::NotAParticle(_))
+        ));
+    }
+
+    #[test]
+    fn from_str_delegates_to_parse() {
+        assert_eq!("Neutron".parse::<ParticleId>(), Ok(ParticleId::Neutron));
+        assert!("Waka waka".parse::<ParticleId>().is_err());
+    }
+
+    #[test]
     fn rejects_non_particles_but_keeps_heavy_ions_detectable() {
         assert!(matches!(
             ParticleId::parse("Waka waka"),
@@ -649,6 +723,7 @@ mod tests {
         assert_eq!(ParticleId::Electron.mcnp6(), Some("e"));
         assert_eq!(ParticleId::Proton.mcnp6(), Some("h"));
         assert_eq!(ParticleId::parse("Hydrogen").unwrap().mcnp6(), Some("h"));
+        assert_eq!(ParticleId::AntiProton.mcnp6(), None);
     }
 
     #[test]
@@ -689,6 +764,19 @@ mod tests {
     }
 
     #[test]
+    fn translations_cover_every_variant() {
+        for p in ALL {
+            assert!(!p.describe().is_empty(), "describe {}", p.name());
+            assert!(p.fluka().is_some(), "fluka {}", p.name());
+            if p == ParticleId::AntiKaonZero {
+                assert_eq!(p.geant4(), None);
+            } else {
+                assert!(p.geant4().is_some(), "geant4 {}", p.name());
+            }
+        }
+    }
+
+    #[test]
     fn validity_predicates() {
         for spec in [
             "Proton",
@@ -722,6 +810,13 @@ mod tests {
         assert!(!is_hydrogen("2H"));
         assert!(!is_hydrogen("Neutron"));
         assert!(!is_heavy_ion("Neutron"));
+    }
+
+    #[test]
+    fn predicates_reject_empty_specs() {
+        assert!(!is_hydrogen(""));
+        assert!(!is_heavy_ion(""));
+        assert!(!is_valid(""));
     }
 
     #[test]

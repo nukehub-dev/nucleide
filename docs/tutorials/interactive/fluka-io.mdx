@@ -1,0 +1,21 @@
+---
+title: FLUKA USRBIN
+description: Read FLUKA USRBIN mesh tallies from .lis output in the browser.
+sidebar:
+  order: 14
+---
+
+The `fluka-io` crate reads USRBIN tallies from FLUKA `.lis` output files.
+Each tally carries its Cartesian mesh bounds plus the paired track-length and
+percentage-error data blocks.
+
+## Try it
+
+Paste a `.lis` snippet or load the sample tally, then inspect the tally
+headers and view a z-slice of the mesh as a heatmap.
+
+<InteractiveDemo kind="fluka-io" />
+
+## See also
+
+- Crate docs: [`crates/fluka-io/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/fluka-io/src/lib.rs)

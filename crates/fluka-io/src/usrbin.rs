@@ -615,4 +615,188 @@ mod tests {
         assert_eq!(tallies.len(), 1);
         assert_eq!(tallies[0].part_data, SINGLE_PART.to_vec());
     }
+
+    /// One-bin tally with the same record layout as the fixtures.
+    fn mini_tally_lines() -> Vec<&'static str> {
+        vec![
+            "1",
+            "   Cartesian binning n.   1  \"mini    \" , generalized particle n.    8",
+            "      X coordinate: from -1.0000E+00 to  1.0000E+00 cm,     1 bins ( 2.0000E+00 cm wide)",
+            "      Y coordinate: from -1.0000E+00 to  1.0000E+00 cm,     1 bins ( 2.0000E+00 cm wide)",
+            "      Z coordinate: from -1.0000E+00 to  1.0000E+00 cm,     1 bins ( 2.0000E+00 cm wide)",
+            "      Data follow in a matrix A(ix,iy,iz), format (1(5x,1p,10(1x,e11.4)))",
+            "",
+            "       1.0000E+00",
+            "",
+            "      Percentage errors follow in a matrix A(ix,iy,iz), format (1(5x,1p,10(1x,e11.4)))",
+            "",
+            "       0.0000E+00",
+        ]
+    }
+
+    #[test]
+    fn mini_tally_without_banners_parses() {
+        // No "accurate deposition"/"track-length binning" banners: the first
+        // preamble line is already data.
+        let text = mini_tally_lines().join("\n");
+        let tallies = parse_usrbin(&text).unwrap();
+        assert_eq!(tallies.len(), 1);
+        let t = &tallies[0];
+        assert_eq!(t.name, "mini");
+        assert_eq!(t.dims(), [1, 1, 1]);
+        assert_eq!(t.part_data, [1.0]);
+        assert_eq!(t.error_data, [0.0]);
+    }
+
+    #[test]
+    fn truncation_contexts_are_reported() {
+        let lines = mini_tally_lines();
+        // Cut after the page break: the header read runs into EOF.
+        let cut = format!("{}\n", lines[..1].join("\n"));
+        assert_eq!(
+            parse_usrbin(&cut),
+            Err(Error::Truncated {
+                context: "tally header"
+            })
+        );
+        // Cut after the Z line: the "Data follow" banner is missing.
+        let cut = format!("{}\n", lines[..5].join("\n"));
+        assert_eq!(
+            parse_usrbin(&cut),
+            Err(Error::Truncated {
+                context: "data-follows banner"
+            })
+        );
+        // Cut after the banner: the discarded separator read is missing.
+        let cut = format!("{}\n", lines[..6].join("\n"));
+        assert_eq!(
+            parse_usrbin(&cut),
+            Err(Error::Truncated {
+                context: "separator after banner"
+            })
+        );
+        // Cut after the separator: the preamble/data read is missing.
+        let cut = format!("{}\n", lines[..7].join("\n"));
+        assert_eq!(
+            parse_usrbin(&cut),
+            Err(Error::Truncated {
+                context: "preamble or data line"
+            })
+        );
+        // Cut after the data line: error-block separators are missing.
+        let cut = format!("{}\n", lines[..8].join("\n"));
+        assert_eq!(
+            parse_usrbin(&cut),
+            Err(Error::Truncated {
+                context: "error-block separator"
+            })
+        );
+        // Drop the single error datum: the error block runs into EOF.
+        let cut = format!("{}\n", lines[..11].join("\n"));
+        assert_eq!(
+            parse_usrbin(&cut),
+            Err(Error::Truncated {
+                context: "usrbin error datum"
+            })
+        );
+    }
+
+    #[test]
+    fn banner_skip_truncation_contexts_are_reported() {
+        let mut lines = mini_tally_lines();
+        lines.insert(7, "      accurate deposition along the tracks requested");
+        lines.insert(8, "      this is a track-length binning");
+        // Cut right after the deposition banner.
+        let cut = format!("{}\n", lines[..8].join("\n"));
+        assert_eq!(
+            parse_usrbin(&cut),
+            Err(Error::Truncated {
+                context: "post-deposition line"
+            })
+        );
+        // Cut right after the track-length banner.
+        let cut = format!("{}\n", lines[..9].join("\n"));
+        assert_eq!(
+            parse_usrbin(&cut),
+            Err(Error::Truncated {
+                context: "first data line"
+            })
+        );
+    }
+
+    #[test]
+    fn junk_data_token_reports_bad_number() {
+        let mut lines = mini_tally_lines();
+        lines[7] = "       1.0000E+00 banana";
+        let text = lines.join("\n");
+        match parse_usrbin(&text) {
+            Err(Error::BadNumber { context, text }) => {
+                assert_eq!(context, "usrbin datum");
+                assert_eq!(text, "banana");
+            }
+            other => panic!("expected BadNumber, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bin_count_overflow_reports_too_many_bins() {
+        let text = concat!(
+            "1\n",
+            "   Cartesian binning n.   1  \"huge    \" , generalized particle n.    8\n",
+            "      X coordinate: from  0.0000E+00 to  1.0000E+00 cm, 18446744073709551615 bins ( 1.0000E-19 cm wide)\n",
+            "      Y coordinate: from  0.0000E+00 to  1.0000E+00 cm,     2 bins ( 5.0000E-01 cm wide)\n",
+            "      Z coordinate: from  0.0000E+00 to  1.0000E+00 cm,     1 bins ( 1.0000E+00 cm wide)\n",
+            "      Data follow in a matrix A(ix,iy,iz), format (1(5x,1p,10(1x,e11.4)))\n",
+            "\n",
+            "       0.0000E+00\n",
+        );
+        match parse_usrbin(text) {
+            Err(Error::TooManyBins(msg)) => assert!(msg.contains("huge"), "{msg}"),
+            other => panic!("expected TooManyBins, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn missing_file_reports_io_error() {
+        let err = read_usrbin_file("/definitely/not/a/real/file.lis").unwrap_err();
+        assert!(matches!(err, Error::Io(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn error_display_covers_every_variant() {
+        let cases = [
+            (Error::Io("disk".to_string()), "io error: disk"),
+            (Error::NoTallies, "no USRBIN blocks found"),
+            (
+                Error::BadHeader("hdr".to_string()),
+                "malformed USRBIN header `hdr`",
+            ),
+            (
+                Error::NotCartesian("R-Z".to_string()),
+                "only cartesian coordinate system currently supported, got `R-Z`",
+            ),
+            (
+                Error::BadDimensionLine("dim".to_string()),
+                "malformed coordinate line `dim`",
+            ),
+            (
+                Error::TooManyBins("many".to_string()),
+                "bin counts overflow: many",
+            ),
+            (
+                Error::Truncated { context: "datum" },
+                "truncated file while reading datum",
+            ),
+            (
+                Error::BadNumber {
+                    context: "usrbin datum",
+                    text: "x".to_string(),
+                },
+                "cannot parse usrbin datum from `x`",
+            ),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(error.to_string(), expected);
+        }
+    }
 }

@@ -62,7 +62,12 @@ pub enum DialectError {
     /// Name is absent from the vendored FLUKA table.
     UnknownFlukaName(String),
     /// Leading `ZZ` block disagrees with the element symbol.
-    ZzSymbolMismatch { zz: u32, symbol: String },
+    ZzSymbolMismatch {
+        /// Leading `ZZ` block of the input.
+        zz: u32,
+        /// Element symbol parsed from the name.
+        symbol: String,
+    },
     /// Component values were rejected by canonical validation.
     BadComponents(Error),
 }
@@ -595,13 +600,12 @@ fn split_isomer_suffix(body: &str) -> Result<(u32, &str), DialectError> {
 ///
 /// Accepts symbol-first (`U235`, `Ba137m`, `Ba-137m`, `Ir-192n`),
 /// mass-first (`241Pu`, `40K`), and bare ZAID integers (`92235` → U235).
-/// Isomer letters use [`isomer_state`] (case-insensitive, so `n` is state 2)
 /// while `_mN`/`MN` numeric forms keep their existing `from_name` semantics.
 /// Bare element symbols (`U`) are rejected: a mass number is required.
 ///
 /// Resolution order is symbol-first ([`NuclideId::from_name`], which already
 /// covers `_mN`, trailing-`M`, and dash-tolerant forms), then — for inputs
-/// `from_name` rejects — mass-first via [`digit_letter_runs`] (so `N15`
+/// `from_name` rejects — mass-first via `digit_letter_runs` (so `N15`
 /// stays nitrogen-15 rather than parsing as an element), with all-digit
 /// inputs read as MCNP ZAIDs via [`from_zaid`].
 ///

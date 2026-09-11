@@ -1238,4 +1238,410 @@ mod tests {
         assert!(matches!(err, Error::Incompatible(_)));
         std::fs::remove_file(&out).ok();
     }
+
+    // ── Synthetic files (hand-built records, no fixtures) ────────────────
+
+    fn synth_rec_i32(vals: &[i32]) -> Vec<u8> {
+        let mut s = RecordSink::new();
+        for v in vals {
+            s.put_int(*v);
+        }
+        s.frame()
+    }
+
+    /// Parameters for a synthetic plain-MCNP5-layout SSW file, built from
+    /// hand-framed little-endian records.
+    #[derive(Clone)]
+    struct SynthSsw {
+        ver: String,
+        loddat: String,
+        orignp1: i64,
+        nrss: i64,
+        /// `(niwr, mipts, kjaq)`; `None` writes no table-2 record (requires
+        /// `orignp1 >= 0`).
+        table2: Option<(i32, i32, i32)>,
+        /// Records between surfaces and summary; the count must equal `niwr`.
+        niwr_extras: Vec<Vec<i32>>,
+        surfaces: Vec<SourceSurf>,
+        tracks: Vec<Vec<f64>>,
+    }
+
+    impl SynthSsw {
+        /// A small compatible pair base: one surface, one track, table 2 with
+        /// `niwr == 0`.
+        fn base() -> Self {
+            SynthSsw {
+                ver: "5    ".into(),
+                loddat: "01012000".into(),
+                orignp1: -1000,
+                nrss: 1,
+                table2: Some((0, 3, 0)),
+                niwr_extras: Vec::new(),
+                surfaces: vec![SourceSurf {
+                    id: 6,
+                    facet_id: -1,
+                    surface_type: 4,
+                    num_params: 1,
+                    surf_params: vec![5.0],
+                }],
+                tracks: vec![(0..11).map(|i| i as f64).collect()],
+            }
+        }
+
+        fn build(&self) -> Vec<u8> {
+            if let Some((niwr, _, _)) = self.table2 {
+                assert!(self.orignp1 < 0, "test bug: table 2 requires orignp1 < 0");
+                assert_eq!(
+                    niwr.max(0) as usize,
+                    self.niwr_extras.len(),
+                    "test bug: extras must match niwr"
+                );
+            } else {
+                assert!(self.orignp1 >= 0, "test bug: negative np1 requires table 2");
+            }
+            let (niwr, mipts, kjaq) = self.table2.unwrap_or((0, 0, 0));
+            let njsw = self.surfaces.len() as i32;
+            let ncrd = self
+                .tracks
+                .first()
+                .map_or(TrackData::RECORD_WIDTH, Vec::len) as i32;
+
+            let mut out = Vec::new();
+            // Header record: kod(8) ver(5) loddat(8) idtm(19) probid(19)
+            // aid(80) knod — the plain-MCNP5 single-record layout.
+            let mut h = RecordSink::new();
+            h.put_str("mcnp    ");
+            h.put_str(&self.ver);
+            h.put_str(&self.loddat);
+            h.put_str(&" ".repeat(19));
+            h.put_str(&" ".repeat(19));
+            h.put_str(&" ".repeat(80));
+            h.put_int(2); // knod
+            out.extend_from_slice(&h.frame());
+            // Table 1: plain MCNP5 stores np1/nrss as i64.
+            let mut t1 = RecordSink::new();
+            t1.put_long(self.orignp1);
+            t1.put_long(self.nrss);
+            t1.put_int(ncrd);
+            t1.put_int(njsw);
+            t1.put_int(self.nrss as i32); // niss
+            out.extend_from_slice(&t1.frame());
+            if self.orignp1 < 0 {
+                let mut t2 = RecordSink::new();
+                t2.put_int(niwr);
+                t2.put_int(mipts);
+                t2.put_int(kjaq);
+                out.extend_from_slice(&t2.frame());
+            }
+            for s in &self.surfaces {
+                let mut r = RecordSink::new();
+                r.put_int(s.id);
+                if kjaq == 1 {
+                    r.put_int(s.facet_id); // macrobody facet flag present
+                }
+                r.put_int(s.surface_type);
+                r.put_int(s.num_params as i32);
+                for p in &s.surf_params {
+                    r.put_double(*p);
+                }
+                out.extend_from_slice(&r.frame());
+            }
+            for extra in &self.niwr_extras {
+                out.extend_from_slice(&synth_rec_i32(extra));
+            }
+            let summary_count = (2 + 4 * mipts.max(0)) * (njsw.max(0) + niwr.max(0)) + 1;
+            let mut sum = RecordSink::new();
+            for i in 0..summary_count {
+                sum.put_int(i);
+            }
+            out.extend_from_slice(&sum.frame());
+            for t in &self.tracks {
+                let mut r = RecordSink::new();
+                for v in t {
+                    r.put_double(*v);
+                }
+                out.extend_from_slice(&r.frame());
+            }
+            out
+        }
+    }
+
+    fn write_temp_ssw(name: &str, bytes: &[u8]) -> String {
+        let p = std::env::temp_dir().join(name);
+        std::fs::write(&p, bytes).unwrap();
+        p.display().to_string()
+    }
+
+    #[test]
+    fn synth_no_table2_round_trips_byte_exact() {
+        let mut spec = SynthSsw::base();
+        spec.orignp1 = 1000;
+        spec.table2 = None;
+        let bytes = spec.build();
+        let parsed = SurfSrc::from_bytes(bytes.clone()).unwrap();
+        assert_eq!(parsed.header.orignp1, 1000);
+        assert_eq!(parsed.header.niwr, None);
+        let tracks = parsed.read_tracklist().unwrap();
+        let mut out = Vec::new();
+        write_to(&mut out, &parsed.header, &tracks).unwrap();
+        assert_eq!(out, bytes);
+    }
+
+    #[test]
+    fn reader_discards_niwr_extra_records() {
+        // `niwr > 0` records between the surface list and the summary are
+        // discarded at parse (the legacy reader warns and discards too); the
+        // writer does not reproduce them — the pinned documented deviation.
+        // kjaq = 1 also exercises the macrobody-facet surface-record layout.
+        let mut spec = SynthSsw::base();
+        spec.table2 = Some((2, 0, 1));
+        spec.niwr_extras = vec![vec![777_111], vec![777_222]];
+        spec.surfaces[0].facet_id = 2;
+        let bytes = spec.build();
+
+        let parsed = SurfSrc::from_bytes(bytes.clone()).unwrap();
+        let h = &parsed.header;
+        assert_eq!(h.niwr, Some(2));
+        assert_eq!(h.mipts, Some(0));
+        assert_eq!(h.kjaq, Some(1));
+        assert_eq!(h.surflist[0].facet_id, 2);
+        // (2 + 4*mipts) * (njsw + niwr) + 1 entries, extras accounted.
+        assert_eq!(h.summary_table.len(), 7);
+
+        let tracks = parsed.read_tracklist().unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(
+            tracks[0].record,
+            (0..11).map(|i| i as f64).collect::<Vec<_>>()
+        );
+
+        // The rewrite drops the extra records (the pinned documented
+        // deviation): two 12-byte framed records vanish, the header still
+        // reports niwr = 2, so the rewritten file deliberately does not
+        // re-parse — combine refuses such inputs for exactly this reason.
+        let mut rewritten = Vec::new();
+        write_to(&mut rewritten, &parsed.header, &tracks).unwrap();
+        let extra_framed = 2 * (4 + 4 + 4);
+        assert_eq!(rewritten.len(), bytes.len() - extra_framed);
+        assert!(SurfSrc::from_bytes(rewritten.clone()).is_err());
+        let marker = 777_111i32.to_le_bytes();
+        assert!(bytes.windows(4).any(|w| w == marker));
+        assert!(!rewritten.windows(4).any(|w| w == marker));
+        let marker = 777_222i32.to_le_bytes();
+        assert!(bytes.windows(4).any(|w| w == marker));
+        assert!(!rewritten.windows(4).any(|w| w == marker));
+    }
+
+    #[test]
+    fn combine_rejects_niwr_extras() {
+        // Compatible inputs carrying niwr extras are rejected rather than
+        // silently dropping the unsupported records.
+        let mut spec = SynthSsw::base();
+        spec.table2 = Some((2, 3, 0));
+        spec.niwr_extras = vec![vec![777_111], vec![777_222]];
+        let bytes = spec.build();
+        let a = write_temp_ssw("nucleide_synth_niwr_a.w", &bytes);
+        let b = write_temp_ssw("nucleide_synth_niwr_b.w", &bytes);
+        let out = std::env::temp_dir().join("nucleide_synth_niwr_out.w");
+        let err = combine_files(&[a, b], &out).unwrap_err();
+        assert_eq!(
+            err,
+            Error::Incompatible(
+                "niwr = 2 extras are unsupported for combine (would be dropped)".into()
+            )
+        );
+        assert!(!out.exists());
+        for p in ["nucleide_synth_niwr_a.w", "nucleide_synth_niwr_b.w"] {
+            std::fs::remove_file(std::env::temp_dir().join(p)).ok();
+        }
+    }
+
+    #[test]
+    fn combine_flags_each_header_mismatch() {
+        // Each check_compatible arm, one diverging field at a time.
+        let base = SynthSsw::base();
+        let mut ver = base.clone();
+        ver.ver = "5.1  ".into();
+        let mut loddat = base.clone();
+        loddat.loddat = "02022002".into();
+        let mut mipts = base.clone();
+        mipts.table2 = Some((0, 4, 0));
+        let mut njsw = base.clone();
+        njsw.surfaces.push(SourceSurf {
+            id: 7,
+            facet_id: -1,
+            surface_type: 4,
+            num_params: 1,
+            surf_params: vec![6.0],
+        });
+        let mut niwr = base.clone();
+        niwr.table2 = Some((1, 3, 0));
+        niwr.niwr_extras = vec![vec![777_111]];
+        let mut kjaq = base.clone();
+        kjaq.table2 = Some((0, 3, 1));
+        kjaq.surfaces[0].facet_id = 2;
+        let mut params = base.clone();
+        params.surfaces[0].surf_params = vec![6.0];
+        let cases: Vec<(SynthSsw, &str)> = vec![
+            (ver, "ver \"5.1\" != \"5\""),
+            (loddat, "loddat mismatch"),
+            (mipts, "mipts (particle type) mismatch"),
+            (njsw, "njsw (surface count) mismatch"),
+            (niwr, "niwr (cell count) mismatch"),
+            (kjaq, "kjaq (macrobody facet flag) mismatch"),
+            (params, "surface record 0 mismatch"),
+        ];
+        for (i, (case, msg)) in cases.into_iter().enumerate() {
+            let a = write_temp_ssw(&format!("nucleide_synth_mm{i}_a.w"), &base.build());
+            let b = write_temp_ssw(&format!("nucleide_synth_mm{i}_b.w"), &case.build());
+            let out = std::env::temp_dir().join(format!("nucleide_synth_mm{i}_out.w"));
+            let err = combine_files(&[a, b], &out).unwrap_err();
+            assert_eq!(err, Error::Incompatible(msg.into()), "case {i}");
+            assert!(!out.exists());
+            for suffix in ["a.w", "b.w"] {
+                std::fs::remove_file(
+                    std::env::temp_dir().join(format!("nucleide_synth_mm{i}_{suffix}")),
+                )
+                .ok();
+            }
+        }
+    }
+
+    #[test]
+    fn reader_rejects_unsupported_version() {
+        let mut spec = SynthSsw::base();
+        spec.ver = "4    ".into();
+        let err = SurfSrc::from_bytes(spec.build()).unwrap_err();
+        assert_eq!(err, Error::UnsupportedVersion("4".into()));
+    }
+
+    #[test]
+    fn big_endian_framing_fails_loudly() {
+        // A big-endian framed header record: the LE lead read is 8 << 24, so
+        // parsing fails loudly (ShortRecord) instead of silently accepting
+        // swapped bytes. The framework is little-endian only by construction.
+        let mut be = vec![0, 0, 0, 8];
+        be.extend_from_slice(b"mcnp    ");
+        be.extend_from_slice(&[0, 0, 0, 8]);
+        be.extend_from_slice(&[0u8; 64]);
+        let err = SurfSrc::from_bytes(be).unwrap_err();
+        assert!(matches!(err, Error::ShortRecord { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn fortran_errors_convert_to_typed_variants() {
+        // Empty input: the leading marker read fails as I/O.
+        assert!(matches!(SurfSrc::from_bytes(Vec::new()), Err(Error::Io(_))));
+        // Declared 16-byte payload with only 8 present.
+        let mut short = 16i32.to_le_bytes().to_vec();
+        short.extend_from_slice(&[0u8; 8]);
+        assert!(matches!(
+            SurfSrc::from_bytes(short),
+            Err(Error::ShortRecord { .. })
+        ));
+        // Lead/trailer disagreement on the header record converts verbatim.
+        let mut bad = SynthSsw::base().build();
+        let header_payload = 8 + 5 + 8 + 19 + 19 + 80 + 4;
+        let last_trailer_byte = header_payload + 4 + 4 - 1;
+        bad[last_trailer_byte] ^= 0xFF;
+        assert!(matches!(
+            SurfSrc::from_bytes(bad),
+            Err(Error::BadRecordMarker { .. })
+        ));
+    }
+
+    #[test]
+    fn track_data_from_record_matches_builder() {
+        let rec: Vec<f64> = (0..TrackData::RECORD_WIDTH).map(|i| i as f64).collect();
+        let t = TrackData::from_record(rec.clone());
+        assert_eq!(t.nps, rec[0]);
+        assert_eq!(t.bitarray, rec[1]);
+        assert_eq!(t.record, rec);
+        let w = (1.0 - rec[8] * rec[8] - rec[9] * rec[9])
+            .max(0.0)
+            .sqrt()
+            .copysign(rec[1]);
+        assert_eq!(t.w, w);
+    }
+
+    #[test]
+    fn cmp_semantics_diverges_on_surface_fields() {
+        let a = SurfSrc::open(fixture("mcnp5_surfsrc.w")).unwrap().header;
+        let mut b = a.clone();
+        b.surflist[0].surf_params[0] = 99.0;
+        assert_ne!(a.cmp_semantics(&b), Ordering::Equal);
+        let mut c = a.clone();
+        c.surflist[0].id = 7;
+        assert_ne!(a.cmp_semantics(&c), Ordering::Equal);
+    }
+
+    #[test]
+    fn writer_validate_rejects_stripped_table2_fields() {
+        // Same strip as writer_rejects_missing_table2_fields, but through
+        // write_to so validate_for_write (not header_block) raises it.
+        let parsed = SurfSrc::from_bytes(SynthSsw::base().build()).unwrap();
+        let mut h = parsed.header.clone();
+        assert!(h.orignp1 < 0);
+        h.niwr = None;
+        let tracks = parsed.read_tracklist().unwrap();
+        let err = write_to(&mut std::io::sink(), &h, &tracks).unwrap_err();
+        assert_eq!(err, Error::MissingTable2);
+    }
+
+    #[test]
+    fn write_to_surfaces_io_errors() {
+        struct FailingWriter;
+        impl std::io::Write for FailingWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                let _ = buf;
+                Err(std::io::Error::other("disk full"))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Err(std::io::Error::other("disk full"))
+            }
+        }
+        let parsed = SurfSrc::from_bytes(SynthSsw::base().build()).unwrap();
+        let tracks = parsed.read_tracklist().unwrap();
+        assert!(FailingWriter.flush().is_err());
+        match write_to(&mut FailingWriter, &parsed.header, &tracks) {
+            Err(Error::Io(m)) => assert!(m.contains("disk full"), "{m}"),
+            other => panic!("expected Io error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn error_display_messages() {
+        assert!(format!("{}", Error::Io("x".into())).contains("io error"));
+        assert!(format!(
+            "{}",
+            Error::BadRecordMarker {
+                lead: 1,
+                trailer: 2
+            }
+        )
+        .contains("1 vs 2"));
+        assert!(format!("{}", Error::ShortRecord { need: 4, left: 1 }).contains("need 4"));
+        assert!(format!("{}", Error::UnsupportedVersion("5".into()))
+            .contains("MCNP version `5` not supported"));
+        assert!(format!("{}", Error::MissingTable2).contains("negative orignp1 requires table-2"));
+        assert!(format!(
+            "{}",
+            Error::TrackCountMismatch {
+                expected: 1,
+                found: 0
+            }
+        )
+        .contains("tracklist holds 0 tracks, header says 1"));
+        assert!(format!(
+            "{}",
+            Error::TrackRecordWidth {
+                index: 0,
+                expected: 11,
+                found: 10
+            }
+        )
+        .contains("track 0 holds 10 values, ncrd says 11"));
+        assert!(format!("{}", Error::Incompatible("z".into()))
+            .contains("surface-source files incompatible: z"));
+    }
 }

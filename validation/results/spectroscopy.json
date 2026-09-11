@@ -6,14 +6,14 @@
     "date": "2026-09-11",
     "python": "3.12.14",
     "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
-    "nucleide": "0.4.0",
+    "nucleide": "0.5.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
   "sections": [
     {
       "kind": "prose",
-      "text": "Two-tier oracle for `nucleide.spectroscopy`: synthetic E1-E8 gates on hand-built fixtures (tier 1, always run), and a cross-check against the upstream `pyne.spectanalysis` / `pyne.gammaspec` routines on identical runtime inputs (tier 2)."
+      "text": "Two-tier oracle for `nucleide.spectroscopy`: synthetic E1-E9 gates on hand-built fixtures (tier 1, always run), and a cross-check against the upstream `pyne.spectanalysis` / `pyne.gammaspec` routines and `pyne.source.PointSource.mcnp` on identical runtime inputs (tier 2)."
     },
     {
       "kind": "prose",
@@ -30,6 +30,14 @@
     {
       "kind": "prose",
       "text": "E8 X-ray: k=2/l=3 hand intensities (Ka1, Ka2, Kb, L)."
+    },
+    {
+      "kind": "prose",
+      "text": "E9 SDEF: hand lines (0.662x2, 1.17, 1.33) normalize to 1/2, 1/4, 1/4."
+    },
+    {
+      "kind": "prose",
+      "text": "E9 SDEF: single-line isotropic card is byte-exact hand gold."
     },
     {
       "kind": "prose",
@@ -90,6 +98,24 @@
           "E8 xray lines",
           "1.850372e-16",
           "< 1e-12",
+          "PASS"
+        ],
+        [
+          "E9 decay normalization",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "E9 single-line card",
+          "exact",
+          "equal",
+          "PASS"
+        ],
+        [
+          "E9 distribution cards",
+          "exact",
+          "equal",
           "PASS"
         ],
         [
@@ -176,6 +202,10 @@
       "text": "X-ray algebra has no container check: the upstream routine reads its HDF5 atomic table at run time and no atomic values are vendored here, so E8 is pinned by the synthetic hand values above."
     },
     {
+      "kind": "prose",
+      "text": "E9 SDEF: single-line cards diffed byte-for-byte against pyne.source.PointSource.mcnp (beam, isotropic, and the MCNP6 proton designator); the multi-line ERG=D1 distribution form has no upstream counterpart and is pinned by the synthetic card goldens in tier 1."
+    },
+    {
       "kind": "table",
       "headers": [
         "Gate",
@@ -248,6 +278,24 @@
           "plain ebin vs PyNE",
           "0.000000e+00",
           "< 1e-12",
+          "PASS"
+        ],
+        [
+          "sdef isotropic vs PyNE",
+          "exact",
+          "equal",
+          "PASS"
+        ],
+        [
+          "sdef beam vs PyNE",
+          "exact",
+          "equal",
+          "PASS"
+        ],
+        [
+          "sdef proton v6 vs PyNE",
+          "exact",
+          "equal",
           "PASS"
         ]
       ]

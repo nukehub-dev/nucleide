@@ -4,15 +4,20 @@ Two tiers:
 
 1. Synthetic gates (always run): E1 rectangular / E2 five-point smoothing,
    E3 background / E4 gross / E5 net counts, E6 energy bins, E7 efficiency
-   (including the 6-coefficient golden), E8 X-ray algebra, and the
-   dollar/plain `.spe` fixture parse with cross-format counts equality.
-   Inputs are the hand-built synthetic `fixtures/spectroscopy/` files.
+   (including the 6-coefficient golden), E8 X-ray algebra, E9 decay-source
+   normalization + SDEF card text (hand-built line lists, byte-exact card
+   goldens), and the dollar/plain `.spe` fixture parse with cross-format
+   counts equality. Inputs are the hand-built synthetic
+   `fixtures/spectroscopy/` files.
 2. PyNE cross-check: the same vectors and fixture files driven through the
    upstream ``pyne.spectanalysis`` / ``pyne.gammaspec`` readers on identical
-   runtime-read inputs. PyNE is an optional oracle dependency: if it cannot
-   be imported, tier 2 is reported as SKIP with its reason (never silently).
-   The X-ray algebra has no container check — the upstream routine needs its
-   HDF5 atomic table and no atomic values are vendored here — recorded below.
+   runtime-read inputs, plus the E9 single-line SDEF fields diffed against
+   ``pyne.source.PointSource.mcnp`` (upstream is monoenergetic; the multi-line
+   distribution form has no upstream counterpart). PyNE is an optional oracle
+   dependency: if it cannot be imported, tier 2 is reported as SKIP with its
+   reason (never silently). The X-ray algebra has no container check — the
+   upstream routine needs its HDF5 atomic table and no atomic values are
+   vendored here — recorded below.
 """
 
 from __future__ import annotations
@@ -110,6 +115,25 @@ def tier1() -> tuple[list[list[str]], list[str], list[list[str]], str]:
     notes.append("E8 X-ray: k=2/l=3 hand intensities (Ka1, Ka2, Kb, L).")
     rows.append(["E8 xray lines", fmt(err), "< 1e-12", _check(err < 1e-12, "E8")])
 
+    bins, card = sp.sdef_decay_source([(1.17, 1.0), (0.662, 2.0), (1.33, 1.0)])
+    err = _worst_rel([p for _, p in bins], [0.5, 0.25, 0.25])
+    notes.append("E9 SDEF: hand lines (0.662x2, 1.17, 1.33) normalize to 1/2, 1/4, 1/4.")
+    rows.append(["E9 decay normalization", fmt(err), "< 1e-12", _check(err < 1e-12, "E9")])
+    # Byte-exact single-line card: POS always, no VEC (isotropic), ERG/WGT/PAR.
+    _, iso = sp.sdef_decay_source([(0.662, 2.0)])
+    notes.append("E9 SDEF: single-line isotropic card is byte-exact hand gold.")
+    rows.append(
+        [
+            "E9 single-line card",
+            "exact",
+            "equal",
+            _check(iso == "SDEF POS=0 0 0\n     ERG=0.662\n     WGT=1\n     PAR=n", "E9 card"),
+        ]
+    )
+    multi = sp.sdef_decay_source([(1.17, 1.0), (0.662, 2.0), (1.33, 1.0)])[1]
+    ok = "\nSI1 L 0.662 1.17 1.33\nSP1 D 0.5 0.25 0.25" in multi
+    rows.append(["E9 distribution cards", "exact", "equal", _check(ok, "E9 SI/SP")])
+
     dollar = sp.read_dollar_spe(str(FIX / "dollar_min.spe"))
     plain = sp.read_spe(str(FIX / "plain_min.spe"))
     ok = dollar["counts"] == plain["counts"] and len(dollar["counts"]) == 8
@@ -124,6 +148,7 @@ def tier2_pyne() -> tuple[list[list[str]], list[str], bool]:
     """PyNE cross-check. Returns (rows, notes, skipped)."""
     try:
         from pyne import gammaspec
+        from pyne import source as pyne_source
         from pyne import spectanalysis as sa
     except Exception as exc:  # noqa: BLE001 — oracle is optional; reason recorded
         note = f"Tier 2 (PyNE cross-check) SKIPPED: {exc}"
@@ -192,16 +217,60 @@ def tier2_pyne() -> tuple[list[list[str]], list[str], bool]:
         "its HDF5 atomic table at run time and no atomic values are "
         "vendored here, so E8 is pinned by the synthetic hand values above."
     )
+
+    # E9 single-line field cross-check: upstream PointSource is strictly
+    # monoenergetic, so for one caller line the full card text must match
+    # byte-for-byte (same fields, same order, same number formatting). The
+    # multi-line distribution form has no upstream counterpart.
+    sdef_cases = [
+        (
+            "sdef isotropic vs PyNE",
+            (0.5, -1.25, 2.5, 0.0, 0.0, 0.0, 0.662, "Neutron", 1.0),
+            5,
+        ),
+        (
+            "sdef beam vs PyNE",
+            (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.662, "Photon", 0.5),
+            5,
+        ),
+        (
+            "sdef proton v6 vs PyNE",
+            (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 12.0, "Proton", 0.5),
+            6,
+        ),
+    ]
+    for label, (x, y, z, u, v, w, e, particle, weight), version in sdef_cases:
+        ref = pyne_source.PointSource(x, y, z, u, v, w, e, particle, weight).mcnp(version)
+        ours = sp.sdef_decay_source(
+            [(e, 1.0)],
+            x=x,
+            y=y,
+            z=z,
+            u=u,
+            v=v,
+            w=w,
+            weight=weight,
+            particle=particle,
+            version=version,
+        )[1]
+        rows.append([label, "exact", "equal", _check(ours == ref, label)])
+    notes.append(
+        "E9 SDEF: single-line cards diffed byte-for-byte against "
+        "pyne.source.PointSource.mcnp (beam, isotropic, and the MCNP6 proton "
+        "designator); the multi-line ERG=D1 distribution form has no upstream "
+        "counterpart and is pinned by the synthetic card goldens in tier 1."
+    )
     return rows, notes, False
 
 
 def main() -> int:
     report = Report("spectroscopy", "Spectroscopy (`spectroscopy_vs_pyne.py`)")
     report.prose(
-        "Two-tier oracle for `nucleide.spectroscopy`: synthetic E1-E8 gates "
+        "Two-tier oracle for `nucleide.spectroscopy`: synthetic E1-E9 gates "
         "on hand-built fixtures (tier 1, always run), and a cross-check "
         "against the upstream `pyne.spectanalysis` / `pyne.gammaspec` "
-        "routines on identical runtime inputs (tier 2)."
+        "routines and `pyne.source.PointSource.mcnp` on identical runtime "
+        "inputs (tier 2)."
     )
     rows1, notes1, overlay_rows, bg_level = tier1()
     for note in notes1:

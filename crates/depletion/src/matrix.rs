@@ -19,7 +19,9 @@ pub type ReactionRates = HashMap<usize, HashMap<String, f64>>;
 /// shift by `-theta` without changing sparsity.
 #[derive(Clone)]
 pub struct DepletionSystem {
+    /// Chain template the matrix was assembled from.
     pub chain: Chain,
+    /// Sparsity pattern of the assembled matrix (diagonals explicit).
     pub pattern: Pattern,
     /// Entries parallel to the pattern's entry order.
     pub entries: Vec<Entry>,
@@ -32,8 +34,11 @@ pub struct DepletionSystem {
 /// One matrix entry location.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Entry {
+    /// Row index.
     pub row: usize,
+    /// Column index.
     pub col: usize,
+    /// Whether this entry sits on the diagonal (loss term).
     pub is_diagonal: bool,
 }
 

@@ -1,7 +1,7 @@
 ---
 title: Activation Analysis
 sidebar:
-  order: 5
+  order: 7
 ---
 
 Nucleide reads activation-code inputs and outputs without running the codes

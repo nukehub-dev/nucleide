@@ -2378,6 +2378,8 @@ mod tests {
         assert_eq!(deck.block_kinds(), ["geometry", "volumes", "mat_loading"]);
         assert_eq!(deck.volumes.as_ref().unwrap().entries.len(), 1);
         deck.validate().unwrap();
+        // The canonical writer normalizes `volume` to `volumes`.
+        assert!(deck.to_string().contains("volumes\n10 zone_1\nend"));
     }
 
     #[test]
@@ -2468,5 +2470,594 @@ mod tests {
         let deck = AlaraDeck::parse("geometry rectangular\nmixture bad\nmaterial WATER 1 1\nend\n")
             .unwrap();
         assert!(matches!(deck.mixture_ids("bad"), Err(Error::CrossRef(_))));
+    }
+
+    #[test]
+    fn mixture_ids_resolves_modified_symbols_and_targets() {
+        // `mn:56` rewrites to the isotope name `mn56`.
+        let deck =
+            AlaraDeck::parse("geometry rectangular\nmixture mod\nelement mn:56 1 0.5\nend\n")
+                .unwrap();
+        let ids = deck.mixture_ids("mod").unwrap();
+        assert_eq!(ids[&NuclideId::from_name("mn56").unwrap()], 0.5);
+
+        // Targets contribute a unit volume fraction.
+        let deck =
+            AlaraDeck::parse("geometry rectangular\nmixture tgt\ntarget isotope u235\nend\n")
+                .unwrap();
+        let ids = deck.mixture_ids("tgt").unwrap();
+        assert_eq!(ids[&NuclideId::from_name("u235").unwrap()], 1.0);
+
+        // Plain element symbols need element-library data.
+        let deck = AlaraDeck::parse("geometry rectangular\nmixture plain\nelement fe 1 0.5\nend\n")
+            .unwrap();
+        assert!(matches!(deck.mixture_ids("plain"), Err(Error::CrossRef(_))));
+    }
+
+    /// Deck exercising every fixed-size and every `end`-terminated block so
+    /// the typed views and the canonical writer arms all run.
+    const FULL_DECK: &str = "\
+geometry cylindrical
+major_radius 500.0
+minor_radius 150.0
+material_lib data/mat
+element_lib data/ele
+data_library eaflib data/eaflib1 data/eaflib2
+dump_file out.dump
+truncation 1e-7
+ignore 1e-10
+ref_flux_type volume_avg
+impurity 1e-6 1e-9
+convert_lib alaralib eaflib converted
+flux f1 data/flux 2.5 0 default
+dimension r 0.0
+1 5.0
+2 15.0
+end
+mat_loading
+z1 mix_a
+z2 void
+end
+mixture base_mix
+element fe 1.0 1.0
+end
+mixture mix_a
+material WATER 1.0 0.5
+element U235 1.0 0.25
+element mn:56 1.0 0.125
+like base_mix 1.0
+target element fe
+target isotope u235
+end
+solve_zones
+z1
+end
+skip_zones
+z2
+end
+spatial_norm
+1.0
+2.0
+3.0
+end
+schedule top
+1 d f1 ph 0 s
+end
+pulsehistory ph
+2 3600 s
+end
+cooling
+1 d
+2 w
+end
+output zone
+number_density
+total_heat
+end
+";
+
+    #[test]
+    fn full_deck_parses_every_block_type() {
+        let deck = AlaraDeck::parse(FULL_DECK).unwrap();
+        assert_eq!(
+            deck.block_kinds(),
+            [
+                "geometry",
+                "major_radius",
+                "minor_radius",
+                "material_lib",
+                "element_lib",
+                "data_library",
+                "dump_file",
+                "truncation",
+                "ignore",
+                "ref_flux_type",
+                "impurity",
+                "convert_lib",
+                "flux",
+                "dimension",
+                "mat_loading",
+                "mixture",
+                "mixture",
+                "solve_zones",
+                "skip_zones",
+                "spatial_norm",
+                "schedule",
+                "pulsehistory",
+                "cooling",
+                "output",
+            ]
+        );
+        assert_eq!(deck.geometry.as_ref().unwrap().kind, "cylindrical");
+        assert_eq!(deck.major_radius.as_ref().unwrap().value, 500.0);
+        assert_eq!(deck.minor_radius.as_ref().unwrap().value, 150.0);
+        assert_eq!(deck.material_lib.as_ref().unwrap().path, "data/mat");
+        assert_eq!(deck.element_lib.as_ref().unwrap().path, "data/ele");
+        let data_library = deck.data_library.as_ref().unwrap();
+        assert_eq!(data_library.kind, "eaflib");
+        assert_eq!(data_library.files, ["data/eaflib1", "data/eaflib2"]);
+        assert_eq!(deck.dump_file.as_ref().unwrap().path, "out.dump");
+        assert_eq!(deck.truncation.as_ref().unwrap().tolerance, 1e-7);
+        assert_eq!(deck.ignore.as_ref().unwrap().tolerance, 1e-10);
+        assert_eq!(deck.ref_flux_type.as_ref().unwrap().kind, "volume_avg");
+        let impurity = deck.impurity.as_ref().unwrap();
+        assert_eq!(impurity.threshold, 1e-6);
+        assert_eq!(impurity.tolerance, 1e-9);
+        let convert = deck.convert_lib.as_ref().unwrap();
+        assert_eq!(convert.from, "alaralib");
+        assert_eq!(convert.to, "eaflib");
+        assert_eq!(convert.files, ["converted"]);
+        let flux = deck.find_flux("f1").unwrap();
+        assert_eq!(flux.scale, 2.5);
+        assert_eq!(flux.skip, 0);
+
+        let dimension = &deck.dimensions[0];
+        assert_eq!(dimension.axis, "r");
+        assert_eq!(dimension.lower, 0.0);
+        assert_eq!(dimension.zones.len(), 2);
+        let loading = deck.mat_loading.as_ref().unwrap();
+        assert_eq!(loading.entries[1].mixture, "void");
+        assert_eq!(deck.solve_zones.as_ref().unwrap().zones, ["z1".to_string()]);
+        assert_eq!(deck.skip_zones.as_ref().unwrap().zones, ["z2".to_string()]);
+        assert_eq!(deck.spatial_norm.as_ref().unwrap().values, [1.0, 2.0, 3.0]);
+        deck.validate().unwrap();
+    }
+
+    #[test]
+    fn full_deck_writer_round_trip_is_stable() {
+        let deck = AlaraDeck::parse(FULL_DECK).unwrap();
+        let first = deck.to_string();
+        for needle in [
+            "geometry cylindrical",
+            "major_radius 500",
+            "minor_radius 150",
+            "material_lib data/mat",
+            "element_lib data/ele",
+            "data_library eaflib data/eaflib1 data/eaflib2",
+            "dump_file out.dump",
+            "truncation 0.0000001",
+            "ignore 0.0000000001",
+            "ref_flux_type volume_avg",
+            "impurity 0.000001 0.000000001",
+            "convert_lib alaralib eaflib converted",
+            "flux f1 data/flux 2.5 0 default",
+            "dimension r 0",
+            "mat_loading",
+            "solve_zones",
+            "skip_zones",
+            "spatial_norm",
+            "schedule top",
+            "pulsehistory ph",
+            "cooling",
+            "output zone",
+        ] {
+            assert!(first.contains(needle), "missing `{needle}` in:\n{first}");
+        }
+        let second = AlaraDeck::parse(&first).unwrap().to_string();
+        assert_eq!(first, second, "round trip drifted");
+        AlaraDeck::parse(&second).unwrap().validate().unwrap();
+    }
+
+    #[test]
+    fn fixed_block_rejections_report_lines() {
+        let err = AlaraDeck::parse("geometry hypersphere\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("unknown geometry")));
+
+        let err = AlaraDeck::parse("geometry rectangular extra\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("takes at most 1")));
+
+        let err = AlaraDeck::parse("flux f data/x 1.0 nope default\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("flux skip")));
+
+        let err = AlaraDeck::parse("truncation xyz\n").unwrap_err();
+        assert!(
+            matches!(&err, Error::Parse { line: 1, msg } if msg.contains("truncation tolerance"))
+        );
+
+        let err = AlaraDeck::parse("truncation 1e999\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("finite")));
+
+        let err = AlaraDeck::parse("data_library eaflib only_one\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("needs 2 file")));
+
+        let err = AlaraDeck::parse("data_library alaralib a b\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("needs 1 file")));
+
+        let err = AlaraDeck::parse("ref_flux_type bogus\n").unwrap_err();
+        assert!(matches!(
+            &err,
+            Error::Parse { line: 1, msg } if msg.contains("unknown reference flux")
+        ));
+
+        let err = AlaraDeck::parse("convert_lib nope eaflib f\n").unwrap_err();
+        assert!(matches!(
+            &err,
+            Error::Parse { line: 1, msg } if msg.contains("unknown convert_lib source")
+        ));
+
+        let err = AlaraDeck::parse("convert_lib alaralib nope f\n").unwrap_err();
+        assert!(matches!(
+            &err,
+            Error::Parse { line: 1, msg } if msg.contains("unknown convert_lib target")
+        ));
+    }
+
+    #[test]
+    fn fixed_block_continuation_lines_feed_arguments() {
+        let deck = AlaraDeck::parse("flux f data/x 1.0\n0 default\ntruncation 1e-7\n").unwrap();
+        let flux = deck.find_flux("f").unwrap();
+        assert_eq!(flux.scale, 1.0);
+        assert_eq!(flux.skip, 0);
+        assert_eq!(flux.format, "default");
+    }
+
+    #[test]
+    fn fixed_block_stops_at_next_keyword_or_eof() {
+        // Next block keyword before enough arguments: error at that line.
+        let err = AlaraDeck::parse("flux f data/x 1.0\ntruncation 1e-7\n").unwrap_err();
+        match err {
+            Error::Parse { line, msg } => {
+                assert_eq!(line, 2);
+                assert!(
+                    msg.contains("needs at least 5 argument(s), found 3"),
+                    "{msg}"
+                );
+            }
+            other => panic!("expected Parse, got {other}"),
+        }
+
+        // EOF before enough arguments: error at the last line read.
+        let err = AlaraDeck::parse("geometry rectangular\nflux f data/x 1.0\n").unwrap_err();
+        match err {
+            Error::Parse { line, msg } => {
+                assert_eq!(line, 2);
+                assert!(msg.contains("needs at least 5"), "{msg}");
+            }
+            other => panic!("expected Parse, got {other}"),
+        }
+    }
+
+    #[test]
+    fn unexpected_end_outside_block_is_an_error() {
+        let err = AlaraDeck::parse("end\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("unexpected `end`")));
+    }
+
+    #[test]
+    fn hash_glue_to_token_is_not_a_comment() {
+        // `#` glued to the value is kept, so the geometry name is unknown.
+        let err = AlaraDeck::parse("geometry rectangular#oops\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("unknown geometry")));
+    }
+
+    #[test]
+    fn include_edge_cases() {
+        // Bare `#include` and empty delimiters are comments, not directives.
+        let deck =
+            AlaraDeck::parse("#include\n#include <>\n#include ''\ngeometry rectangular\n").unwrap();
+        assert_eq!(deck.block_kinds(), ["geometry"]);
+
+        // `#include` glued to a path is not a directive; the line is a plain
+        // `#` comment and the deck parses without it.
+        let deck = AlaraDeck::parse("#includeother\ngeometry rectangular\n").unwrap();
+        assert_eq!(deck.block_kinds(), ["geometry"]);
+    }
+
+    #[test]
+    fn include_cycle_hits_nesting_limit() {
+        let dir = std::env::temp_dir().join(format!("alara_io_loop_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("self"), "#include self\n").unwrap();
+        let err = AlaraDeck::from_file(dir.join("self")).unwrap_err();
+        assert!(
+            matches!(&err, Error::Parse { msg, .. } if msg.contains("nesting exceeds 32")),
+            "got {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn end_block_header_argument_errors() {
+        let err = AlaraDeck::parse("volumes extra\n1 z\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("takes no header")));
+
+        let err = AlaraDeck::parse("solve_zones extra\nz\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("takes no header")));
+
+        let err = AlaraDeck::parse("mixture\nmaterial X 1 1\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("exactly one name")));
+
+        let err = AlaraDeck::parse("schedule a b\n1 d f1 ph 0 s\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("exactly one name")));
+
+        let err = AlaraDeck::parse("output bogus\nnumber_density\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("unknown output")));
+    }
+
+    #[test]
+    fn empty_body_and_bad_dimension_header_errors() {
+        let err = AlaraDeck::parse("mixture m\nend\n").unwrap_err();
+        assert!(matches!(
+            &err,
+            Error::Parse { line: 1, msg } if msg.contains("has no entries")
+        ));
+
+        let err = AlaraDeck::parse("volumes\nend\n").unwrap_err();
+        assert!(matches!(
+            &err,
+            Error::Parse { line: 1, msg } if msg.contains("has no entries")
+        ));
+
+        let err = AlaraDeck::parse("cooling\nend\n").unwrap_err();
+        assert!(matches!(
+            &err,
+            Error::Parse { line: 1, msg } if msg.contains("has no entries")
+        ));
+
+        let err = AlaraDeck::parse("dimension x y z\n1 5.0\nend\n").unwrap_err();
+        assert!(matches!(
+            &err,
+            Error::Parse { line: 1, msg } if msg.contains("<axis> [<lower>]")
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_dimension_with_volumes_typed_view() {
+        // `parse` already rejects this combination, so exercise `validate`'s
+        // own guard through the typed views directly.
+        let mut deck = AlaraDeck::parse("dimension x 0.0\n1 5.0\nend\n").unwrap();
+        deck.volumes = Some(Volumes {
+            entries: vec![VolumeEntry {
+                volume: 1.0,
+                zone: "z1".to_string(),
+            }],
+            line: 3,
+        });
+        assert!(matches!(
+            deck.validate(),
+            Err(Error::CrossRef(msg)) if msg.contains("only one geometry method")
+        ));
+    }
+
+    #[test]
+    fn dimension_rejections_report_lines() {
+        let err = AlaraDeck::parse("dimension q 0.0\n1 5.0\nend\n").unwrap_err();
+        assert!(
+            matches!(&err, Error::Parse { line: 1, msg } if msg.contains("unknown dimension axis"))
+        );
+
+        // First body line must be the lone lower bound when not given inline.
+        let err = AlaraDeck::parse("dimension x\n0.0 5.0\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 2, msg } if msg.contains("lower bound")));
+
+        let err = AlaraDeck::parse("dimension x 0.0\n1\nend\n").unwrap_err();
+        assert!(
+            matches!(&err, Error::Parse { line: 2, msg } if msg.contains("<intervals> <upper>"))
+        );
+
+        let err = AlaraDeck::parse("dimension x 0.0\nabc 5.0\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 2, msg } if msg.contains("interval count")));
+
+        let err = AlaraDeck::parse("dimension x 0.0\n0 5.0\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 2, msg } if msg.contains("at least 1")));
+
+        let err = AlaraDeck::parse("dimension x\nend\n").unwrap_err();
+        assert!(
+            matches!(&err, Error::Parse { line: 1, msg } if msg.contains("missing its lower bound"))
+        );
+
+        let err = AlaraDeck::parse("dimension x 0.0\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("no zones")));
+    }
+
+    #[test]
+    fn volumes_and_mat_loading_entry_errors() {
+        let err = AlaraDeck::parse("volumes\n1.0\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 2, msg } if msg.contains("<volume> <zone>")));
+
+        let err = AlaraDeck::parse("mat_loading\nz1\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 2, msg } if msg.contains("<zone> <mixture>")));
+    }
+
+    #[test]
+    fn schedule_and_history_value_errors() {
+        let err = AlaraDeck::parse("schedule s\n1 d f1 ph 0\nend\n").unwrap_err();
+        assert!(
+            matches!(&err, Error::Parse { line: 2, msg } if msg.contains("4-token sub-schedule"))
+        );
+
+        let err = AlaraDeck::parse("schedule s\n1 day f1 ph 0 s\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 2, msg } if msg.contains("single-character")));
+
+        let err = AlaraDeck::parse("schedule s\n1 q f1 ph 0 s\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 2, msg } if msg.contains("unknown time unit")));
+
+        let err = AlaraDeck::parse("pulsehistory ph\n1 0 s 2\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("triplets")));
+
+        let err = AlaraDeck::parse("pulsehistory ph\nx 0 s\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 2, msg } if msg.contains("pulse count")));
+
+        let err = AlaraDeck::parse("cooling\n1 d 2\nend\n").unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 1, msg } if msg.contains("pairs")));
+    }
+
+    #[test]
+    fn mixture_entry_shape_errors() {
+        let base = "geometry rectangular\nmixture m\n";
+        let tail = "\nend\n";
+        let err = AlaraDeck::parse(&format!("{base}material X 1{tail}")).unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 3, msg } if msg.contains("material <name>")));
+
+        let err = AlaraDeck::parse(&format!("{base}element fe 1{tail}")).unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 3, msg } if msg.contains("element <symbol>")));
+
+        let err = AlaraDeck::parse(&format!("{base}like g{tail}")).unwrap_err();
+        assert!(matches!(&err, Error::Parse { line: 3, msg } if msg.contains("like <mixture>")));
+
+        let err = AlaraDeck::parse(&format!("{base}target element{tail}")).unwrap_err();
+        assert!(
+            matches!(&err, Error::Parse { line: 3, msg } if msg.contains("target <element|isotope>"))
+        );
+
+        let err = AlaraDeck::parse(&format!("{base}target volume fe{tail}")).unwrap_err();
+        assert!(
+            matches!(&err, Error::Parse { line: 3, msg } if msg.contains("element` or `isotope"))
+        );
+
+        let err = AlaraDeck::parse(&format!("{base}target isotope nope99{tail}")).unwrap_err();
+        assert!(
+            matches!(&err, Error::Parse { line: 3, msg } if msg.contains("unknown target isotope"))
+        );
+
+        let err = AlaraDeck::parse(&format!("{base}wat X 1 1{tail}")).unwrap_err();
+        assert!(
+            matches!(&err, Error::Parse { line: 3, msg } if msg.contains("material`, `element`, `like`, or `target"))
+        );
+    }
+
+    #[test]
+    fn element_symbol_validation_errors() {
+        let deck_with = |entry: &str| {
+            AlaraDeck::parse(&format!("geometry rectangular\nmixture m\n{entry}\nend\n"))
+                .unwrap_err()
+        };
+        let err = deck_with("element fe: 1 1");
+        assert!(
+            matches!(&err, Error::Parse { line: 3, msg } if msg.contains("malformed modified element"))
+        );
+
+        let err = deck_with("element :56 1 1");
+        assert!(
+            matches!(&err, Error::Parse { line: 3, msg } if msg.contains("malformed element symbol"))
+        );
+
+        let err = deck_with("element 92:235 1 1");
+        assert!(
+            matches!(&err, Error::Parse { line: 3, msg } if msg.contains("malformed modified element"))
+        );
+
+        let err = deck_with("element u9999 1 1");
+        assert!(matches!(&err, Error::Parse { line: 3, msg } if msg.contains("unknown isotope")));
+
+        let err = deck_with("element xx 1 1");
+        assert!(matches!(&err, Error::Parse { line: 3, msg } if msg.contains("unknown element")));
+    }
+
+    #[test]
+    fn validate_reports_zone_and_pulsing_problems() {
+        // `volumes` naming a zone absent from `mat_loading`.
+        let deck = AlaraDeck::parse(
+            "geometry rectangular\nvolumes\n1.0 ghost_zone\nend\nmat_loading\nz1 m\nend\n\
+            mixture m\nelement u235 1 1\nend\n",
+        )
+        .unwrap();
+        assert!(matches!(deck.validate(), Err(Error::CrossRef(msg)) if msg.contains("ghost_zone")));
+
+        // `solve_zones` / `skip_zones` naming an unknown zone.
+        for block in ["solve_zones", "skip_zones"] {
+            let deck = AlaraDeck::parse(&format!(
+                "geometry rectangular\nmat_loading\nz1 m\nend\nmixture m\nelement u235 1 1\nend\n\
+                {block}\nghost\nend\n"
+            ))
+            .unwrap();
+            assert!(
+                matches!(deck.validate(), Err(Error::CrossRef(msg))
+                    if msg.contains("undefined zone")),
+                "{block} did not trip validation"
+            );
+        }
+
+        // 4-token item whose pulsing definition is missing.
+        let deck = AlaraDeck::parse(
+            "geometry rectangular\nflux f data/x 1 0 default\n\
+            schedule top\nsub ph 1 d\nend\nschedule sub\n1 d f ph 0 s\nend\n",
+        )
+        .unwrap();
+        assert!(
+            matches!(deck.validate(), Err(Error::CrossRef(msg)) if msg.contains("undefined pulsing"))
+        );
+    }
+
+    #[test]
+    fn writer_falls_back_to_raw_blocks_for_untyped_views() {
+        let mut deck = AlaraDeck::default();
+        for (kind, body) in [
+            ("dimension", vec!["x 0.0", "1 5.0"]),
+            ("mixture", vec!["ghost"]),
+            ("flux", vec!["f data/x 1 0 default"]),
+            ("schedule", vec!["s"]),
+            ("pulsehistory", vec!["p"]),
+            ("output", vec!["zone"]),
+            ("note", vec!["with body"]),
+            ("blank", vec![]),
+        ] {
+            deck.blocks.push(RawBlock {
+                kind: kind.to_string(),
+                line: 0,
+                body: body.iter().map(|entry| (*entry).to_string()).collect(),
+            });
+        }
+        let text = deck.to_string();
+        assert!(text.contains("dimension x 0.0 1 5.0\nend"), "got:\n{text}");
+        assert!(text.contains("mixture ghost\nend"), "got:\n{text}");
+        assert!(text.contains("flux f data/x 1 0 default"), "got:\n{text}");
+        assert!(text.contains("schedule s\nend"), "got:\n{text}");
+        assert!(text.contains("pulsehistory p\nend"), "got:\n{text}");
+        assert!(text.contains("output zone\nend"), "got:\n{text}");
+        assert!(text.contains("note with body"), "got:\n{text}");
+        assert!(text.contains("blank\n"), "got:\n{text}");
+
+        // Block kinds without a typed view and without a raw fallback are
+        // skipped silently by the canonical writer.
+        let mut skipped = AlaraDeck::default();
+        for kind in [
+            "geometry",
+            "volumes",
+            "mat_loading",
+            "solve_zones",
+            "skip_zones",
+            "spatial_norm",
+            "truncation",
+            "impurity",
+            "ignore",
+            "ref_flux_type",
+            "cooling",
+            "material_lib",
+            "element_lib",
+            "data_library",
+            "dump_file",
+            "major_radius",
+            "minor_radius",
+            "convert_lib",
+        ] {
+            skipped.blocks.push(RawBlock {
+                kind: kind.to_string(),
+                line: 0,
+                body: vec!["x".to_string()],
+            });
+        }
+        assert_eq!(skipped.to_string(), "");
     }
 }

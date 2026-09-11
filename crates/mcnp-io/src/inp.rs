@@ -888,4 +888,81 @@ mod tests {
             assert!(!e.to_string().is_empty());
         }
     }
+
+    #[test]
+    fn materials_from_str_matches_materials_from_inp() {
+        let deck = "\nsynth deck\nm1 92235 1.0\n";
+        let mats = materials_from_str(deck).unwrap();
+        assert_eq!(mats.len(), 1);
+        assert_eq!(mats[0].number, 1);
+        assert_eq!(mats[0].fraction_type, FracKind::Atom);
+    }
+
+    #[test]
+    fn cell_line_bad_material_number_errors() {
+        // All-digit but out of u32 range: passes is_cell_line, fails to parse.
+        let deck = "\nsynth deck\n1 99999999999 -1.0 100\nm1 92235 1.0\n";
+        let err = materials_from_inp(deck).unwrap_err();
+        assert_eq!(
+            err,
+            Error::BadCard {
+                line: 3,
+                message: "invalid cell material number `99999999999`".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn cell_line_bad_density_errors() {
+        // Not alphabetic (passes the surface-card heuristic), not a float.
+        let deck = "\nsynth deck\n1 1 -abc 100\nm1 92235 1.0\n";
+        let err = materials_from_inp(deck).unwrap_err();
+        assert_eq!(
+            err,
+            Error::BadCard {
+                line: 3,
+                message: "invalid cell density `-abc`".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn malformed_keyword_token_errors() {
+        for token in ["=bar", "foo="] {
+            let deck = format!("\nm1 1001 1.0 {token}\n");
+            let err = materials_from_inp(&deck).unwrap_err();
+            assert!(
+                matches!(err, Error::BadCard { line: 2, .. }),
+                "{token}: {err:?}"
+            );
+            assert!(err.to_string().contains("malformed keyword token"), "{err}");
+        }
+    }
+
+    #[test]
+    fn atom_density_with_natural_element_uses_weighted_mass() {
+        let deck = "\nsynth deck\n1 1 0.1 100\nm1 1000 1.0\n";
+        let mats = materials_from_inp(deck).unwrap();
+        let mass_h = natural_element_mass(1).unwrap();
+        let expected = 0.1 * 1e24 * mass_h / AVOGADRO;
+        let got = mats[0].density.unwrap();
+        assert!((got - expected).abs() < 1e-12, "{got} vs {expected}");
+        // Elements absent from the data tables have no natural mass.
+        assert!(natural_element_mass(255).is_none());
+    }
+
+    #[test]
+    fn atom_density_with_empty_composition_is_none() {
+        assert_eq!(convert_density(0.1, &[], FracKind::Atom), None);
+    }
+
+    #[test]
+    fn metadata_lookup_skips_colonless_comment_lines() {
+        let deck = "\nsynth deck\nc plain remark\nc another remark\nm1 92235 1.0\n";
+        let mats = materials_from_inp(deck).unwrap();
+        assert_eq!(mats[0].comments, vec!["plain remark", "another remark"]);
+        assert_eq!(mats[0].name(), None);
+        assert_eq!(mats[0].source(), None);
+        assert_eq!(mats[0].comments_text(), None);
+    }
 }

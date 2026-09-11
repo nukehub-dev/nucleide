@@ -15,6 +15,18 @@ pip install nucleide
 Prebuilt wheels cover Linux, macOS, and Windows for Python >= 3.10 (abi3: one
 wheel per platform serves every supported Python version).
 
+## Optional runtime dependencies
+
+The base wheel declares no runtime dependencies: `pip install nucleide` alone
+covers everything on this page. Only two call sites reach for third-party
+packages, each lazily and with a clear error if missing:
+`meshtal_mesh_data(..., as_numpy=True)` imports `numpy` to return meshtal
+tallies as arrays (the default `as_numpy=False` path returns plain lists), and
+`write_ptrac_hdf5` imports `h5py` (and `numpy`) to export PTRAC events to
+HDF5 — its error message points at `pip install h5py`, which brings numpy
+along. The `test` extra (`pip install nucleide[test]`) adds pytest and numpy
+for running the test suite.
+
 ## Verify the Python surface
 
 ```python

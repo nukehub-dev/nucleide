@@ -47,6 +47,26 @@ await copyFile(
   path.join(dst, "deck_l3.txt"),
 );
 
+// Serpent output samples consumed by the serpent-io tutorial.
+await copyFile(
+  path.join(fixturesRoot, "serpent", "serp2_res.m"),
+  path.join(dst, "serpent_res_sample.m"),
+);
+await copyFile(
+  path.join(fixturesRoot, "serpent", "sample2_dep.m"),
+  path.join(dst, "serpent_dep_sample.m"),
+);
+await copyFile(
+  path.join(fixturesRoot, "serpent", "sample_det.m"),
+  path.join(dst, "serpent_det_sample.m"),
+);
+
+// FLUKA USRBIN sample consumed by the fluka-io tutorial.
+await copyFile(
+  path.join(fixturesRoot, "fluka", "fluka_usrbin_single.lis"),
+  path.join(dst, "usrbin_sample.lis"),
+);
+
 // Theory-page SVG figures (docs/theory/figures/ is the source of truth).
 const figuresSrc = path.join(repoRoot, "docs", "theory", "figures");
 const figuresDst = path.join(here, "..", "public", "theory", "figures");
@@ -59,5 +79,6 @@ for (const f of figures) {
 console.log(
   `sync-data: staged MaterialsCompendium.json (${(minified.length / 1e6).toFixed(1)} MB) + LICENSE, ` +
     `meshtal_sample.txt, xsdir_sample.txt, chain_simple.xml, deck_minimal.txt, deck_l3.txt, ` +
+    `serpent_res_sample.m, serpent_dep_sample.m, serpent_det_sample.m, usrbin_sample.lis, ` +
     `${figures.length} theory figures`,
 );

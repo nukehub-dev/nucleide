@@ -1,7 +1,7 @@
 ---
 title: Build Materials
 sidebar:
-  order: 2
+  order: 4
 ---
 
 Nucleide models materials as maps from canonical nuclide identifiers to masses,

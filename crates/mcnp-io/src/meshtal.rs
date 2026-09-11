@@ -540,4 +540,156 @@ title
 ";
         assert!(matches!(Meshtal::parse(text), Err(Error::BadTallyBlock(_))));
     }
+
+    #[test]
+    fn particle_letters() {
+        assert_eq!(ParticleKind::Neutron.letter(), 'n');
+        assert_eq!(ParticleKind::Photon.letter(), 'p');
+    }
+
+    #[test]
+    fn error_display_messages() {
+        use std::error::Error as _;
+
+        let io = Error::Io("disk".into());
+        assert_eq!(io.to_string(), "io error: disk");
+        assert!(io.source().is_none());
+        assert_eq!(
+            Error::BadHeader("banner".into()).to_string(),
+            "malformed meshtal header: banner"
+        );
+        assert_eq!(
+            Error::BadTallyBlock("tally 4: x".into()).to_string(),
+            "malformed tally block: tally 4: x"
+        );
+        assert_eq!(
+            Error::BadParticleLine("electron".into()).to_string(),
+            "unknown particle in `electron`"
+        );
+        assert_eq!(
+            Error::BadNumber {
+                context: "histories",
+                text: "xx".into(),
+            }
+            .to_string(),
+            "cannot parse histories from `xx`"
+        );
+    }
+
+    #[test]
+    fn short_banner_errors() {
+        let text =
+            "mcnp version\ntitle\n Number of histories used for normalizing tallies = 10.00\n";
+        assert!(matches!(
+            Meshtal::parse(text),
+            Err(Error::BadHeader(m)) if m.contains("expected MCNP banner")
+        ));
+    }
+
+    #[test]
+    fn empty_histories_line_errors() {
+        let text = "mcnp   version 5 ld=010101  probid = 01/01/01\ntitle\n   \n";
+        assert!(matches!(
+            Meshtal::parse(text),
+            Err(Error::BadHeader(m)) if m.contains("no histories value")
+        ));
+    }
+
+    #[test]
+    fn bad_histories_number_errors() {
+        let text = "mcnp   version 5 ld=010101  probid = 01/01/01\ntitle\n Number of histories used for normalizing tallies = abc\n";
+        assert!(matches!(
+            Meshtal::parse(text),
+            Err(Error::BadNumber {
+                context: "histories",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn nonnumeric_tally_number_errors() {
+        let text = "\
+mcnp   version 5 ld=010101  probid = 01/01/01
+title
+ Number of histories used for normalizing tallies = 10.00
+
+ Mesh Tally Number        xx
+";
+        assert!(matches!(
+            Meshtal::parse(text),
+            Err(Error::BadNumber {
+                context: "tally number",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn missing_bin_boundaries_errors() {
+        let text = "\
+mcnp   version 5 ld=010101  probid = 01/01/01
+title
+ Number of histories used for normalizing tallies = 10.00
+
+ Mesh Tally Number         4
+ This is a neutron mesh tally.
+
+ junk
+ more junk
+";
+        assert!(matches!(
+            Meshtal::parse(text),
+            Err(Error::BadTallyBlock(m)) if m.contains("no `Tally bin boundaries:` found")
+        ));
+    }
+
+    #[test]
+    fn degenerate_bounds_errors() {
+        let text = "\
+mcnp   version 5 ld=010101  probid = 01/01/01
+title
+ Number of histories used for normalizing tallies = 10.00
+
+ Mesh Tally Number         4
+ This is a neutron mesh tally.
+
+ Tally bin boundaries:
+    X direction:
+    Y direction:   0.00   1.00
+    Z direction:   0.00   1.00
+    Energy bin boundaries: 0.00E+00 1.00E+00
+
+   Energy         X         Y         Z     Result     Rel Error
+";
+        assert!(matches!(
+            Meshtal::parse(text),
+            Err(Error::BadTallyBlock(m)) if m.contains("degenerate bounds")
+        ));
+    }
+
+    #[test]
+    fn short_data_row_errors() {
+        let text = "\
+mcnp   version 5 ld=010101  probid = 01/01/01
+title
+ Number of histories used for normalizing tallies = 10.00
+
+ Mesh Tally Number         4
+ This is a neutron mesh tally.
+
+ Tally bin boundaries:
+    X direction:   0.00   1.00
+    Y direction:   0.00   1.00
+    Z direction:   0.00   1.00
+    Energy bin boundaries: 0.00E+00 1.00E+00
+
+   Energy         X         Y         Z     Result     Rel Error
+    1.00E+00 0.00E+00 0.00E+00 0.00E+00 4.00E-01
+";
+        assert!(matches!(
+            Meshtal::parse(text),
+            Err(Error::BadTallyBlock(m)) if m.contains("data row too short")
+        ));
+    }
 }

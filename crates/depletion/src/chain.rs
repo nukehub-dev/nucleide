@@ -11,6 +11,7 @@ pub struct DecayMode {
     pub kind: String,
     /// Daughter nuclide name.
     pub target: String,
+    /// Branching ratio for this decay channel.
     pub branching_ratio: f64,
 }
 
@@ -21,9 +22,9 @@ pub struct Reaction {
     pub kind: String,
     /// Daughter nuclide; `None` means pure loss ("Nothing").
     pub target: Option<String>,
-    /// Q value [eV].
+    /// Q value \[eV\].
     pub q: f64,
-    /// Branching ratio for this reaction entry. Multiple <reaction> entries
+    /// Branching ratio for this reaction entry. Multiple `<reaction>` entries
     /// with the same `kind` share a single loss term; each entry adds its own
     /// gain term scaled by this ratio (OpenMC chain.py:714-729).
     pub branching_ratio: f64,
@@ -32,6 +33,7 @@ pub struct Reaction {
 /// Fission product yields at one incident energy.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FissionYields {
+    /// Incident neutron energy of this yield set \[eV\].
     pub energy: f64,
     /// Product nuclide → independent yield fraction.
     pub products: BTreeMap<String, f64>,
@@ -40,13 +42,17 @@ pub struct FissionYields {
 /// A single chain nuclide with all its transmutation channels.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ChainNuclide {
+    /// Nuclide name (e.g. "U235").
     pub name: String,
-    /// Half-life [s]; `None` for stable nuclides.
+    /// Half-life \[s\]; `None` for stable nuclides.
     pub half_life: Option<f64>,
-    /// Decay energy [eV].
+    /// Decay energy \[eV\].
     pub decay_energy: f64,
+    /// Decay channels of this nuclide.
     pub decay_modes: Vec<DecayMode>,
+    /// Transmutation reaction channels of this nuclide.
     pub reactions: Vec<Reaction>,
+    /// Fission product yields at one or more incident energies.
     pub neutron_fission_yields: Vec<FissionYields>,
 }
 
@@ -70,17 +76,24 @@ impl ChainNuclide {
 /// Errors from chain parsing and matrix construction.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
+    /// Underlying file I/O failure.
     Io(String),
+    /// Malformed XML or unparseable attribute value.
     Xml(String),
     /// Reference to a nuclide absent from the chain.
     UnknownNuclide {
+        /// Name of the unresolved nuclide.
         name: String,
+        /// Where the reference occurred (e.g. "decay target").
         context: &'static str,
     },
+    /// Structurally invalid chain content (e.g. duplicate nuclides).
     BadStructure(String),
     /// Half-life is zero, negative, or non-finite.
     InvalidHalfLife {
+        /// Name of the offending nuclide.
         name: String,
+        /// Offending half-life value \[s\].
         value: f64,
     },
 }
@@ -105,6 +118,7 @@ impl std::error::Error for Error {}
 /// Parsed depletion chain in topological file order.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Chain {
+    /// Nuclides in topological file order.
     pub nuclides: Vec<ChainNuclide>,
     index: BTreeMap<String, usize>,
 }
@@ -233,6 +247,7 @@ impl Chain {
         self.nuclides.len()
     }
 
+    /// Whether the chain holds no nuclides.
     pub fn is_empty(&self) -> bool {
         self.nuclides.is_empty()
     }

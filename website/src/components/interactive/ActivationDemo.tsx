@@ -4,6 +4,9 @@ import type {
   AlaraDeckSummary,
   AlaraOutputSummary,
   FispactOutputSummary,
+  OrigenTape5Summary,
+  OrigenTape6Summary,
+  OrigenTape9Summary,
   R2sSummary,
   SnapshotBundleJson,
   SnapshotInputJson,
@@ -14,7 +17,15 @@ import { Label } from "@nukehub/docs-kit/components/ui/Label";
 import { Textarea } from "@nukehub/docs-kit/components/ui/Textarea";
 import { DataTable } from "@nukehub/docs-kit/components/mdx/DataTable";
 
-type ActivationMode = "alara-deck" | "alara-output" | "fispact" | "r2s" | "r2s-snapshot";
+type ActivationMode =
+  | "alara-deck"
+  | "alara-output"
+  | "fispact"
+  | "origen-tape5"
+  | "origen-tape6"
+  | "origen-tape9"
+  | "r2s"
+  | "r2s-snapshot";
 
 const DEFAULT_DECK = `geometry rectangular
 mat_loading
@@ -46,6 +57,33 @@ NUCLIDE ATOMS ACTIVITY HEAT
 h-3 1.0000E+20 1.2000E+09 3.5000E-03
 total 1.3000E+20 5.5000E+09 7.6600E-02`;
 
+const DEFAULT_ORIGEN_TAPE5 = `# SYNTHETIC ORIGEN TAPE5 sample - simplified input echo for parser tests (not real ORIGEN output).
+SYNTHETIC PWR PIN - TAPE5 SAMPLE
+CASE 1 - BASE DEPLETION
+FLUX= 3.0e13 DAYS= 100.0
+FLUX= 0.0 DAYS= 30.0
+MAT fuel
+U235 10.5
+U238 1000.0
+Pu239 0.25
+MAT clad
+Zr90 50.0`;
+
+const DEFAULT_ORIGEN_TAPE6 = `# SYNTHETIC ORIGEN TAPE6 sample - simplified inventory for parser tests (not real ORIGEN output).
+U235 10.2 8.16e5
+U238 995.0 1.23e4
+Pu239 0.245 5.63e8
+Cs137 0.012 3.84e10`;
+
+const DEFAULT_ORIGEN_TAPE9 = `# SYNTHETIC ORIGEN TAPE9 sample - simplified decay constants for parser tests (not real ORIGEN data).
+U235 3.1209e-17
+U238 4.9161e-18
+Pu239 9.1105e-13
+
+# short-lived fission products and activation nuclides below
+Cs137 7.3217e-10
+Co60 4.1674e-09`;
+
 const DEFAULT_SNAPSHOT = `{
   "zones": [
     {"id": "zone1", "volumeCm3": 1000, "composition": {"U235": 0.001, "U238": 0.02}},
@@ -59,6 +97,9 @@ const DEFAULTS: Record<ActivationMode, string> = {
   "alara-deck": DEFAULT_DECK,
   "alara-output": DEFAULT_ALARA_OUTPUT,
   fispact: DEFAULT_FISPACT,
+  "origen-tape5": DEFAULT_ORIGEN_TAPE5,
+  "origen-tape6": DEFAULT_ORIGEN_TAPE6,
+  "origen-tape9": DEFAULT_ORIGEN_TAPE9,
   r2s: DEFAULT_DECK,
   "r2s-snapshot": DEFAULT_SNAPSHOT,
 };
@@ -67,6 +108,9 @@ const MODES: { value: ActivationMode; label: string }[] = [
   { value: "alara-deck", label: "ALARA deck" },
   { value: "alara-output", label: "ALARA output" },
   { value: "fispact", label: "FISPACT output" },
+  { value: "origen-tape5", label: "ORIGEN TAPE5" },
+  { value: "origen-tape6", label: "ORIGEN TAPE6" },
+  { value: "origen-tape9", label: "ORIGEN TAPE9" },
   { value: "r2s", label: "R2S workflow" },
   { value: "r2s-snapshot", label: "R2S snapshot" },
 ];
@@ -79,6 +123,9 @@ export function ActivationDemo() {
   const [deck, setDeck] = useState<AlaraDeckSummary | null>(null);
   const [alaraOutput, setAlaraOutput] = useState<AlaraOutputSummary | null>(null);
   const [fispact, setFispact] = useState<FispactOutputSummary | null>(null);
+  const [tape5, setTape5] = useState<OrigenTape5Summary | null>(null);
+  const [tape6, setTape6] = useState<OrigenTape6Summary | null>(null);
+  const [tape9, setTape9] = useState<OrigenTape9Summary | null>(null);
   const [r2s, setR2s] = useState<R2sSummary | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotBundleJson | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -91,6 +138,9 @@ export function ActivationDemo() {
     setDeck(null);
     setAlaraOutput(null);
     setFispact(null);
+    setTape5(null);
+    setTape6(null);
+    setTape9(null);
     setR2s(null);
     setSnapshot(null);
   }
@@ -115,6 +165,15 @@ export function ActivationDemo() {
           break;
         case "fispact":
           setFispact(wasm.parseFispactOutput(text, runLbl));
+          break;
+        case "origen-tape5":
+          setTape5(wasm.parseOrigenTape5(text));
+          break;
+        case "origen-tape6":
+          setTape6(wasm.parseOrigenTape6(text));
+          break;
+        case "origen-tape9":
+          setTape9(wasm.parseOrigenTape9(text));
           break;
         case "r2s":
           setR2s(wasm.r2sFromDeck(text));
@@ -258,6 +317,85 @@ export function ActivationDemo() {
 
           {fispact && (
             <OutputTable rows={fispact.rows} variables={fispact.variables} blocks={null} />
+          )}
+
+          {tape5 && (
+            <div className="space-y-3">
+              <div className="grid gap-2 text-sm sm:grid-cols-3">
+                <p>Titles: {tape5.titles.length}</p>
+                <p>Steps: {tape5.steps.length}</p>
+                <p>Materials: {tape5.materials.length}</p>
+              </div>
+              {tape5.titles.length > 0 && (
+                <p className="text-sm">Title cards: {tape5.titles.join(" | ")}</p>
+              )}
+              <DataTable
+                data={tape5.steps.map((s) => ({
+                  flux: s.flux.toExponential(3),
+                  days: s.days.toFixed(1),
+                }))}
+                columns={[
+                  { key: "flux", header: "Flux (n/cm²/s)", align: "right" },
+                  { key: "days", header: "Days", align: "right" },
+                ]}
+              />
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Materials ({tape5.materials.length})</p>
+                <DataTable
+                  data={tape5.materials.flatMap((m) =>
+                    m.entries.map((e) => ({
+                      material: <span className="font-mono">{m.name}</span>,
+                      nuclide: <span className="font-mono">{e.nuclide}</span>,
+                      grams: e.grams.toExponential(4),
+                    })),
+                  )}
+                  columns={[
+                    { key: "material", header: "Material" },
+                    { key: "nuclide", header: "Nuclide" },
+                    { key: "grams", header: "Grams", align: "right" },
+                  ]}
+                  pagination
+                  pageSize={10}
+                />
+              </div>
+            </div>
+          )}
+
+          {tape6 && (
+            <div className="space-y-3">
+              <p className="text-sm">
+                Records: {tape6.records.length}, total activity:{" "}
+                {tape6.total_activity_bq.toExponential(4)} Bq
+              </p>
+              <DataTable
+                data={tape6.records.map((r) => ({
+                  nuclide: <span className="font-mono">{r.nuclide}</span>,
+                  grams: r.grams.toExponential(4),
+                  activity: r.activity_bq.toExponential(4),
+                }))}
+                columns={[
+                  { key: "nuclide", header: "Nuclide" },
+                  { key: "grams", header: "Grams", align: "right" },
+                  { key: "activity", header: "Activity (Bq)", align: "right" },
+                ]}
+              />
+            </div>
+          )}
+
+          {tape9 && (
+            <div className="space-y-3">
+              <p className="text-sm">Entries: {tape9.entries.length}</p>
+              <DataTable
+                data={tape9.entries.map((e) => ({
+                  nuclide: <span className="font-mono">{e.nuclide}</span>,
+                  lambda: e.decay_const.toExponential(4),
+                }))}
+                columns={[
+                  { key: "nuclide", header: "Nuclide" },
+                  { key: "lambda", header: "λ (s⁻¹)", align: "right" },
+                ]}
+              />
+            </div>
           )}
 
           {r2s && (

@@ -568,7 +568,7 @@ function elementSymbol(z: number): string {
   return symbols[z - 1] ?? `Z${z}`;
 }
 
-function midpoints(bounds: number[]): number[] {
+export function midpoints(bounds: number[]): number[] {
   const out: number[] = [];
   for (let i = 0; i < bounds.length - 1; i++) {
     out.push((bounds[i] + bounds[i + 1]) / 2);
@@ -576,14 +576,26 @@ function midpoints(bounds: number[]): number[] {
   return out;
 }
 
-function logTransform(z: number[][]): { z: number[][]; tickvals: number[]; ticktext: string[] } {
+export function logTransform(z: number[][]): {
+  z: number[][];
+  tickvals: number[];
+  ticktext: string[];
+} {
   const flat = z.flat();
   const positive = flat.filter((v) => v > 0);
   if (positive.length === 0) {
     return { z, tickvals: [], ticktext: [] };
   }
-  const min = Math.min(...positive);
-  const max = Math.max(...flat);
+  // Explicit loops: spreading mesh-sized arrays into Math.min/Math.max
+  // overflows the browser's argument limit on large tallies.
+  let min = Infinity;
+  for (const v of positive) {
+    if (v < min) min = v;
+  }
+  let max = -Infinity;
+  for (const v of flat) {
+    if (v > max) max = v;
+  }
   const minExp = Math.floor(Math.log10(min));
   const maxExp = Math.ceil(Math.log10(max));
   const tickvals: number[] = [];

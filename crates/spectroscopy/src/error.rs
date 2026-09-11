@@ -3,7 +3,8 @@
 use thiserror::Error;
 
 /// Errors raised while smoothing spectra, counting peaks, calibrating
-/// energy/efficiency, parsing `.spe` text, or evaluating X-ray lines.
+/// energy/efficiency, parsing `.spe` text, evaluating X-ray lines, or
+/// rendering SDEF decay-source cards.
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum Error {
     /// Rectangular smoothing width is below 3 (got `{0}`).
@@ -64,4 +65,31 @@ pub enum Error {
     /// Dollar-format text ends before all declared data lines are read.
     #[error("spectroscopy: truncated spe data section")]
     TruncatedData,
+    /// No decay lines supplied to the SDEF normalizer (E9).
+    #[error("spectroscopy: no decay lines supplied")]
+    EmptyLines,
+    /// A decay line energy is negative (E9): `{0}`.
+    #[error("spectroscopy: decay line energy {0} is negative")]
+    NegativeEnergy(f64),
+    /// A decay line intensity is negative (E9): `{0}`.
+    #[error("spectroscopy: decay line intensity {0} is negative")]
+    NegativeIntensity(f64),
+    /// A decay line energy or intensity is not finite (E9): `{0}`.
+    #[error("spectroscopy: decay line value {0} is not finite")]
+    NonFiniteLine(f64),
+    /// No decay line carries positive intensity (all zero or underflowed) (E9).
+    #[error("spectroscopy: no decay line has a positive intensity")]
+    NoEmission,
+    /// A point-source field is not finite (E9): `{0}`.
+    #[error("spectroscopy: point source field `{0}` is not finite")]
+    NonFiniteSourceField(&'static str),
+    /// The source weight is not positive (E9): `{0}`.
+    #[error("spectroscopy: source weight {0} must be positive")]
+    NonPositiveWeight(f64),
+    /// The MCNP version is not 5 or 6 (E9): `{0}`.
+    #[error("spectroscopy: MCNP version {0} is unsupported (only 5 and 6 exist)")]
+    UnsupportedMcnpVersion(u32),
+    /// The particle has no designator for the requested MCNP version (E9).
+    #[error("spectroscopy: particle {0} has no MCNP{1} designator")]
+    ParticleNotScorable(&'static str, u32),
 }

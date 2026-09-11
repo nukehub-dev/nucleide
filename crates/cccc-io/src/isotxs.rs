@@ -289,6 +289,86 @@ mod tests {
     }
 
     #[test]
+    fn header_rejections_report_line() {
+        // Wrong token count.
+        let err = IsotxsLib::parse("ISOTXS\n").unwrap_err();
+        match err {
+            Error::Parse { line, msg } => {
+                assert_eq!(line, 1);
+                assert!(msg.contains("ISOTXS <ngroups>"), "{msg}");
+            }
+            err => panic!("expected Parse error, got {err:?}"),
+        }
+
+        // Wrong keyword.
+        let err = IsotxsLib::parse("BOGUS 2\n").unwrap_err();
+        match err {
+            Error::Parse { line, msg } => {
+                assert_eq!(line, 1);
+                assert!(msg.contains("ISOTXS <ngroups>"), "{msg}");
+            }
+            err => panic!("expected Parse error, got {err:?}"),
+        }
+
+        // Non-numeric group count.
+        let err = IsotxsLib::parse("ISOTXS two\n").unwrap_err();
+        match err {
+            Error::Parse { line, msg } => {
+                assert_eq!(line, 1);
+                assert!(msg.contains("invalid ISOTXS group count"), "{msg}");
+            }
+            err => panic!("expected Parse error, got {err:?}"),
+        }
+
+        // Zero group count.
+        let err = IsotxsLib::parse("ISOTXS 0\n").unwrap_err();
+        match err {
+            Error::Parse { line, msg } => {
+                assert_eq!(line, 1);
+                assert!(msg.contains("positive"), "{msg}");
+            }
+            err => panic!("expected Parse error, got {err:?}"),
+        }
+    }
+
+    #[test]
+    fn nuclide_group_count_token_rejected() {
+        let text = "ISOTXS 2\nNUCLIDE u 92235 x\n1.0 2.0\n";
+        let err = IsotxsLib::parse(text).unwrap_err();
+        match err {
+            Error::Parse { line, msg } => {
+                assert_eq!(line, 2);
+                assert!(msg.contains("invalid NUCLIDE group count"), "{msg}");
+            }
+            err => panic!("expected Parse error, got {err:?}"),
+        }
+    }
+
+    #[test]
+    fn isotxs_record_inside_xs_values_is_short() {
+        // A second `ISOTXS` header where XS values belong reads as a short record.
+        let text = "ISOTXS 2\nNUCLIDE u 92235 2\nISOTXS 2\n";
+        let err = IsotxsLib::parse(text).unwrap_err();
+        match err {
+            Error::Parse { line, msg } => {
+                assert_eq!(line, 3);
+                assert!(msg.contains("short cross-section record"), "{msg}");
+            }
+            err => panic!("expected Parse error, got {err:?}"),
+        }
+    }
+
+    #[test]
+    fn from_file_io_error_surfaces() {
+        let missing = format!(
+            "{}/../../fixtures/cccc/definitely_missing",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let err = IsotxsLib::from_file(missing).unwrap_err();
+        assert!(matches!(err, Error::Io(_)), "got {err:?}");
+    }
+
+    #[test]
     fn unexpected_record_reports_line() {
         let text = "ISOTXS 2\nBOGUS U235 92235 2\n";
         let err = IsotxsLib::parse(text).unwrap_err();

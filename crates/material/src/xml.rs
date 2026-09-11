@@ -121,7 +121,7 @@ impl MaterialsDoc {
 
     /// Serialize the full `<materials>` document, including the XML
     /// declaration. Each material uses its stored density (in
-    /// [`DEFAULT_DENSITY_UNITS`]); missing densities are an error.
+    /// `DEFAULT_DENSITY_UNITS`); missing densities are an error.
     pub fn to_xml(&self) -> crate::Result<String> {
         let mut writer = Writer::new_with_indent(Vec::<u8>::new(), b' ', 2);
         writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;

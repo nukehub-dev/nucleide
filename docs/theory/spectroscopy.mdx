@@ -1,6 +1,6 @@
 ---
 title: Gamma-Ray Spectroscopy
-description: Spectrum smoothing, peak counting, energy/efficiency calibration, X-ray line algebra, and the SPE readers behind Nucleide's spectroscopy toolkit.
+description: Spectrum smoothing, peak counting, energy/efficiency calibration, X-ray line algebra, SDEF decay-source cards, and the SPE readers behind Nucleide's spectroscopy toolkit.
 sidebar:
   order: 6
 references:
@@ -20,7 +20,9 @@ sit under this peak, and at what energy" needs a small pipeline: smooth the
 spectrum, delimit the peak, subtract the background, map channels to energies,
 correct for detector efficiency, and account for X-ray lines. Nucleide
 implements exactly the upstream analysis subset (E1–E8) in
-`crates/spectroscopy`, with every caller-side constant kept explicit.
+`crates/spectroscopy`, with every caller-side constant kept explicit, plus the
+E9 decay-source composition: caller-supplied decay lines normalized into
+emission probabilities and rendered as an MCNP SDEF card.
 
 ## Mathematical details
 
@@ -97,6 +99,36 @@ Output order is always Ka1, Ka2, Kb, L. No atomic table is vendored, so
 every constant is an explicit input; an absent conversion is `None`
 (the upstream NaN sentinel).
 
+### E9 — Decay-source normalization and SDEF cards
+
+The upstream point-source emitter renders one monoenergetic particle at a
+point: `SDEF POS=<x> <y> <z>`, `VEC=<u> <v> <w> DIR=1` on a continuation
+line only when a direction component is nonzero, then `ERG=<E>`, `WGT=<w>`,
+and `PAR=<designator>`. E9 generalizes it to a caller-supplied line list
+`(E_i, I_i)` — no line data is vendored, every pair is an input. With
+duplicates merged by summing and bins sorted ascending:
+
+`p_i = I_i / sum_j I_j`, so the emitted probabilities sum to 1.0.
+
+Behavior is specified, not inherited: empty input, negative energies or
+intensities, and non-finite values are errors; zero-intensity lines are
+dropped (a zero-probability `SP1` entry has unverified transport meaning);
+input order is irrelevant.
+
+The card keeps the upstream field order. One surviving line keeps the
+upstream inline `ERG=<E>`; several lines switch to the discrete-distribution
+form `ERG=D1`, with the energies on an `SI1 L` card and the probabilities on
+a paired `SP1 D` card, wrapped at 80 columns onto 5-space continuations.
+Numbers render in C++ default six-significant-digit form, matching the
+upstream C++ emitter. The `PAR=` designator comes from the `nucleide-nuclei`
+particle dialect (MCNP5 `n`/`p`/`e`; MCNP6 adds `h` for protons).
+
+The distribution syntax is verified surface — the card shapes lex, parse,
+and round-trip through an MCNP input parser. The sampling semantics behind
+them (what the `L`/`D` flags select, `SPn`-omitted defaults, zero/negative
+probability handling, MCNP renormalization) are not verified from local
+files and are the caller's responsibility against the MCNP manual.
+
 ## Algorithm
 
 Smoothing and counting are single passes over plain vectors. Channel bounds
@@ -128,18 +160,23 @@ Counts `[2, 5, 1, 6, 3, 8, 4]`, peak window `c1 = 2`, `c2 = 5`:
 
 ## Assumptions and limitations
 
-- Counts, channels, fits, coefficients, and atomic constants are all caller
-  inputs; nothing is fetched or fitted.
+- Counts, channels, fits, coefficients, atomic constants, and decay lines are
+  all caller inputs; nothing is fetched or fitted.
 - FWHM fits are parsed, never evaluated.
-- X-ray energies are in keV; efficiency energies are in MeV.
+- X-ray energies are in keV; efficiency energies are in MeV; SDEF decay-line
+  energies are in MeV.
 - Smoothing edges copy rather than extrapolate.
+- E9 renders the SDEF/distribution card shapes only; MCNP sampling semantics
+  (distribution flags, defaults, renormalization) are the caller's
+  responsibility against the MCNP manual.
 
 ## Related work beyond Nucleide
 
-Peak search, peak fitting, activity calculations, decay-spectra and SDEF
-sources, and plotting all sit outside this toolkit: none exist in the
-upstream analysis subset, and plotting stays user-side (the upstream plot
-helpers are an isolated GUI module).
+Peak search, peak fitting, activity calculations, and plotting all sit
+outside this toolkit: none exist in the upstream analysis subset, and
+plotting stays user-side (the upstream plot helpers are an isolated GUI
+module). Decay-spectrum *line data* also stays out: no evaluated line library
+is vendored, so E9 sources are built purely from caller-supplied lines.
 
 ## References
 

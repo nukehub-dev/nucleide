@@ -15,6 +15,13 @@ workspace crates from tags.
 
 ### Added
 
+- Serpent and FLUKA output-parsing Python tutorials
+  (`docs/tutorials/python/parse-serpent-output.md`,
+  `docs/tutorials/python/parse-fluka-output.md`): read `_res.m`/`_dep.m`/
+  `_det.m` files via `nucleide.serpent.read_serpent` and USRBIN `.lis`
+  tallies via `nucleide.fluka.read_usrbin`, mirroring the MCNP parsing
+  tutorial. Both are listed in the Python tutorial index and the docs index,
+  and cross-linked from the tutorials "Finding more examples" section.
 - SVG figures on all six theory pages (`docs/theory/figures/`): burnup-matrix
   column anatomy (depletion), MARC cascade schematic (enrichment), Walker
   alias-table construction (variance reduction), nucid digit layout (nuclear
@@ -25,6 +32,39 @@ workspace crates from tags.
   (`docs/README.md`): `currentColor` follows the site theme and
   `var(--primary)` follows the accent picker. The home intro was also rewritten
   as a reader-facing welcome with a "Where to start" section.
+- Decay-line SDEF source emission (`nucleide-spectroscopy`, equation E9):
+  `nucleide.spectroscopy.sdef_decay_source` takes caller-supplied decay lines
+  (energy, intensity), merges duplicates, sorts, and normalizes them to
+  probability bins rendered as an MCNP point-source card — PyNE field order
+  (`POS=` always; `VEC=`/`DIR=1` only when directed; `WGT=`; `PAR=` via the
+  `nuclei` particle dialects, MCNP versions 5/6), inline `ERG=<E>` for a
+  single line, and discrete-distribution `ERG=D1` + `SI1 L`/`SP1 D` cards
+  wrapped at 80 columns for several. Distribution-card syntax is
+  parser-verified surface only (MCNP sampling semantics stay caller-side);
+  no decay data is vendored. Validation gains E9 normalization/card gates
+  plus container-gated byte-exact diffs against PyNE `PointSource.mcnp`.
+- Interactive legacy-reader tutorials: Serpent output (`_res`/`_dep`/`_det`)
+  and FLUKA USRBIN browser demos, and ORIGEN TAPE5/6/9 tabs in the activation
+  demo — `serpent-io`, `fluka-io`, and `origen-io` are now WASM-exposed with
+  live demos and E2E coverage.
+- "Common workflows" section in the Python API reference (five task-oriented
+  snippets in the submodule idiom), an "Optional runtime dependencies" note in
+  getting started (when `numpy`/`h5py` are needed), and "See also" links from
+  the depletion, enrichment, kinetics, and spectroscopy tutorials to the
+  committed cross-code validation results.
+
+### Changed
+
+- Binding error messages for unsupported CRAM orders and unknown dose
+  pathways/sources now name the accepted values (Python and WASM wordings
+  aligned).
+
+### Fixed
+
+- Interactive demos: the Serpent parser demo no longer crashes on a
+  one-column `IMP_KEFF` row, and the FLUKA/MCNP mesh views no longer
+  overflow the browser argument limit on meshes above ~65k bins (min/max now
+  computed with loops instead of spread).
 
 ## [0.5.0] - 2026-09-11
 

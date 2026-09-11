@@ -1,7 +1,7 @@
 ---
 title: Run Kinetics
 sidebar:
-  order: 8
+  order: 10
 ---
 
 Nucleide point kinetics solves prescribed-reactivity transients with the
@@ -83,3 +83,6 @@ delayed-neutron library the IFP run used (the `from_ifp` provenance note in
 - [`crates/kinetics/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/kinetics/src/lib.rs)
   for the Rust API.
 - `tests/test_kinetics.py` for worked examples.
+- [Cross-code validation results](https://github.com/nukehub-dev/nucleide/blob/main/validation/results.md)
+  for these transients: analytic gates (prompt jump, inhour) plus a PyRK
+  cross-check.

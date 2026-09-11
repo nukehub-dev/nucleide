@@ -22,9 +22,11 @@ Parent-level Rust/Python/verification rules remain in the root `AGENTS.md`.
 - **Runtime data**: `fixtures/` is the source of truth for data files the
   interactive tutorials load at runtime. `npm run sync-data` stages them into
   the git-ignored `website/public/data/`: the Materials Compendium is minified;
-  sample MCNP meshtal/xsdir files, MCNP deck_minimal/deck_l3 samples, and
-  the simple depletion chain are copied
-  verbatim. It runs automatically via `predev`/`prebuild`.
+  sample MCNP meshtal/xsdir files, MCNP deck_minimal/deck_l3 samples, the
+  simple depletion chain, Serpent `serpent_res_sample.m`/
+  `serpent_dep_sample.m`/`serpent_det_sample.m`, and the FLUKA
+  `usrbin_sample.lis` USRBIN file are copied verbatim. It runs automatically
+  via `predev`/`prebuild`.
 - **Theory figures**: `docs/theory/figures/` is the source of truth for the
   hand-authored SVG figures on the theory pages. `npm run sync-data` copies
   them into the git-ignored `website/public/theory/figures/`; pages embed them

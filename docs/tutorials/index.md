@@ -30,6 +30,8 @@ assumes you have already installed the project (see
 
 ## Finding more examples
 
+- More output-parsing walkthroughs: [Parse Serpent output](python/parse-serpent-output.md)
+  and [Parse FLUKA output](python/parse-fluka-output.md) mirror the MCNP one.
 - Rust unit tests live in inline `#[cfg(test)]` modules under `crates/<name>/src/`.
 - Python tests live under `tests/`.
 - Golden-byte fixtures and their descriptions live under `fixtures/`.

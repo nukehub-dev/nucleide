@@ -457,4 +457,81 @@ mod tests {
         assert!(parse_cell_line("1 1 -2.7 (1 : 2", 7).is_err());
         assert!(parse_cell_line("1 1 -2.7 foo", 7).is_err());
     }
+
+    #[test]
+    fn parse_cells_skips_comments_and_joins_continuations() {
+        let text = "c a comment\n\n1 1 -19.1 -1\n     imp:n=1 $ trailing\nC another\n2 0 -2";
+        let cards = parse_cells(text).unwrap();
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0].line, 3);
+        assert_eq!(cards[0].dens, Some(-19.1));
+        assert_eq!(cards[0].raw_lines, vec!["1 1 -19.1 -1 imp:n=1".to_string()]);
+        assert_eq!(cards[0].params, vec!["imp:n=1".to_string()]);
+        assert_eq!(cards[1].line, 6);
+        assert_eq!(
+            cards[1].geom,
+            GeomExpr::HalfSpace(HalfSpace {
+                surf: -2,
+                reflecting: false
+            })
+        );
+    }
+
+    #[test]
+    fn cell_header_errors_name_the_bad_field() {
+        let err = parse_cell_line("foo 1 -1.0", 7).unwrap_err();
+        assert!(err.to_string().contains("invalid cell number"));
+        let err = parse_cell_line("1 foo -1.0", 7).unwrap_err();
+        assert!(err.to_string().contains("invalid cell material"));
+        let err = parse_cell_line("1 1 foo -1", 7).unwrap_err();
+        assert!(err.to_string().contains("invalid cell density `foo`"));
+    }
+
+    #[test]
+    fn missing_geometry_is_an_error() {
+        let err = parse_cell_line("1 1 -1.0", 7).unwrap_err();
+        assert!(err.to_string().contains("cell 1 is missing geometry"));
+    }
+
+    #[test]
+    fn trailing_paren_is_an_error() {
+        let err = parse_cell_line("1 0 1)", 7).unwrap_err();
+        assert!(err.to_string().contains("trailing geometry token `)`"));
+    }
+
+    #[test]
+    fn indented_first_line_starts_a_new_card() {
+        // A continuation-indent line with no open card starts a fresh card.
+        let cards = parse_cells("     1 1 -1.0 -1\n2 0 -2").unwrap();
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0].num, 1);
+        assert_eq!(cards[0].line, 1);
+    }
+
+    #[test]
+    fn bare_keyword_params_start_the_param_list() {
+        // `vol` is a bare keyword (no `=`): geometry ends before it.
+        let card = parse_one("1 1 -1.0 -1 vol");
+        assert_eq!(
+            card.geom,
+            GeomExpr::HalfSpace(HalfSpace {
+                surf: -1,
+                reflecting: false
+            })
+        );
+        assert_eq!(card.params, vec!["vol".to_string()]);
+    }
+
+    #[test]
+    fn parse_cells_errors_and_comment_only_blocks() {
+        assert!(parse_cells("1 1").is_err());
+        // No non-comment cards at all: empty result, nothing dangling.
+        assert!(parse_cells("c only comments\n\n").unwrap().is_empty());
+    }
+
+    #[test]
+    fn bad_complement_is_an_error() {
+        let err = parse_cell_line("1 0 #foo", 7).unwrap_err();
+        assert!(err.to_string().contains("invalid cell complement `#foo`"));
+    }
 }

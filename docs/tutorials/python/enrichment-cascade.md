@@ -1,7 +1,7 @@
 ---
 title: Enrichment Cascade
 sidebar:
-  order: 4
+  order: 6
 ---
 
 Nucleide solves multicomponent enrichment cascades with a numeric solver and
@@ -30,3 +30,5 @@ result objects.
 - [`crates/enrichment/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/enrichment/src/lib.rs)
   for cascade construction details.
 - `tests/test_data_inp_enrichment.py` for integration examples.
+- [Cross-code validation results](https://github.com/nukehub-dev/nucleide/blob/main/validation/results.md)
+  for these cascades, benchmarked against PyNE 0.7.5 `multicomponent`.

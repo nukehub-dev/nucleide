@@ -4058,11 +4058,18 @@ pub enum Error {
     UnknownMt(i32),
     /// No registered channel for this projectile and nuclide difference.
     Indeterminate {
+        /// Incident-particle flag of the unresolved channel.
         projectile: Projectile,
+        /// Parent→daughter nuclide difference `(ΔZ, ΔA, Δstate)`.
         delta: NucDelta,
     },
     /// No registered nuclide offset for this projectile and reaction.
-    UnknownOffset { projectile: Projectile, id: u32 },
+    UnknownOffset {
+        /// Incident-particle flag of the unresolved channel.
+        projectile: Projectile,
+        /// Reaction id with no registered nuclide offset.
+        id: u32,
+    },
     /// Daughter/parent nuclide resulting from the channel is not physical.
     BadNuclide(crate::Error),
 }

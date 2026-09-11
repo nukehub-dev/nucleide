@@ -592,6 +592,18 @@ def spectroscopy_xray_lines(
     k_conv: float | None = None,
     l_conv: float | None = None,
 ) -> list[tuple[float, float]]: ...
+def spectroscopy_sdef_decay_source(
+    lines: list[tuple[float, float]],
+    x: float = 0.0,
+    y: float = 0.0,
+    z: float = 0.0,
+    u: float = 0.0,
+    v: float = 0.0,
+    w: float = 0.0,
+    weight: float = 1.0,
+    particle: str = "Neutron",
+    version: int = 5,
+) -> tuple[list[tuple[float, float]], str]: ...
 def spectroscopy_parse_dollar_spe(text: str) -> dict[str, Any]: ...
 def spectroscopy_parse_spe(text: str) -> dict[str, Any]: ...
 def spectroscopy_read_dollar_spe(path: str) -> dict[str, Any]: ...

@@ -1,7 +1,7 @@
 ---
 title: Run Spectroscopy
 sidebar:
-  order: 9
+  order: 11
 ---
 
 Nucleide spectroscopy smooths spectra, counts peaks, calibrates energy and
@@ -99,3 +99,5 @@ live-then-real, dollar channel labels stay positional under a nonzero
 - [Gamma-ray spectroscopy theory](../../theory/spectroscopy.mdx) for E1–E8
   and the full quirk list.
 - [Run kinetics](run-kinetics.md) for the companion counting-era toolkit.
+- [Cross-code validation results](https://github.com/nukehub-dev/nucleide/blob/main/validation/results.md)
+  for these routines, benchmarked against PyNE `spectanalysis`/`gammaspec`.

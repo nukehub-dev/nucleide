@@ -1,7 +1,7 @@
 ---
 title: Run Depletion
 sidebar:
-  order: 3
+  order: 5
 ---
 
 Nucleide depletion uses CRAM (Chebyshev Rational Approximation Method) to solve
@@ -143,3 +143,6 @@ as plain data (see `tests/test_inventory.py`).
 - [`crates/depletion/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/depletion/src/lib.rs)
   for the Rust API.
 - `tests/test_depletion.py` for worked examples.
+- [Cross-code validation results](https://github.com/nukehub-dev/nucleide/blob/main/validation/results.md)
+  for these solves, benchmarked against OpenMC 0.16.0 (CRAM-48 and the
+  228-nuclide CASL chain).

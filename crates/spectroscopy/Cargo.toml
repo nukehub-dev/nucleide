@@ -1,6 +1,6 @@
 [package]
 name = "nucleide-spectroscopy"
-description = "Gamma-ray spectrum smoothing, peak counting, energy/efficiency calibration, and SPE parsing"
+description = "Gamma-ray spectrum smoothing, peak counting, energy/efficiency calibration, SPE parsing, and SDEF decay-source cards"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+nucleide-nuclei.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

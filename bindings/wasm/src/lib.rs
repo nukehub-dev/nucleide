@@ -58,6 +58,8 @@ struct NuclideInfo {
 
 #[wasm_bindgen]
 impl WasmNuclide {
+    /// Parse a nuclide name in any accepted dialect (e.g. `"Pu-241"`,
+    /// `"241Pu"`, `"Ba137m"`).
     #[wasm_bindgen(constructor)]
     pub fn new(name: &str) -> Result<WasmNuclide, JsValue> {
         NuclideId::from_name(name)
@@ -65,6 +67,7 @@ impl WasmNuclide {
             .map_err(js_err)
     }
 
+    /// Build from a ZZAAAM integer (`942410` → Pu-241 ground state).
     #[wasm_bindgen(js_name = fromZzaaam)]
     pub fn from_zzaaam(v: u32) -> Result<WasmNuclide, JsValue> {
         NuclideId::from_zzaaam(v)
@@ -72,6 +75,8 @@ impl WasmNuclide {
             .map_err(js_err)
     }
 
+    /// Build from an HDF5/NNDC nucid string (`"942410"` → Pu-241 ground
+    /// state).
     #[wasm_bindgen(js_name = fromNucid)]
     pub fn from_nucid(s: &str) -> Result<WasmNuclide, JsValue> {
         s.parse::<NuclideId>()
@@ -101,81 +106,100 @@ impl WasmNuclide {
         })
     }
 
+    /// Canonical GNDS name (e.g. `"Pu241"`).
     #[wasm_bindgen(getter)]
     pub fn name(&self) -> String {
         self.inner.to_name()
     }
 
+    /// Nucid integer (`Z*10_000 + A*10 + state`).
     #[wasm_bindgen(getter)]
     pub fn nucid(&self) -> u32 {
         self.inner.nucid()
     }
 
+    /// Proton number Z.
     #[wasm_bindgen(getter)]
     pub fn z(&self) -> u32 {
         self.inner.z()
     }
 
+    /// Mass number A.
     #[wasm_bindgen(getter)]
     pub fn a(&self) -> u32 {
         self.inner.a()
     }
 
+    /// Metastable state index (0 = ground state).
     #[wasm_bindgen(getter)]
     pub fn state(&self) -> u32 {
         self.inner.state()
     }
 
+    /// ZZAAAM integer (`Z*10_000 + A*10 + state`).
     #[wasm_bindgen(getter)]
     pub fn zzaaam(&self) -> u32 {
         self.inner.zzaaam()
     }
 
+    /// MCNP ZAID integer (`922350` → U-235; metastables add `300 + 100*S`).
     #[wasm_bindgen(getter)]
     pub fn zaid(&self) -> u32 {
         nucleide_nuclei::dialects::to_zaid(self.inner)
     }
 
+    /// ZZLLAAAM string `"ZZ-LL-AAAM"` with a lowercase isomer letter
+    /// (e.g. `"95-Am-242m"`).
     #[wasm_bindgen(getter)]
     pub fn zzllaaam(&self) -> String {
         nucleide_nuclei::dialects::zzllaaam(self.inner)
     }
 
+    /// Serpent-style name (`"Ll-AAA"`, e.g. `"Am-242m"`).
     #[wasm_bindgen(getter)]
     pub fn serpent(&self) -> String {
         nucleide_nuclei::dialects::serpent(self.inner)
     }
 
+    /// NIST-style name: mass number then symbol, state dropped
+    /// (e.g. `"242Am"`).
     #[wasm_bindgen(getter)]
     pub fn nist(&self) -> String {
         nucleide_nuclei::dialects::nist(self.inner)
     }
 
+    /// Cinder `AAAZZZM` integer (`A*10_000 + Z*10 + state`).
     #[wasm_bindgen(getter)]
     pub fn cinder(&self) -> u32 {
         nucleide_nuclei::dialects::to_cinder(self.inner)
     }
 
+    /// ALARA name: lowercase `"ll:AAA"` (e.g. `"pu:239"`).
     #[wasm_bindgen(getter)]
     pub fn alara(&self) -> String {
         nucleide_nuclei::dialects::alara(self.inner)
     }
 
+    /// SZA integer (`state*10^6 + Z*10^3 + A`).
     #[wasm_bindgen(getter)]
     pub fn sza(&self) -> u32 {
         nucleide_nuclei::dialects::to_sza(self.inner)
     }
 
+    /// Atomic mass [amu] from AME2020, or null when not tabulated.
     #[wasm_bindgen(getter)]
     pub fn mass(&self) -> Option<f64> {
         nucleide_nuclei::data::atomic_mass(self.inner.nucid())
     }
 
+    /// Natural abundance [atom fraction], or null when not tabulated.
     #[wasm_bindgen(getter)]
     pub fn abundance(&self) -> Option<f64> {
         nucleide_nuclei::data::natural_abundance(self.inner.nucid())
     }
 
+    /// FLUKA isotope name (e.g. `"235-U"`), erroring when the nuclide has no
+    /// entry in the vendored FLUKA table.
     #[wasm_bindgen]
     pub fn fluka(&self) -> Result<String, JsValue> {
         nucleide_nuclei::dialects::id_to_fluka(self.inner)
@@ -192,24 +216,32 @@ fn resolve_nucid(key: &str) -> Result<NuclideId, JsValue> {
     key.parse::<NuclideId>().map_err(js_err)
 }
 
+/// Atomic mass [amu] for a nuclide name in any accepted dialect, or null
+/// when not tabulated.
 #[wasm_bindgen]
 pub fn atomic_mass(key: &str) -> Result<Option<f64>, JsValue> {
     let id = resolve_nucid(key)?;
     Ok(nucleide_nuclei::data::atomic_mass(id.nucid()))
 }
 
+/// Natural abundance [atom fraction] for a nuclide name in any accepted
+/// dialect, or null when not tabulated.
 #[wasm_bindgen]
 pub fn natural_abundance(key: &str) -> Result<Option<f64>, JsValue> {
     let id = resolve_nucid(key)?;
     Ok(nucleide_nuclei::data::natural_abundance(id.nucid()))
 }
 
+/// Half-life [s] for a nuclide name in any accepted dialect, or null for
+/// stable/un-tabulated nuclides.
 #[wasm_bindgen]
 pub fn half_life(key: &str) -> Result<Option<f64>, JsValue> {
     let id = resolve_nucid(key)?;
     Ok(nucleide_nuclei::data::half_life(id.nucid()))
 }
 
+/// Decay constant [1/s] (`ln 2 / half-life`) for a nuclide name in any
+/// accepted dialect, or null for stable/un-tabulated nuclides.
 #[wasm_bindgen]
 pub fn decay_constant(key: &str) -> Result<Option<f64>, JsValue> {
     let id = resolve_nucid(key)?;
@@ -265,12 +297,16 @@ pub fn normalize_nuclide(name: &str) -> Result<String, JsValue> {
         .map_err(js_err)
 }
 
+/// Q-value [MeV] of neutron capture for a nuclide name, or null when not
+/// tabulated.
 #[wasm_bindgen]
 pub fn q_value_capture(key: &str) -> Result<Option<f64>, JsValue> {
     let id = resolve_nucid(key)?;
     Ok(nucleide_nuclei::data::q_value_neutron_capture(id.nucid()))
 }
 
+/// Q-value [MeV] of alpha decay for a nuclide name, or null when not
+/// tabulated.
 #[wasm_bindgen]
 pub fn q_value_alpha(key: &str) -> Result<Option<f64>, JsValue> {
     let id = resolve_nucid(key)?;
@@ -341,11 +377,13 @@ impl WasmMaterial {
         Ok(WasmMaterial { inner: mixed })
     }
 
+    /// Total stored mass of the composition [g].
     #[wasm_bindgen(getter)]
     pub fn mass(&self) -> f64 {
         self.inner.mass()
     }
 
+    /// Mass density [g/cm3] set on this material, if any.
     #[wasm_bindgen(getter)]
     pub fn density(&self) -> Option<f64> {
         self.inner.density()
@@ -410,11 +448,13 @@ impl WasmMaterialsCompendium {
         Ok(WasmMaterialsCompendium { inner })
     }
 
+    /// Number of materials in the compendium.
     #[wasm_bindgen(getter)]
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
+    /// Whether the compendium holds no materials.
     #[wasm_bindgen(getter)]
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
@@ -459,6 +499,8 @@ impl WasmMaterialsCompendium {
 // Enrichment cascade
 // ---------------------------------------------------------------------------
 
+/// An enrichment cascade in the M* parameterization, holding the feed,
+/// product, and tails streams alongside the solved stage counts.
 #[wasm_bindgen]
 pub struct WasmCascade {
     inner: nucleide_enrichment::Cascade,
@@ -631,41 +673,49 @@ impl WasmCascade {
         self.to_result()
     }
 
+    /// Stage separation factor α.
     #[wasm_bindgen(getter)]
     pub fn alpha(&self) -> f64 {
         self.inner.alpha
     }
 
+    /// Feed assay of the enriching key (atom fraction).
     #[wasm_bindgen(getter, js_name = feedAssay)]
     pub fn feed_assay(&self) -> f64 {
         self.inner.x_feed_j
     }
 
+    /// Product assay of the enriching key (atom fraction).
     #[wasm_bindgen(getter, js_name = productAssay)]
     pub fn product_assay(&self) -> f64 {
         self.inner.x_prod_j
     }
 
+    /// Tails assay of the enriching key (atom fraction).
     #[wasm_bindgen(getter, js_name = tailsAssay)]
     pub fn tails_assay(&self) -> f64 {
         self.inner.x_tail_j
     }
 
+    /// Number of enriching stages N.
     #[wasm_bindgen(getter, js_name = stagesEnriching)]
     pub fn stages_enriching(&self) -> f64 {
         self.inner.N
     }
 
+    /// Number of stripping stages M.
     #[wasm_bindgen(getter, js_name = stagesStripping)]
     pub fn stages_stripping(&self) -> f64 {
         self.inner.M
     }
 
+    /// Separative work per unit feed.
     #[wasm_bindgen(getter, js_name = swuPerFeed)]
     pub fn swu_per_feed(&self) -> f64 {
         self.inner.swu_per_feed
     }
 
+    /// Separative work per unit product.
     #[wasm_bindgen(getter, js_name = swuPerProduct)]
     pub fn swu_per_product(&self) -> f64 {
         self.inner.swu_per_prod
@@ -690,6 +740,8 @@ impl WasmCascade {
 // Depletion
 // ---------------------------------------------------------------------------
 
+/// A depletion chain: nuclides with their decay branches and neutron-induced
+/// transmutation reactions.
 #[wasm_bindgen]
 pub struct WasmChain {
     inner: std::sync::Arc<nucleide_depletion::Chain>,
@@ -707,6 +759,7 @@ impl WasmChain {
             .map_err(js_err)
     }
 
+    /// Nuclide names in chain (matrix) order.
     #[wasm_bindgen(getter)]
     pub fn nuclides(&self) -> Result<JsValue, JsValue> {
         let names: Vec<String> = self.inner.nuclides.iter().map(|n| n.name.clone()).collect();
@@ -747,7 +800,9 @@ fn parse_cram_order(order: u8) -> Result<nucleide_depletion::Order, JsValue> {
     match order {
         16 => Ok(nucleide_depletion::Order::Order16),
         48 => Ok(nucleide_depletion::Order::Order48),
-        other => Err(js_err(format!("unsupported CRAM order {other}"))),
+        other => Err(js_err(format!(
+            "unsupported CRAM order {other} (supported: 16, 48)"
+        ))),
     }
 }
 
@@ -904,6 +959,7 @@ struct McnpMaterialJson {
     comments: Vec<String>,
 }
 
+/// Parse MCNP material cards (`mX`) from deck text into a JSON summary.
 #[wasm_bindgen(js_name = parseMcnpMaterials)]
 pub fn parse_mcnp_materials(text: &str) -> Result<JsValue, JsValue> {
     let mats = nucleide_mcnp_io::inp::materials_from_str(text).map_err(js_err)?;
@@ -951,6 +1007,7 @@ struct XsdirSummary {
     tables: Vec<XsdirTableJson>,
 }
 
+/// Parse an MCNP `xsdir` cross-section directory into a JSON summary.
 #[wasm_bindgen(js_name = parseXsdir)]
 pub fn parse_xsdir(text: &str) -> Result<JsValue, JsValue> {
     let xsdir = nucleide_mcnp_io::xsdir::Xsdir::parse(text).map_err(js_err)?;
@@ -1015,6 +1072,7 @@ struct MeshtalSummary {
     tallies: BTreeMap<String, MeshTallySummary>,
 }
 
+/// Parse an MCNP `meshtal` file into a JSON summary of its mesh tallies.
 #[wasm_bindgen(js_name = parseMeshtal)]
 pub fn parse_meshtal(text: &str) -> Result<JsValue, JsValue> {
     let meshtal = nucleide_mcnp_io::meshtal::Meshtal::parse(text).map_err(js_err)?;
@@ -1063,6 +1121,7 @@ struct WwinpSummary {
     ww: Vec<Vec<Vec<f64>>>,
 }
 
+/// Parse an MCNP `WWINP` weight-window mesh into a JSON summary.
 #[wasm_bindgen(js_name = parseWwinp)]
 pub fn parse_wwinp(text: &str) -> Result<JsValue, JsValue> {
     let wwinp = nucleide_mcnp_io::wwinp::Wwinp::parse(text).map_err(js_err)?;
@@ -1099,6 +1158,11 @@ struct MagicSummary {
     e_upper_bounds_tag_name: String,
 }
 
+/// Compute MAGIC-method weight-window lower bounds from one mesh tally of a
+/// meshtal file.
+///
+/// `tally_number` selects the tally within `meshtal_text`; `selection` is
+/// `"total"` or `"perGroup"`.
 #[wasm_bindgen(js_name = magicBounds)]
 pub fn magic_bounds(
     meshtal_text: &str,
@@ -1136,6 +1200,8 @@ pub fn magic_bounds(
     })
 }
 
+/// Sample an index from a discrete probability mass function using the alias
+/// method; `r1` and `r2` are independent uniform randoms in `[0, 1)`.
 #[wasm_bindgen(js_name = aliasTableSample)]
 pub fn alias_table_sample(pdf: Vec<f64>, r1: f64, r2: f64) -> Result<usize, JsValue> {
     let table = nucleide_vr_tools::sampling::AliasTable::new(&pdf).map_err(js_err)?;
@@ -1151,6 +1217,11 @@ struct SampledVoxelSummary {
     weight: f64,
 }
 
+/// Sample a source voxel from one mesh tally of a meshtal file.
+///
+/// `tally_number` selects the tally within `meshtal_text`; `mode` is
+/// `"analog"` (sample tally values) or `"uniform"` (sample voxel volumes);
+/// `r1` and `r2` are independent uniform randoms in `[0, 1)`.
 #[wasm_bindgen(js_name = meshSourceSample)]
 pub fn mesh_source_sample(
     meshtal_text: &str,
@@ -1542,6 +1613,304 @@ pub fn r2s_from_deck(text: &str) -> Result<JsValue, JsValue> {
         cooling_s,
         top_schedule,
         total_s: nucleide_alara_io::total_time(&flat),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Serpent output (_res / _dep / _det)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct SerpentVariableJson {
+    name: String,
+    kind: &'static str,
+    shape: String,
+    value: Option<serde_json::Value>,
+}
+
+fn serpent_scalar_json(value: &nucleide_serpent_io::Value) -> serde_json::Value {
+    match value {
+        nucleide_serpent_io::Value::Num(x) => serde_json::json!(x),
+        nucleide_serpent_io::Value::Str(s) => serde_json::json!(s),
+    }
+}
+
+fn serpent_variable_json(name: &str, entry: &nucleide_serpent_io::Entry) -> SerpentVariableJson {
+    match entry {
+        nucleide_serpent_io::Entry::Scalar(v) => SerpentVariableJson {
+            name: name.to_string(),
+            kind: "scalar",
+            shape: String::new(),
+            value: Some(serpent_scalar_json(v)),
+        },
+        nucleide_serpent_io::Entry::Vector(vals) => SerpentVariableJson {
+            name: name.to_string(),
+            kind: "vector",
+            shape: format!("[{}]", vals.len()),
+            value: None,
+        },
+        nucleide_serpent_io::Entry::Matrix(m) => SerpentVariableJson {
+            name: name.to_string(),
+            kind: "matrix",
+            shape: format!("[{}×{}]", m.rows(), m.cols()),
+            value: None,
+        },
+    }
+}
+
+fn serpent_variables(table: &nucleide_serpent_io::Table) -> Vec<SerpentVariableJson> {
+    table
+        .iter()
+        .map(|(name, entry)| serpent_variable_json(name, entry))
+        .collect()
+}
+
+#[derive(Serialize)]
+struct SerpentResSummary {
+    variable_count: usize,
+    version: Option<String>,
+    title: Option<String>,
+    keff: Option<Vec<f64>>,
+    variables: Vec<SerpentVariableJson>,
+}
+
+/// Parse a Serpent `_res.m` results file into a JSON summary.
+#[wasm_bindgen(js_name = parseSerpentRes)]
+pub fn parse_serpent_res(text: &str) -> Result<JsValue, JsValue> {
+    let table = nucleide_serpent_io::parse_res(text).map_err(js_err)?;
+    let version = table
+        .get_vec_str("VERSION")
+        .ok()
+        .and_then(|v| v.first().cloned());
+    let title = table
+        .get_vec_str("TITLE")
+        .ok()
+        .and_then(|v| v.first().map(|s| s.trim().to_string()));
+    let keff = table
+        .get_matrix("IMP_KEFF")
+        .ok()
+        .and_then(|m| m.row_f64(0).ok())
+        .map(|row| row.iter().take(2).copied().collect());
+    to_js(&SerpentResSummary {
+        variable_count: table.len(),
+        version,
+        title,
+        keff,
+        variables: serpent_variables(&table),
+    })
+}
+
+#[derive(Serialize)]
+struct SerpentDepSummary {
+    variable_count: usize,
+    nuclides: Vec<String>,
+    zai: Vec<f64>,
+    variables: Vec<SerpentVariableJson>,
+}
+
+/// Parse a Serpent `_dep.m` depletion file into a JSON summary.
+#[wasm_bindgen(js_name = parseSerpentDep)]
+pub fn parse_serpent_dep(text: &str) -> Result<JsValue, JsValue> {
+    let table = nucleide_serpent_io::parse_dep(text).map_err(js_err)?;
+    let nuclides = table
+        .get_vec_str("NAMES")
+        .map(|names| names.iter().map(|s| s.trim().to_string()).collect())
+        .unwrap_or_default();
+    let zai = table.get_vec_f64("ZAI").unwrap_or_default();
+    to_js(&SerpentDepSummary {
+        variable_count: table.len(),
+        nuclides,
+        zai,
+        variables: serpent_variables(&table),
+    })
+}
+
+#[derive(Serialize)]
+struct SerpentDetSummary {
+    variable_count: usize,
+    detectors: Vec<String>,
+    variables: Vec<SerpentVariableJson>,
+}
+
+/// Parse a Serpent `_det.m` detector file into a JSON summary.
+#[wasm_bindgen(js_name = parseSerpentDet)]
+pub fn parse_serpent_det(text: &str) -> Result<JsValue, JsValue> {
+    let table = nucleide_serpent_io::parse_det(text).map_err(js_err)?;
+    let detectors = table
+        .iter()
+        .filter(|(name, entry)| {
+            name.starts_with("DET") && matches!(entry, nucleide_serpent_io::Entry::Matrix(_))
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    to_js(&SerpentDetSummary {
+        variable_count: table.len(),
+        detectors,
+        variables: serpent_variables(&table),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// FLUKA USRBIN
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct UsrbinTallyJson {
+    name: String,
+    particle: String,
+    coord_sys: String,
+    dims: [usize; 3],
+    x_bounds: Vec<f64>,
+    y_bounds: Vec<f64>,
+    z_bounds: Vec<f64>,
+    part_data: Vec<f64>,
+    error_data: Vec<f64>,
+}
+
+#[derive(Serialize)]
+struct UsrbinSummary {
+    tally_count: usize,
+    tallies: Vec<UsrbinTallyJson>,
+}
+
+/// Parse FLUKA `.lis` USRBIN tallies into a JSON summary.
+#[wasm_bindgen(js_name = parseUsrbin)]
+pub fn parse_usrbin(text: &str) -> Result<JsValue, JsValue> {
+    let tallies = nucleide_fluka_io::usrbin::parse_usrbin(text).map_err(js_err)?;
+    to_js(&UsrbinSummary {
+        tally_count: tallies.len(),
+        tallies: tallies
+            .iter()
+            .map(|t| UsrbinTallyJson {
+                name: t.name.clone(),
+                particle: t.particle.clone(),
+                coord_sys: t.coord_sys.to_string(),
+                dims: t.dims(),
+                x_bounds: t.x_bounds.clone(),
+                y_bounds: t.y_bounds.clone(),
+                z_bounds: t.z_bounds.clone(),
+                part_data: t.part_data.clone(),
+                error_data: t.error_data.clone(),
+            })
+            .collect(),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// ORIGEN tapes (TAPE5 input echo / TAPE6 inventory / TAPE9 decay constants)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct OrigenTape5StepJson {
+    flux: f64,
+    days: f64,
+}
+
+#[derive(Serialize)]
+struct OrigenGramsJson {
+    nuclide: String,
+    grams: f64,
+}
+
+#[derive(Serialize)]
+struct OrigenTape5MaterialJson {
+    name: String,
+    entries: Vec<OrigenGramsJson>,
+}
+
+#[derive(Serialize)]
+struct OrigenTape5Summary {
+    titles: Vec<String>,
+    steps: Vec<OrigenTape5StepJson>,
+    materials: Vec<OrigenTape5MaterialJson>,
+}
+
+/// Parse an ORIGEN TAPE5 input echo into a JSON summary.
+#[wasm_bindgen(js_name = parseOrigenTape5)]
+pub fn parse_origen_tape5(text: &str) -> Result<JsValue, JsValue> {
+    let tape = nucleide_origen_io::Tape5::parse(text).map_err(js_err)?;
+    to_js(&OrigenTape5Summary {
+        titles: tape.titles,
+        steps: tape
+            .irradiation_steps
+            .iter()
+            .map(|s| OrigenTape5StepJson {
+                flux: s.flux,
+                days: s.days,
+            })
+            .collect(),
+        materials: tape
+            .materials
+            .iter()
+            .map(|m| OrigenTape5MaterialJson {
+                name: m.name.clone(),
+                entries: m
+                    .grams
+                    .iter()
+                    .map(|(nuclide, grams)| OrigenGramsJson {
+                        nuclide: nuclide.clone(),
+                        grams: *grams,
+                    })
+                    .collect(),
+            })
+            .collect(),
+    })
+}
+
+#[derive(Serialize)]
+struct OrigenTape6RecordJson {
+    nuclide: String,
+    grams: f64,
+    activity_bq: f64,
+}
+
+#[derive(Serialize)]
+struct OrigenTape6Summary {
+    total_activity_bq: f64,
+    records: Vec<OrigenTape6RecordJson>,
+}
+
+/// Parse an ORIGEN TAPE6 output inventory into a JSON summary.
+#[wasm_bindgen(js_name = parseOrigenTape6)]
+pub fn parse_origen_tape6(text: &str) -> Result<JsValue, JsValue> {
+    let tape = nucleide_origen_io::Tape6::parse(text).map_err(js_err)?;
+    to_js(&OrigenTape6Summary {
+        total_activity_bq: tape.total_activity(),
+        records: tape
+            .records
+            .iter()
+            .map(|r| OrigenTape6RecordJson {
+                nuclide: r.nuclide.clone(),
+                grams: r.grams,
+                activity_bq: r.activity_bq,
+            })
+            .collect(),
+    })
+}
+
+#[derive(Serialize)]
+struct OrigenTape9EntryJson {
+    nuclide: String,
+    decay_const: f64,
+}
+
+#[derive(Serialize)]
+struct OrigenTape9Summary {
+    entries: Vec<OrigenTape9EntryJson>,
+}
+
+/// Parse an ORIGEN TAPE9 decay-constant table into a JSON summary.
+#[wasm_bindgen(js_name = parseOrigenTape9)]
+pub fn parse_origen_tape9(text: &str) -> Result<JsValue, JsValue> {
+    let entries = nucleide_origen_io::Tape9Entry::parse(text).map_err(js_err)?;
+    to_js(&OrigenTape9Summary {
+        entries: entries
+            .iter()
+            .map(|e| OrigenTape9EntryJson {
+                nuclide: e.nuclide.clone(),
+                decay_const: e.decay_const,
+            })
+            .collect(),
     })
 }
 

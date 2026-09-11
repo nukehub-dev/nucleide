@@ -4,6 +4,8 @@ import { CompendiumBrowser } from "./CompendiumBrowser";
 import { CascadeSolver } from "./CascadeSolver";
 import { DepletionStep } from "./DepletionStep";
 import { McnpParser } from "./McnpParser";
+import { SerpentParser } from "./SerpentParser";
+import { FlukaParser } from "./FlukaParser";
 import { DeckEditor } from "./DeckEditor";
 import { VrDemo } from "./VrDemo";
 import { ActivationDemo } from "./ActivationDemo";
@@ -20,6 +22,8 @@ interface InteractiveDemoProps {
     | "enrichment"
     | "depletion"
     | "mcnp-io"
+    | "serpent-io"
+    | "fluka-io"
     | "deck-editor"
     | "variance-reduction"
     | "activation"
@@ -43,6 +47,10 @@ export function InteractiveDemo({ kind }: InteractiveDemoProps) {
       return <DepletionStep />;
     case "mcnp-io":
       return <McnpParser />;
+    case "serpent-io":
+      return <SerpentParser />;
+    case "fluka-io":
+      return <FlukaParser />;
     case "deck-editor":
       return <DeckEditor />;
     case "variance-reduction":

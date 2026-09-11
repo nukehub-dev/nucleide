@@ -39,7 +39,12 @@ pub enum Error {
     /// Atomic number outside 1..=118.
     BadZ(u32),
     /// Mass number smaller than the atomic number.
-    BadA { z: u32, a: u32 },
+    BadA {
+        /// Atomic number.
+        z: u32,
+        /// Mass number.
+        a: u32,
+    },
     /// Mass number above the 3-digit AAA limit (> 999).
     MassNumberTooLarge(u32),
     /// Metastable state index above the supported range (> 9).
@@ -106,7 +111,7 @@ impl NuclideId {
     /// Use [`new`](Self::new) for validated construction.
     ///
     /// The id stays usable: [`to_name`](Self::to_name) and
-    /// [`armi::nucid_to_armi_label`](crate::armi::nucid_to_armi_label) render
+    /// [`armi::nucid_to_armi_label`] render
     /// such ids with a diagnostic `Z{z}A{a}[m{s}]` fallback instead of
     /// panicking. Use [`try_from_nucid`](Self::try_from_nucid) (or
     /// [`is_valid`](Self::is_valid)) when the integer comes from untrusted

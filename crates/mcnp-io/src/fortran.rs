@@ -324,6 +324,23 @@ mod tests {
     }
 
     #[test]
+    fn big_endian_framing_fails_loudly() {
+        // A fully big-endian framed record: lead/trailer [00 00 00 04] with a
+        // big-endian payload. Little-endian reads the lead as 4 << 24, so the
+        // record fails loudly (ShortRecord) instead of being mis-parsed. The
+        // framework is little-endian only by construction (module docs), and
+        // this pins that no silent acceptance sneaks in through framing.
+        let mut be = vec![0, 0, 0, 4];
+        be.extend_from_slice(&1234i32.to_be_bytes());
+        be.extend_from_slice(&[0, 0, 0, 4]);
+        let mut cursor = std::io::Cursor::new(&be);
+        assert!(matches!(
+            read_record(&mut cursor),
+            Err(Error::ShortRecord { .. })
+        ));
+    }
+
+    #[test]
     fn negative_lead_marker_is_rejected() {
         let mut bad = (-3i32).to_le_bytes().to_vec();
         bad.extend_from_slice(&[0u8; 4]);

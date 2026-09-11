@@ -686,4 +686,169 @@ mod tests {
             .cells
             .is_empty());
     }
+
+    #[test]
+    fn setting_material_to_void_clears_density() {
+        let text = fixture("deck_minimal.txt");
+        let mut problem = parse_deck(&text).unwrap();
+        problem.set_cell_material(1, 0).unwrap();
+        let card = problem.cell(1).unwrap();
+        assert_eq!(card.mat, 0);
+        assert_eq!(card.dens, None);
+        assert!(write_deck(&problem).contains("1 0 -1 imp:n=1"));
+    }
+
+    #[test]
+    fn importances_and_volumes_views_read_cell_params() {
+        let text = fixture("deck_l3.txt");
+        let problem = parse_deck(&text).unwrap();
+        let importances = problem.importances().unwrap();
+        assert_eq!(
+            importances.iter().map(|i| i.cell).collect::<Vec<_>>(),
+            vec![1, 2, 3, 4]
+        );
+        assert!(importances
+            .iter()
+            .all(|i| i.value == 1.0 && i.particle == "N"));
+        let volumes = problem.volumes().unwrap();
+        assert_eq!(volumes.len(), 1);
+        assert_eq!(volumes[0].cell, 4);
+        assert_eq!(volumes[0].volume, 100.0);
+    }
+
+    #[test]
+    fn set_mode_appends_card_when_deck_has_none() {
+        let text = "msg\ntitle\n1 1 -1.0 -1\n\n1 so 10.0\n\nm1 92235 1.0\n";
+        let mut problem = parse_deck(text).unwrap();
+        problem.set_mode(vec!["n".to_string()]).unwrap();
+        assert_eq!(problem.mode().unwrap().particles, vec!["N".to_string()]);
+        assert_eq!(
+            write_deck(&problem),
+            "msg\ntitle\n1 1 -1.0 -1\n\n1 so 10.0\n\nm1 92235 1.0\nMODE N\n"
+        );
+    }
+
+    #[test]
+    fn block_trailers_round_trip_verbatim() {
+        let text = "msg\ntitle\n1 1 -1.0 -1\nc trailing cell comment\n\n\
+                    1 so 10.0\nc trailing surf comment\n\nm1 92235 1.0\n";
+        let problem = parse_deck(text).unwrap();
+        assert_eq!(
+            problem.cell_trailer,
+            vec!["c trailing cell comment".to_string()]
+        );
+        assert_eq!(
+            problem.surf_trailer,
+            vec!["c trailing surf comment".to_string()]
+        );
+        assert_eq!(write_deck(&problem), text);
+    }
+
+    #[test]
+    fn surface_continuation_lines_join_one_card() {
+        let text = "msg\ntitle\n1 1 -1.0 -1\n\n2 rpp 0 10\n     0 10 0 10\n\nm1 92235 1.0\n";
+        let problem = parse_deck(text).unwrap();
+        assert_eq!(problem.surfs.len(), 1);
+        assert_eq!(
+            problem.surfs[0].coeffs,
+            vec![0.0, 10.0, 0.0, 10.0, 0.0, 10.0]
+        );
+        assert_eq!(problem.surfs[0].raw_lines.len(), 2);
+        assert_eq!(write_deck(&problem), text);
+    }
+
+    #[test]
+    fn data_block_comments_pass_through() {
+        let text =
+            "msg\ntitle\n1 1 -1.0 -1\n\n1 so 10.0\n\nm1 92235 1.0\nc a data comment\nmode n\n";
+        let problem = parse_deck(text).unwrap();
+        let comment = problem.data.iter().find(|d| d.name.is_empty()).unwrap();
+        assert_eq!(comment.raw_lines, vec!["c a data comment".to_string()]);
+        assert_eq!(write_deck(&problem), text);
+    }
+
+    #[test]
+    fn indented_first_data_card_starts_a_new_card() {
+        let text = "msg\ntitle\n1 1 -1.0 -1\n\n1 so 10.0\n\n     m1 92235 1.0\n";
+        let problem = parse_deck(text).unwrap();
+        assert_eq!(problem.data.len(), 1);
+        assert_eq!(problem.data[0].name, "M1");
+        assert_eq!(problem.materials.len(), 1);
+        assert_eq!(write_deck(&problem), text);
+    }
+
+    #[test]
+    fn fill_replacement_drains_multiword_value() {
+        let text = "msg\ntitle\n1 0 -1 fill=2 3 4 imp:n=1\n\n1 so 10.0\n\nm1 92235 1.0\n";
+        let mut problem = parse_deck(text).unwrap();
+        problem.set_cell_fill(1, 9).unwrap();
+        assert_eq!(
+            problem.cell(1).unwrap().params,
+            vec!["imp:n=1".to_string(), "fill=9".to_string()]
+        );
+        assert!(write_deck(&problem).contains("1 0 -1 imp:n=1 fill=9"));
+    }
+
+    #[test]
+    fn canonical_render_wraps_past_line_length() {
+        let long_param = format!("imp:n={}", "1".repeat(120));
+        let text = format!("msg\ntitle\n1 1 -1.0 -1 {long_param}\n\n1 so 10.0\n\nm1 92235 1.0\n");
+        let mut problem = parse_deck(&text).unwrap();
+        problem.set_cell_density(1, -7.0).unwrap();
+        let rewritten = write_deck(&problem);
+        assert!(
+            rewritten.contains(&format!("\n     {long_param}\n")),
+            "{rewritten}"
+        );
+    }
+
+    #[test]
+    fn empty_intersect_geometry_renders_without_trailing_space() {
+        let mut problem = parse_deck(&fixture("deck_minimal.txt")).unwrap();
+        problem.cells[0].geom = GeomExpr::Intersect(Vec::new());
+        problem.set_cell_density(1, -7.0).unwrap();
+        let rewritten = write_deck(&problem);
+        assert!(rewritten.contains("1 1 -7 imp:n=1"), "{rewritten}");
+    }
+
+    #[test]
+    fn parse_deck_file_reads_from_disk() {
+        let path = format!(
+            "{}/../../fixtures/mcnp/inp/deck_minimal.txt",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let problem = parse_deck_file(path).unwrap();
+        assert_eq!(problem.cells.len(), 3);
+        assert_eq!(problem.materials.len(), 2);
+    }
+
+    #[test]
+    fn parse_errors_propagate_with_lines() {
+        // Bad cell card inside an otherwise structured deck.
+        let text = "msg\ntitle\n1 1 -1.0 foo\n\n1 so 10.0\n\nm1 92235 1.0\n";
+        assert!(parse_deck(text).is_err());
+        // Bad surface card in the surface block.
+        let text = "msg\ntitle\n1 1 -1.0 -1\n\n1 foo 1.0\n\nm1 92235 1.0\n";
+        assert!(parse_deck(text).is_err());
+        // Bad material card in the data block.
+        let text = "msg\ntitle\n1 1 -1.0 -1\n\n1 so 10.0\n\nm1 zz 1.0\n";
+        assert!(parse_deck(text).is_err());
+        assert!(matches!(
+            parse_deck_file("/definitely/not/here_deck"),
+            Err(Error::Io(_))
+        ));
+    }
+
+    #[test]
+    fn free_function_helpers_delegate() {
+        let text = fixture("deck_minimal.txt");
+        let problem = parse_deck(&text).unwrap();
+        assert_eq!(write_problem(&problem), write_deck(&problem));
+        assert_eq!(deck_materials(&problem).len(), 2);
+        let inventory = cell_inventory(&problem);
+        assert_eq!(inventory.len(), 3);
+        assert_eq!(inventory[&1], 1);
+        assert_eq!(inventory[&2], 2);
+        assert_eq!(inventory[&3], 0);
+    }
 }

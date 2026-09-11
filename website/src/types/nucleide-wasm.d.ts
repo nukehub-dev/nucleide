@@ -379,6 +379,82 @@ export interface IsotxsSummary {
   groups: number;
 }
 
+export interface SerpentVariableJson {
+  name: string;
+  kind: "scalar" | "vector" | "matrix";
+  shape: string;
+  value?: number | string;
+}
+
+export interface SerpentResSummary {
+  variable_count: number;
+  version?: string;
+  title?: string;
+  keff?: number[];
+  variables: SerpentVariableJson[];
+}
+
+export interface SerpentDepSummary {
+  variable_count: number;
+  nuclides: string[];
+  zai: number[];
+  variables: SerpentVariableJson[];
+}
+
+export interface SerpentDetSummary {
+  variable_count: number;
+  detectors: string[];
+  variables: SerpentVariableJson[];
+}
+
+export interface UsrbinTallyJson {
+  name: string;
+  particle: string;
+  coord_sys: string;
+  dims: number[];
+  x_bounds: number[];
+  y_bounds: number[];
+  z_bounds: number[];
+  part_data: number[];
+  error_data: number[];
+}
+
+export interface UsrbinSummary {
+  tally_count: number;
+  tallies: UsrbinTallyJson[];
+}
+
+export interface OrigenTape5StepJson {
+  flux: number;
+  days: number;
+}
+
+export interface OrigenTape5MaterialJson {
+  name: string;
+  entries: { nuclide: string; grams: number }[];
+}
+
+export interface OrigenTape5Summary {
+  titles: string[];
+  steps: OrigenTape5StepJson[];
+  materials: OrigenTape5MaterialJson[];
+}
+
+export interface OrigenTape6RecordJson {
+  nuclide: string;
+  grams: number;
+  activity_bq: number;
+}
+
+export interface OrigenTape6Summary {
+  total_activity_bq: number;
+  records: OrigenTape6RecordJson[];
+}
+
+export interface OrigenTape9Summary {
+  entries: { nuclide: string; decay_const: number }[];
+}
+
 export interface DroppedJson {
   nuclide: string;
   mass: number;
@@ -553,9 +629,16 @@ export interface WasmApi {
   parseAlaraDeck(text: string): AlaraDeckSummary;
   parseAlaraOutput(text: string, runLbl: string): AlaraOutputSummary;
   parseFispactOutput(text: string, runLbl: string): FispactOutputSummary;
+  parseOrigenTape5(text: string): OrigenTape5Summary;
+  parseOrigenTape6(text: string): OrigenTape6Summary;
+  parseOrigenTape9(text: string): OrigenTape9Summary;
   r2sFromDeck(text: string): R2sSummary;
   r2sFromSnapshot(snapshot: SnapshotInputJson): SnapshotBundleJson;
   parseIsotxs(text: string): IsotxsSummary;
+  parseSerpentRes(text: string): SerpentResSummary;
+  parseSerpentDep(text: string): SerpentDepSummary;
+  parseSerpentDet(text: string): SerpentDetSummary;
+  parseUsrbin(text: string): UsrbinSummary;
   emitCards(
     comp: Record<string, number>,
     name: string,

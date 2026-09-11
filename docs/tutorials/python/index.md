@@ -11,17 +11,21 @@ and assumes you have already installed the project (see
 ## Suggested order
 
 1. [Parse MCNP output](parse-mcnp-output.md) — read common MCNP output files.
-2. [Build materials](build-materials.md) — build, mix, and serialize materials.
-3. [Run depletion](run-depletion.md) — run a CRAM depletion solve.
-4. [Enrichment cascade](enrichment-cascade.md) — solve a multicomponent
+2. [Parse Serpent output](parse-serpent-output.md) — read Serpent `_res.m`,
+   `_dep.m`, and `_det.m` files.
+3. [Parse FLUKA output](parse-fluka-output.md) — read FLUKA USRBIN `.lis`
+   tally files.
+4. [Build materials](build-materials.md) — build, mix, and serialize materials.
+5. [Run depletion](run-depletion.md) — run a CRAM depletion solve.
+6. [Enrichment cascade](enrichment-cascade.md) — solve a multicomponent
    enrichment cascade.
-5. [Activation analysis](activation-analysis.md) — read ALARA, FISPACT-II,
+7. [Activation analysis](activation-analysis.md) — read ALARA, FISPACT-II,
    and ORIGEN files and assemble an R2S workflow.
-6. [Deterministic I/O](deterministic-io.md) — read ISOTXS and flux files
+8. [Deterministic I/O](deterministic-io.md) — read ISOTXS and flux files
    and write PARTISN decks.
-7. [Emit code cards](emit-cards.md) — render one material to MCNP, Serpent,
+9. [Emit code cards](emit-cards.md) — render one material to MCNP, Serpent,
    FLUKA, ALARA, and PARTISN cards with a mass-drift report.
-8. [Run kinetics](run-kinetics.md) — solve prescribed-reactivity
-   point-kinetics transients.
-9. [Run spectroscopy](run-spectroscopy.md) — smooth spectra, count peaks,
-   calibrate energy/efficiency, evaluate X-ray lines, and read `.spe` files.
+10. [Run kinetics](run-kinetics.md) — solve prescribed-reactivity
+    point-kinetics transients.
+11. [Run spectroscopy](run-spectroscopy.md) — smooth spectra, count peaks,
+    calibrate energy/efficiency, evaluate X-ray lines, and read `.spe` files.

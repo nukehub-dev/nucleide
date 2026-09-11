@@ -1280,7 +1280,7 @@ fn parse_order(order: u8) -> PyResult<nucleide_depletion::Order> {
         16 => Ok(nucleide_depletion::Order::Order16),
         48 => Ok(nucleide_depletion::Order::Order48),
         other => Err(PyValueError::new_err(format!(
-            "unsupported CRAM order {other}"
+            "unsupported CRAM order {other} (supported: 16, 48)"
         ))),
     }
 }
@@ -3527,13 +3527,19 @@ fn decay_heat(comp: BTreeMap<String, f64>) -> PyResult<f64> {
 }
 
 fn parse_dose_pathway(s: &str) -> PyResult<nucleide_material::DosePathway> {
-    nucleide_material::DosePathway::parse(s)
-        .ok_or_else(|| PyValueError::new_err(format!("unknown dose pathway `{s}`")))
+    nucleide_material::DosePathway::parse(s).ok_or_else(|| {
+        PyValueError::new_err(format!(
+            "unknown dose pathway `{s}` (supported: air, soil, ingest, inhale)"
+        ))
+    })
 }
 
 fn parse_dose_source(s: &str) -> PyResult<nucleide_material::DoseSource> {
-    nucleide_material::DoseSource::parse(s)
-        .ok_or_else(|| PyValueError::new_err(format!("unknown dose source `{s}`")))
+    nucleide_material::DoseSource::parse(s).ok_or_else(|| {
+        PyValueError::new_err(format!(
+            "unknown dose source `{s}` (supported: EPA, DOE, GENII)"
+        ))
+    })
 }
 
 /// Raw dose factor for a nuclide name, pathway, and source.
@@ -5058,6 +5064,52 @@ fn spectroscopy_xray_lines(
     )
 }
 
+/// SDEF decay-source card (E9) as `(normalized_bins, card_text)`.
+///
+/// `lines` carries caller-supplied `(energy_mev, intensity)` pairs; every
+/// energy and intensity is an input (no evaluated data is vendored).
+/// Intensities are merged at duplicate energies, sorted ascending, and
+/// normalized to probabilities summing to 1.0. The card keeps the upstream
+/// monoenergetic point-source field order (`POS`, optional `VEC ... DIR=1`,
+/// `ERG`, `WGT`, `PAR`); one surviving line renders inline `ERG=<E>`, while
+/// several render the discrete-distribution form `ERG=D1` with paired
+/// `SI1 L` / `SP1 D` cards. That distribution syntax is parser-verified
+/// surface only — MCNP sampling semantics are the caller's responsibility.
+/// `particle` parses through the `nucleide-nuclei` dialect (`"Neutron"`,
+/// `"Photon"`, `"Electron"`, ...); `version` is 5 or 6 and selects the
+/// `PAR=` designator.
+#[pyfunction]
+#[pyo3(signature = (lines, x=0.0, y=0.0, z=0.0, u=0.0, v=0.0, w=0.0, weight=1.0, particle="Neutron", version=5))]
+#[allow(clippy::too_many_arguments)]
+fn spectroscopy_sdef_decay_source(
+    lines: Vec<(f64, f64)>,
+    x: f64,
+    y: f64,
+    z: f64,
+    u: f64,
+    v: f64,
+    w: f64,
+    weight: f64,
+    particle: &str,
+    version: u32,
+) -> PyResult<(Vec<(f64, f64)>, String)> {
+    let particle = particle
+        .parse::<nucleide_nuclei::particles::ParticleId>()
+        .map_err(|e| PyValueError::new_err(format!("spectroscopy: particle {e}")))?;
+    let source = nucleide_spectroscopy::PointSource {
+        x,
+        y,
+        z,
+        u,
+        v,
+        w,
+        weight,
+        particle,
+    };
+    nucleide_spectroscopy::sdef_card(&lines, &source, version)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
 /// Render a parsed spectrum as a Python dict.
 fn spectrum_to_py(
     py: Python<'_>,
@@ -5195,6 +5247,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(spectroscopy_energy_bins, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_detector_efficiency, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_xray_lines, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_sdef_decay_source, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_parse_dollar_spe, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_parse_spe, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_read_dollar_spe, m)?)?;

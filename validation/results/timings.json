@@ -6,7 +6,7 @@
     "date": "2026-09-11",
     "python": "3.12.14",
     "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
-    "nucleide": "0.4.0",
+    "nucleide": "0.5.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
@@ -25,18 +25,18 @@
       "rows": [
         [
           "CRAM-48 solve (`chain_ni.xml`)",
-          "1.351301e-04 s",
-          "OpenMC CRAM48: 2.820381e-03 s"
+          "1.366275e-04 s",
+          "OpenMC CRAM48: 2.971514e-03 s"
         ],
         [
           "Default uranium enrichment solve",
-          "1.068627e-04 s",
-          "PyNE multicomponent: 5.697906e-03 s"
+          "1.187259e-04 s",
+          "PyNE multicomponent: 5.934543e-03 s"
         ],
         [
           "MAGIC total-mode solve (synthetic tally)",
-          "5.619002e-07 s",
-          "PyNE-equivalent pure Python: 3.689700e-06 s"
+          "5.559512e-07 s",
+          "PyNE-equivalent pure Python: 3.739800e-06 s"
         ],
         [
           "Native Rust CRAM-48 solve (Criterion, no Python)",

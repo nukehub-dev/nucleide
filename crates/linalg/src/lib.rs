@@ -27,7 +27,12 @@ pub enum Error {
     /// Matrix construction or factorization failed inside the backend.
     Backend(String),
     /// Value count does not match the pattern's nonzeros.
-    Shape { expected: usize, got: usize },
+    Shape {
+        /// Nonzero count required by the pattern.
+        expected: usize,
+        /// Nonzero count actually supplied.
+        got: usize,
+    },
 }
 
 impl std::fmt::Display for Error {
@@ -49,7 +54,9 @@ impl std::error::Error for Error {}
 pub struct Pattern {
     symbolic: Arc<faer::sparse::SymbolicSparseColMat<usize>>,
     order: Arc<faer::sparse::ValuesOrder<usize>>,
+    /// Matrix dimension (square).
     pub n: usize,
+    /// Number of stored nonzero entries after duplicate collapse.
     pub nnz: usize,
 }
 
@@ -70,6 +77,7 @@ impl Pattern {
         })
     }
 
+    /// Matrix dimension (square: `n` rows).
     pub fn nrows(&self) -> usize {
         self.n
     }
@@ -116,6 +124,7 @@ impl ComplexCsc {
             .map_err(|e| Error::Backend(e.to_string()))
     }
 
+    /// Matrix dimension (square: `n` rows).
     pub fn nrows(&self) -> usize {
         self.n
     }
@@ -149,6 +158,8 @@ pub struct SymbolicLu {
 }
 
 impl SymbolicLu {
+    /// Symbolic LU analysis of `pattern`; the analysis is reused for the
+    /// numeric factorization of every matrix assembled on the same pattern.
     pub fn try_new(pattern: &Pattern) -> Result<Self, Error> {
         Ok(Self {
             inner: faer::sparse::linalg::solvers::SymbolicLu::try_new((*pattern.symbolic).as_ref())
@@ -333,5 +344,84 @@ mod tests {
         // Wrong RHS length is rejected.
         assert!(lu.solve(&[C64_ZERO; 2]).is_err());
         assert!(lu.solve(&[C64_ZERO; 4]).is_err());
+    }
+
+    #[test]
+    fn error_display_strings() {
+        let backend = Error::Backend("factorization blew up".to_string());
+        assert_eq!(
+            backend.to_string(),
+            "linalg backend error: factorization blew up"
+        );
+        let shape = Error::Shape {
+            expected: 3,
+            got: 2,
+        };
+        assert_eq!(
+            shape.to_string(),
+            "shape mismatch: expected 3 values, got 2"
+        );
+    }
+
+    #[test]
+    fn error_implements_std_error_trait() {
+        let err: &dyn std::error::Error = &Error::Backend("x".to_string());
+        assert!(err.source().is_none());
+    }
+
+    #[test]
+    fn pattern_and_matrix_dims_are_reported() {
+        let pattern = Pattern::from_entries(2, &[(0usize, 1usize)]).unwrap();
+        assert_eq!(pattern.nrows(), 2);
+        let m = ComplexCsc::from_entries(&pattern, &[C64 { re: 5.0, im: 0.0 }]).unwrap();
+        assert_eq!(m.nrows(), 2);
+    }
+
+    #[test]
+    fn shape_errors_on_mismatched_value_counts() {
+        let pattern = Pattern::from_entries(2, &[(0usize, 0usize)]).unwrap();
+        let res = ComplexCsc::from_entries(
+            &pattern,
+            &[C64 { re: 1.0, im: 0.0 }, C64 { re: 2.0, im: 0.0 }],
+        );
+        assert!(matches!(
+            res,
+            Err(Error::Shape {
+                expected: 1,
+                got: 2
+            })
+        ));
+    }
+
+    #[test]
+    fn shape_errors_on_mismatched_dimensions() {
+        let pattern = Pattern::from_entries(2, &[(0usize, 0usize), (1usize, 1usize)]).unwrap();
+        let sym = SymbolicLu::try_new(&pattern).unwrap();
+        let m3 =
+            ComplexCsc::from_triplets(3, &[(0usize, 0usize, C64 { re: 1.0, im: 0.0 })]).unwrap();
+        let res = ComplexLu::try_new_with_symbolic(&sym, &m3);
+        assert!(matches!(
+            res,
+            Err(Error::Shape {
+                expected: 2,
+                got: 3
+            })
+        ));
+
+        // In-place solve with a wrong-length vector is rejected too.
+        let a2 = ComplexCsc::from_entries(
+            &pattern,
+            &[C64 { re: 1.0, im: 0.0 }, C64 { re: 1.0, im: 0.0 }],
+        )
+        .unwrap();
+        let lu = ComplexLu::try_new_with_symbolic(&sym, &a2).unwrap();
+        let mut x = [C64_ZERO; 3];
+        assert!(matches!(
+            lu.solve_in_place(&mut x),
+            Err(Error::Shape {
+                expected: 2,
+                got: 3
+            })
+        ));
     }
 }

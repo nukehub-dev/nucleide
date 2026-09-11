@@ -15,6 +15,14 @@ Each `fixtures/<area>/README.md` describes its area; the index below is
 generated from those files — run `python3 scripts/gen-reference.py --write`
 after adding fixtures (CI enforces freshness via `--check`).
 
+Runtime consumption: the interactive website tutorials load a subset of these
+fixtures in the browser. `npm run sync-data` (from `website/`) stages them
+into the git-ignored `website/public/data/`; see `website/AGENTS.md` for the
+contract. Currently staged: the MCNP meshtal/xsdir samples, the
+`deck_minimal`/`deck_l3` decks, the simple depletion chain, the Serpent
+`serp2_res.m`/`sample2_dep.m`/`sample_det.m` samples, and the FLUKA
+`fluka_usrbin_single.lis` USRBIN sample.
+
 <!-- GEN:fixture-index:START -->
 
 | Area | Files | Size | Contents |
@@ -30,7 +38,7 @@ after adding fixtures (CI enforces freshness via `--check`).
 | `mcnp/` | 24 | 470,008 bytes | mcnp — MCNP input decks, tallies, and binary-format oracles |
 | `origen/` | 3 | 681 bytes | origen — Synthetic ORIGEN TAPE samples authored for Nucleide (no license needed) |
 | `serpent/` | 6 | 653,120 bytes | serpent — Serpent 1 & 2 res/dep/det outputs |
-| `spectroscopy/` | 3 | 1,873 bytes | fixtures/spectroscopy/ — synthetic gamma-spectroscopy inputs and oracles |
+| `spectroscopy/` | 4 | 4,750 bytes | fixtures/spectroscopy/ — synthetic gamma-spectroscopy inputs and oracles |
 
 <!-- GEN:fixture-index:END -->
 

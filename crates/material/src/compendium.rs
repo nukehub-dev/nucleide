@@ -24,7 +24,9 @@ use nucleide_nuclei::NuclideId;
 /// Errors from compendium loading.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
+    /// Reading the compendium file failed.
     Io(String),
+    /// The text was not valid compendium JSON.
     Json(String),
 }
 
@@ -70,11 +72,14 @@ where
 /// One isotope row of an element inside a compendium material.
 #[derive(Debug, Clone, Deserialize)]
 pub struct CompendiumIsotope {
+    /// Isotope name as given in the dataset (`"H1"`-style).
     #[serde(rename = "Isotope")]
     pub isotope: String,
     /// MCNP-style ZAID; serialized as a JSON string upstream ("1001").
     #[serde(rename = "ZAID")]
     pub zaid: String,
+    /// Natural abundance of the isotope within its element (isotopic atom
+    /// fraction as tabulated upstream).
     #[serde(rename = "Abundance")]
     pub abundance: f64,
     /// Mass fraction within the parent element.
@@ -88,10 +93,13 @@ pub struct CompendiumIsotope {
 /// One elemental constituent.
 #[derive(Debug, Clone, Deserialize)]
 pub struct CompendiumElement {
+    /// Element symbol (`"H"`, `"Fe"`).
     #[serde(rename = "Element")]
     pub element: String,
+    /// Atom fraction of the element in the whole material.
     #[serde(rename = "AtomFraction")]
     pub atom_fraction: f64,
+    /// Isotope rows of this element.
     #[serde(rename = "Isotopes")]
     pub isotopes: Vec<CompendiumIsotope>,
 }
@@ -99,21 +107,30 @@ pub struct CompendiumElement {
 /// One compendium material entry.
 #[derive(Debug, Clone, Deserialize)]
 pub struct CompendiumEntry {
+    /// Display name (`"Bone Equivalent Plastic, B-110"`).
     #[serde(rename = "Name")]
     pub name: String,
+    /// Acronym(s) of the material; the upstream field mixes bare strings and
+    /// arrays, so this is always a vector.
     #[serde(rename = "Acronym", default, deserialize_with = "string_or_vec")]
     pub acronym: Vec<String>,
+    /// Compendium material number (unique across the dataset).
     #[serde(rename = "MatNum")]
     pub mat_num: u32,
     /// Nominal density [g/cm³].
     #[serde(rename = "Density")]
     pub density: f64,
+    /// Nominal atom density [atoms/barn·cm]; 0.0 when the field is absent.
     #[serde(rename = "MaterialAtomDensity", default)]
     pub atom_density: f64,
+    /// Provenance string (e.g. `"PNNL"`); empty when absent.
     #[serde(rename = "Source", default)]
     pub source: String,
+    /// Free-form comment lines; upstream mixes bare strings and arrays, so
+    /// this is always a vector.
     #[serde(rename = "Comment", default, deserialize_with = "string_or_vec")]
     pub comment: Vec<String>,
+    /// Elemental constituents of the material.
     #[serde(rename = "Elements")]
     pub elements: Vec<CompendiumElement>,
 }
@@ -168,7 +185,9 @@ impl CompendiumEntry {
 /// The full parsed compendium with fast lookups.
 #[derive(Debug, Clone)]
 pub struct MaterialsLibrary {
+    /// Dataset version tag (top-level `siteVersion`, e.g. `"0.1.1"`).
     pub site_version: String,
+    /// All material entries in file order.
     pub entries: Vec<CompendiumEntry>,
     by_name: BTreeMap<String, usize>,
     by_matnum: BTreeMap<u32, usize>,
@@ -210,6 +229,7 @@ impl MaterialsLibrary {
         self.entries.len()
     }
 
+    /// True when the library holds no entries.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }

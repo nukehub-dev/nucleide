@@ -322,3 +322,42 @@ mod coefficient_tests {
         assert_eq!(a0, C48_ALPHA0);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chain::{Chain, ChainNuclide, DecayMode};
+    use crate::matrix::ReactionRates;
+
+    fn ab_sys() -> DepletionSystem {
+        let a = ChainNuclide {
+            name: "A".into(),
+            half_life: Some(std::f64::consts::LN_2 / 1.0e-6),
+            decay_modes: vec![DecayMode {
+                kind: "beta".into(),
+                target: "B".into(),
+                branching_ratio: 1.0,
+            }],
+            ..Default::default()
+        };
+        let b = ChainNuclide {
+            name: "B".into(),
+            ..Default::default()
+        };
+        let chain = Chain::from_nuclides(vec![a, b]).unwrap();
+        DepletionSystem::build(chain, &ReactionRates::new()).unwrap()
+    }
+
+    #[test]
+    fn cram_with_symbolic_rejects_length_mismatch() {
+        // The n0 dimension check fires before any factorization, for both
+        // orders and through both entry points.
+        let sys = ab_sys();
+        let sym = SymbolicLu::try_new(&sys.pattern).unwrap();
+        for order in [Order::Order16, Order::Order48] {
+            let err = cram_with_symbolic(&sys, &sym, order, &[1.0e12], 1.0e5).unwrap_err();
+            assert!(err.to_string().contains("n0 length"), "{err}");
+        }
+        assert!(cram(&sys, Order::Order48, &[1.0e12], 1.0e5).is_err());
+    }
+}

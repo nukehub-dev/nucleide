@@ -73,6 +73,8 @@ status, and license.
 | [Getting started](tutorials/getting-started.md) | Install Nucleide from PyPI and run your first Python snippet |
 | [Python tutorials](tutorials/python/index.md) | Python tutorial index and suggested reading order |
 | [Parse MCNP output](tutorials/python/parse-mcnp-output.md) | Read xsdir, meshtal, MCTAL, WWINP, PTRAC, and SSW files, including the NumPy meshtal bridge |
+| [Parse Serpent output](tutorials/python/parse-serpent-output.md) | Read Serpent `_res.m`, `_dep.m`, and `_det.m` output files |
+| [Parse FLUKA output](tutorials/python/parse-fluka-output.md) | Read FLUKA USRBIN `.lis` tally files |
 | [Build materials](tutorials/python/build-materials.md) | Build materials from formulae, mix compositions, export XML, and screen dose per gram |
 | [Run depletion](tutorials/python/run-depletion.md) | Load a depletion chain and run single-step and multi-step CRAM/Bateman solves |
 | [Enrichment cascade](tutorials/python/enrichment-cascade.md) | Set up and solve a multicomponent enrichment cascade |

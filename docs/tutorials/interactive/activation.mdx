@@ -1,6 +1,6 @@
 ---
 title: Activation
-description: Parse ALARA decks and output, FISPACT-II inventories, and R2S workflows in the browser.
+description: Parse ALARA decks and output, FISPACT-II inventories, ORIGEN tapes, and R2S workflows in the browser.
 sidebar:
   order: 7
 ---
@@ -8,7 +8,8 @@ sidebar:
 The `alara-io` crate reads the text files the ALARA activation code consumes
 and produces: input decks, group fluxes, irradiation schedules, and
 activation-output listings. `fispact-io` parses FISPACT-II inventory tables
-into the same response-frame shape, and the `r2s` crate derives a rigorous
+into the same response-frame shape, `origen-io` reads the scoped ORIGEN
+TAPE5/TAPE6/TAPE9 files, and the `r2s` crate derives a rigorous
 two-step shutdown-dose-rate workflow from an ALARA deck. No activation solving
 happens here — transport and transmutation stay inside their respective codes.
 
@@ -24,7 +25,8 @@ raw schedule items.
 ALARA output tables and FISPACT-II inventory listings both become response
 rows keyed by nuclide, cooling time, geometric block, and response variable
 (number density, specific activity, decay heat, …). Paste a listing snippet
-and pick the matching parser tab.
+and pick the matching parser tab. The **ORIGEN TAPE5/TAPE6/TAPE9** tabs parse
+the scoped ORIGEN input echo, output inventory, and decay-constant table.
 
 ## R2S workflow
 
@@ -45,4 +47,5 @@ count.
 
 - Crate docs: [`crates/alara-io/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/alara-io/src/lib.rs)
 - Crate docs: [`crates/fispact-io/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/fispact-io/src/lib.rs)
+- Crate docs: [`crates/origen-io/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/origen-io/src/lib.rs)
 - Crate docs: [`crates/r2s/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/r2s/src/lib.rs)

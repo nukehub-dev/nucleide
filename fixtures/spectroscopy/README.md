@@ -15,3 +15,7 @@ with the provenance recorded in each file.
   an ignored unknown key, double-space `Energy Fit:`, `SPECTRUM` channel
   lines) holding the same counts as `dollar_min.spe`, so the cross-format
   counts-equality check mirrors the upstream `counts[100]` pin.
+- `sdef_oracle.json` — hand-built synthetic decay line lists (E9) with
+  closed-form normalized bins and byte-exact SDEF/SI/SP card text: single
+  line isotropic and beam forms, the multi-line `ERG=D1` distribution form,
+  and an 80-column-wrapped `SP1` case. No evaluated line data.
