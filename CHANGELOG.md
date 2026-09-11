@@ -13,6 +13,8 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-11
+
 ### Added
 
 - Legacy I/O completion (`nucleide-mcnp-io` + `nucleide.mcnp`):
