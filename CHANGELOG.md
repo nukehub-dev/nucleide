@@ -13,6 +13,8 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-12
+
 ### Added
 
 - Plotly charts in the interactive Serpent and activation tutorials: the
