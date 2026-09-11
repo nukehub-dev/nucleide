@@ -1,5 +1,5 @@
 ---
-title: 'Nucleide: A Rust toolkit for nuclear-engineering data and workflow glue, with Python and WebAssembly interfaces'
+title: 'Nucleide: A Rust toolkit for nuclear-engineering data, measurement, and workflow glue, with Python and WebAssembly interfaces'
 tags:
   - Rust
   - Python
@@ -39,10 +39,13 @@ alias-table mesh source sampling [@walker1977alias; @vose1991alias]). It also
 provides activation-code interop (ALARA deck, flux, schedule, and output glue;
 FISPACT-II inventory tables; ORIGEN tape readers),
 deterministic-transport file glue (CCCC cross-section and flux readers with a
-PARTISN deck writer), and rigorous two-step shutdown-dose-rate (R2S) workflow
-orchestration.
+ PARTISN deck writer), and rigorous two-step shutdown-dose-rate (R2S) workflow
+ orchestration. It also provides prescribed-reactivity point kinetics for
+ transient analysis, gamma-measurement analytics (spectrum smoothing, counting,
+ calibration, and X-ray lines), single-material card emission across five code
+ dialects, ENDL electron-library reading, and NumPy tally bridges.
 
-The core is written in Rust as a composable workspace of fourteen crates. A thin
+The core is written in Rust as a composable workspace of seventeen crates. A thin
 PyO3 layer exposes a typed Python API (wheels for Linux, macOS, and Windows via
 PyPI), and a `wasm-bindgen` build powers interactive tutorials that run
 entirely in the browser. Correctness is anchored by byte-exact golden fixtures,
@@ -66,9 +69,9 @@ Nucleide fills this gap with a memory-safe, dependency-light Rust core that
 installs from PyPI in seconds (`pip install nucleide`), has no CMake or Fortran
 toolchain, and — uniquely among comparable tools — runs in the browser through
 WebAssembly, enabling zero-install interactive teaching materials. It is a
-complement to PyNE and OpenMC, not a competitor: it deliberately ports their
-well-validated algorithms and validates against them (see below), while
-omitting transport itself.
+ complement to PyNE, OpenMC, and PyRK, not a competitor: it deliberately ports their
+ well-validated algorithms and validates against all three (see below), while
+ omitting transport itself.
 
 The same file-format burden surrounds activation analysis and deterministic
 transport: ALARA, FISPACT-II, and ORIGEN inputs and listings, CCCC
@@ -86,7 +89,8 @@ The Rust workspace enforces strict layering: capability crates (`nucleide-nuclei
 `nucleide-material`, `nucleide-mcnp-io`, `nucleide-serpent-io`, `nucleide-fluka-io`,
 `nucleide-vr-tools`, `nucleide-enrichment`, `nucleide-depletion`, `nucleide-linalg`,
 `nucleide-alara-io`, `nucleide-cccc-io`, `nucleide-fispact-io`, `nucleide-origen-io`,
-`nucleide-r2s`) never depend on the bindings; `bindings/python` and
+`nucleide-r2s`, `nucleide-kinetics`, `nucleide-spectroscopy`, `nucleide-emit`)
+ never depend on the bindings; `bindings/python` and
 `bindings/wasm` are thin facades with no business logic; the pure-Python
 package re-exports the compiled module behind `.pyi` stubs so the public API is
 fully typed and `mypy --strict` clean. Parsers reproduce legacy output
@@ -107,16 +111,17 @@ text interfaces of their codes and repack them for downstream workflows, never
 reimplementing transport or activation solvers. ALARA and FISPACT-II results
 share one analysis shape (`ResponseFrame`), so activation summaries from
 either code feed the same downstream tooling. The WebAssembly build exposes
-the same glue, with interactive tutorials covering activation analysis and
-deterministic I/O alongside the existing depletion, enrichment, MAGIC, and
-file-parsing demos.
+the same glue, with interactive tutorials covering activation analysis,
+ deterministic I/O, point-kinetics transients, and gamma-ray spectroscopy
+ alongside the existing depletion, enrichment, MAGIC, and
+ file-parsing demos.
 
 # Validation and performance
 
 The repository contains a runnable cross-code validation harness
 (`validation/`, results committed in `validation/results.md`) comparing
-Nucleide 0.3.0 against PyNE 0.7.5 (numerically identical to the 0.7.8 release
-for the exercised modules) and OpenMC 0.16.0:
+ Nucleide against PyNE 0.7.5 (numerically identical to the 0.7.8 release
+ for the exercised modules) and OpenMC 0.16.0:
 
 - **Depletion**: CRAM-48 on a realistic nickel activation chain agrees with
   OpenMC's CRAM-48 solver to a maximum relative difference of $8.3\times10^{-15}$;
@@ -185,9 +190,10 @@ numeric agreement claims are made here.
 
 The documentation website (built with Astro, deployed to GitHub Pages) provides
 tutorials, an API reference, and theory pages deriving the implemented
-mathematics, plus eight interactive browser tutorials powered by the WebAssembly
-build that let users run depletion, enrichment, MAGIC, file-parsing,
-activation-analysis, and deterministic-transport examples with no installation.
+mathematics, plus twelve interactive browser tutorials powered by the WebAssembly
+ build that let users run depletion, enrichment, MAGIC, file-parsing,
+ activation-analysis, deterministic-transport, point-kinetics, and
+ gamma-spectroscopy examples with no installation.
 Two prose tutorials cover the new glue: activation analysis (ALARA,
 FISPACT-II, and ORIGEN files with an R2S workflow) and deterministic I/O
 (ISOTXS and flux files with PARTISN deck writing), each paired with a matching
@@ -201,7 +207,7 @@ the Rust crates can be published to crates.io from the same release workflow.
 
 # Acknowledgements
 
-Nucleide's algorithms are ports of work by the PyNE and OpenMC communities; the
-author thanks both projects for their openly available code and documentation.
+Nucleide's algorithms are ports of work by the PyNE, OpenMC, and PyRK communities; the
+ author thanks all three projects for their openly available code and documentation.
 
 # References

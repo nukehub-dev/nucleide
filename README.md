@@ -1,8 +1,9 @@
 # Nucleide
 
-Nucleide is a modern Rust toolkit for nuclear-engineering workflow glue:
-legacy transport-code I/O, nuclide identification, materials, CRAM depletion,
-and enrichment analytics — exposed through a typed Python API.
+Nucleide is a modern Rust toolkit for nuclear-engineering data, measurement, and
+ workflow glue: legacy transport-code I/O, nuclide identification, materials,
+ CRAM depletion, enrichment analytics, point kinetics, gamma-ray spectroscopy,
+ and code-card emission — exposed through a typed Python API.
 
 The project is a fresh Rust implementation of capabilities pioneered by
 [PyNE](https://github.com/pyne/pyne), focused on memory safety, fast builds,
@@ -33,12 +34,14 @@ rebuilds the high-value subset in memory-safe Rust with one-command
 | --- | --- |
 | Nuclide core (`nucleide-nuclei`) | Canonical nucid representation, particle registry, reaction-name registry (labels, MT mapping, hashes), name-dialect conversions (ZZAAAMM, ZAID/MCNP, Serpent, FLUKA, NIST, CINDER, ALARA, SZA, ARMI/MCC3), AME2020 masses (incl. isomer masses), natural abundances, half-lives, screening cross sections / scattering lengths / prompt decay energies (generated from ENDF/B + NIST), ENDF/B-VIII.0 decay branches, free-form name normalization, dose factors |
 | Materials (`nucleide-material`) | Compositions, mixing arithmetic, unit conversions, DOE/PNNL Materials Compendium loading, materials XML export, activity/decay-heat/dose-per-gram analytics, label-collision checks and conservation audits |
-| MCNP I/O (`nucleide-mcnp-io`) | xsdir, meshtal, SSW/SURFSRC, PTRAC, WWINP, MCTAL readers; NumPy `result_array()` / `totals_array()` meshtal bridge; material extraction from input decks; full-deck parse/edit/write round-trip (cells, surfaces, materials); L3 semantic views (MODE/TRn/universes/lattices/FILL/tallies) with validation; mesh-to-geometry deck generation |
+| MCNP I/O (`nucleide-mcnp-io`) | xsdir, meshtal, SSW/SURFSRC, PTRAC, WWINP, MCTAL, ENDL readers; NumPy `result_array()` / `totals_array()` meshtal bridge; material extraction from input decks; full-deck parse/edit/write round-trip (cells, surfaces, materials); L3 semantic views (MODE/TRn/universes/lattices/FILL/tallies) with validation; mesh-to-geometry deck generation |
 | Serpent I/O (`nucleide-serpent-io`) | `_res.m`, `_dep.m`, `_det.m` readers producing structured records |
 | FLUKA I/O (`nucleide-fluka-io`) | USRBIN tally reader, material/compound card generation |
 | ALARA I/O (`nucleide-alara-io`) | Deck/flux/matlib-elelib-WDR/output/photon/schedule-expansion glue; solver out of scope |
 | Depletion (`nucleide-depletion`) | CRAM (orders 16/48) matrix exponential, analytic Bateman fast path (`method=` selector with CRAM-48 fallback), depletion-chain XML parsing, Predictor/CECM/CF4 time-series integrators with activity/decay-heat observables, unit-aware decay inventories, cumulative decays and chain-lineage queries |
 | Enrichment (`nucleide-enrichment`) | Multicomponent cascade solver (numeric), SWU closed-form helpers |
+| Point kinetics (`nucleide-kinetics`) | Prescribed-reactivity PKE solver, inhour roots, prompt-jump factor |
+| Spectroscopy (`nucleide-spectroscopy`) | Spectrum smoothing, gross/net counting, energy/efficiency calibration, X-ray lines, SPE parsing |
 | Variance reduction (`nucleide-vr-tools`) | MAGIC weight-window generation, mesh source sampling with alias tables |
 | CCCC I/O (`nucleide-cccc-io`) | ISOTXS/RTFLUX text-subset parsers + PARTISN deck writer (no solver) |
 | FISPACT I/O (`nucleide-fispact-io`) | FISPACT-II inventory output parser reusing the ALARA response frame (output-only) |
@@ -70,6 +73,8 @@ nucleide/
 │   ├── vr-tools/      # MAGIC weight windows, source sampling
 │   ├── enrichment/    # cascades, SWU
 │   ├── depletion/     # CRAM + chain files
+│   ├── kinetics/      # prescribed-reactivity point kinetics + inhour
+│   ├── spectroscopy/  # smoothing, counting, calibration, X-ray, SPE
 │   ├── emit/          # five-dialect card emission + mass-drift reports
 │   └── linalg/        # isolation facade over the linear-algebra backend
 ├── bindings/python/   # PyO3 crate -> nucleide._internal
