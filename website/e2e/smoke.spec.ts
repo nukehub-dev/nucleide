@@ -158,6 +158,27 @@ NUCLIDE PU239 94239 2
     output: "text=MCNP",
     extraSteps: [{ button: "ARMI keys" }, { button: "Emit", output: "text=Mass-drift report" }],
   },
+  {
+    path: "tutorials/interactive/kinetics",
+    button: "Run transient",
+    output: "text=Prompt jump",
+    chart: { button: "Run transient", selector: ".js-plotly-plot" },
+    extraSteps: [
+      { button: "Six-group preset" },
+      { button: "Run transient", output: "text=Final n" },
+    ],
+  },
+  {
+    path: "tutorials/interactive/spectroscopy",
+    button: "Smooth spectrum",
+    output: "text=Net counts",
+    cell: "Gross counts",
+    chart: { button: "Smooth spectrum", selector: ".js-plotly-plot" },
+    extraSteps: [
+      { button: "Synthetic peak" },
+      { button: "Smooth spectrum", output: "text=Net counts" },
+    ],
+  },
 ];
 
 for (const { path, button, output, cell, chart, paste, extraSteps } of INTERACTIVE_PAGES) {

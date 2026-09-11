@@ -9,6 +9,8 @@ import { VrDemo } from "./VrDemo";
 import { ActivationDemo } from "./ActivationDemo";
 import { DeterministicDemo } from "./DeterministicDemo";
 import { EmitterDemo } from "./EmitterDemo";
+import { KineticsTransient } from "./KineticsTransient";
+import { SpectroscopyDemo } from "./SpectroscopyDemo";
 
 interface InteractiveDemoProps {
   kind:
@@ -22,7 +24,9 @@ interface InteractiveDemoProps {
     | "variance-reduction"
     | "activation"
     | "deterministic"
-    | "emitter";
+    | "emitter"
+    | "kinetics"
+    | "spectroscopy";
 }
 
 export function InteractiveDemo({ kind }: InteractiveDemoProps) {
@@ -49,6 +53,10 @@ export function InteractiveDemo({ kind }: InteractiveDemoProps) {
       return <DeterministicDemo />;
     case "emitter":
       return <EmitterDemo />;
+    case "kinetics":
+      return <KineticsTransient />;
+    case "spectroscopy":
+      return <SpectroscopyDemo />;
     default:
       return <div className="text-sm text-muted-foreground">Unknown demo kind: {kind}</div>;
   }

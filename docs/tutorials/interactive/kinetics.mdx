@@ -1,0 +1,55 @@
+---
+title: Point kinetics
+description: Solve a step-reactivity point-kinetics transient and read the prompt-jump estimate in the browser.
+sidebar:
+  order: 11
+---
+
+Prescribed-reactivity point kinetics tracks the neutron population $n(t)$
+and $G$ delayed-neutron precursor groups $C_i(t)$ under a caller-supplied
+reactivity schedule $\rho(t)$ in Δk (E1):
+
+$$
+\frac{dn}{dt} = \frac{\rho - \beta}{\Lambda}\,n + \sum_i \lambda_i C_i,
+\qquad
+\frac{dC_i}{dt} = \frac{\beta_i}{\Lambda}\,n - \lambda_i C_i.
+\tag{E1}
+$$
+
+Precursors start at the equilibrium ratio (E2):
+
+$$
+C_i(0) = \frac{\beta_i}{\lambda_i \Lambda}\,n_0,
+\tag{E2}
+$$
+
+and a step $\rho^- \to \rho^+$ carries the prompt-jump estimate (E4):
+
+$$
+n^+ = n^-\,\frac{\beta - \rho^-}{\beta - \rho^+},
+\qquad \rho^+ < \beta.
+\tag{E4}
+$$
+
+## Step transient
+
+The demo below solves one step-reactivity transient with the crate's
+stiff-aware implicit integrator and reports the (E4) jump next to the
+$n(t)$ curve. Delayed data are caller-supplied: the **One-group preset**
+replays `fixtures/kinetics/step_oracle.json` ($\beta = 0.0065$,
+$\lambda = 0.08\ \mathrm{s}^{-1}$, $\Lambda = 10^{-4}\ \mathrm{s}$, step
+$0 \to 0.002\ \Delta k$ at $t = 1\ \mathrm{s}$), and the **Six-group
+preset** uses the hand-picked synthetic set from
+`fixtures/kinetics/inhour_check.json`. All inputs are validated inline
+(finite, with $0 \le t_{\mathrm{step}} \lt t_{\mathrm{end}}$ and
+$n_0 \ge 0$) before any solve runs. When $\rho^+ \ge \beta$ the (E4)
+formula has no solution and the readout says so while the solver still
+runs.
+
+<InteractiveDemo kind="kinetics" />
+
+## See also
+
+- Tutorial: [Run kinetics](../python/run-kinetics.md)
+- Theory: [Point kinetics](../../theory/kinetics.mdx)
+- Crate docs: [`crates/kinetics/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/kinetics/src/lib.rs)

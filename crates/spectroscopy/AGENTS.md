@@ -37,7 +37,13 @@ oracles, and the `spectroscopy_vs_pyne.py` validation oracle.
   oracles extend `fixtures/spectroscopy/` and the fixture tests in the
   same change.
 - Out of scope (do not expand here): peak search/fit, activities, decay
-  spectra/SDEF vectors, plotting, WASM exposure.
+  spectra/SDEF vectors, plotting.
+- WASM/tutorial surface (owned): `spectroscopySmooth` in `bindings/wasm`
+  (E1 rectangular / E2 five-point smoothing plus E3–E5 gross/background/net
+  counting; thin facade, positional channels), the `SpectroscopyDemo` demo
+  in `website/src/components/interactive/SpectroscopyDemo.tsx`, and the
+  `docs/tutorials/interactive/spectroscopy.mdx` page. Demo defaults stay
+  synthetic (`fixtures/spectroscopy/` values or hand-picked small numbers).
 
 ## Work Guidance
 

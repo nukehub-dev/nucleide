@@ -32,7 +32,14 @@ validation oracle.
 - Oracle tolerances are gates, not claims: 1e-12 algebraic, 1e-10 inhour
   residual, 1e-6 1-group, 1–2% 6-group tail, 1e-3 PyRK cross-check.
 - Out of scope (do not expand here): thermal-hydraulic feedback,
-  flux-coupled transients, time-dependent tallies, WASM exposure.
+  flux-coupled transients, time-dependent tallies.
+- WASM/tutorial surface (owned): `kineticsTransient` in `bindings/wasm`
+  (step-reactivity PKE solve returning the `n(t)` series plus the E4
+  prompt-jump value; thin facade, default solver options), the
+  `KineticsTransient` demo in
+  `website/src/components/interactive/KineticsTransient.tsx`, and the
+  `docs/tutorials/interactive/kinetics.mdx` page. Demo presets stay
+  synthetic (`fixtures/kinetics/` values only).
 
 ## Work Guidance
 

@@ -44,8 +44,9 @@ workspace crates from tags.
   approximation. The integrator is an adaptive implicit θ-method
   (trapezoidal default, backward Euler on request) with exact stepping to
   schedule knots — no explicit-solver parity. All delayed data are
-  caller-supplied (`from_ifp` documents the OpenMC provenance note);
-  thermal feedback, flux coupling, and WASM exposure are out of scope.
+   caller-supplied (`from_ifp` documents the OpenMC provenance note);
+   thermal feedback and flux coupling are out of scope (the WASM
+   `kineticsTransient` tutorial facade is covered in its own entry below).
 - Python API: `nucleide.kinetics.solve` / `equilibrium` / `initial_rate` /
    `inhour_rho` / `stable_period` / `prompt_jump` thin wrappers over the new
    core, plus `tests/test_kinetics.py` and the `validation/kinetics_vs_pyrk.py`
@@ -69,7 +70,16 @@ workspace crates from tags.
   `read_dollar_spe` / `read_spe` thin wrappers over the new core, plus
   `tests/test_spectroscopy.py` and the
   `validation/spectroscopy_vs_pyne.py` two-tier oracle (synthetic E1–E8
-  gates plus a container PyNE cross-check at 1e-12).
+   gates plus a container PyNE cross-check at 1e-12).
+- Browser-interactive tutorials for point kinetics and spectroscopy:
+  `kineticsTransient` (step-reactivity PKE solve returning the `n(t)`
+  series plus the E4 prompt-jump value) and `spectroscopySmooth` (E1
+  rectangular / E2 five-point smoothing plus E3–E5 gross/background/net
+  counting) thin WASM facades over the verified crate APIs, with
+  `KineticsTransient` / `SpectroscopyDemo` demos and
+  `tutorials/interactive/kinetics.mdx` / `spectroscopy.mdx` pages. Demo
+  presets stay synthetic (`fixtures/kinetics/` + `fixtures/spectroscopy/`
+  values, hand-picked small numbers otherwise).
 - NumPy bridges for MCTAL/WWINP/PTRAC (bindings-only, same
   `result_array` pattern as the meshtal bridge: flatten → `Vec::into_pyarray`
   → reshape view, float64 C-order, `ValueError` on ragged/out-of-range):
@@ -86,6 +96,11 @@ workspace crates from tags.
 
 ### Fixed
 
+- Website build: the `phillips-1978` entry in
+  `docs/theory/spectroscopy.mdx` carried no URL, which the docs content
+  schema requires (`references.0.url`), so `npm run build` failed. The
+  entry is now plain prose in the References section (citation text only,
+  no journal-verification claim, no invented link).
 - Stable-as-zero analytics (`nucleide-material`): a known nuclide with mass
   data but no decay constant is now stable (λ = 0) and contributes exactly
   0.0 to `activity` / `decay_heat` / `dose_per_g` instead of raising

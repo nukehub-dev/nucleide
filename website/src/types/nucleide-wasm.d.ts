@@ -445,6 +445,20 @@ export interface CompendiumEntryInfo {
   weight_fractions: Record<string, number>;
 }
 
+export interface KineticsTransientResult {
+  times: number[];
+  n: number[];
+  promptJump: number | null;
+  betaTotal: number;
+}
+
+export interface SpectroscopySmoothResult {
+  smoothed: number[];
+  gross: number;
+  background: number;
+  net: number;
+}
+
 export interface WasmMaterialsCompendium {
   len: number;
   is_empty: boolean;
@@ -568,4 +582,20 @@ export interface WasmApi {
   ): DriftRowJson[];
   doseFactor(name: string, pathway: string, source?: string): number | undefined;
   dosePerGram(comp: Record<string, number>, pathway: string, source?: string): number;
+  kineticsTransient(
+    betas: number[],
+    lambdas: number[],
+    lambdaGen: number,
+    tStep: number,
+    rhoInit: number,
+    rhoFinal: number,
+    times: number[],
+    n0: number,
+  ): KineticsTransientResult;
+  spectroscopySmooth(
+    counts: number[],
+    method: string,
+    c1: number,
+    c2: number,
+  ): SpectroscopySmoothResult;
 }

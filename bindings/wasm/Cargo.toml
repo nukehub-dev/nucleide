@@ -25,6 +25,8 @@ nucleide-emit.workspace = true
 nucleide-enrichment.workspace = true
 nucleide-depletion = { workspace = true, default-features = false }
 nucleide-mcnp-io.workspace = true
+nucleide-kinetics.workspace = true
+nucleide-spectroscopy.workspace = true
 nucleide-alara-io.workspace = true
 nucleide-cccc-io.workspace = true
 nucleide-fispact-io.workspace = true

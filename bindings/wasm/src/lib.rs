@@ -3297,3 +3297,141 @@ pub fn r2s_from_snapshot(snapshot: JsValue) -> Result<JsValue, JsValue> {
         decks: decks.iter().map(ToString::to_string).collect(),
     })
 }
+
+// ---------------------------------------------------------------------------
+// Point kinetics (step-reactivity transient + prompt jump)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct KineticsTransientResult {
+    times: Vec<f64>,
+    n: Vec<f64>,
+    #[serde(rename = "promptJump")]
+    prompt_jump: Option<f64>,
+    #[serde(rename = "betaTotal")]
+    beta_total: f64,
+}
+
+fn check_finite_vec(values: &[f64], label: &str) -> Result<(), JsValue> {
+    if values.iter().all(|v| v.is_finite()) {
+        Ok(())
+    } else {
+        Err(js_err(format!("{label} must all be finite")))
+    }
+}
+
+/// Solve a step-reactivity point-kinetics transient and report the
+/// prompt-jump estimate alongside the `n(t)` series.
+///
+/// Thin facade over `nucleide-kinetics`: `betas`/`lambdas`/`lambda_gen`
+/// build [`KineticParams`](nucleide_kinetics::KineticParams), the step levels
+/// build a `Step` [`Reactivity`](nucleide_kinetics::Reactivity), `times`
+/// build a [`TimeGrid`](nucleide_kinetics::TimeGrid), precursors default to
+/// the equilibrium (E2) populations for `n0`, and the solve runs with default
+/// [`SolverOptions`](nucleide_kinetics::SolverOptions). Returns
+/// `{ times, n, promptJump, betaTotal }`; `promptJump` is `null` when the
+/// post-step level is at/past prompt critical (`rho_final >= beta`), where
+/// the (E4) formula has no solution but the solver still runs.
+#[wasm_bindgen(js_name = kineticsTransient)]
+#[allow(clippy::too_many_arguments)] // thin JS facade: one scalar per solver input, by design
+pub fn kinetics_transient(
+    betas: Vec<f64>,
+    lambdas: Vec<f64>,
+    lambda_gen: f64,
+    t_step: f64,
+    rho_init: f64,
+    rho_final: f64,
+    times: Vec<f64>,
+    n0: f64,
+) -> Result<JsValue, JsValue> {
+    check_finite_vec(&betas, "betas")?;
+    check_finite_vec(&lambdas, "lambdas")?;
+    check_finite_vec(&times, "times")?;
+    for (value, label) in [
+        (lambda_gen, "lambdaGen"),
+        (t_step, "tStep"),
+        (rho_init, "rhoInit"),
+        (rho_final, "rhoFinal"),
+        (n0, "n0"),
+    ] {
+        if !value.is_finite() {
+            return Err(js_err(format!("{label} must be finite")));
+        }
+    }
+    let params =
+        nucleide_kinetics::KineticParams::new(betas, lambdas, lambda_gen).map_err(js_err)?;
+    let rho = nucleide_kinetics::Reactivity::Step {
+        t_step,
+        rho_init,
+        rho_final,
+    };
+    let grid = nucleide_kinetics::TimeGrid::new(times).map_err(js_err)?;
+    let state = nucleide_kinetics::State::new(&params, n0, None).map_err(js_err)?;
+    let sol = nucleide_kinetics::solve(
+        &params,
+        &rho,
+        &grid,
+        &state,
+        &nucleide_kinetics::SolverOptions::default(),
+    )
+    .map_err(js_err)?;
+    let prompt_jump =
+        nucleide_kinetics::prompt_jump(n0, rho_init, rho_final, params.beta_total()).ok();
+    to_js(&KineticsTransientResult {
+        times: sol.times,
+        n: sol.n,
+        prompt_jump,
+        beta_total: params.beta_total(),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Spectroscopy (smoothing + peak counting)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct SpectroscopySmoothResult {
+    smoothed: Vec<f64>,
+    gross: f64,
+    background: f64,
+    net: f64,
+}
+
+/// Smooth a counts vector and count a peak window on it.
+///
+/// Thin facade over `nucleide-spectroscopy`: `method` selects the smoothing
+/// pass (`"rect3"`, `"rect5"`, `"rect7"` → E1 rectangular with that width,
+/// `"five-point"` → E2); `c1`/`c2` delimit the peak window positionally
+/// (channels labelled `0..N-1`, E4 half-open gross, E3 `m == 1` background,
+/// E5 net). Returns `{ smoothed, gross, background, net }`.
+#[wasm_bindgen(js_name = spectroscopySmooth)]
+pub fn spectroscopy_smooth(
+    counts: Vec<f64>,
+    method: &str,
+    c1: i32,
+    c2: i32,
+) -> Result<JsValue, JsValue> {
+    check_finite_vec(&counts, "counts")?;
+    let smoothed = match method {
+        "rect3" => nucleide_spectroscopy::rect_smooth(&counts, 3).map_err(js_err)?,
+        "rect5" => nucleide_spectroscopy::rect_smooth(&counts, 5).map_err(js_err)?,
+        "rect7" => nucleide_spectroscopy::rect_smooth(&counts, 7).map_err(js_err)?,
+        "five-point" => nucleide_spectroscopy::five_point_smooth(&counts).map_err(js_err)?,
+        _ => {
+            return Err(js_err(format!(
+                "unknown smoothing method `{method}` (supported: rect3, rect5, rect7, five-point)"
+            )));
+        }
+    };
+    let channels: Vec<f64> = (0..counts.len()).map(|c| c as f64).collect();
+    let (c1, c2) = (i64::from(c1), i64::from(c2));
+    let gross = nucleide_spectroscopy::gross_count(&counts, &channels, c1, c2).map_err(js_err)?;
+    let background =
+        nucleide_spectroscopy::calc_bg(&counts, &channels, c1, c2, 1).map_err(js_err)?;
+    to_js(&SpectroscopySmoothResult {
+        smoothed,
+        gross,
+        background,
+        net: gross - background,
+    })
+}

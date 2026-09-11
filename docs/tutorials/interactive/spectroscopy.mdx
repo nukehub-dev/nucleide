@@ -1,0 +1,49 @@
+---
+title: Gamma-ray spectroscopy
+description: Smooth a spectrum and count gross, background, and net peak counts in the browser.
+sidebar:
+  order: 12
+---
+
+Gamma-ray pulse-height spectra arrive as counts per channel. Answering
+"how many counts sit under this peak" needs a small pipeline: smooth the
+spectrum, delimit the peak window $[c_1, c_2)$, and subtract the
+background. The demo below runs the verified crate passes over
+caller-supplied counts:
+
+- E1 — rectangular smoothing with window width $m$ (odd, $m \ge 3$):
+
+`smooth[i] = (1/m) * sum(counts[i-ext..=i+ext])` for `ext <= i < N - ext`,
+with `ext = (m - 1) / 2`; edge channels are copied unchanged.
+
+- E2 — five-point smoothing:
+
+`smooth[i] = (c[i-2] + c[i+2] + 2*c[i+1] + 2*c[i-1] + 3*c[i]) / 9`
+for `2 <= i < N - 2`; the first and last two channels are copied.
+
+- E3 — background under the peak (`m == 1` only):
+
+`low = sum(counts[c1-2..c1])`, `high = sum(counts[c2..c2+2])`, and
+`bg = (low + high) * (c2 - c1 + 1) / 6`.
+
+- E4 — gross counts: `gc = sum(counts[c1..c2])`, half-open (channel `c2`
+  is excluded).
+- E5 — net counts: `nc = gc - bg`.
+
+## Smoothing and counting
+
+Pick a smoother, set the peak window, then press **Smooth spectrum**.
+The **Oracle counts** default replays
+`fixtures/spectroscopy/smooth_oracle.json` (`[2, 5, 1, 6, 3, 8, 4]`,
+$c_1 = 2$, $c_2 = 5$ — the worked example in the theory page), and
+**Synthetic peak** loads hand-picked small numbers with one bump.
+Channels are labelled positionally (`0..N-1`); counts must be finite and
+non-negative.
+
+<InteractiveDemo kind="spectroscopy" />
+
+## See also
+
+- Tutorial: [Run spectroscopy](../python/run-spectroscopy.md)
+- Theory: [Gamma-ray spectroscopy](../../theory/spectroscopy.mdx)
+- Crate docs: [`crates/spectroscopy/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/spectroscopy/src/lib.rs)
