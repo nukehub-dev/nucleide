@@ -13,6 +13,19 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Added
+
+- SVG figures on all six theory pages (`docs/theory/figures/`): burnup-matrix
+  column anatomy (depletion), MARC cascade schematic (enrichment), Walker
+  alias-table construction (variance reduction), nucid digit layout (nuclear
+  data), step-reactivity prompt-jump transient (kinetics), and peak/background
+  anatomy (spectroscopy). Figures are staged into the website by
+  `sync-data.mjs` and embedded with the `<ImageFigure>` shortcode.
+- Theme-adaptive inline-SVG capability map on the documentation home page
+  (`docs/README.md`): `currentColor` follows the site theme and
+  `var(--primary)` follows the accent picker. The home intro was also rewritten
+  as a reader-facing welcome with a "Where to start" section.
+
 ## [0.5.0] - 2026-09-11
 
 ### Added

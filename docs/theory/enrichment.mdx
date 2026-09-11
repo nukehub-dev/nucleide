@@ -64,6 +64,14 @@ A cascade is specified by:
 - Target assays of the key nuclide $j$ in the feed ($x_F$), product ($x_P$),
   and tails ($x_T$).
 
+<ImageFigure
+  src="/theory/figures/cascade.svg"
+  alt="Cascade schematic: feed stage in the middle, enriching stages rising to the product, stripping stages to the tails"
+  caption="Cascade layout: N enriching stages lift the light key to the product; M stripping stages drop the heavy key."
+  aspectRatio="32 / 25"
+  fit="contain"
+/>
+
 <Callout type="info" title="Where this lives in the code">
   The implementation is in `crates/enrichment/src/cascade.rs`. The public API is
   `Cascade::default_uranium()` and `Cascade::solve()` in Python.

@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 500" role="img" font-family="sans-serif" color="#1c1917">
+  <title>MARC cascade: feed enters the middle stage, enriching stages lift the light key to the product, stripping stages push the heavy key to the tails</title>
+  <defs>
+    <filter id="cas-soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#000000" flood-opacity="0.12"/>
+    </filter>
+    <marker id="cas-arrow-b" markerWidth="9" markerHeight="9" refX="6.5" refY="3.5" orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="cas-arrow-a" markerWidth="9" markerHeight="9" refX="6.5" refY="3.5" orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 Z" fill="#d97706"/>
+    </marker>
+    <marker id="cas-arrow-g" markerWidth="9" markerHeight="9" refX="6.5" refY="3.5" orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 Z" fill="#059669"/>
+    </marker>
+  </defs>
+  <rect width="640" height="500" fill="#fafaf9"/>
+  <rect x="150" y="10" width="140" height="26" rx="13" fill="#dbeafe"/>
+  <text x="220" y="27" text-anchor="middle" font-size="12.5" font-weight="600" fill="#2563eb">product P &#xb7; x&#x209a;</text>
+  <line x1="220" y1="38" x2="220" y2="54" stroke="#2563eb" stroke-width="2.5" marker-end="url(#cas-arrow-b)"/>
+  <rect x="118" y="60" width="5" height="158" rx="2.5" fill="#bfdbfe"/>
+  <rect x="118" y="282" width="5" height="142" rx="2.5" fill="#fde68a"/>
+  <g filter="url(#cas-soft)">
+    <rect x="160" y="60" width="120" height="40" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.25"/>
+    <rect x="160" y="124" width="120" height="40" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.25"/>
+    <rect x="160" y="238" width="120" height="40" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.75"/>
+    <rect x="160" y="322" width="120" height="40" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="1.25"/>
+    <rect x="160" y="386" width="120" height="40" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="1.25"/>
+  </g>
+  <text x="220" y="263" text-anchor="middle" font-size="12.5" font-weight="600" fill="#065f46">feed stage</text>
+  <circle cx="220" cy="190" r="2.5" fill="#a8a29e"/>
+  <circle cx="220" cy="201" r="2.5" fill="#a8a29e"/>
+  <circle cx="220" cy="212" r="2.5" fill="#a8a29e"/>
+  <circle cx="220" cy="296" r="2.5" fill="#a8a29e"/>
+  <circle cx="220" cy="306" r="2.5" fill="#a8a29e"/>
+  <circle cx="220" cy="316" r="2.5" fill="#a8a29e"/>
+  <line x1="220" y1="426" x2="220" y2="450" stroke="#d97706" stroke-width="2.5" marker-end="url(#cas-arrow-a)"/>
+  <rect x="150" y="456" width="140" height="26" rx="13" fill="#fef3c7"/>
+  <text x="220" y="473" text-anchor="middle" font-size="12.5" font-weight="600" fill="#d97706">tails T &#xb7; x&#x209c;</text>
+  <rect x="14" y="224" width="120" height="26" rx="13" fill="#d1fae5"/>
+  <text x="74" y="241" text-anchor="middle" font-size="12" font-weight="600" fill="#059669">feed F &#xb7; x<tspan baseline-shift="sub" font-size="9.5">F</tspan></text>
+  <line x1="60" y1="258" x2="152" y2="258" stroke="#059669" stroke-width="2.5" marker-end="url(#cas-arrow-g)"/>
+  <g stroke="#2563eb" stroke-width="2.5" fill="none" marker-end="url(#cas-arrow-b)">
+    <path d="M 256 226 C 262 210, 262 182, 256 168"/>
+    <line x1="256" y1="120" x2="256" y2="104"/>
+  </g>
+  <g stroke="#d97706" stroke-width="2.5" fill="none" marker-end="url(#cas-arrow-a)">
+    <path d="M 184 168 C 178 182, 178 206, 184 226"/>
+    <line x1="184" y1="282" x2="184" y2="318"/>
+    <line x1="184" y1="362" x2="184" y2="382"/>
+  </g>
+  <text x="112" y="140" text-anchor="end" font-size="12.5" fill="#44403c"><tspan font-weight="700" fill="#2563eb">N</tspan> enriching</text>
+  <text x="112" y="156" text-anchor="end" font-size="12.5" fill="#44403c">stages</text>
+  <text x="112" y="348" text-anchor="end" font-size="12.5" fill="#44403c"><tspan font-weight="700" fill="#d97706">M</tspan> stripping</text>
+  <text x="112" y="364" text-anchor="end" font-size="12.5" fill="#44403c">stages</text>
+  <g transform="translate(330 116)">
+    <line x1="0" y1="10" x2="0" y2="-6" stroke="#2563eb" stroke-width="2.5" marker-end="url(#cas-arrow-b)"/>
+    <text x="14" y="6" font-size="12.5" font-weight="600" fill="#2563eb">enriched stream rises</text>
+    <text x="14" y="24" font-size="12" fill="#44403c">light key j (&#x3b1;*&#x2c7c; &gt; 1)</text>
+  </g>
+  <g transform="translate(330 380)">
+    <line x1="0" y1="-6" x2="0" y2="10" stroke="#d97706" stroke-width="2.5" marker-end="url(#cas-arrow-a)"/>
+    <text x="14" y="6" font-size="12.5" font-weight="600" fill="#d97706">depleted stream falls</text>
+    <text x="14" y="24" font-size="12" fill="#44403c">heavy key k (&#x3b1;*&#x2096; &lt; 1)</text>
+  </g>
+</svg>

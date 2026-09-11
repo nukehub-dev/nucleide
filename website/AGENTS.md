@@ -25,6 +25,12 @@ Parent-level Rust/Python/verification rules remain in the root `AGENTS.md`.
   sample MCNP meshtal/xsdir files, MCNP deck_minimal/deck_l3 samples, and
   the simple depletion chain are copied
   verbatim. It runs automatically via `predev`/`prebuild`.
+- **Theory figures**: `docs/theory/figures/` is the source of truth for the
+  hand-authored SVG figures on the theory pages. `npm run sync-data` copies
+  them into the git-ignored `website/public/theory/figures/`; pages embed them
+  with the `<ImageFigure>` shortcode (`fit="contain"`). Figures carry their own
+  light background panel and explicit root color because external SVG images
+  cannot follow the site theme.
 - **Shared UI**: `@nukehub/docs-kit` provides layout, navigation, and
   markdown-negotiation integration. The dynamic favicon is customized through
   the kit's `SiteConfig.faviconPaths` field in `src/data/site.ts`.

@@ -241,6 +241,14 @@ Given a discrete probability mass function $p_i$ over $n$ bins:
      $n\bar{p}_g \leftarrow n\bar{p}_g + n\bar{p}_a - 1$.
 5. Drain any remaining bins with $\text{prob} = 1$.
 
+<ImageFigure
+  src="/theory/figures/alias-table.svg"
+  alt="Walker alias table: the input PMF is redistributed into n unit-height columns split between own bin and alias bin"
+  caption="Alias table for p = [0.4, 0.3, 0.2, 0.1]: each column has unit height, split between its own bin and one alias."
+  aspectRatio="8 / 5"
+  fit="contain"
+/>
+
 ### Sampling
 
 To draw one index:
