@@ -15,6 +15,15 @@ workspace crates from tags.
 
 ### Added
 
+- Plotly charts in the interactive Serpent and activation tutorials: the
+  Serpent `_res.m` demo plots the `IMP_KEFF` mean ± uncertainty across burnup
+  blocks (new `keff_history` field on `parseSerpentRes`), the `_det.m` demo
+  plots per-detector tally spectra against energy-bin midpoints (new
+  `spectra` field on `parseSerpentDet`, with Serpent 1 vs 2 column layouts),
+  and the ALARA/FISPACT output tabs plot the reported `total` specific
+  activity against cooling time. The activation demo stages the ALARA
+  `output/sample2.out` and FISPACT `inventory.fis` fixtures behind new
+  **Load sample** buttons. Website E2E smoke tests assert each chart renders.
 - Serpent and FLUKA output-parsing Python tutorials
   (`docs/tutorials/python/parse-serpent-output.md`,
   `docs/tutorials/python/parse-fluka-output.md`): read `_res.m`/`_dep.m`/

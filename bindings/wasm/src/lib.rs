@@ -1671,6 +1671,7 @@ struct SerpentResSummary {
     version: Option<String>,
     title: Option<String>,
     keff: Option<Vec<f64>>,
+    keff_history: Option<Vec<[f64; 2]>>,
     variables: Vec<SerpentVariableJson>,
 }
 
@@ -1686,16 +1687,28 @@ pub fn parse_serpent_res(text: &str) -> Result<JsValue, JsValue> {
         .get_vec_str("TITLE")
         .ok()
         .and_then(|v| v.first().map(|s| s.trim().to_string()));
-    let keff = table
-        .get_matrix("IMP_KEFF")
-        .ok()
+    let keff_matrix = table.get_matrix("IMP_KEFF").ok();
+    let keff = keff_matrix
         .and_then(|m| m.row_f64(0).ok())
         .map(|row| row.iter().take(2).copied().collect());
+    // One `[mean, err]` row per burnup block: the full IMP_KEFF matrix, not
+    // just the first row. Rows with a single column carry no uncertainty.
+    let keff_history = keff_matrix.map(|m| {
+        (0..m.rows())
+            .filter_map(|r| m.row_f64(r).ok())
+            .filter_map(|row| {
+                row.first()
+                    .copied()
+                    .map(|mean| [mean, row.get(1).copied().unwrap_or(0.0)])
+            })
+            .collect::<Vec<[f64; 2]>>()
+    });
     to_js(&SerpentResSummary {
         variable_count: table.len(),
         version,
         title,
         keff,
+        keff_history: keff_history.filter(|h| !h.is_empty()),
         variables: serpent_variables(&table),
     })
 }
@@ -1726,26 +1739,104 @@ pub fn parse_serpent_dep(text: &str) -> Result<JsValue, JsValue> {
 }
 
 #[derive(Serialize)]
+struct SerpentDetSpectrum {
+    name: String,
+    energy_mid: Vec<f64>,
+    values: Vec<f64>,
+    errors: Vec<f64>,
+}
+
+/// One spectrum per detector value matrix. Serpent 1 rows carry ten bin
+/// indices then the tally value, its relative error, and the history count;
+/// Serpent 2 rows carry eleven bin indices (or ten without time bins) then
+/// the tally value and its relative error. Serpent 1 detectors are recognized
+/// by their `<name>_VALS`/`<name>_EBINS` bin-count scalars, mirroring the
+/// crate's reshape rules. The energy midpoint column of the matching
+/// `DET<name>E` grid pairs with the rows 1:1; grids that do not align
+/// (multi-axis detectors) leave `energy_mid` empty.
+fn serpent_detector_spectra(table: &nucleide_serpent_io::Table) -> Vec<SerpentDetSpectrum> {
+    let mut spectra = Vec::new();
+    for (name, entry) in table.iter() {
+        let nucleide_serpent_io::Entry::Matrix(m) = entry else {
+            continue;
+        };
+        if !name.starts_with("DET") || m.cols() < 12 {
+            continue;
+        }
+        let serpent1 = table.contains_key(format!("{name}_VALS").as_str())
+            || table.contains_key(format!("{name}_EBINS").as_str());
+        let (value_col, error_col) = if serpent1 {
+            (m.cols() - 3, m.cols() - 2)
+        } else {
+            (m.cols() - 2, m.cols() - 1)
+        };
+        let mut values = Vec::with_capacity(m.rows());
+        let mut errors = Vec::with_capacity(m.rows());
+        let mut numeric = true;
+        for r in 0..m.rows() {
+            match m.row_f64(r) {
+                Ok(row) => {
+                    values.push(row[value_col]);
+                    errors.push(row[error_col]);
+                }
+                Err(_) => {
+                    numeric = false;
+                    break;
+                }
+            }
+        }
+        if !numeric {
+            continue;
+        }
+        let energy_mid = table
+            .get_matrix(format!("{name}E"))
+            .ok()
+            .filter(|g| g.cols() == 3 && g.rows() == m.rows())
+            .map(|g| {
+                (0..g.rows())
+                    .filter_map(|r| g.row_f64(r).ok())
+                    .filter_map(|row| row.get(2).copied())
+                    .collect()
+            })
+            .unwrap_or_default();
+        spectra.push(SerpentDetSpectrum {
+            name: name.clone(),
+            energy_mid,
+            values,
+            errors,
+        });
+    }
+    spectra
+}
+
+#[derive(Serialize)]
 struct SerpentDetSummary {
     variable_count: usize,
     detectors: Vec<String>,
+    spectra: Vec<SerpentDetSpectrum>,
     variables: Vec<SerpentVariableJson>,
 }
 
 /// Parse a Serpent `_det.m` detector file into a JSON summary.
+///
+/// `detectors` lists detector value matrices only (DET-prefixed, ≥12
+/// columns): bin-grid matrices such as `DET<name>E` are inputs to the
+/// detectors, not detectors themselves.
 #[wasm_bindgen(js_name = parseSerpentDet)]
 pub fn parse_serpent_det(text: &str) -> Result<JsValue, JsValue> {
     let table = nucleide_serpent_io::parse_det(text).map_err(js_err)?;
     let detectors = table
         .iter()
         .filter(|(name, entry)| {
-            name.starts_with("DET") && matches!(entry, nucleide_serpent_io::Entry::Matrix(_))
+            name.starts_with("DET")
+                && matches!(entry, nucleide_serpent_io::Entry::Matrix(m) if m.cols() >= 12)
         })
         .map(|(name, _)| name.clone())
         .collect();
     to_js(&SerpentDetSummary {
         variable_count: table.len(),
         detectors,
+        spectra: serpent_detector_spectra(&table),
         variables: serpent_variables(&table),
     })
 }

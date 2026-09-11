@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useWasm } from "../../lib/wasm";
 import type {
   SerpentDepSummary,
+  SerpentDetSpectrum,
   SerpentDetSummary,
   SerpentResSummary,
   SerpentVariableJson,
@@ -9,6 +10,7 @@ import type {
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Textarea } from "@nukehub/docs-kit/components/ui/Textarea";
 import { DataTable } from "@nukehub/docs-kit/components/mdx/DataTable";
+import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 
 const BASE = import.meta.env.BASE_URL.endsWith("/")
   ? import.meta.env.BASE_URL
@@ -70,6 +72,86 @@ function formatKeff(keff: number[] | undefined): string {
   if (!keff || keff.length === 0) return " not present";
   const mean = ` ${keff[0].toFixed(5)}`;
   return keff.length >= 2 ? `${mean} ± ${keff[1].toExponential(2)}` : mean;
+}
+
+function KeffConvergenceChart({ history }: { history: [number, number][] }) {
+  return (
+    <Plotly
+      aspect="video"
+      data={[
+        {
+          type: "scatter",
+          mode: "lines+markers",
+          name: "IMP_KEFF",
+          x: history.map((_, i) => i + 1),
+          y: history.map(([mean]) => mean),
+          error_y: {
+            type: "data",
+            array: history.map(([, err]) => err),
+            visible: true,
+          },
+        },
+      ]}
+      layout={{
+        xaxis: { title: { text: "Cycle (burnup block)" }, type: "linear" },
+        yaxis: { title: { text: "k-eff (IMP_KEFF mean ± σ)" }, type: "linear" },
+        showlegend: false,
+        margin: { t: 16, r: 24, b: 48, l: 64 },
+      }}
+    />
+  );
+}
+
+function DetSpectrumChart({ spectra }: { spectra: SerpentDetSpectrum[] }) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const active = spectra.find((s) => s.name === selected) ?? spectra[0];
+  if (!active || active.values.length === 0) return null;
+  const hasEnergy = active.energy_mid.length === active.values.length;
+  const x = hasEnergy ? active.energy_mid : active.values.map((_, i) => i + 1);
+  return (
+    <div className="space-y-2">
+      {spectra.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          {spectra.map((s) => (
+            <Button
+              key={s.name}
+              onClick={() => setSelected(s.name)}
+              variant={s.name === active.name ? "default" : "outline"}
+              size="sm"
+            >
+              {s.name}
+            </Button>
+          ))}
+        </div>
+      )}
+      <Plotly
+        aspect="video"
+        data={[
+          {
+            type: "scatter",
+            mode: "lines",
+            name: active.name,
+            x,
+            y: active.values,
+            error_y: {
+              type: "data",
+              array: active.values.map((v, i) => v * active.errors[i]),
+              visible: true,
+            },
+          },
+        ]}
+        layout={{
+          xaxis: {
+            title: { text: hasEnergy ? "Energy (MeV)" : "Bin" },
+            type: hasEnergy ? "log" : "linear",
+          },
+          yaxis: { title: { text: "Tally value" }, type: "log" },
+          showlegend: false,
+          margin: { t: 16, r: 24, b: 48, l: 64 },
+        }}
+      />
+    </div>
+  );
 }
 
 export function SerpentParser() {
@@ -192,6 +274,7 @@ export function SerpentParser() {
                 <p>IMP_KEFF (block 1):{formatKeff(res.keff)}</p>
               </div>
               {res.title && <p className="text-sm">Title: {res.title}</p>}
+              {res.keff_history && <KeffConvergenceChart history={res.keff_history} />}
               <VariablesTable variables={res.variables} />
             </div>
           )}
@@ -227,6 +310,7 @@ export function SerpentParser() {
                 <p>Detectors: {det.detectors.join(", ") || "none"}</p>
                 <p>Variables: {det.variable_count}</p>
               </div>
+              {det.spectra.length > 0 && <DetSpectrumChart spectra={det.spectra} />}
               <VariablesTable variables={det.variables} />
             </div>
           )}

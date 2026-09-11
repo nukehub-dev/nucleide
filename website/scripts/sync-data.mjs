@@ -48,8 +48,10 @@ await copyFile(
 );
 
 // Serpent output samples consumed by the serpent-io tutorial.
+// sample_res.m (multi-burnup-block) so the k-eff convergence chart draws a
+// real line; serp2_res.m has a single block and would chart one point.
 await copyFile(
-  path.join(fixturesRoot, "serpent", "serp2_res.m"),
+  path.join(fixturesRoot, "serpent", "sample_res.m"),
   path.join(dst, "serpent_res_sample.m"),
 );
 await copyFile(
@@ -59,6 +61,16 @@ await copyFile(
 await copyFile(
   path.join(fixturesRoot, "serpent", "sample_det.m"),
   path.join(dst, "serpent_det_sample.m"),
+);
+
+// Activation output samples consumed by the activation tutorial.
+await copyFile(
+  path.join(fixturesRoot, "alara", "output", "sample2.out"),
+  path.join(dst, "alara_output_sample.out"),
+);
+await copyFile(
+  path.join(fixturesRoot, "fispact", "inventory.fis"),
+  path.join(dst, "fispact_inventory_sample.fis"),
 );
 
 // FLUKA USRBIN sample consumed by the fluka-io tutorial.
@@ -79,6 +91,7 @@ for (const f of figures) {
 console.log(
   `sync-data: staged MaterialsCompendium.json (${(minified.length / 1e6).toFixed(1)} MB) + LICENSE, ` +
     `meshtal_sample.txt, xsdir_sample.txt, chain_simple.xml, deck_minimal.txt, deck_l3.txt, ` +
-    `serpent_res_sample.m, serpent_dep_sample.m, serpent_det_sample.m, usrbin_sample.lis, ` +
+    `serpent_res_sample.m, serpent_dep_sample.m, serpent_det_sample.m, ` +
+    `alara_output_sample.out, fispact_inventory_sample.fis, usrbin_sample.lis, ` +
     `${figures.length} theory figures`,
 );

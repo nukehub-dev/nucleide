@@ -20,8 +20,9 @@ fixtures in the browser. `npm run sync-data` (from `website/`) stages them
 into the git-ignored `website/public/data/`; see `website/AGENTS.md` for the
 contract. Currently staged: the MCNP meshtal/xsdir samples, the
 `deck_minimal`/`deck_l3` decks, the simple depletion chain, the Serpent
-`serp2_res.m`/`sample2_dep.m`/`sample_det.m` samples, and the FLUKA
-`fluka_usrbin_single.lis` USRBIN sample.
+`sample_res.m`/`sample2_dep.m`/`sample_det.m` samples, the ALARA
+`output/sample2.out` and FISPACT `inventory.fis` activation outputs, and the
+FLUKA `fluka_usrbin_single.lis` USRBIN sample.
 
 <!-- GEN:fixture-index:START -->
 

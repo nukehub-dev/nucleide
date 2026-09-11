@@ -16,6 +16,11 @@ import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
 import { Textarea } from "@nukehub/docs-kit/components/ui/Textarea";
 import { DataTable } from "@nukehub/docs-kit/components/mdx/DataTable";
+import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
+
+const BASE = import.meta.env.BASE_URL.endsWith("/")
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
 
 type ActivationMode =
   | "alara-deck"
@@ -26,6 +31,19 @@ type ActivationMode =
   | "origen-tape9"
   | "r2s"
   | "r2s-snapshot";
+
+// Staged fixtures (sync-data.mjs) for the parser tabs that read real code
+// output; other tabs teach their formats with the inline snippets below.
+const SAMPLE_URLS: Partial<Record<ActivationMode, string>> = {
+  "alara-output": `${BASE}data/alara_output_sample.out`,
+  fispact: `${BASE}data/fispact_inventory_sample.fis`,
+};
+
+async function fetchSample(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
 
 const DEFAULT_DECK = `geometry rectangular
 mat_loading
@@ -129,6 +147,7 @@ export function ActivationDemo() {
   const [r2s, setR2s] = useState<R2sSummary | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotBundleJson | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [loadingSample, setLoadingSample] = useState(false);
 
   function clearError() {
     setLocalError(null);
@@ -150,6 +169,22 @@ export function ActivationDemo() {
     setText(DEFAULTS[next]);
     clearResults();
     clearError();
+  }
+
+  async function loadSample() {
+    const url = SAMPLE_URLS[mode];
+    if (!url) return;
+    setLoadingSample(true);
+    try {
+      const sample = await fetchSample(url);
+      setText(sample);
+      clearResults();
+      clearError();
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingSample(false);
+    }
   }
 
   function run() {
@@ -253,6 +288,11 @@ export function ActivationDemo() {
 
           <div className="flex flex-wrap gap-2">
             <Button onClick={run}>Parse</Button>
+            {SAMPLE_URLS[mode] && (
+              <Button variant="outline" onClick={loadSample} disabled={loadingSample}>
+                {loadingSample ? "Loading…" : "Load sample"}
+              </Button>
+            )}
           </div>
 
           {deck && (
@@ -460,6 +500,27 @@ interface OutputRow {
   block_name: string;
 }
 
+// Per-step totals reported by the code output itself: the `total` row of
+// every Specific Activity table, one point per cooling time (pre-irradiation
+// is not a cooling step and is dropped). Grouped by block so ALARA zone
+// totals draw one trace each.
+function totalActivityTraces(rows: OutputRow[]) {
+  const totals = rows.filter(
+    (r) =>
+      r.nuclide.toLowerCase() === "total" && r.variable === "Specific Activity" && r.time_s >= 0,
+  );
+  const byBlock = new Map<string, OutputRow[]>();
+  for (const row of totals) {
+    const group = byBlock.get(row.block_name) ?? [];
+    group.push(row);
+    byBlock.set(row.block_name, group);
+  }
+  return [...byBlock.entries()].map(([block, group]) => {
+    group.sort((a, b) => a.time_s - b.time_s);
+    return { block, rows: group };
+  });
+}
+
 function OutputTable({
   rows,
   variables,
@@ -469,12 +530,33 @@ function OutputTable({
   variables: string[];
   blocks: string[] | null;
 }) {
+  const traces = totalActivityTraces(rows);
+  const unit = traces[0]?.rows[0]?.var_unit ?? "";
   return (
     <div className="space-y-3">
       <p className="text-sm">
         Rows: {rows.length}, variables: {variables.join(", ")}
         {blocks !== null && `, blocks: ${blocks.join(", ")}`}
       </p>
+      {traces.length > 0 && (
+        <Plotly
+          aspect="video"
+          data={traces.map(({ block, rows: group }) => ({
+            type: "scatter" as const,
+            mode: "lines+markers" as const,
+            name: traces.length > 1 ? block : "total",
+            x: group.map((r) => r.time_label),
+            y: group.map((r) => r.value),
+          }))}
+          layout={{
+            xaxis: { title: { text: "Cooling time" }, type: "category" },
+            yaxis: { title: { text: `Total specific activity (${unit})` }, type: "log" },
+            showlegend: traces.length > 1,
+            legend: { orientation: "h", y: -0.3 },
+            margin: { t: 16, r: 24, b: 48, l: 72 },
+          }}
+        />
+      )}
       <DataTable
         data={rows.map((r) => ({
           nuclide: <span className="font-mono">{r.nuclide}</span>,

@@ -28,6 +28,7 @@ interface ExtraStep {
   button: string;
   output?: string;
   fill?: { label: string; text: string };
+  chart?: string;
 }
 
 interface InteractivePage {
@@ -92,13 +93,14 @@ const INTERACTIVE_PAGES: InteractivePage[] = [
     path: "tutorials/interactive/serpent-io",
     button: "Parse",
     output: "text=Variables:",
+    chart: { button: "Parse", selector: ".js-plotly-plot" },
     extraSteps: [
       { button: "dep" },
       { button: "Load sample dep" },
       { button: "Parse", output: "text=Nuclides:" },
       { button: "det" },
       { button: "Load sample det" },
-      { button: "Parse", output: "text=Detectors:" },
+      { button: "Parse", output: "text=Detectors:", chart: ".js-plotly-plot" },
     ],
   },
   {
@@ -140,9 +142,11 @@ cooling
 end`,
     extraSteps: [
       { button: "ALARA output" },
-      { button: "Parse", output: "text=Rows:" },
+      { button: "Load sample" },
+      { button: "Parse", output: "text=Rows:", chart: ".js-plotly-plot" },
       { button: "FISPACT output" },
-      { button: "Parse", output: "text=Rows:" },
+      { button: "Load sample" },
+      { button: "Parse", output: "text=Rows:", chart: ".js-plotly-plot" },
       { button: "ORIGEN TAPE5" },
       { button: "Parse", output: "text=Materials:" },
       { button: "ORIGEN TAPE6" },
@@ -259,6 +263,9 @@ for (const { path, button, output, cell, chart, paste, extraSteps } of INTERACTI
         await assertNoWasmError(page);
         if (step.output) {
           await expect(page.locator(step.output).first()).toBeVisible();
+        }
+        if (step.chart) {
+          await expect(page.locator(step.chart).first()).toBeVisible({ timeout: 10_000 });
         }
       }
     }

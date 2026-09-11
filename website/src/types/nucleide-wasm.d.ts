@@ -391,6 +391,8 @@ export interface SerpentResSummary {
   version?: string;
   title?: string;
   keff?: number[];
+  /** `[mean, err]` per burnup block — the full IMP_KEFF matrix. */
+  keff_history?: [number, number][];
   variables: SerpentVariableJson[];
 }
 
@@ -401,9 +403,21 @@ export interface SerpentDepSummary {
   variables: SerpentVariableJson[];
 }
 
+export interface SerpentDetSpectrum {
+  name: string;
+  /** Energy-bin midpoint column of the matching DET<name>E grid (empty when
+   *  the grid does not pair 1:1 with the value rows). */
+  energy_mid: number[];
+  /** Per-bin tally values. */
+  values: number[];
+  /** Per-bin relative errors. */
+  errors: number[];
+}
+
 export interface SerpentDetSummary {
   variable_count: number;
   detectors: string[];
+  spectra: SerpentDetSpectrum[];
   variables: SerpentVariableJson[];
 }
 
