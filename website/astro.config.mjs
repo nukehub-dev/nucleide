@@ -27,6 +27,11 @@ export default defineConfig({
   },
   vite: {
     plugins: [tailwindcss()],
+    // The kit's Plotly shortcode imports raw plotly.js CJS modules
+    // (plotly.js/lib/*), which reference the Node `global` identifier.
+    define: {
+      global: "globalThis",
+    },
     build: {
       sourcemap: true,
     },

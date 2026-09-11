@@ -27,7 +27,8 @@ workspace crates from tags.
   alias-table construction (variance reduction), nucid digit layout (nuclear
   data), step-reactivity prompt-jump transient (kinetics), and peak/background
   anatomy (spectroscopy). Figures are staged into the website by
-  `sync-data.mjs` and embedded with the `<ImageFigure>` shortcode.
+  `sync-data.mjs` and embedded with the kit's theme-aware `<SvgFigure>`
+  shortcode.
 - Theme-adaptive inline-SVG capability map on the documentation home page
   (`docs/README.md`): `currentColor` follows the site theme and
   `var(--primary)` follows the accent picker. The home intro was also rewritten
@@ -61,6 +62,15 @@ workspace crates from tags.
 
 ### Fixed
 
+- Theory-page SVG figures no longer render as white boxes in the site's dark
+  theme: the six figures in `docs/theory/figures/` are theme-aware (no opaque
+  background, near-black strokes/text follow `currentColor`, muted grays follow
+  `var(--muted-foreground)`, panel fills follow `var(--muted)`), and the pages
+  inline them with the kit's `<SvgFigure>` shortcode instead of `<ImageFigure>`.
+  Labels that sit on hardcoded pastel fills keep hardcoded dark text (the nucid
+  Z/A digits no longer turn near-white in dark theme), and the peak-anatomy
+  sideband/background labels gained pastel pill backdrops for contrast in both
+  themes.
 - `nucleide.serpent.read_serpent` no longer wraps matrix variables in a
   spurious one-element outer list: matrices now map directly to 2-D lists of
   row lists (`r["ABS_KEFF"][cycle]` instead of `r["ABS_KEFF"][0][cycle]`,

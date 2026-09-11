@@ -185,7 +185,7 @@ function UsrbinHeatmap({ tallies }: { tallies: UsrbinTallyJson[] }) {
             options={tallies.map((t) => ({ value: t.name, label: t.name }))}
           />
         </div>
-        <div className="w-36 space-y-1">
+        <div className="w-44 space-y-1">
           <Label>Field</Label>
           <Select
             value={field}

@@ -30,9 +30,11 @@ Parent-level Rust/Python/verification rules remain in the root `AGENTS.md`.
 - **Theory figures**: `docs/theory/figures/` is the source of truth for the
   hand-authored SVG figures on the theory pages. `npm run sync-data` copies
   them into the git-ignored `website/public/theory/figures/`; pages embed them
-  with the `<ImageFigure>` shortcode (`fit="contain"`). Figures carry their own
-  light background panel and explicit root color because external SVG images
-  cannot follow the site theme.
+  with the kit's `<SvgFigure>` shortcode, which inlines the markup at build
+  time so the figures follow the site theme. Figures must stay theme-aware:
+  no opaque background rect or root `color` attribute, near-black
+  strokes/text as `currentColor`, muted grays as `var(--muted-foreground)`,
+  panel fills as `var(--muted)`; accent hues stay hardcoded.
 - **Shared UI**: `@nukehub/docs-kit` provides layout, navigation, and
   markdown-negotiation integration. The dynamic favicon is customized through
   the kit's `SiteConfig.faviconPaths` field in `src/data/site.ts`.

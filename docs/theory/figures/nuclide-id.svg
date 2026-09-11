@@ -1,49 +1,48 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" role="img" font-family="sans-serif" color="#1c1917">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" role="img" font-family="sans-serif">
   <title>Anatomy of the nucid identifier: digits of Z, digits of A, reserved zeros, and the metastable state index S</title>
   <defs>
     <filter id="ni-soft" x="-30%" y="-30%" width="160%" height="160%">
       <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#000000" flood-opacity="0.10"/>
     </filter>
   </defs>
-  <rect width="640" height="300" fill="#fafaf9"/>
-  <g font-size="13" font-weight="600" fill="#44403c">
+  <g font-size="13" font-weight="600" fill="currentColor">
     <text x="30" y="74">U-235</text>
     <text x="30" y="154">Am-242m</text>
   </g>
   <g filter="url(#ni-soft)">
     <rect x="106" y="46" width="76" height="42" rx="8" fill="#dbeafe"/>
     <rect x="186" y="46" width="110" height="42" rx="8" fill="#d1fae5"/>
-    <rect x="300" y="46" width="110" height="42" rx="8" fill="#f5f5f4"/>
-    <rect x="414" y="46" width="42" height="42" rx="8" fill="#e7e5e4"/>
+    <rect x="300" y="46" width="110" height="42" rx="8" fill="var(--muted)"/>
+    <rect x="414" y="46" width="42" height="42" rx="8" fill="var(--muted)"/>
     <rect x="106" y="126" width="76" height="42" rx="8" fill="#dbeafe"/>
     <rect x="186" y="126" width="110" height="42" rx="8" fill="#d1fae5"/>
-    <rect x="300" y="126" width="110" height="42" rx="8" fill="#f5f5f4"/>
+    <rect x="300" y="126" width="110" height="42" rx="8" fill="var(--muted)"/>
     <rect x="414" y="126" width="42" height="42" rx="8" fill="#fde68a"/>
   </g>
-  <g font-size="17" font-weight="600" text-anchor="middle" fill="#292524" font-family="monospace">
-    <text x="125" y="73">9</text><text x="163" y="73">2</text>
-    <text x="205" y="73">2</text><text x="241" y="73">3</text><text x="277" y="73">5</text>
-    <text x="317" y="73">0</text><text x="353" y="73">0</text><text x="389" y="73">0</text>
-    <text x="435" y="73">0</text>
-    <text x="125" y="153">9</text><text x="163" y="153">5</text>
-    <text x="205" y="153">2</text><text x="241" y="153">4</text><text x="277" y="153">2</text>
-    <text x="317" y="153">0</text><text x="353" y="153">0</text><text x="389" y="153">0</text>
+  <g font-size="17" font-weight="600" text-anchor="middle" font-family="monospace">
+    <text x="125" y="73" fill="#1e3a8a">9</text><text x="163" y="73" fill="#1e3a8a">2</text>
+    <text x="205" y="73" fill="#065f46">2</text><text x="241" y="73" fill="#065f46">3</text><text x="277" y="73" fill="#065f46">5</text>
+    <text x="317" y="73" fill="currentColor">0</text><text x="353" y="73" fill="currentColor">0</text><text x="389" y="73" fill="currentColor">0</text>
+    <text x="435" y="73" fill="currentColor">0</text>
+    <text x="125" y="153" fill="#1e3a8a">9</text><text x="163" y="153" fill="#1e3a8a">5</text>
+    <text x="205" y="153" fill="#065f46">2</text><text x="241" y="153" fill="#065f46">4</text><text x="277" y="153" fill="#065f46">2</text>
+    <text x="317" y="153" fill="currentColor">0</text><text x="353" y="153" fill="currentColor">0</text><text x="389" y="153" fill="currentColor">0</text>
     <text x="435" y="153" fill="#b45309">1</text>
   </g>
   <g font-size="12" font-weight="600" text-anchor="middle">
     <text x="144" y="106" fill="#2563eb">Z = 92</text>
     <text x="241" y="106" fill="#059669">A = 235</text>
-    <text x="355" y="106" fill="#78716c">reserved</text>
-    <text x="435" y="106" fill="#57534e">S = 0</text>
+    <text x="355" y="106" fill="var(--muted-foreground)">reserved</text>
+    <text x="435" y="106" fill="var(--muted-foreground)">S = 0</text>
     <text x="435" y="186" fill="#b45309">S = 1 (m1)</text>
   </g>
-  <g font-size="13" font-family="monospace" font-weight="600" fill="#44403c">
+  <g font-size="13" font-family="monospace" font-weight="600" fill="currentColor">
     <text x="485" y="72">922350000</text>
     <text x="485" y="152">952420001</text>
   </g>
-  <g font-size="13" fill="#44403c">
+  <g font-size="13" fill="currentColor">
     <text x="320" y="222" text-anchor="middle" font-weight="600">nucid = (Z &#xd7; 1000 + A) &#xd7; 10&#x2074; + S</text>
-    <text x="320" y="248" text-anchor="middle" fill="#57534e">one u32 per nuclide: S = 0 ground state, S = 1 first metastable state</text>
-    <text x="320" y="270" text-anchor="middle" fill="#57534e">zzaaam drops the reserved digits (922350)</text>
+    <text x="320" y="248" text-anchor="middle" fill="var(--muted-foreground)">one u32 per nuclide: S = 0 ground state, S = 1 first metastable state</text>
+    <text x="320" y="270" text-anchor="middle" fill="var(--muted-foreground)">zzaaam drops the reserved digits (922350)</text>
   </g>
 </svg>

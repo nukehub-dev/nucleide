@@ -137,18 +137,21 @@ generated API docs, or fixture READMEs. Link instead.
    do not repeat the title as an in-body `#` heading (the site renders the
    frontmatter title as the page heading).
 8. **Figures are hand-authored SVGs.** Theory figures live in
-   `docs/theory/figures/` and are embedded with `<ImageFigure>`
-   (`fit="contain"`, an `aspectRatio` matching the `viewBox`). Because figures
-   load as external images, `currentColor` cannot follow the page theme: give
-   every figure an explicit light background panel (`#fafaf9`) and an explicit
-   root `color="#1c1917"` so it renders identically in light and dark mode.
-   Landing-page visuals may instead be **inline SVG** in the page source (as on
-   the docs home page): inline markup inherits the page CSS, so `currentColor`
-   follows the site theme and `var(--primary)` follows the accent picker — no
-   background panel needed. Inline SVGs take `role="img"` and an `aria-label`
-   on the `<svg>` tag for accessibility; do not use a `<title>` element, which
-   browsers show as a hover tooltip. (External figure files keep their
-   `<title>`: it is inert inside an `<img>` and helps standalone viewing.)
+   `docs/theory/figures/` and are embedded with the kit's `<SvgFigure>`
+   shortcode, which inlines the markup at build time so `currentColor` and CSS
+   custom properties follow the site theme. Keep every figure theme-aware: no
+   background panel and no root `color` attribute; near-black strokes/text as
+   `currentColor`, muted grays as `var(--muted-foreground)`, panel fills as
+   `var(--muted)`; accent hues stay hardcoded. Figure files keep their
+   `<title>` element: the shortcode hoists it into the kit's styled tooltip on
+   the figure's info button and uses it as the accessible name when `alt` is
+   omitted, so no browser-native tooltip appears when inlined; it also helps
+   standalone viewing of the raw file. Landing-page visuals may instead be **inline
+   SVG** in the page source (as on the docs home page): inline markup inherits
+   the page CSS, so `currentColor` follows the site theme and `var(--primary)`
+   follows the accent picker — no background panel needed. Inline SVGs take
+   `role="img"` and an `aria-label` on the `<svg>` tag for accessibility; do
+   not use a `<title>` element, which browsers show as a hover tooltip.
    Keep the `<svg ...>` opening tag on a single line in `.md` sources: the
    markdown parser only recognizes a raw-HTML block when the opening tag is
    complete on its line — a wrapped tag splits the SVG out of its element and

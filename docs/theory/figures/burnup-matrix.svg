@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" font-family="sans-serif" color="#1c1917">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" font-family="sans-serif">
   <title>One column of the burnup matrix: the diagonal loses the parent by decay and reactions; off-diagonal entries produce daughters</title>
   <defs>
     <marker id="bm-arrow-g" markerWidth="9" markerHeight="9" refX="6.5" refY="3.5" orient="auto">
@@ -11,11 +11,10 @@
       <path d="M0,0 L7,3.5 L0,7 Z" fill="#7c3aed"/>
     </marker>
   </defs>
-  <rect width="640" height="400" fill="#fafaf9"/>
-  <text x="220" y="38" text-anchor="middle" font-size="13" font-weight="600" fill="#44403c">column j = parent nuclide</text>
-  <text x="32" y="200" text-anchor="middle" font-size="13" font-weight="600" fill="#44403c" transform="rotate(-90 32 200)">row i = daughter nuclide</text>
-  <rect x="192" y="58" width="56" height="264" rx="8" fill="#f5f5f4"/>
-  <g stroke="#a8a29e" stroke-width="1">
+  <text x="220" y="38" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">column j = parent nuclide</text>
+  <text x="32" y="200" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor" transform="rotate(-90 32 200)">row i = daughter nuclide</text>
+  <rect x="192" y="58" width="56" height="264" rx="8" fill="var(--muted)"/>
+  <g stroke="var(--muted-foreground)" stroke-width="1">
     <path d="M90 60 h260 M90 112 h260 M90 164 h260 M90 216 h260 M90 268 h260 M90 320 h260" fill="none"/>
     <path d="M90 60 v260 M142 60 v260 M194 60 v260 M246 60 v260 M298 60 v260 M350 60 v260" fill="none"/>
   </g>
@@ -28,7 +27,7 @@
     <path d="M 246 198 C 290 208, 290 232, 250 240" stroke="#d97706" marker-end="url(#bm-arrow-a)"/>
     <path d="M 246 208 C 302 228, 302 282, 250 292" stroke="#7c3aed" marker-end="url(#bm-arrow-p)"/>
   </g>
-  <g font-size="13" fill="#292524">
+  <g font-size="13" fill="currentColor">
     <rect x="400" y="86" width="20" height="20" rx="4" fill="#bfdbfe" stroke="#2563eb" stroke-width="1.25"/>
     <text x="430" y="101">diagonal A&#x1d62;&#x1d62;: &#x2212;&#x3bb;&#x1d62; &#x2212; &#x3c3;&#x3c6; (loss)</text>
     <rect x="400" y="128" width="20" height="20" rx="4" fill="#a7f3d0" stroke="#059669" stroke-width="1.25"/>
@@ -38,5 +37,5 @@
     <rect x="400" y="212" width="20" height="20" rx="4" fill="#ddd6fe" stroke="#7c3aed" stroke-width="1.25"/>
     <text x="430" y="227">A&#x2096;&#x1d62; += &#x3c3;&#x3c6;&#x2009;y&#x1d62;&#x2192;&#x2096; (fission yield)</text>
   </g>
-  <text x="220" y="356" text-anchor="middle" font-size="12.5" font-style="italic" fill="#78716c">sparse, units s&#x207b;&#xb9;; one diagonal entry per chain nuclide</text>
+  <text x="220" y="356" text-anchor="middle" font-size="12.5" font-style="italic" fill="var(--muted-foreground)">sparse, units s&#x207b;&#xb9;; one diagonal entry per chain nuclide</text>
 </svg>
