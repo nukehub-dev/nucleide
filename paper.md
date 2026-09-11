@@ -132,6 +132,18 @@ for the exercised modules) and OpenMC 0.16.0:
 - **MAGIC weight windows**: output matches the reference formula exactly on a
   shared test tally (PyNE's MOAB-dependent path was unavailable, so a
   formula-equivalent reference was used).
+- **Point kinetics**: prescribed-reactivity transients match analytic gates —
+  the 1-group step response matches the closed-form two-exponential to a worst
+  relative error of $8.1\times10^{-8}$ over 7 nodes, the prompt-jump factor is
+  exact, and the 6-group stable period matches the inhour root to
+  $4.0\times10^{-14}$; a ramp transient cross-checked against the upstream
+  PyRK neutronics block [@huff2015pyrk] agrees to $1.6\times10^{-4}$ at three
+  probes.
+- **Spectroscopy**: rectangular ($m=5$) and five-point smoothing, background,
+  and gross/net counting on the 7-channel oracle vector match hand values
+  exactly and agree with `pyne.spectanalysis`/`pyne.gammaspec` [@pyne2014] to
+  $\sim10^{-16}$; X-ray line intensities match hand values to
+  $1.9\times10^{-16}$.
 - **Nuclear data**: natural abundances and half-lives match OpenMC exactly
   (both derive from IUPAC 2013 [@meija2016iupac] and ENDF/B-VIII.0
   [@brown2018endf]); masses match OpenMC's AME2020 [@huang2021ame2020;
@@ -164,6 +176,10 @@ numeric agreement claims are made here.
 ![Per-nuclide final densities after one 30-day CRAM-48 step, Nucleide vs OpenMC, for the nickel activation chain (left) and the full CASL/VERA chain (right). Points lie on the identity line; the lower strips show the per-nuclide relative differences, all at the $10^{-15}$ level (maximum $8.3\times10^{-15}$ and $8.9\times10^{-15}$, respectively).](validation/figures/depletion_agreement.png)
 
 ![Mean wall times (log scale) for the CRAM-48 depletion solve, the multicomponent uranium enrichment solve, and MAGIC weight-window generation: Nucleide from Python, Nucleide native Rust (Criterion), and the reference codes.](validation/figures/timings.png)
+
+![1-group point-kinetics step response $n(t)$: Nucleide vs the closed-form analytic transient (worst relative error $8.1\times10^{-8}$ over 7 nodes); the dashed line marks the prompt-jump level ($1.44$ at $n_0 = 1$); the lower strip shows the per-node relative error on a log scale.](validation/figures/kinetics_transient.png)
+
+![Raw vs rectangular ($m=5$) and five-point smoothed counts on the 7-channel spectroscopy oracle vector; the annotation gives the ROI (channels 2..5) gross/background/net totals; both smoothers match hand values and PyNE exactly.](validation/figures/spectroscopy_overlay.png)
 
 # Documentation
 

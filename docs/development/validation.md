@@ -20,6 +20,12 @@ Comparisons cover:
   PyNE 0.7.5 `multicomponent` (numeric and symbolic solvers).
 - **MAGIC weight windows** — total-mode and per-group MAGIC on a synthetic MCNP
   meshtal, vs PyNE's documented formula.
+- **Point kinetics** — prescribed-reactivity transients vs analytic gates
+  (prompt-jump, 1-group closed form, inhour stable period) plus a ramp
+  cross-check against the upstream PyRK neutronics block.
+- **Spectroscopy** — smoothing, background/gross/net counting, and energy
+  bins on a synthetic 7-channel vector vs hand values, vs PyNE
+  `spectanalysis`/`gammaspec`.
 - **Nuclear data** — atomic masses, natural abundances, half-lives, and
   name-dialect conversions, vs PyNE and OpenMC.
 - **Parsers** — Serpent `res`/`dep`/`det` readers vs serpentTools, and MCNP
@@ -29,7 +35,8 @@ Comparisons cover:
   and MAGIC solves, plus native Rust Criterion figures.
 
 `validation/make_figures.py` also renders the paper figures
-(`validation/figures/timings.png` and `depletion_agreement.png`) from the
+(`validation/figures/timings.png`, `depletion_agreement.png`,
+`kinetics_transient.png`, and `spectroscopy_overlay.png`) from the
 machine-readable results; the figures are committed but generated — never
 hand-edit them.
 

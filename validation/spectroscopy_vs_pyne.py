@@ -63,20 +63,32 @@ def _worst_rel(got: list[float], want: list[float]) -> float:
     return max(rel_diff(g, w) for g, w in zip(got, want, strict=True))
 
 
-def tier1() -> tuple[list[list[str]], list[str]]:
-    """Synthetic gates E1-E8. Returns (rows, prose notes)."""
+def tier1() -> tuple[list[list[str]], list[str], list[list[str]], str]:
+    """Synthetic gates E1-E8.
+
+    Returns (gate rows, prose notes, overlay rows, background level). The
+    overlay rows tabulate the per-channel smoothing overlay (``Channel``,
+    ``Raw counts``, ``Rect-smoothed (m=5)``, ``Five-point smoothed``) for
+    ``make_figures.py``; no gates live in those tables.
+    """
     rows: list[list[str]] = []
     notes: list[str] = []
 
-    got = sp.rect_smooth(COUNTS, 5)
-    err = _worst_rel(got, [2.0, 5.0, 3.4, 4.6, 4.4, 8.0, 4.0])
+    rect = sp.rect_smooth(COUNTS, 5)
+    err = _worst_rel(rect, [2.0, 5.0, 3.4, 4.6, 4.4, 8.0, 4.0])
     notes.append(f"E1 rect m=5: worst rel err {err:.3e} (hand values).")
     rows.append(["E1 rect smooth", fmt(err), "< 1e-12", _check(err < 1e-12, "E1")])
 
-    got = sp.five_point_smooth(COUNTS)
-    err = _worst_rel(got, [2.0, 5.0, 30.0 / 9.0, 39.0 / 9.0, 42.0 / 9.0, 8.0, 4.0])
+    five = sp.five_point_smooth(COUNTS)
+    err = _worst_rel(five, [2.0, 5.0, 30.0 / 9.0, 39.0 / 9.0, 42.0 / 9.0, 8.0, 4.0])
     notes.append(f"E2 five-point: worst rel err {err:.3e} (hand values).")
     rows.append(["E2 five-point smooth", fmt(err), "< 1e-12", _check(err < 1e-12, "E2")])
+
+    overlay_rows = [
+        [str(c), repr(r), repr(s), repr(f)]
+        for c, r, s, f in zip(range(len(COUNTS)), COUNTS, rect, five, strict=True)
+    ]
+    bg_level = repr(sp.calc_bg(COUNTS, CHANNELS, 2, 5, 1))
 
     err = rel_diff(sp.calc_bg(COUNTS, CHANNELS, 2, 5, 1), 76.0 / 6.0)
     rows.append(["E3 background", fmt(err), "< 1e-12", _check(err < 1e-12, "E3")])
@@ -105,7 +117,7 @@ def tier1() -> tuple[list[list[str]], list[str]]:
         f"SPE fixtures: cross-format counts equality over {len(dollar['counts'])} channels."
     )
     rows.append(["SPE cross-format counts", "n=8", "equal", _check(ok, "SPE counts")])
-    return rows, notes
+    return rows, notes, overlay_rows, bg_level
 
 
 def tier2_pyne() -> tuple[list[list[str]], list[str], bool]:
@@ -191,10 +203,16 @@ def main() -> int:
         "against the upstream `pyne.spectanalysis` / `pyne.gammaspec` "
         "routines on identical runtime inputs (tier 2)."
     )
-    rows1, notes1 = tier1()
+    rows1, notes1, overlay_rows, bg_level = tier1()
     for note in notes1:
         report.prose(note)
     report.table(["Gate", "Rel err", "Tol", "Status"], rows1)
+    report.heading("Smoothing overlay (figure source)", level=3)
+    report.table(
+        ["Channel", "Raw counts", "Rect-smoothed (m=5)", "Five-point smoothed"],
+        overlay_rows,
+    )
+    report.table(["Quantity", "Value"], [["Background level (E3, channels 2..5)", bg_level]])
     rows2, notes2, skipped = tier2_pyne()
     for note in notes2:
         report.prose(note)

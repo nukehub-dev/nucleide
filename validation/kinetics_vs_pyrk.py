@@ -59,8 +59,14 @@ def _ramp_table() -> tuple[list[float], list[float]]:
     return times, values
 
 
-def tier1() -> tuple[list[list[str]], list[str]]:
-    """Analytic gates O1-O4 + invariants. Returns (rows, prose notes)."""
+def tier1() -> tuple[list[list[str]], list[str], list[list[str]], str]:
+    """Analytic gates O1-O4 + invariants.
+
+    Returns (gate rows, prose notes, figure-series rows, prompt-jump level).
+    The figure rows tabulate the O3 1-group step transient (``t since step``,
+    ``Nucleide n``, ``Analytic n``) for ``make_figures.py``; no gates live
+    in those tables.
+    """
     rows: list[list[str]] = []
     notes: list[str] = []
     step = _load("step_oracle.json")
@@ -112,6 +118,13 @@ def tier1() -> tuple[list[list[str]], list[str]]:
     )
     want = step["analytic_since_step"]["n"]
     worst = max(rel_diff(n, w) for n, w in zip(out["n"], want, strict=True))
+    # Figure-source rows use repr (round-trip precision): fmt's 6 decimals
+    # would collapse the ~1e-8 Nucleide-vs-analytic gap the figure checks.
+    series_rows = [
+        [repr(t), repr(n), repr(w)]
+        for t, n, w in zip(step["analytic_since_step"]["t"], out["n"], want, strict=True)
+    ]
+    pj_level = repr(step["n0"] * step["prompt_jump_factor"])
     notes.append(f"O3 1-group closed form: worst rel err {worst:.3e} over {len(ts)} nodes.")
     rows.append(
         ["O3 1-group transient", fmt(worst), "< 1e-6", _check(worst < 1e-6, "O3 1-group transient")]
@@ -174,7 +187,7 @@ def tier1() -> tuple[list[list[str]], list[str]]:
             _check(ok, "ramp positivity"),
         ]
     )
-    return rows, notes
+    return rows, notes, series_rows, pj_level
 
 
 def tier2_pyrk() -> tuple[list[list[str]], list[str], bool]:
@@ -282,10 +295,13 @@ def main() -> int:
         "cross-check against the upstream PyRK neutronics block on "
         "runtime-read precursor data (tier 2 / O5)."
     )
-    rows1, notes1 = tier1()
+    rows1, notes1, series_rows, pj_level = tier1()
     for note in notes1:
         report.prose(note)
     report.table(["Gate", "Rel err", "Tol", "Status"], rows1)
+    report.heading("Step-transient series (figure source)", level=3)
+    report.table(["t since step (s)", "Nucleide n", "Analytic n"], series_rows)
+    report.table(["Quantity", "Value"], [["Prompt-jump level (n0 = 1)", pj_level]])
     rows2, notes2, skipped = tier2_pyrk()
     for note in notes2:
         report.prose(note)

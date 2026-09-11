@@ -101,6 +101,77 @@
       ]
     },
     {
+      "kind": "heading",
+      "level": 3,
+      "text": "Smoothing overlay (figure source)"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Channel",
+        "Raw counts",
+        "Rect-smoothed (m=5)",
+        "Five-point smoothed"
+      ],
+      "rows": [
+        [
+          "0",
+          "2.0",
+          "2.0",
+          "2.0"
+        ],
+        [
+          "1",
+          "5.0",
+          "5.0",
+          "5.0"
+        ],
+        [
+          "2",
+          "1.0",
+          "3.4",
+          "3.3333333333333335"
+        ],
+        [
+          "3",
+          "6.0",
+          "4.6",
+          "4.333333333333333"
+        ],
+        [
+          "4",
+          "3.0",
+          "4.4",
+          "4.666666666666667"
+        ],
+        [
+          "5",
+          "8.0",
+          "8.0",
+          "8.0"
+        ],
+        [
+          "6",
+          "4.0",
+          "4.0",
+          "4.0"
+        ]
+      ]
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Quantity",
+        "Value"
+      ],
+      "rows": [
+        [
+          "Background level (E3, channels 2..5)",
+          "12.666666666666666"
+        ]
+      ]
+    },
+    {
       "kind": "prose",
       "text": "X-ray algebra has no container check: the upstream routine reads its HDF5 atomic table at run time and no atomic values are vendored here, so E8 is pinned by the synthetic hand values above."
     },

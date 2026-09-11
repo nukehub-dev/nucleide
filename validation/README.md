@@ -28,7 +28,7 @@ committed `results.md` holds the measured numbers that the paper quotes.
 | `magic_tally.txt` | Small synthetic MCNP meshtal used by the MAGIC comparison |
 | `results/` | Per-run JSON reports produced by each comparison script |
 | `results.md` | Committed measured results (generated; do not hand-edit) |
-| `figures/` | Generated paper figures (`timings.png`, `depletion_agreement.png`); committed, never hand-edited |
+| `figures/` | Generated paper figures (`timings.png`, `depletion_agreement.png`, `kinetics_transient.png`, `spectroscopy_overlay.png`); committed, never hand-edited |
 | `.cache/` | Download cache for the CASL chain (git-ignored; see below) |
 
 ## Environment
