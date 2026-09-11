@@ -57,6 +57,10 @@ jobs:
 
       - name: Check links
         uses: lycheeverse/lychee-action@v2
+        # GITHUB_TOKEN makes lychee check github.com links via the API instead
+        # of scraping HTML, avoiding transient 503 rate-limit failures.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: >-
             --no-progress
