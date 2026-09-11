@@ -201,7 +201,127 @@ of PyNE's documented MAGIC formula.
 Nucleide's MAGIC output matched the reference formula exactly for the synthetic
 test tally.
 
-## 5. Nuclear data (`nuclear_data_vs_refs.py`)
+## 5. Point kinetics (`kinetics_vs_pyrk.py`)
+
+Two-tier oracle for `nucleide.kinetics`: analytic gates O1-O4 plus invariants on synthetic fixtures
+(tier 1, always run), and a ramp cross-check against the upstream PyRK neutronics block on runtime-
+read precursor data (tier 2 / O5).
+
+O1 initial rate: got 2.000000e+01, want 2.000000e+01.
+
+O2 prompt-jump factor: got 1.444444e+00.
+
+O2 plateau: solver 1.885243e+00 vs PJA 1.857143e+00.
+
+O3 1-group closed form: worst rel err 8.149e-08 over 7 nodes.
+
+O4 stable period: got 1.783982e+01 s.
+
+O4 tail slope: got 5.608273e-02 1/s vs inhour root 5.605439e-02 1/s.
+
+Ramp-table transient: n(10 s) = 2.798304e+00, all positive.
+
+| Gate                              | Rel err            | Tol     | Status |
+|-----------------------------------|--------------------|---------|--------|
+| O1 initial rate                   | 3.552714e-16       | < 1e-12 | PASS   |
+| O2 jump factor (algebraic)        | 0.000000e+00       | < 1e-12 | PASS   |
+| O2 prompt plateau                 | 1.490555e-02       | < 2e-2  | PASS   |
+| O3 1-group transient              | 8.149450e-08       | < 1e-6  | PASS   |
+| O4 stable period                  | 3.982904e-14       | < 1e-9  | PASS   |
+| O4 tail slope                     | 5.052649e-04       | < 2e-2  | PASS   |
+| Invariant: rho=0 stationary       | 1.776357e-16       | < 1e-9  | PASS   |
+| Invariant: ramp positivity/growth | n_end=2.798304e+00 | > 1     | PASS   |
+
+### Step-transient series (figure source)
+
+| t since step (s) | Nucleide n         | Analytic n         |
+|------------------|--------------------|--------------------|
+| 0.0001           | 1.0019955068462973 | 1.0019955067597075 |
+| 0.001            | 1.0195566924695851 | 1.0195566916890546 |
+| 0.01             | 1.1610680696650248 | 1.161068063433468  |
+| 0.1              | 1.4424412830040607 | 1.4424412760174448 |
+| 1.0              | 1.4942370946170038 | 1.4942370939381002 |
+| 10.0             | 2.0560708342486356 | 2.056070818176571  |
+| 100.0            | 50.029211967063475 | 50.029207889957654 |
+
+| Quantity                   | Value              |
+|----------------------------|--------------------|
+| Prompt-jump level (n0 = 1) | 1.4444444444444444 |
+
+PyRK u235/thermal runtime data: beta=8.723000e-03, Lambda=1.080e-05 s.
+
+PyRK driver loop mirrors upstream driver.solve (dopri5, per-step).
+
+O5 ramp vs PyRK: worst rel err 1.556e-04 at 3 probes.
+
+| Gate             | PyRK n       | Nucleide n   | Rel err      | Status |
+|------------------|--------------|--------------|--------------|--------|
+| O5 ramp t=2.00 s | 1.611464e+00 | 1.611213e+00 | 1.556062e-04 | PASS   |
+| O5 ramp t=3.50 s | 1.847717e+00 | 1.847736e+00 | 1.048574e-05 | PASS   |
+| O5 ramp t=5.00 s | 2.041719e+00 | 2.041736e+00 | 8.650656e-06 | PASS   |
+
+## 6. Spectroscopy (`spectroscopy_vs_pyne.py`)
+
+Two-tier oracle for `nucleide.spectroscopy`: synthetic E1-E8 gates on hand-built fixtures (tier 1,
+always run), and a cross-check against the upstream `pyne.spectanalysis` / `pyne.gammaspec` routines
+on identical runtime inputs (tier 2).
+
+E1 rect m=5: worst rel err 0.000e+00 (hand values).
+
+E2 five-point: worst rel err 0.000e+00 (hand values).
+
+E7 golden: 6-coefficient fit-1 efficiency at 1 MeV.
+
+E8 X-ray: k=2/l=3 hand intensities (Ka1, Ka2, Kb, L).
+
+SPE fixtures: cross-format counts equality over 8 channels.
+
+| Gate                    | Rel err      | Tol     | Status |
+|-------------------------|--------------|---------|--------|
+| E1 rect smooth          | 0.000000e+00 | < 1e-12 | PASS   |
+| E2 five-point smooth    | 0.000000e+00 | < 1e-12 | PASS   |
+| E3 background           | 0.000000e+00 | < 1e-12 | PASS   |
+| E4 gross count          | 0.000000e+00 | < 1e-12 | PASS   |
+| E5 net counts           | 1.665335e-16 | < 1e-12 | PASS   |
+| E6 energy bins          | 0.000000e+00 | < 1e-12 | PASS   |
+| E7 efficiency golden    | 0.000000e+00 | < 1e-12 | PASS   |
+| E8 xray lines           | 1.850372e-16 | < 1e-12 | PASS   |
+| SPE cross-format counts | n=8          | equal   | PASS   |
+
+### Smoothing overlay (figure source)
+
+| Channel | Raw counts | Rect-smoothed (m=5) | Five-point smoothed |
+|---------|------------|---------------------|---------------------|
+| 0       | 2.0        | 2.0                 | 2.0                 |
+| 1       | 5.0        | 5.0                 | 5.0                 |
+| 2       | 1.0        | 3.4                 | 3.3333333333333335  |
+| 3       | 6.0        | 4.6                 | 4.333333333333333   |
+| 4       | 3.0        | 4.4                 | 4.666666666666667   |
+| 5       | 8.0        | 8.0                 | 8.0                 |
+| 6       | 4.0        | 4.0                 | 4.0                 |
+
+| Quantity                             | Value              |
+|--------------------------------------|--------------------|
+| Background level (E3, channels 2..5) | 12.666666666666666 |
+
+X-ray algebra has no container check: the upstream routine reads its HDF5 atomic table at run time
+and no atomic values are vendored here, so E8 is pinned by the synthetic hand values above.
+
+| Gate                  | Rel err      | Tol     | Status |
+|-----------------------|--------------|---------|--------|
+| rect m=5 vs PyNE      | 0.000000e+00 | < 1e-12 | PASS   |
+| five-point vs PyNE    | 1.903239e-16 | < 1e-12 | PASS   |
+| bg vs PyNE            | 0.000000e+00 | < 1e-12 | PASS   |
+| gross vs PyNE         | 0.000000e+00 | < 1e-12 | PASS   |
+| net vs PyNE           | 0.000000e+00 | < 1e-12 | PASS   |
+| ebins vs PyNE         | 0.000000e+00 | < 1e-12 | PASS   |
+| efficiency vs PyNE    | 0.000000e+00 | < 1e-12 | PASS   |
+| dollar counts vs PyNE | 0.000000e+00 | < 1e-12 | PASS   |
+| dollar ebin vs PyNE   | 0.000000e+00 | < 1e-12 | PASS   |
+| plain counts vs PyNE  | 0.000000e+00 | < 1e-12 | PASS   |
+| plain ebin vs PyNE    | 0.000000e+00 | < 1e-12 | PASS   |
+
+## 7. Nuclear data (`nuclear_data_vs_refs.py`)
 
 ### Atomic masses
 
@@ -311,7 +431,7 @@ branch table. SF branches are dropped at generation, so they never appear here.
 | He8      | Li8 [beta-]      | 8.400000e-01 | 8.400000e-01 | 0.000000e+00 |
 | He8      | Li7 [beta-]      | 1.600000e-01 | 1.600000e-01 | 0.000000e+00 |
 
-## 6. Dose coefficients (`dose_vs_pyne.py`)
+## 8. Dose coefficients (`dose_vs_pyne.py`)
 
 Nucleide dose factors (HNF-SD-WM-TI-707 Rev.1 / HNF-5636 App. O via PyNE `dbgen/dosefactors*.csv`)
 vs the PyNE `Material::dose_per_g` equations (source ids 0=EPA/1=DOE/2=GENII). Screening-level only;
@@ -341,7 +461,7 @@ H3 air GENII sentinel: -1.0 (PyNE -1-for-missing-air).
 
 1 g K-40 soil EPA per-gram dose: 3.103665e-03 mrem/h per g per m^2.
 
-## 7. Parser cross-validation (`parsers_vs_refs.py`)
+## 9. Parser cross-validation (`parsers_vs_refs.py`)
 
 Nucleide's readers are cross-checked against independent oracle readers on the
 same committed fixture files. Skipped comparisons (missing or incapable oracle)
@@ -445,7 +565,7 @@ SKIPPED: no working FLUKA oracle exists in this environment. `pyne.fluka.Usrbin`
 fixtures are ASCII `.lis` files (fluka_usrbin_degenerate.lis, fluka_usrbin_multiple.lis,
 fluka_usrbin_single.lis).
 
-## 8. Activation I/O (`activation_vs_refs.py`)
+## 10. Activation I/O (`activation_vs_refs.py`)
 
 Nucleide's activation-code readers (alara-io, cccc-io, fispact-io, origen-io)
 and the r2s workflow builder are checked against committed fixtures.
@@ -629,7 +749,7 @@ reader, so the corresponding fixtures remain synthetic self-consistency checks.
 
 `pyne.cccc` is unexpectedly importable; no comparison is defined for it yet.
 
-## 9. Emission drift (`emit_vs_self.py`)
+## 11. Emission drift (`emit_vs_self.py`)
 
 Self-consistency oracle for `nucleide.emit` (no external code offers this comparison). Uranium metal
 must emit losslessly on all five dialects; the FLUKA O16 gap is asserted as reported drift.
@@ -648,16 +768,81 @@ Water-like mix: FLUKA accounts 1.000000e+00 of 3.0 g with 1 dropped nuclide(s).
 
 ARMI database keys (`nU235`) emit the same five cards as GNDS names.
 
-## 10. Timings (`timings.py`)
+## 12. Decay (`decay_vs_radioactivedecay.py`)
+
+Nucleide depletion decay analytics (CRAM-48 parent atoms + Inventory parent activity) vs the
+radioactivedecay oracle (version 0.6.1, default ICRP-107 dataset, pip-pinned in `Containerfile`) on
+synthetic single-nuclide chains built inline in a temp file — no fixtures, no vendored decay data:
+parent half-lives come from `nucleide.nuclei.half_life` and `rd.Nuclide(...).half_life("s")`, both
+read at runtime. Each case starts from 1.0e+15 parent atoms (daughters zero) and decays for 0.5, 1.0
+and 2.0 Nucleide half-lives. The synthetic chains lump each parent into one stable daughter
+(Cs-137's Ba-137m branch included), which is exact for the parent quantities compared here — parent
+disappearance is a pure exponential regardless of branching.
+
+### Half-life tables (runtime-read findings)
+
+ICRP-107 values below are live oracle queries recorded as generated findings — not vendored
+constants. Nucleide (ENDF/B-VIII.0) and ICRP-107 agree to ~2e-5 for H-3 and ~1e-5 for Co-60; Cs-137
+differs by -2.87e-3, which drives the largest raw cross-code gaps further below. That gap is a table
+difference to record, not a failure.
+
+| Case  | Nucleide hl (s) | ICRP-107 hl (s) | Rel delta     |
+|-------|-----------------|-----------------|---------------|
+| H3    | 3.887896e+08    | 3.887813e+08    | 2.127338e-05  |
+| Co60  | 1.663442e+08    | 1.663460e+08    | -1.096777e-05 |
+| Cs137 | 9.492526e+08    | 9.519809e+08    | -2.865966e-03 |
+
+### Parent atoms remaining
+
+Raw rel diff is the direct cross-code gap (table-driven, reported not gated); residual is the table-
+corrected ratio error |meas/pred - 1| against the analytic ratio from the two runtime-read half-
+lives.
+
+| Case  | k (hl) | Nucleide (atoms) | Oracle (atoms) | Raw rel diff | Residual     |
+|-------|--------|------------------|----------------|--------------|--------------|
+| H3    | 0.5    | 7.071068e+14     | 7.071016e+14   | 7.372766e-06 | 4.440859e-16 |
+| H3    | 1.0    | 5.000000e+14     | 4.999926e+14   | 1.474548e-05 | 2.886537e-15 |
+| H3    | 2.0    | 2.500000e+14     | 2.499926e+14   | 2.949074e-05 | 6.661142e-16 |
+| Co60  | 0.5    | 7.071068e+14     | 7.071095e+14   | 3.801133e-06 | 3.330682e-16 |
+| Co60  | 1.0    | 5.000000e+14     | 5.000038e+14   | 7.602252e-06 | 2.664556e-15 |
+| Co60  | 2.0    | 2.500000e+14     | 2.500038e+14   | 1.520445e-05 | 8.881919e-16 |
+| Cs137 | 0.5    | 7.071068e+14     | 7.078095e+14   | 9.927749e-04 | 3.333979e-16 |
+| Cs137 | 1.0    | 5.000000e+14     | 5.009943e+14   | 1.984564e-03 | 2.781077e-15 |
+| Cs137 | 2.0    | 2.500000e+14     | 2.509952e+14   | 3.965190e-03 | 6.687857e-16 |
+
+### Parent activity
+
+Same layout for the activity channel (Nucleide `Inventory.activities` vs oracle `activities('Bq')`);
+the prediction folds in each code's own decay constant, so the residual again isolates solver
+agreement.
+
+| Case  | k (hl) | Nucleide (Bq) | Oracle (Bq)  | Raw rel diff | Residual     |
+|-------|--------|---------------|--------------|--------------|--------------|
+| H3    | 0.5    | 1.260654e+06  | 1.260671e+06 | 7.372766e-06 | 4.440954e-16 |
+| H3    | 1.0    | 8.914168e+05  | 8.914226e+05 | 1.474548e-05 | 2.775576e-15 |
+| H3    | 2.0    | 4.457084e+05  | 4.457047e+05 | 2.949074e-05 | 6.661283e-16 |
+| Co60  | 0.5    | 2.946475e+06  | 2.946454e+06 | 3.801133e-06 | 2.220430e-16 |
+| Co60  | 1.0    | 2.083473e+06  | 2.083466e+06 | 7.602252e-06 | 2.664526e-15 |
+| Co60  | 2.0    | 1.041736e+06  | 1.041741e+06 | 1.520445e-05 | 8.881822e-16 |
+| Cs137 | 0.5    | 5.163316e+05  | 5.153634e+05 | 9.927749e-04 | 4.432565e-16 |
+| Cs137 | 1.0    | 3.651015e+05  | 3.647791e+05 | 1.984564e-03 | 2.884031e-15 |
+| Cs137 | 2.0    | 1.825508e+05  | 1.827522e+05 | 3.965190e-03 | 5.557241e-16 |
+
+Worst table-corrected residual over all cases, times, and both channels: 2.886537e-15 (gate <
+1.0e-09). Raw cross-code gaps (up to ~4e-3 for Cs-137 at k = 2) match the half-life-delta prediction
+to that residual — both solvers agree with their own analytics to ~1e-12, and the remaining gap is
+the tables.
+
+## 13. Timings (`timings.py`)
 
 Mean wall time over 20 repeats. The CRAM comparison now times **only the solve
 step** on pre-built systems/matrices.
 
 | Operation                                             | Nucleide       | Reference code                              |
 |-------------------------------------------------------|----------------|---------------------------------------------|
-| CRAM-48 solve (`chain_ni.xml`)                        | 1.481326e-04 s | OpenMC CRAM48: 2.975147e-03 s               |
-| Default uranium enrichment solve                      | 1.100659e-04 s | PyNE multicomponent: 5.747725e-03 s         |
-| MAGIC total-mode solve (synthetic tally)              | 5.728505e-07 s | PyNE-equivalent pure Python: 3.952900e-06 s |
+| CRAM-48 solve (`chain_ni.xml`)                        | 1.351301e-04 s | OpenMC CRAM48: 2.820381e-03 s               |
+| Default uranium enrichment solve                      | 1.068627e-04 s | PyNE multicomponent: 5.697906e-03 s         |
+| MAGIC total-mode solve (synthetic tally)              | 5.619002e-07 s | PyNE-equivalent pure Python: 3.689700e-06 s |
 | Native Rust CRAM-48 solve (Criterion, no Python)      | 8.465243e-05 s | —                                           |
 | Native Rust deplete end-to-end (Criterion, no Python) | 8.640163e-05 s | —                                           |
 

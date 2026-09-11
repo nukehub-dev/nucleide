@@ -1,0 +1,249 @@
+{
+  "schema": 1,
+  "name": "decay",
+  "title": "Decay (`decay_vs_radioactivedecay.py`)",
+  "environment": {
+    "date": "2026-09-11",
+    "python": "3.12.14",
+    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
+    "nucleide": "0.4.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "text": "Nucleide depletion decay analytics (CRAM-48 parent atoms + Inventory parent activity) vs the radioactivedecay oracle (version 0.6.1, default ICRP-107 dataset, pip-pinned in `Containerfile`) on synthetic single-nuclide chains built inline in a temp file \u2014 no fixtures, no vendored decay data: parent half-lives come from `nucleide.nuclei.half_life` and `rd.Nuclide(...).half_life(\"s\")`, both read at runtime. Each case starts from 1.0e+15 parent atoms (daughters zero) and decays for 0.5, 1.0 and 2.0 Nucleide half-lives. The synthetic chains lump each parent into one stable daughter (Cs-137's Ba-137m branch included), which is exact for the parent quantities compared here \u2014 parent disappearance is a pure exponential regardless of branching."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Half-life tables (runtime-read findings)"
+    },
+    {
+      "kind": "prose",
+      "text": "ICRP-107 values below are live oracle queries recorded as generated findings \u2014 not vendored constants. Nucleide (ENDF/B-VIII.0) and ICRP-107 agree to ~2e-5 for H-3 and ~1e-5 for Co-60; Cs-137 differs by -2.87e-3, which drives the largest raw cross-code gaps further below. That gap is a table difference to record, not a failure."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Case",
+        "Nucleide hl (s)",
+        "ICRP-107 hl (s)",
+        "Rel delta"
+      ],
+      "rows": [
+        [
+          "H3",
+          "3.887896e+08",
+          "3.887813e+08",
+          "2.127338e-05"
+        ],
+        [
+          "Co60",
+          "1.663442e+08",
+          "1.663460e+08",
+          "-1.096777e-05"
+        ],
+        [
+          "Cs137",
+          "9.492526e+08",
+          "9.519809e+08",
+          "-2.865966e-03"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Parent atoms remaining"
+    },
+    {
+      "kind": "prose",
+      "text": "Raw rel diff is the direct cross-code gap (table-driven, reported not gated); residual is the table-corrected ratio error |meas/pred - 1| against the analytic ratio from the two runtime-read half-lives."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Case",
+        "k (hl)",
+        "Nucleide (atoms)",
+        "Oracle (atoms)",
+        "Raw rel diff",
+        "Residual"
+      ],
+      "rows": [
+        [
+          "H3",
+          "0.5",
+          "7.071068e+14",
+          "7.071016e+14",
+          "7.372766e-06",
+          "4.440859e-16"
+        ],
+        [
+          "H3",
+          "1.0",
+          "5.000000e+14",
+          "4.999926e+14",
+          "1.474548e-05",
+          "2.886537e-15"
+        ],
+        [
+          "H3",
+          "2.0",
+          "2.500000e+14",
+          "2.499926e+14",
+          "2.949074e-05",
+          "6.661142e-16"
+        ],
+        [
+          "Co60",
+          "0.5",
+          "7.071068e+14",
+          "7.071095e+14",
+          "3.801133e-06",
+          "3.330682e-16"
+        ],
+        [
+          "Co60",
+          "1.0",
+          "5.000000e+14",
+          "5.000038e+14",
+          "7.602252e-06",
+          "2.664556e-15"
+        ],
+        [
+          "Co60",
+          "2.0",
+          "2.500000e+14",
+          "2.500038e+14",
+          "1.520445e-05",
+          "8.881919e-16"
+        ],
+        [
+          "Cs137",
+          "0.5",
+          "7.071068e+14",
+          "7.078095e+14",
+          "9.927749e-04",
+          "3.333979e-16"
+        ],
+        [
+          "Cs137",
+          "1.0",
+          "5.000000e+14",
+          "5.009943e+14",
+          "1.984564e-03",
+          "2.781077e-15"
+        ],
+        [
+          "Cs137",
+          "2.0",
+          "2.500000e+14",
+          "2.509952e+14",
+          "3.965190e-03",
+          "6.687857e-16"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Parent activity"
+    },
+    {
+      "kind": "prose",
+      "text": "Same layout for the activity channel (Nucleide `Inventory.activities` vs oracle `activities('Bq')`); the prediction folds in each code's own decay constant, so the residual again isolates solver agreement."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Case",
+        "k (hl)",
+        "Nucleide (Bq)",
+        "Oracle (Bq)",
+        "Raw rel diff",
+        "Residual"
+      ],
+      "rows": [
+        [
+          "H3",
+          "0.5",
+          "1.260654e+06",
+          "1.260671e+06",
+          "7.372766e-06",
+          "4.440954e-16"
+        ],
+        [
+          "H3",
+          "1.0",
+          "8.914168e+05",
+          "8.914226e+05",
+          "1.474548e-05",
+          "2.775576e-15"
+        ],
+        [
+          "H3",
+          "2.0",
+          "4.457084e+05",
+          "4.457047e+05",
+          "2.949074e-05",
+          "6.661283e-16"
+        ],
+        [
+          "Co60",
+          "0.5",
+          "2.946475e+06",
+          "2.946454e+06",
+          "3.801133e-06",
+          "2.220430e-16"
+        ],
+        [
+          "Co60",
+          "1.0",
+          "2.083473e+06",
+          "2.083466e+06",
+          "7.602252e-06",
+          "2.664526e-15"
+        ],
+        [
+          "Co60",
+          "2.0",
+          "1.041736e+06",
+          "1.041741e+06",
+          "1.520445e-05",
+          "8.881822e-16"
+        ],
+        [
+          "Cs137",
+          "0.5",
+          "5.163316e+05",
+          "5.153634e+05",
+          "9.927749e-04",
+          "4.432565e-16"
+        ],
+        [
+          "Cs137",
+          "1.0",
+          "3.651015e+05",
+          "3.647791e+05",
+          "1.984564e-03",
+          "2.884031e-15"
+        ],
+        [
+          "Cs137",
+          "2.0",
+          "1.825508e+05",
+          "1.827522e+05",
+          "3.965190e-03",
+          "5.557241e-16"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Worst table-corrected residual over all cases, times, and both channels: 2.886537e-15 (gate < 1.0e-09). Raw cross-code gaps (up to ~4e-3 for Cs-137 at k = 2) match the half-life-delta prediction to that residual \u2014 both solvers agree with their own analytics to ~1e-12, and the remaining gap is the tables."
+    }
+  ]
+}

@@ -60,3 +60,11 @@ RUN pip install --no-cache-dir serpenttools==0.11.0 \
 # already installed above; the package declares no install dependencies.
 RUN pip install --no-cache-dir pint "pyrk @ git+https://github.com/pyrk/pyrk@c2bfebf90f5cd36449b6f553675763a23f53aa06" \
  && python -c "import pyrk.neutronics, pyrk.reactivity_insertion; print('pyrk oracle available')"
+
+# radioactivedecay: independent decay oracle for
+# validation/decay_vs_radioactivedecay.py (single-nuclide H-3/Co-60/Cs-137
+# cross-check). ICRP-107 decay data are read ONLY at harness runtime inside
+# this container — never vendored into fixtures, code, or docs (licensing
+# boundary). Pinned for reproducibility (latest stable at time of writing).
+RUN pip install --no-cache-dir radioactivedecay==0.6.1 \
+ && python -c "import radioactivedecay as rd; print('radioactivedecay', rd.__version__)"

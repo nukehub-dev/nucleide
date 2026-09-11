@@ -18,11 +18,14 @@ SECTION_ORDER = [
     "depletion_casl",
     "enrichment",
     "magic",
+    "kinetics",
+    "spectroscopy",
     "nuclear_data",
     "dose",
     "parsers",
     "activation",
     "emit",
+    "decay",
     "timings",
 ]
 

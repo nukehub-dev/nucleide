@@ -17,6 +17,7 @@ committed `results.md` holds the measured numbers that the paper quotes.
 | `emit_vs_self.py` | Five-dialect emission + drift self-consistency (incl. ARMI-key equivalence; no external oracle exists) |
 | `parsers_vs_refs.py` | Serpent/MCNP/FLUKA parser cross-validation vs serpentTools and PyNE oracles |
 | `activation_vs_refs.py` | ALARA/CCCC/FISPACT/ORIGEN/R2S I/O checks vs PyNE oracle probes + synthetic self-consistency |
+| `decay_vs_radioactivedecay.py` | Single-nuclide decay (H-3, Co-60, Cs-137) vs the radioactivedecay oracle (ICRP-107, container-only) |
 | `timings.py` | Coarse wall-time comparisons (Python overhead included) |
 | `make_figures.py` | Generates the paper figures in `figures/` from the JSON reports |
 | `common.py` | Shared helpers and `Report` class used by the comparison scripts |
@@ -24,7 +25,7 @@ committed `results.md` holds the measured numbers that the paper quotes.
 | `environment.json` | Hand-maintained source annotations for the environment table |
 | `run_all.sh` | Run the whole harness with a configurable Python binary |
 | `run_container.sh` | One-command container run: rebuilds the image (layer-cached), then the wheel, then the harness |
-| `Containerfile` | Validation environment definition (PyNE 0.7.5 + OpenMC 0.16.0 + serpentTools 0.11.0, Python 3.12) |
+| `Containerfile` | Validation environment definition (PyNE 0.7.5 + OpenMC 0.16.0 + serpentTools 0.11.0 + radioactivedecay 0.6.1, Python 3.12) |
 | `magic_tally.txt` | Small synthetic MCNP meshtal used by the MAGIC comparison |
 | `results/` | Per-run JSON reports produced by each comparison script |
 | `results.md` | Committed measured results (generated; do not hand-edit) |
@@ -54,6 +55,10 @@ The canonical environment is the container built from `Containerfile`:
   numbers).
 - serpentTools 0.11.0 from PyPI, as the independent oracle for the Serpent
   parser comparison (conda-forge's `serpent-tools` build lags).
+- radioactivedecay 0.6.1 from PyPI, as the independent oracle for the
+  single-nuclide decay comparison. Its ICRP-107 decay data are read only at
+  harness runtime inside the container — never vendored into fixtures, code,
+  or docs (licensing boundary).
 
 A conda env with `pyne` and `openmc` from conda-forge also works (see
 `run_all.sh`), but tracks the older conda-forge versions.
@@ -150,6 +155,24 @@ oracles on the committed fixtures:
   missing-data sentinel, the CCCC text-analog subset (production files are
   binary), and the ALARA year conventions (365.25 d in decks, 365 d in the
   output listing) kept verbatim.
+
+## Decay oracle notes
+
+`decay_vs_radioactivedecay.py` compares Nucleide depletion decay analytics
+(CRAM-48 parent atoms + `Inventory` parent activity) against the
+`radioactivedecay` oracle (default ICRP-107 dataset, pip-pinned in
+`Containerfile`) on synthetic single-nuclide cases (H-3, Co-60, Cs-137)
+built inline in a temp file — no fixtures, no downloads:
+
+- **Licensing boundary**: ICRP-107 decay data are read only at harness
+  runtime inside the container. No half-life or branching value from the
+  oracle is vendored into fixtures, code, or docs; every oracle number in
+  the report is a live query.
+- **Honest tolerances**: Nucleide uses ENDF/B-VIII.0 half-lives, the oracle
+  ICRP-107, so exact agreement is not expected. The gate is on the
+  table-corrected residual (measured ratio vs the ratio predicted from the
+  two runtime-read half-lives); raw gaps are findings, and the half-life
+  deltas themselves are reported.
 
 ## Known limitations
 
