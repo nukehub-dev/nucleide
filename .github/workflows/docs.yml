@@ -55,6 +55,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # NuDat 3 hangs programmatic clients (TCP connects, zero bytes back;
+      # verified 2026-09-13 from CI + direct curl). The link stays in
+      # nuclear-data.mdx for readers; re-check by dropping the --exclude.
+      # Note: comments are not allowed inside the args block — a '#' line
+      # inside the folded scalar reaches the shell and comments out the
+      # trailing input globs, failing with "required arguments were not
+      # provided: <inputs>".
       - name: Check links
         uses: lycheeverse/lychee-action@v2
         # GITHUB_TOKEN makes lychee check github.com links via the API instead
@@ -76,9 +83,6 @@ jobs:
             --exclude-path '.ruff_cache'
             --exclude-path '__pycache__'
             --exclude-path 'node_modules'
-            # NuDat 3 hangs programmatic clients (TCP connects, zero bytes
-            # back; verified 2026-09-13 from CI + direct curl). The link stays
-            # in nuclear-data.mdx for readers; re-check by dropping this line.
             --exclude 'https://www.nndc.bnl.gov/nudat3/'
             -- '*.md' 'docs/**/*.md' 'docs/**/*.mdx'
           fail: true
