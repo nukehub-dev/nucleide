@@ -13,6 +13,8 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-13
+
 ### Added
 
 - SSW↔MCPL conversion, neutron/gamma-only v1 (`nucleide-mcpl-io` `ssw`
