@@ -1,0 +1,1 @@
+{"cov": [[0.25, 0.1], [0.1, 0.16]], "k": 5.0, "mean": [1.0, 2.0], "n": 20000, "note": "Synthetic 2x2 block: variances 0.25/0.16, covariance 0.10 (correlation 0.5). No evaluated data.", "seed": 20260913}

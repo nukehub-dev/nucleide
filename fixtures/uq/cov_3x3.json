@@ -1,0 +1,1 @@
+{"cov": [[0.09, 0.075, -0.018], [0.075, 0.25, 0.02], [-0.018, 0.02, 0.04]], "k": 5.0, "mean": [0.5, -1.0, 2.0], "n": 30000, "note": "Synthetic 3x3 block with mixed-sign correlations; positive-definite by leading principal minors (det 5.04e-04). No evaluated data.", "seed": 20260914}

@@ -8,6 +8,7 @@ Functionality is grouped into domain submodules mirroring the Rust crates:
 `nucleide.alara`, `nucleide.cccc`,
 `nucleide.fispact`, `nucleide.origen`, and `nucleide.r2s`.
 `nucleide.mcpl` reads/writes MCPL particle lists.
+`nucleide.uq` is the seeded UQ-lite sampling kernel (caller-supplied blocks).
 `nucleide.data` fetches repo data files (compendium, sample chains) pinned
 to the installed release.
 """
@@ -30,6 +31,7 @@ from nucleide import (
     r2s,
     serpent,
     spectroscopy,
+    uq,
     vr,
 )
 from nucleide._internal import version
@@ -54,5 +56,6 @@ __all__ = [
     "origen",
     "r2s",
     "mcpl",
+    "uq",
     "data",
 ]

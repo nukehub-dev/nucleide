@@ -31,3 +31,5 @@ and assumes you have already installed the project (see
     calibrate energy/efficiency, evaluate X-ray lines, and read `.spe` files.
 12. [MCPL particle interchange](mcpl-interchange.md) — read and write MCPL
     particle lists.
+13. [UQ sampling](uq-sampling.md) — draw seeded MVN samples over
+    caller-supplied covariance blocks and perturb decay data.

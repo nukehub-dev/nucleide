@@ -1,0 +1,199 @@
+---
+title: UQ-Lite Sampling
+description: Seeded multivariate-normal sampling over caller-supplied covariance blocks, SANDY-compatible moment estimators, and the decay perturbation consumer.
+sidebar:
+  order: 7
+references:
+  - id: fiorito-2017
+    title: "Nuclear data uncertainty propagation to integral responses using SANDY"
+    url: https://doi.org/10.1016/j.anucene.2016.11.026
+    authors:
+      [
+        "L. Fiorito",
+        "G. Žerovnik",
+        "A. Stankovskiy",
+        "G. Van den Eynde",
+        "P. E. Labeau",
+      ]
+    source: Annals of Nuclear Energy
+    journal: Annals of Nuclear Energy
+    pages: "359–366"
+    volume: "101"
+    date: "2017"
+    type: article
+    doi: "10.1016/j.anucene.2016.11.026"
+  - id: sandy-repo
+    title: SANDY source (LGPL-3.0-or-later)
+    url: https://github.com/luca-fiorito-11/sandy
+    source: Upstream implementation
+    date: "2026"
+    type: misc
+  - id: box-muller-1958
+    title: "A Note on the Generation of Random Normal Deviates"
+    url: https://doi.org/10.1214/aoms/1177706645
+    authors: ["G. E. P. Box", "M. E. Muller"]
+    source: The Annals of Mathematical Statistics
+    journal: The Annals of Mathematical Statistics
+    pages: "610–611"
+    volume: "29"
+    date: "1958"
+    type: article
+    doi: "10.1214/aoms/1177706645"
+  - id: anderson-2003
+    title: "An Introduction to Multivariate Statistical Analysis, 3rd ed."
+    url: https://www.wiley.com/en-us/An+Introduction+to+Multivariate+Statistical+Analysis%2C+3rd+Edition-p-9780471360919
+    authors: ["T. W. Anderson"]
+    source: Wiley
+    journal: Wiley Series in Probability and Statistics
+    pages: "752"
+    date: "2003"
+    type: book
+  - id: nucleide-linalg
+    title: Nucleide linalg implementation
+    url: https://github.com/nukehub-dev/nucleide/tree/main/crates/linalg
+    source: Nucleide implementation
+    date: "2026"
+    type: misc
+---
+
+Nucleide UQ-lite draws seeded multivariate-normal samples over
+**caller-supplied** covariance blocks: the SANDY role (seeded MVN draws
+that reproduce caller covariance information) with no vendored covariance
+stores, no transport coupling, and no ERRORR/NJOY machinery. The moment
+estimators agree exactly with SANDY's `Samples.get_mean` / `get_cov`
+(Tier-2 oracle gate at 1e-9 against SANDY 1.1.0)<Citation id="fiorito-2017" />.
+
+## Overview
+
+Given a mean vector $\mu \in \mathbb{R}^p$ and a covariance block
+$C \in \mathbb{R}^{p \times p}$, the kernel draws $n$ reproducible samples
+$x \sim N(\mu, C)$, checks the sample moments recover the inputs, and
+optionally applies the draws as relative/absolute perturbations to decay
+data. Seeds pin the ChaCha8 stream, so identical inputs give bit-identical
+samples.
+
+## Mathematical details
+
+Factor sampling: with any $B$ such that $B B^T = C$ and $z \sim N(0, I)$,
+
+$$
+x = \mu + B z.
+\tag{U1}
+$$
+
+The primary path takes $B = L$ from the Cholesky factorisation; when $C$
+is positive-semidefinite but numerically singular, the fallback is the
+eigen-clipping reconstruction $B = U \sqrt{\mathrm{clip}(S)}$ with
+eigenvalues floored at $10^{-12}$ times the largest eigenvalue. Standard
+normals come from the Box–Muller transform<Citation id="box-muller-1958" />.
+
+Sample moments use the unbiased covariance (Anderson, Ch. 3)<Citation id="anderson-2003" />:
+
+$$
+\bar{x} = \frac{1}{n}\sum_k x_k,
+\qquad
+S = \frac{1}{n-1}\sum_k (x_k - \bar{x})(x_k - \bar{x})^T.
+\tag{U2}
+$$
+
+The $1/(n-1)$ denominator matches `pandas.DataFrame.cov` (`ddof=1`), which
+is what SANDY's `Samples.get_cov` calls — that shared convention is what
+the Tier-2 gate checks.
+
+Convergence gates use the MVN sampling variances (Anderson, Ch. 7)<Citation id="anderson-2003" />:
+
+$$
+\mathrm{std}(\bar{x}_i) = \sqrt{C_{ii}/n},
+\qquad
+\mathrm{Var}(S_{ij}) = \frac{C_{ii}C_{jj} + C_{ij}^2}{\,n-1\,}.
+\tag{U3}
+$$
+
+Honest gates assert moments within $k$ standard errors at a stated $k$
+(the fixtures pin $k = 5$) — never hand-waved round numbers.
+
+Perturbation conventions apply one draw elementwise:
+
+$$
+\mathrm{relative:}\quad x' = b\,(1 + \delta),
+\qquad
+\mathrm{absolute:}\quad x' = b + \delta.
+\tag{U4}
+$$
+
+Branch fractions renormalise to preserve the incoming $1 - \mathrm{BR(SF)}$
+deficit (spontaneous-fission branches are dropped at generation time, so
+kept branches sum to the kept share, not 1.0):
+
+$$
+b'_i = \mathrm{kept}\;
+\frac{\max(0,\, b_i(1 + \delta_i))}
+{\sum_j \max(0,\, b_j(1 + \delta_j))}.
+\tag{U5}
+$$
+
+Negative raw branches clamp to zero before renormalisation: the
+negative-clamp half of SANDY `Samples.truncate_normal(mode=1)`, which
+additionally caps values above 2 at 2 for relative-unit samples centered
+at 1 — no analogue here, since branches renormalise and energies are
+absolute.
+
+## Algorithm
+
+`sample_mvn` validates (non-empty, square, finite, symmetric within
+$10^{-12}$ relative tolerance — SANDY instead requires exact symmetry),
+factorises (Cholesky, else eigen-clip with the taken path reported, never
+silent), fills a Box–Muller stream from the seed, and applies (U1).
+`sample_mean` / `sample_cov` implement (U2); `check_convergence`
+implements (U3) with caller tolerances. `perturb_branches` implements
+(U5); `perturb_energies` implements (U4) with a zero clamp.
+
+## Worked example
+
+The `fixtures/uq/cov_2x2.json` block
+$C = \bigl(\begin{smallmatrix}0.25 & 0.10\\ 0.10 & 0.16\end{smallmatrix}\bigr)$
+has the closed-form Cholesky factor
+$L = \bigl(\begin{smallmatrix}0.50 & 0\\ 0.20 & \sqrt{0.12}\approx0.3464\end{smallmatrix}\bigr)$:
+$0.50^2 = 0.25$, $0.50 \times 0.20 = 0.10$,
+$0.20^2 + 0.3464^2 \approx 0.16$. At the pinned seed the 20,000 draws
+recover the inputs within 0.78 standard errors (U1 gate, $k = 5$).
+
+## Assumptions and limitations
+
+- Inputs are caller-supplied blocks; no covariance library is read or
+  shipped, and no ENDF/ERRORR parsing exists here.
+- Fission-yield perturbation is a named-open hook (waits on FY tapes);
+  MF32/MF40 resonance machinery, transport coupling, and log-normal
+  sampling are explicitly out.
+- Draws are not interchangeable with SANDY's: the published SANDY scheme
+  factorises the correlation structure with Cholesky, but the current
+  SANDY implementation uses SVD behind a different RNG stream — same
+  target distribution, different bits. Only the estimators agree.
+
+## Related work beyond Nucleide
+
+- SANDY samples MF31–MF35/MF8 covariances from ENDF-6 tapes (including
+  decay data and fission yields) with NJOY/ERRORR preprocessing, Latin
+  hypercube options, variance-decomposition sensitivity indices, and
+  log-normal sampling — all beyond this kernel's caller-block scope.
+- SANDY's `summarize_sample` (Frobenius-norm deviations, normality
+  tests) is the closest analogue of `check_convergence`; ours is the
+  $k$-standard-error formulation (U3) instead.
+
+## References
+
+- Fiorito et al. (2017)<Citation id="fiorito-2017" /> (stochastic-sampling
+  role, perturbed-file workflow) and the upstream sources<Citation id="sandy-repo" />
+  (`Samples` orientation and `get_mean`/`get_cov` semantics, SVD engine,
+  `truncate_normal` modes — verified against the 1.1.0 wheel).
+- Box and Muller (1958)<Citation id="box-muller-1958" /> (normal-deviate
+  generation) and Anderson (2003)<Citation id="anderson-2003" /> (MVN
+  estimation, sample-covariance distribution).
+- The Nucleide implementation<Citation id="nucleide-linalg" /> and the
+  `validation/uq_lite_vs_sandy.py` two-tier harness (statistical gates
+  plus live SANDY moment cross-check).
+
+## See also
+
+- Tutorial: [UQ sampling](../tutorials/python/uq-sampling.md)
+- Interactive: [UQ sampling](../tutorials/interactive/uq.mdx)

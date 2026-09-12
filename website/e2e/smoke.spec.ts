@@ -214,6 +214,11 @@ NUCLIDE PU239 94239 2
       { button: "Smooth spectrum", output: "text=Net counts" },
     ],
   },
+  {
+    path: "tutorials/interactive/uq",
+    button: "Run sampling",
+    output: "text=Sample mean",
+  },
 ];
 
 for (const { path, button, output, cell, chart, paste, extraSteps } of INTERACTIVE_PAGES) {

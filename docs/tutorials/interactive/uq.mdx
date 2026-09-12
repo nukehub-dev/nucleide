@@ -1,0 +1,35 @@
+---
+title: UQ sampling
+description: Draw seeded multivariate-normal samples over a caller-supplied covariance block and compare sample moments in the browser.
+sidebar:
+  order: 15
+---
+
+Seeded MVN sampling in the SANDY role starts from a covariance block: given a
+mean vector and a covariance matrix, draw $n$ samples $x \sim N(\mu, C)$
+and check the sample moments recover the inputs. (SANDY itself factorises
+with SVD; this kernel uses Cholesky-with-eigen-clip — same distribution,
+moment estimators agree.) The demo below runs the
+verified `nucleide-linalg` kernel over caller-supplied arrays — there are
+no vendored covariance stores anywhere in this path:
+
+- **Cholesky** factors positive-definite blocks (`method` reads
+  `cholesky`).
+- **Eigen-clip** takes over for positive-semidefinite but singular blocks
+  (`method` reads `eigen_clip` with the unclipped extremes reported).
+
+## Seeded sampling
+
+Set the mean, the row-major covariance, the draw count, and the seed, then
+press **Run sampling**. The defaults replay the synthetic block from
+`fixtures/uq/cov_2x2.json` (variances 0.25/0.16, covariance 0.10, seed
+20260913 — round numbers, no evaluated data). Draws are capped at 5000 to
+keep the browser slice cheap; identical inputs always yield identical
+samples.
+
+<InteractiveDemo kind="uq" />
+
+## See also
+
+- Tutorial: [UQ sampling](../python/uq-sampling.md)
+- Crate docs: [`crates/linalg/src/sample.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/linalg/src/sample.rs)

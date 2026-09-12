@@ -15,6 +15,14 @@ use std::sync::Arc;
 /// Backend selected for the implementation (informational).
 pub const BACKEND: &str = "faer-0.20";
 
+/// Seeded multivariate-normal sampling over caller-supplied covariance
+/// blocks (UQ-lite kernel: Cholesky primary, eigen-clipping fallback).
+pub mod sample;
+
+/// Decay-only perturbation consumer over caller-supplied branch and energy
+/// vectors (preserves the `1 − BR(SF)` deficit; fission yields named-open).
+pub mod decay;
+
 /// Complex scalar used throughout the facade.
 pub use faer::complex_native::c64 as C64;
 

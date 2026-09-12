@@ -55,7 +55,27 @@ each flag (`has_userflags`, `has_polarisation`, `double_prec`,
 `universal_pdgcode`, `universal_weight`) plus the header `comments` and
 `blobs` verbatim.
 
-SSW↔MCPL conversion is deferred: this module only reads and writes MCPL.
+SSW↔MCPL conversion (neutron/gamma-only v1) runs through
+`nucleide.mcpl.ssw2mcpl` and `nucleide.mcpl.mcpl2ssw`. The SSW format stores
+no per-track surface id or particle kind, so `ssw2mcpl` takes one explicit
+surface id plus `"neutron"`/`"gamma"` kind per track (lengths must match the
+file's track count); energy maps verbatim in MeV, time maps shakes→ms, and
+an options dict selects double precision, surf→userflags, gzip, a deck-embed
+blob, `srcname`, and `comments`:
+
+```python
+from nucleide.mcpl import mcpl2ssw, ssw2mcpl
+
+n = ssw2mcpl("surface.w", "surface.mcpl", [100, 200], ["neutron", "gamma"])
+m = mcpl2ssw("surface.mcpl", "surface.w", "back.w")  # reference header cloned
+```
+
+`mcpl2ssw` clones the reference SSW header (code/version/deck passthrough,
+counts patched to the converted tally) with surface ids from each particle's
+`userflags` unless `surface=` overrides them. Anything outside neutrons
+(PDG 2112) and gammas (PDG 22) is an error, never a silent skip; see the
+`ssw` module docs for the mapping table and the named-open list.
+
 Cross-tool byte compatibility beyond self-consistent round-trips is
 oracle-gated in `validation/mcpl_vs_refs.py` (loud SKIP when the upstream
 `mcpl` package is absent).

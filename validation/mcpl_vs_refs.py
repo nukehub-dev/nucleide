@@ -1,6 +1,6 @@
 """MCPL interchange oracle (`nucleide-mcpl-io` vs upstream `mcpl` tooling).
 
-Two tiers:
+Three tiers:
 
 1. Synthetic gates (always run): hand-built axis-vector records are written
    with :func:`nucleide.mcpl.write_mcpl`, read back, and checked for
@@ -13,17 +13,34 @@ Two tiers:
    PDG codes at record level. The upstream package is an optional oracle
    dependency: if it cannot be imported (or its API mismatches), tier 2 is
    reported as SKIP with its reason (never silently).
+3. SSW round-trip (always run, synthetic pairs only): the committed
+   hand-built `fixtures/mcpl/ssw_conversion/reference.w` converts to MCPL
+   with the documented surface/kind pairing and back against the same
+   reference header; energies/times/userflags are checked in closed form.
+   A CLI cross-check over the upstream `ssw2mcpl`/`mcpl2ssw` console scripts
+   (shipped by the `mcpl-extra` 2.2.8 package, pinned in `Containerfile`)
+   runs when those binaries are present and SKIP-reports with its reason
+   otherwise (never fails without the oracle).
 """
 
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 from common import Report, fmt, rel_diff
 
 import nucleide.mcpl as mcpl
+from nucleide.mcnp import read_ssw
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SSW_REF = REPO_ROOT / "fixtures" / "mcpl" / "ssw_conversion" / "reference.w"
+SSW_SURFS = [100, 200]
+SSW_KINDS = ["neutron", "gamma"]
 
 FAILURES = 0
 
@@ -166,6 +183,157 @@ def tier2(path: str) -> tuple[list[list[str]], list[str], bool]:
     return rows, notes, False
 
 
+def tier_ssw(tmp: str) -> tuple[list[list[str]], list[str]]:
+    """SSW round-trip gates S1-S4 on the synthetic reference pair.
+
+    Converts the committed hand-built `reference.w` (two tracks, explicit
+    surface/kind pairing) to MCPL and back against the same reference header,
+    checking closed-form energy/time/userflag conservation. Synthetic pairs
+    only: no MCNP run, no vendored upstream bytes.
+    """
+    rows: list[list[str]] = []
+    notes: list[str] = []
+    probe = os.path.join(tmp, "ssw_probe.mcpl")
+    back_w = os.path.join(tmp, "ssw_back.w")
+    n = mcpl.ssw2mcpl(str(SSW_REF), probe, SSW_SURFS, SSW_KINDS)
+    ok = n == 2
+    rows.append(["S1 ssw2mcpl count", "2", str(n), _check(ok, "S1 count")])
+    got = mcpl.read_mcpl(probe).particles()
+    ok = (
+        len(got) == 2
+        and rel_diff(got[0]["ekin"], 2.5) < 1e-6
+        and rel_diff(got[1]["ekin"], 0.662) < 1e-6
+        and [p["pdgcode"] for p in got] == [2112, 22]
+    )
+    rows.append(
+        [
+            "S2 ssw2mcpl energy+PDG",
+            "2.5/2112, 0.662/22",
+            f"{fmt(got[0]['ekin'])}/{got[0]['pdgcode']}, {fmt(got[1]['ekin'])}/{got[1]['pdgcode']}",
+            _check(ok, "S2 fields"),
+        ]
+    )
+    ok = (
+        abs(got[0]["time"] - 3.0e5 * 1e-5) < 1e-9
+        and got[1]["time"] == 0.0
+        and [p["userflags"] for p in got] == SSW_SURFS
+    )
+    rows.append(
+        [
+            "S3 shakes->ms + surf flags",
+            "3.0 ms/[100, 200]",
+            f"{fmt(got[0]['time'])} ms/{[p['userflags'] for p in got]}",
+            _check(ok, "S3 time+flags"),
+        ]
+    )
+    m = mcpl.mcpl2ssw(probe, str(SSW_REF), back_w)
+    tracks = read_ssw(back_w).tracks()
+    ok = (
+        m == 2
+        and len(tracks) == 2
+        and rel_diff(tracks[0]["erg"], 2.5) < 1e-6
+        and abs(tracks[0]["tme"] - 3.0e5) / 3.0e5 < 1e-6
+        and rel_diff(tracks[1]["erg"], 0.662) < 1e-6
+    )
+    rows.append(
+        [
+            "S4 mcpl2ssw round-trip",
+            "2.5 erg/3.0e5 tme, 0.662 erg",
+            f"{fmt(tracks[0]['erg'])} erg/{fmt(tracks[0]['tme'])} tme, {fmt(tracks[1]['erg'])} erg",
+            _check(ok, "S4 round-trip"),
+        ]
+    )
+    notes.append(
+        "Tier 3 converts the committed synthetic SSW reference (hand-framed, "
+        "no MCNP run) with the documented surface/kind pairing; the "
+        "`mcpl2ssw` leg clones the same reference header."
+    )
+    return rows, notes
+
+
+def tier_extra(tmp: str) -> tuple[list[list[str]], list[str], bool]:
+    """Upstream converter CLI cross-check (`ssw2mcpl`/`mcpl2ssw` scripts).
+
+    Runs the upstream converter console scripts (shipped by the `mcpl-extra`
+    2.2.8 package: `ssw2mcpl [options] input.ssw [output.mcpl]`,
+    `mcpl2ssw [options] <input.mcpl> <reference.ssw> [output.ssw]`) over the
+    synthetic reference pair and compares particle/track counts plus energies
+    against the nucleide leg. The scripts are an optional oracle dependency:
+    when absent (or when any probe step errors), tier 4 SKIP-reports with its
+    reason and never fails.
+    """
+    to_mcpl = shutil.which("ssw2mcpl")
+    to_ssw = shutil.which("mcpl2ssw")
+    if to_mcpl is None or to_ssw is None:
+        missing = "ssw2mcpl" if to_mcpl is None else "mcpl2ssw"
+        return (
+            [["Upstream converter cross-check", f"SKIP ({missing} unavailable)"]],
+            [f"Tier 4 skipped: no `{missing}` script on PATH (mcpl-extra not installed)."],
+            True,
+        )
+    try:
+        up_mcpl = os.path.join(tmp, "extra.mcpl")
+        r = subprocess.run(
+            [to_mcpl, "-s", "-n", str(SSW_REF), up_mcpl],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if r.returncode != 0:
+            raise RuntimeError(f"ssw2mcpl exited {r.returncode}: {r.stderr.strip()[-500:]}")
+        up_ps = mcpl.read_mcpl(up_mcpl).particles()
+        up_w = os.path.join(tmp, "extra.w")
+        r = subprocess.run(
+            [to_ssw, up_mcpl, str(SSW_REF), up_w],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if r.returncode != 0:
+            raise RuntimeError(f"mcpl2ssw exited {r.returncode}: {r.stderr.strip()[-500:]}")
+        up_tracks = read_ssw(up_w).tracks()
+    except Exception as exc:
+        return (
+            [["Upstream converter cross-check", "SKIP (oracle probe failed)"]],
+            [f"Tier 4 skipped: converter probe failed ({exc})."],
+            True,
+        )
+    rows: list[list[str]] = []
+    notes: list[str] = []
+    ok = len(up_ps) == 2
+    rows.append(["T3 ssw2mcpl count", "2", str(len(up_ps)), _check(ok, "T3 count")])
+    eks = sorted(p["ekin"] for p in up_ps)
+    ok = len(eks) == 2 and rel_diff(eks[0], 0.662) < 1e-6 and rel_diff(eks[1], 2.5) < 1e-6
+    rows.append(
+        [
+            "T4 converter energies",
+            "0.662, 2.5",
+            ", ".join(fmt(v) for v in eks),
+            _check(ok, "T4 energies"),
+        ]
+    )
+    # The return leg rewrites the header (`nrss`/`np1` patched) and forces
+    # the stored `cs` slot to 1.0 by upstream design, so only count + energy
+    # are compared here (direction cosines are nucleide-verbatim, S4).
+    back_eks = sorted(t["erg"] for t in up_tracks)
+    ok = (
+        len(up_tracks) == 2
+        and len(back_eks) == 2
+        and rel_diff(back_eks[0], 0.662) < 1e-6
+        and rel_diff(back_eks[1], 2.5) < 1e-6
+    )
+    rows.append(
+        [
+            "T5 mcpl2ssw count+energy",
+            "2 tracks: 0.662, 2.5 erg",
+            f"{len(up_tracks)} tracks: " + ", ".join(fmt(v) for v in back_eks) + " erg",
+            _check(ok, "T5 return"),
+        ]
+    )
+    notes.append("Tier 4 runs the upstream converter scripts over the synthetic pair.")
+    return rows, notes, False
+
+
 def main() -> int:
     report = Report("mcpl", "MCPL interchange vs upstream tooling")
     with tempfile.TemporaryDirectory() as tmp:
@@ -180,6 +348,17 @@ def main() -> int:
         else:
             report.table(["Check", "Expected", "Got", "Status"], rows2)
         for note in notes2:
+            report.prose(note)
+        rows3, notes3 = tier_ssw(tmp)
+        report.table(["Gate", "Expected", "Got", "Status"], rows3)
+        for note in notes3:
+            report.prose(note)
+        rows4, notes4, extra_skipped = tier_extra(tmp)
+        if extra_skipped:
+            report.table(["Check", "Status"], rows4)
+        else:
+            report.table(["Check", "Expected", "Got", "Status"], rows4)
+        for note in notes4:
             report.prose(note)
     report.emit()
     return 1 if FAILURES else 0

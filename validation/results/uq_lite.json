@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "name": "uq_lite",
+  "title": "UQ-lite sampling vs SANDY",
+  "environment": {
+    "date": "2026-09-12",
+    "python": "3.12.10",
+    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.44",
+    "nucleide": "0.7.0",
+    "pyne": "not installed",
+    "openmc": "not installed"
+  },
+  "sections": [
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Expected",
+        "Got",
+        "Status"
+      ],
+      "rows": [
+        [
+          "U1 2x2 recovery",
+          "<= 5.0 SE",
+          "0.774 SE",
+          "PASS"
+        ],
+        [
+          "U2 3x3 recovery",
+          "<= 5.0 SE",
+          "2.395 SE",
+          "PASS"
+        ],
+        [
+          "U3 deficit+repro",
+          "deficit kept, same seed identical",
+          "0.900000",
+          "PASS"
+        ],
+        [
+          "U4 eigen-clip path",
+          "eigen_clip",
+          "eigen_clip",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "U1 2x2 recovery: method cholesky, worst moment error 0.774 SE (k = 5.0)."
+    },
+    {
+      "kind": "prose",
+      "text": "U2 3x3 recovery: method cholesky, worst moment error 2.395 SE (k = 5.0)."
+    },
+    {
+      "kind": "prose",
+      "text": "U3 deficit kept 0.900000; seed reproducibility True."
+    },
+    {
+      "kind": "prose",
+      "text": "U4 rank-1 block factorisation path: eigen_clip."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Check",
+        "Status"
+      ],
+      "rows": [
+        [
+          "SANDY Samples moments",
+          "SKIP (see prose)"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Tier 2 (SANDY cross-check) SKIPPED: No module named 'pandas'"
+    }
+  ]
+}

@@ -3963,3 +3963,69 @@ pub fn spectroscopy_smooth(
         net: gross - background,
     })
 }
+
+// ---------------------------------------------------------------------------
+// UQ-lite sampling (seeded MVN over caller-supplied blocks + moments)
+// ---------------------------------------------------------------------------
+
+/// Demo cap on draw count: the browser slice stays cheap (small-n only).
+const MAX_UQ_SAMPLES: usize = 5000;
+
+#[derive(Serialize)]
+struct UqSampleResult {
+    samples: Vec<Vec<f64>>,
+    #[serde(rename = "sampleMean")]
+    sample_mean: Vec<f64>,
+    #[serde(rename = "sampleCov")]
+    sample_cov: Vec<Vec<f64>>,
+    method: String,
+    #[serde(rename = "minEigen")]
+    min_eigen: Option<f64>,
+    #[serde(rename = "maxEigen")]
+    max_eigen: Option<f64>,
+}
+
+/// Draw seeded multivariate-normal samples over a caller-supplied covariance
+/// block and report the sample moments alongside the inputs.
+///
+/// Thin facade over `nucleide-linalg` `sample` (`sample_mvn` +
+/// `sample_mean` + `sample_cov`; the decay perturbers stay Python-side and
+/// fission yields stay named-open): `mean` is a plain array, `cov` a nested
+/// array, `n` the draw count (capped at [`MAX_UQ_SAMPLES`] for the browser),
+/// `seed` a plain number (integer-valued, passed through as `u64`).
+/// Finiteness and shape validation come from the crate's errors, mapped to
+/// `JsValue`. Returns `{ samples, sampleMean, sampleCov, method, minEigen,
+/// maxEigen }`; `method` is `"cholesky"` or `"eigen_clip"` (with the
+/// unclipped extremes; `null` on the Cholesky path).
+#[wasm_bindgen(js_name = uqSample)]
+pub fn uq_sample(mean: Vec<f64>, cov: JsValue, n: usize, seed: f64) -> Result<JsValue, JsValue> {
+    let cov: Vec<Vec<f64>> = serde_wasm_bindgen::from_value(cov).map_err(js_err)?;
+    if !seed.is_finite() || seed < 0.0 || seed.fract() != 0.0 {
+        return Err(js_err(format!(
+            "seed must be a finite non-negative integer (got {seed})"
+        )));
+    }
+    if n > MAX_UQ_SAMPLES {
+        return Err(js_err(format!(
+            "n = {n} exceeds the demo cap of {MAX_UQ_SAMPLES} draws"
+        )));
+    }
+    let set = nucleide_linalg::sample::sample_mvn(&mean, &cov, n, seed as u64).map_err(js_err)?;
+    let sample_mean = nucleide_linalg::sample::sample_mean(&set.samples).map_err(js_err)?;
+    let sample_cov = nucleide_linalg::sample::sample_cov(&set.samples).map_err(js_err)?;
+    let (method, min_eigen, max_eigen) = match &set.method {
+        nucleide_linalg::sample::FactorMethod::Cholesky => ("cholesky".to_string(), None, None),
+        nucleide_linalg::sample::FactorMethod::EigenClip {
+            min_eigen,
+            max_eigen,
+        } => ("eigen_clip".to_string(), Some(*min_eigen), Some(*max_eigen)),
+    };
+    to_js(&UqSampleResult {
+        samples: set.samples,
+        sample_mean,
+        sample_cov,
+        method,
+        min_eigen,
+        max_eigen,
+    })
+}

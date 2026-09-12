@@ -568,6 +568,15 @@ export interface SpectroscopySmoothResult {
   net: number;
 }
 
+export interface UqSampleResult {
+  samples: number[][];
+  sampleMean: number[];
+  sampleCov: number[][];
+  method: string;
+  minEigen: number | null;
+  maxEigen: number | null;
+}
+
 export interface WasmMaterialsCompendium {
   len: number;
   is_empty: boolean;
@@ -715,4 +724,5 @@ export interface WasmApi {
     c1: number,
     c2: number,
   ): SpectroscopySmoothResult;
+  uqSample(mean: number[], cov: number[][], n: number, seed: number): UqSampleResult;
 }

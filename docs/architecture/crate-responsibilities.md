@@ -12,8 +12,15 @@ workspace dependency graph.
 ### `nucleide-linalg`
 
 Isolation facade over the linear-algebra backend. Today it pulls in `faer`,
-`num-complex`, and `roxmltree` so numeric dependencies do not leak into other
-crates. Other workspace crates depend on `nucleide-linalg`, not on the backend directly.
+`num-complex`, `rand` (OS-entropy features off: seeded ChaCha only, so the
+crate still builds for wasm), and `roxmltree` so numeric dependencies do not
+leak into other crates. Besides the complex sparse LU core it owns the
+UQ-lite sampling kernel: the `sample` module (seeded multivariate-normal
+sampling over caller-supplied covariance blocks — Cholesky primary,
+eigen-clipping fallback, relative/absolute conventions, SANDY-style
+convergence diagnostics) and the decay-only `decay` consumer (branch/energy
+perturbers preserving the `1 − BR(SF)` deficit; fission yields named-open).
+Other workspace crates depend on `nucleide-linalg`, not on the backend directly.
 
 ### `nucleide-nuclei`
 
@@ -46,8 +53,10 @@ generation. Depends on `nucleide-nuclei`.
 ### `nucleide-mcpl-io`
 
 MCPL particle-list interchange read/write (format versions 2 and 3,
-single/double precision, gzip-transparent paths). No internal crate
-dependencies; SSW conversion stays deferred.
+single/double precision, gzip-transparent paths) plus the neutron/gamma-only
+SSW↔MCPL conversion v1 (`ssw` module: explicit per-track surface/kind
+parameters, reference-header cloning for the return leg, named errors past
+n/γ). Depends on `nucleide-mcnp-io` for the SSW header/track types.
 
 ### `nucleide-serpent-io`
 

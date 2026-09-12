@@ -1404,6 +1404,163 @@ fn write_mcpl(
     nucleide_mcpl_io::write_to_path(path, &h, &ps).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+/// Convert an SSW surface-source file to an MCPL particle-list file
+/// (neutron/gamma-only v1; see `nucleide-mcpl-io` `ssw`).
+///
+/// The SSW format stores no per-track surface id or particle kind, so every
+/// track needs an explicit caller parameter: `surfs[i]`/`kinds[i]` pair with
+/// track `i` (`kinds` holds `"neutron"`/`"gamma"` only). `options` (dict or
+/// None) holds `double_prec`/`surf_to_userflags`/`gzip` (bool),
+/// `srcname` (str), `comments` (list of str), and `deck_blob`
+/// (`(key, bytes)` pair or None); absent keys take the crate defaults.
+/// Output is gzip-compressed when `options["gzip"]` is set or `mcpl_path`
+/// ends in `.gz`. Returns the particle count. Thin wrapper over
+/// `nucleide-mcpl-io`.
+#[pyfunction]
+#[pyo3(signature = (ssw_path, mcpl_path, surfs, kinds, options=None))]
+fn ssw2mcpl(
+    ssw_path: &str,
+    mcpl_path: &str,
+    surfs: Vec<u32>,
+    kinds: Vec<String>,
+    options: Option<Bound<'_, PyAny>>,
+) -> PyResult<u64> {
+    use nucleide_mcnp_io::surfsrc::SurfSrc;
+    use nucleide_mcpl_io::ssw::{SswParticleKind, SswTrack};
+    let ssw = SurfSrc::open(ssw_path).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let raw = ssw
+        .read_tracklist()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    if raw.len() != surfs.len() || raw.len() != kinds.len() {
+        return Err(PyValueError::new_err(format!(
+            "ssw2mcpl: SSW holds {} tracks but got {} surfs and {} kinds \
+             (one surf+kind per track required)",
+            raw.len(),
+            surfs.len(),
+            kinds.len()
+        )));
+    }
+    let mut tracks = Vec::with_capacity(raw.len());
+    for (i, (t, surf, kind)) in raw
+        .iter()
+        .zip(surfs)
+        .zip(kinds.iter())
+        .map(|((t, s), k)| (t, s, k))
+        .enumerate()
+    {
+        let kind = SswParticleKind::parse(kind).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "track {i} kind `{kind}` unknown (expected \"neutron\" or \"gamma\")"
+            ))
+        })?;
+        tracks.push(SswTrack {
+            ekin: t.erg,
+            time_shakes: t.tme,
+            position: [t.x, t.y, t.z],
+            direction: [t.u, t.v, t.cs],
+            weight: t.wgt,
+            surf,
+            kind,
+        });
+    }
+    let mut opts = parse_ssw2mcpl_options(options.as_ref())?;
+    if mcpl_path.ends_with(".gz") {
+        opts.gzip = true;
+    }
+    let bytes = nucleide_mcpl_io::ssw::ssw2mcpl_bytes(&tracks, &opts)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    std::fs::write(mcpl_path, bytes).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(tracks.len() as u64)
+}
+
+/// Parse the `ssw2mcpl` options dict (None = crate defaults).
+fn parse_ssw2mcpl_options(
+    options: Option<&Bound<'_, PyAny>>,
+) -> PyResult<nucleide_mcpl_io::ssw::Ssw2McplOptions> {
+    use nucleide_mcpl_io::ssw::{DeckBlob, Ssw2McplOptions};
+    let mut opts = Ssw2McplOptions::default();
+    let Some(d) = options else {
+        return Ok(opts);
+    };
+    if !d.is_instance_of::<pyo3::types::PyDict>() {
+        return Err(PyValueError::new_err("options must be a dict or None"));
+    }
+    let flag = |key: &str| -> PyResult<Option<bool>> {
+        match d.get_item(key) {
+            Ok(v) => v
+                .extract()
+                .map(Some)
+                .map_err(|_| PyValueError::new_err(format!("options `{key}` must be a bool"))),
+            Err(_) => Ok(None),
+        }
+    };
+    if let Some(v) = flag("double_prec")? {
+        opts.double_prec = v;
+    }
+    if let Some(v) = flag("surf_to_userflags")? {
+        opts.surf_to_userflags = v;
+    }
+    if let Some(v) = flag("gzip")? {
+        opts.gzip = v;
+    }
+    if let Ok(v) = d.get_item("srcname") {
+        opts.srcname = v
+            .extract()
+            .map_err(|_| PyValueError::new_err("options `srcname` must be a str"))?;
+    }
+    if let Ok(v) = d.get_item("comments") {
+        opts.comments = v
+            .extract()
+            .map_err(|_| PyValueError::new_err("options `comments` must be a list of str"))?;
+    }
+    if let Ok(v) = d.get_item("deck_blob") {
+        if !v.is_none() {
+            let (key, data): (String, Vec<u8>) = v.extract().map_err(|_| {
+                PyValueError::new_err("options `deck_blob` must be a (key, bytes) pair or None")
+            })?;
+            opts.deck_blob = Some(DeckBlob { key, data });
+        }
+    }
+    Ok(opts)
+}
+
+/// Convert an MCPL particle-list file back to an SSW surface-source file
+/// (neutron/gamma-only v1; see `nucleide-mcpl-io` `ssw`).
+///
+/// The output header clones `reference_ssw_path` (code/version/deck
+/// passthrough) with `nrss` patched to the particle count. Surface ids come
+/// from each particle's `userflags`; pass `surface` to stamp one id on every
+/// track instead (either way `[1, 999999]` is enforced). PDG codes outside
+/// 2112/22 are errors. Returns the track count. Thin wrapper over
+/// `nucleide-mcpl-io`.
+#[pyfunction]
+#[pyo3(signature = (mcpl_path, reference_ssw_path, ssw_out_path, surface=None))]
+fn mcpl2ssw(
+    mcpl_path: &str,
+    reference_ssw_path: &str,
+    ssw_out_path: &str,
+    surface: Option<u32>,
+) -> PyResult<u64> {
+    use nucleide_mcnp_io::surfsrc::SurfSrc;
+    use nucleide_mcpl_io::ssw::Mcpl2SswOptions;
+    let mcpl = nucleide_mcpl_io::McplFile::open(mcpl_path)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let particles = mcpl
+        .particles()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let reference =
+        SurfSrc::open(reference_ssw_path).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let (header, tracks) = nucleide_mcpl_io::ssw::mcpl2ssw(
+        &particles,
+        &reference.header,
+        &Mcpl2SswOptions { surface },
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    nucleide_mcnp_io::surfsrc::write_to_path(ssw_out_path, &header, &tracks)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(tracks.len() as u64)
+}
+
 /// Parsed ENDL evaluation file (EEDL/EPDL scope).
 #[pyclass(name = "EndlLibrary")]
 struct PyEndlLibrary {
@@ -5709,6 +5866,121 @@ fn spectroscopy_read_decay_lines(path: &str) -> PyResult<Vec<(f64, f64)>> {
     nucleide_spectroscopy::parse_lines_tsv(&text).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+// ---------------------------------------------------------------------------
+// UQ-lite sampling kernel (thin glue over `linalg`; decay-only sub-scope)
+// ---------------------------------------------------------------------------
+
+fn uq_sample_err(e: nucleide_linalg::sample::SampleError) -> PyErr {
+    PyValueError::new_err(e.to_string())
+}
+
+fn uq_decay_err(e: nucleide_linalg::decay::DecayError) -> PyErr {
+    PyValueError::new_err(e.to_string())
+}
+
+/// Seeded multivariate-normal draws over a caller-supplied covariance block.
+///
+/// Returns a dict with `samples` (list of `n` row lists), `method`
+/// (`"cholesky"` or `"eigen_clip"`), and the unclipped `min_eigen` /
+/// `max_eigen` (`None` on the Cholesky path). Same
+/// `(mean, cov, n, seed)` inputs always yield identical samples. Thin
+/// wrapper over `nucleide-linalg` `sample`.
+#[pyfunction]
+fn uq_sample_mvn(
+    py: Python<'_>,
+    mean: Vec<f64>,
+    cov: Vec<Vec<f64>>,
+    n: usize,
+    seed: u64,
+) -> PyResult<Py<PyAny>> {
+    use pyo3::types::PyDict;
+    let set = nucleide_linalg::sample::sample_mvn(&mean, &cov, n, seed).map_err(uq_sample_err)?;
+    let d = PyDict::new(py);
+    d.set_item("samples", set.samples)?;
+    d.set_item("method", set.method.name())?;
+    match &set.method {
+        nucleide_linalg::sample::FactorMethod::Cholesky => {
+            d.set_item("min_eigen", py.None())?;
+            d.set_item("max_eigen", py.None())?;
+        }
+        nucleide_linalg::sample::FactorMethod::EigenClip {
+            min_eigen,
+            max_eigen,
+        } => {
+            d.set_item("min_eigen", *min_eigen)?;
+            d.set_item("max_eigen", *max_eigen)?;
+        }
+    }
+    Ok(d.into_any().unbind())
+}
+
+/// Sample mean over draws (one entry per dimension).
+#[pyfunction]
+fn uq_sample_mean(samples: Vec<Vec<f64>>) -> PyResult<Vec<f64>> {
+    nucleide_linalg::sample::sample_mean(&samples).map_err(uq_sample_err)
+}
+
+/// Unbiased sample covariance (`1/(n-1)`, matching SANDY `Samples.get_cov`).
+#[pyfunction]
+fn uq_sample_cov(samples: Vec<Vec<f64>>) -> PyResult<Vec<Vec<f64>>> {
+    nucleide_linalg::sample::sample_cov(&samples).map_err(uq_sample_err)
+}
+
+/// Sample mean/covariance convergence diagnostics à la SANDY.
+///
+/// Returns a dict with `mean_err_max`, `cov_err_fro`, the echoed
+/// `mean_tol`/`cov_tol`, and `passed`. Thin wrapper over
+/// `nucleide-linalg` `sample`.
+#[pyfunction]
+fn uq_check_convergence(
+    py: Python<'_>,
+    mean: Vec<f64>,
+    cov: Vec<Vec<f64>>,
+    samples: Vec<Vec<f64>>,
+    mean_tol: f64,
+    cov_tol: f64,
+) -> PyResult<Py<PyAny>> {
+    use pyo3::types::PyDict;
+    let rep = nucleide_linalg::sample::check_convergence(&mean, &cov, &samples, mean_tol, cov_tol)
+        .map_err(uq_sample_err)?;
+    let d = PyDict::new(py);
+    d.set_item("mean_err_max", rep.mean_err_max)?;
+    d.set_item("cov_err_fro", rep.cov_err_fro)?;
+    d.set_item("mean_tol", rep.mean_tol)?;
+    d.set_item("cov_tol", rep.cov_tol)?;
+    d.set_item("passed", rep.passed)?;
+    Ok(d.into_any().unbind())
+}
+
+/// Perturb one parent's kept branch fractions with relative deltas,
+/// preserving the incoming `1 - BR(SF)` deficit by renormalisation.
+#[pyfunction]
+fn uq_perturb_branches(base: Vec<f64>, rel: Vec<f64>) -> PyResult<Vec<f64>> {
+    nucleide_linalg::decay::perturb_branches(&base, &rel).map_err(uq_decay_err)
+}
+
+/// Perturb decay energies under `convention` (`"relative"`/`"absolute"`);
+/// negative results clamp to zero.
+#[pyfunction]
+fn uq_perturb_energies(base: Vec<f64>, delta: Vec<f64>, convention: &str) -> PyResult<Vec<f64>> {
+    let conv = nucleide_linalg::sample::PerturbConvention::parse(convention)
+        .map_err(PyValueError::new_err)?;
+    nucleide_linalg::decay::perturb_energies(&base, &delta, conv).map_err(uq_decay_err)
+}
+
+/// Passthrough copy of a perturbation vector (finiteness-checked).
+#[pyfunction]
+fn uq_passthrough(delta: Vec<f64>) -> PyResult<Vec<f64>> {
+    nucleide_linalg::decay::passthrough(&delta).map_err(uq_decay_err)
+}
+
+/// Fission-yield perturbation — named-open hook (waits on cycle 01 FY
+/// tapes); always raises.
+#[pyfunction]
+fn uq_perturb_fission_yields(base: Vec<f64>, rel: Vec<f64>) -> PyResult<Vec<f64>> {
+    nucleide_linalg::decay::perturb_fission_yields(&base, &rel).map_err(uq_decay_err)
+}
+
 /// Python module entry point.
 #[pymodule]
 fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -5727,6 +5999,8 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(read_ptrac, m)?)?;
     m.add_function(wrap_pyfunction!(read_mcpl, m)?)?;
     m.add_function(wrap_pyfunction!(write_mcpl, m)?)?;
+    m.add_function(wrap_pyfunction!(ssw2mcpl, m)?)?;
+    m.add_function(wrap_pyfunction!(mcpl2ssw, m)?)?;
     m.add_function(wrap_pyfunction!(read_endl, m)?)?;
     m.add_function(wrap_pyfunction!(endl_endftod, m)?)?;
     m.add_function(wrap_pyfunction!(combine_ssw_files, m)?)?;
@@ -5796,6 +6070,14 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(spectroscopy_read_spe, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_parse_lines_tsv, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_read_decay_lines, m)?)?;
+    m.add_function(wrap_pyfunction!(uq_sample_mvn, m)?)?;
+    m.add_function(wrap_pyfunction!(uq_sample_mean, m)?)?;
+    m.add_function(wrap_pyfunction!(uq_sample_cov, m)?)?;
+    m.add_function(wrap_pyfunction!(uq_check_convergence, m)?)?;
+    m.add_function(wrap_pyfunction!(uq_perturb_branches, m)?)?;
+    m.add_function(wrap_pyfunction!(uq_perturb_energies, m)?)?;
+    m.add_function(wrap_pyfunction!(uq_passthrough, m)?)?;
+    m.add_function(wrap_pyfunction!(uq_perturb_fission_yields, m)?)?;
     m.add_function(wrap_pyfunction!(parse_deck, m)?)?;
     m.add_function(wrap_pyfunction!(read_deck, m)?)?;
     m.add_function(wrap_pyfunction!(cumulative_decays, m)?)?;

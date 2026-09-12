@@ -28,6 +28,7 @@ SECTION_ORDER = [
     "activation",
     "emit",
     "decay",
+    "uq_lite",
     "timings",
 ]
 

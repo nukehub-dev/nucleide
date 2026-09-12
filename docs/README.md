@@ -84,6 +84,7 @@ status, and license.
 | [Run kinetics](tutorials/python/run-kinetics.md) | Solve prescribed-reactivity point-kinetics transients |
 | [Run spectroscopy](tutorials/python/run-spectroscopy.md) | Smooth spectra, count peaks, calibrate energy/efficiency, evaluate X-ray lines, read `.spe` files |
 | [MCPL particle interchange](tutorials/python/mcpl-interchange.md) | Read and write MCPL particle lists |
+| [UQ sampling](tutorials/python/uq-sampling.md) | Draw seeded MVN samples over caller-supplied covariance blocks and perturb decay data |
 | [Interactive tutorials](tutorials/interactive/index.mdx) | Run Nucleide in the browser through the WASM build |
 | [Interactive — nuclides](tutorials/interactive/nuclides.mdx) | Nuclide identifiers and nuclear data |
 | [Interactive — materials](tutorials/interactive/materials.mdx) | Formulas, fractions, mixing, and XML export |
@@ -96,6 +97,7 @@ status, and license.
 | [Interactive — code-card emission](tutorials/interactive/emitter.mdx) | Five-dialect card emission and mass drift |
 | [Interactive — point kinetics](tutorials/interactive/kinetics.mdx) | Step-reactivity transients and the prompt jump |
 | [Interactive — spectroscopy](tutorials/interactive/spectroscopy.mdx) | Spectrum smoothing and peak counting |
+| [Interactive — UQ sampling](tutorials/interactive/uq.mdx) | Seeded MVN sampling over caller-supplied covariance blocks |
 
 ### Theory
 

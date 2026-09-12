@@ -15,3 +15,12 @@ rayon = ["faer/rayon"]
 faer = { version = "0.20", default-features = false, features = ["std", "linalg"] }
 num-complex = "0.4"
 roxmltree = "0.20"
+# Seeded RNG for the UQ-lite sampling kernel only. Default features are off
+# so no OS-entropy (`getrandom`/`thread_rng`) path is pulled in: `StdRng`
+# below is always built from a caller-supplied u64 seed, which keeps this
+# crate compilable for wasm32-unknown-unknown (the wasm facade never calls
+# these paths, but the crate must still build there).
+rand = { version = "0.9", default-features = false, features = ["std", "std_rng", "small_rng"] }
+
+[dev-dependencies]
+serde_json.workspace = true

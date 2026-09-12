@@ -118,6 +118,7 @@ MODULE_ORDER = [
     "origen",
     "r2s",
     "emit",
+    "uq",
     "data",
 ]
 

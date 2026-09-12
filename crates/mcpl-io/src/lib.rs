@@ -55,9 +55,12 @@
 //!   such comments round-trip verbatim and their syntax is validated
 //!   ([`statsum_validate`], [`statsum_comment`]) but values are never
 //!   interpreted.
-//! - SSW↔MCPL conversion: deferred; this crate only reads/writes MCPL.
+//! - SSW↔MCPL conversion beyond the neutron/gamma-only v1 in [`ssw`]:
+//!   other particle kinds are named errors, never silent skips.
 //! - `.gz` compression levels: gzip transport is transparent, but compressed
 //!   bytes are never asserted (encoder settings differ across writers).
+
+pub mod ssw;
 
 use std::io::{Read, Write};
 use std::path::Path;

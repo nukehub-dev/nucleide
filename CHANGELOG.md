@@ -13,6 +13,63 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Added
+
+- SSW↔MCPL conversion, neutron/gamma-only v1 (`nucleide-mcpl-io` `ssw`
+  module, new `nucleide-mcnp-io` dependency for the SSW header/track
+  types): `ssw2mcpl` maps kinetic energy verbatim (MeV), time shakes→ms
+  (×1e-5), surface id→`userflags` (opt-out), and kind→PDG 2112/22, with
+  single-precision + gzip-compressed-bytes output, an optional ≤100 MiB
+  deck-embed blob, and named errors for other particle kinds;
+  `mcpl2ssw` clones a reference SSW header (code/version/deck
+  passthrough, `nrss`/`np1`/`orignp1` patched to the converted tally with
+  the reference's table-2 sign) with surface id from `userflags` or an
+  explicit `[1, 999999]` override, time ms→shakes (×1e5), and direction
+  cosines propagated verbatim. Surface id and particle kind ride in as
+  explicit caller parameters — the local SSW reader has no `isurf`/`rawtype`
+  decode, so v1 never guesses them from `bitarray`. Deferred, all
+  named-open: non-neutron/gamma particles (`UnsupportedPdg`), polarisation
+  and universal codes, upstream `bitarray` type-word round-trips, and any
+  transport semantics.
+- Python API: `nucleide.mcpl.ssw2mcpl` / `mcpl2ssw` thin file-based wrappers
+  over the new module (per-track surf+kind pairing, options dict, `.gz`
+  transparent), plus a synthetic `fixtures/mcpl/ssw_conversion/` oracle pair
+  (hand-framed two-track SSW reference with provenance notes + golden
+  `ssw2mcpl` output).
+- `validation/mcpl_vs_refs.py`: SSW round-trip gates S1–S4 on the synthetic
+  pair plus a live upstream `ssw2mcpl`/`mcpl2ssw` (`mcpl-extra` 2.2.8)
+  converter cross-check T3–T5 — count and closed-form energies agree both
+  directions; the scripts SKIP loudly when absent, never fail without the
+  oracle.
+- UQ-lite sampling kernel, decay-only sub-scope (`nucleide-linalg`
+  `sample` + `decay` modules, new `rand` 0.9 dependency with OS-entropy
+  features off so the crate still builds for wasm): seeded
+  multivariate-normal sampling over caller-supplied covariance blocks
+  (`sample_mvn` — Cholesky primary with named `cholesky`/`eigen_clip`
+  reporting, eigen-clipping fallback at 1e-12 relative floor, relative /
+  absolute perturbation conventions, sample mean/unbiased-covariance
+  convergence diagnostics with caller-supplied tolerances), plus a decay consumer
+  (`perturb_branches` preserving the `1-BR(SF)` deficit by renormalisation,
+  `perturb_energies`, finiteness-checked `passthrough`). Fission-yield
+  perturbation stays a named-open hook (`FissionYieldsOpen`, waits on
+  cycle 01 FY tapes); ERRORR/NJOY, MF32/40, transport coupling, and
+  vendored covariance stores stay out. Closed-form covariance-recovery
+  gates on synthetic blocks only (pinned seeds, k-SE statistical
+  tolerances, `fixtures/uq/`).
+- Python API: `nucleide.uq` thin wrappers (`sample_mvn` / `sample_mean` /
+  `sample_cov` / `check_convergence` / `perturb_branches` /
+  `perturb_energies` / `passthrough` / `perturb_fission_yields`) over the
+  new kernel.
+- `validation/uq_lite_vs_sandy.py`: synthetic covariance-recovery gates
+  U1–U4 (always run) plus a live SANDY `Samples.get_mean`/`get_cov` moment
+  cross-check over the nucleide draws (tape-free, no NJOY) with a loud
+  SKIP when SANDY/pandas are absent; tape-driven `sandy.sampling`/ERRORR
+  comparisons stay NJOY-gated skips.
+- UQ-lite tutorial + interactive demo: `docs/tutorials/python/uq-sampling.md`
+  (seeded `sample_mvn` over the synthetic `fixtures/uq/` blocks, convergence
+  diagnostics, decay perturbation) and a thin `uqSample` WASM facade with an
+  interactive `tutorials/interactive/uq` sampling demo.
+
 ## [0.7.0] - 2026-09-12
 
 ### Added

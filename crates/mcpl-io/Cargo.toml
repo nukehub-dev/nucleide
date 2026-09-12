@@ -10,3 +10,4 @@ rust-version.workspace = true
 [dependencies]
 thiserror.workspace = true
 flate2 = "1"
+nucleide-mcnp-io.workspace = true

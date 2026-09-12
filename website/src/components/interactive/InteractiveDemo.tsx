@@ -13,6 +13,7 @@ import { DeterministicDemo } from "./DeterministicDemo";
 import { EmitterDemo } from "./EmitterDemo";
 import { KineticsTransient } from "./KineticsTransient";
 import { SpectroscopyDemo } from "./SpectroscopyDemo";
+import { UqDemo } from "./UqDemo";
 
 interface InteractiveDemoProps {
   kind:
@@ -30,7 +31,8 @@ interface InteractiveDemoProps {
     | "deterministic"
     | "emitter"
     | "kinetics"
-    | "spectroscopy";
+    | "spectroscopy"
+    | "uq";
 }
 
 export function InteractiveDemo({ kind }: InteractiveDemoProps) {
@@ -65,6 +67,8 @@ export function InteractiveDemo({ kind }: InteractiveDemoProps) {
       return <KineticsTransient />;
     case "spectroscopy":
       return <SpectroscopyDemo />;
+    case "uq":
+      return <UqDemo />;
     default:
       return <div className="text-sm text-muted-foreground">Unknown demo kind: {kind}</div>;
   }
