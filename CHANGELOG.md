@@ -13,6 +13,8 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-12
+
 ### Added
 
 - Fuel-cycle micro-adds (`nucleide-material`, `nucleide-enrichment`):
