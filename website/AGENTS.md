@@ -22,7 +22,7 @@ Parent-level Rust/Python/verification rules remain in the root `AGENTS.md`.
 - **Runtime data**: `fixtures/` is the source of truth for data files the
   interactive tutorials load at runtime. `npm run sync-data` stages them into
   the git-ignored `website/public/data/`: the Materials Compendium is minified;
-  sample MCNP meshtal/xsdir files, MCNP deck_minimal/deck_l3 samples, the
+  sample MCNP meshtal/xsdir/mctal files, MCNP deck_minimal/deck_l3 samples, the
   simple depletion chain, Serpent `serpent_res_sample.m`/
   `serpent_dep_sample.m`/`serpent_det_sample.m`, the ALARA
   `alara_output_sample.out` and FISPACT `fispact_inventory_sample.fis`

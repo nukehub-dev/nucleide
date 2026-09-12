@@ -287,6 +287,25 @@ export interface WwinpSummary {
   ww: number[][][];
 }
 
+export interface MctalTallySummary {
+  number: number;
+  particleType: number;
+  detectorType: number | null;
+  bins: number[];
+  pairs: number;
+  total: number;
+}
+
+export interface MctalSummary {
+  codeName: string;
+  codeVersion: string;
+  nHistories: number;
+  tallyNums: number[];
+  npert: string | null;
+  tallies: MctalTallySummary[];
+  nCycles: number;
+}
+
 export interface MagicSummary {
   lowerBoundsWw: number[];
   groupsPerVe: number;
@@ -625,6 +644,7 @@ export interface WasmApi {
   parseXsdir(text: string): XsdirSummary;
   parseMeshtal(text: string): MeshtalSummary;
   parseWwinp(text: string): WwinpSummary;
+  parseMctal(text: string): MctalSummary;
   magicBounds(
     meshtalText: string,
     tallyNumber: number,

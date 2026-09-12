@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useWasm } from "../../lib/wasm";
 import type {
   McnpMaterialJson,
+  MctalSummary,
   MeshTallySummary,
   MeshtalSummary,
   WwinpSummary,
@@ -20,6 +21,7 @@ const BASE = import.meta.env.BASE_URL.endsWith("/")
   : `${import.meta.env.BASE_URL}/`;
 const MESHTAL_SAMPLE_URL = `${BASE}data/meshtal_sample.txt`;
 const XSDIR_SAMPLE_URL = `${BASE}data/xsdir_sample.txt`;
+const MCTAL_SAMPLE_URL = `${BASE}data/mctal_sample.mctal`;
 
 const BASE_XSDIR = `DATAPATH=/tmp
 atomic weight ratios
@@ -27,7 +29,7 @@ atomic weight ratios
 directory
 1001.00c 0.999167 h1 0 1 0 0`;
 
-type ParserMode = "materials" | "xsdir" | "meshtal" | "wwinp";
+type ParserMode = "materials" | "xsdir" | "meshtal" | "wwinp" | "mctal";
 
 const DEFAULTS: Record<ParserMode, string> = {
   materials: `c Test deck
@@ -64,6 +66,24 @@ Energy X Y Z Result Rel Error
 5
 6
 7`,
+  mctal: `mcnp 6.2.0 05/08/13 17:50:49 3 50000 5
+Demo
+tally 1
+        4
+tally 4 1 0
+f4 1
+ 1
+d4 0
+u4 0
+s4 0
+m4 0
+c4 0
+e4 0
+t4 0
+vals
+ 7.0 0.875
+kcode 1 0 5
+ 0.99 0.99 0.99 5.0e-4 5.0e-4`,
 };
 
 async function fetchSample(url: string): Promise<string> {
@@ -80,6 +100,7 @@ export function McnpParser() {
   const [xsdir, setXsdir] = useState<XsdirSummary | null>(null);
   const [meshtal, setMeshtal] = useState<MeshtalSummary | null>(null);
   const [wwinp, setWwinp] = useState<WwinpSummary | null>(null);
+  const [mctal, setMctal] = useState<MctalSummary | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [loadingSample, setLoadingSample] = useState(false);
 
@@ -94,6 +115,7 @@ export function McnpParser() {
     setXsdir(null);
     setMeshtal(null);
     setWwinp(null);
+    setMctal(null);
     clearError();
   }
 
@@ -130,12 +152,27 @@ export function McnpParser() {
     }
   }
 
+  async function loadMctalSample() {
+    setLoadingSample(true);
+    try {
+      const sample = await fetchSample(MCTAL_SAMPLE_URL);
+      setText(sample);
+      setMode("mctal");
+      clearError();
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingSample(false);
+    }
+  }
+
   function run() {
     if (!wasm) return;
     setMaterials(null);
     setXsdir(null);
     setMeshtal(null);
     setWwinp(null);
+    setMctal(null);
     try {
       switch (mode) {
         case "materials":
@@ -149,6 +186,9 @@ export function McnpParser() {
           break;
         case "wwinp":
           setWwinp(wasm.parseWwinp(text));
+          break;
+        case "mctal":
+          setMctal(wasm.parseMctal(text));
           break;
       }
       clearError();
@@ -178,7 +218,7 @@ export function McnpParser() {
       {ready && (
         <>
           <div className="flex flex-wrap gap-2">
-            {(["materials", "xsdir", "meshtal", "wwinp"] as ParserMode[]).map((m) => (
+            {(["materials", "xsdir", "meshtal", "wwinp", "mctal"] as ParserMode[]).map((m) => (
               <Button
                 key={m}
                 onClick={() => selectMode(m)}
@@ -206,6 +246,11 @@ export function McnpParser() {
             {mode === "xsdir" && (
               <Button variant="outline" onClick={loadXsdirSample} disabled={loadingSample}>
                 {loadingSample ? "Loading…" : "Load sample xsdir"}
+              </Button>
+            )}
+            {mode === "mctal" && (
+              <Button variant="outline" onClick={loadMctalSample} disabled={loadingSample}>
+                {loadingSample ? "Loading…" : "Load sample mctal"}
               </Button>
             )}
           </div>
@@ -299,6 +344,33 @@ export function McnpParser() {
               <p>nc: [{wwinp.nc.join(", ")}]</p>
               <p>origin: [{wwinp.origin.join(", ")}]</p>
               <p>Energy groups: {wwinp.ne.join(", ")}</p>
+            </div>
+          )}
+
+          {mctal && (
+            <div className="space-y-3">
+              <div className="grid gap-2 text-sm sm:grid-cols-3">
+                <p>
+                  Code: {mctal.codeName} {mctal.codeVersion}
+                </p>
+                <p>Histories: {mctal.nHistories}</p>
+                <p>Cycles: {mctal.nCycles}</p>
+              </div>
+              <p className="text-sm">Tallies: {mctal.tallies.length}</p>
+              <DataTable
+                data={mctal.tallies.map((t) => ({
+                  number: t.number,
+                  particle: t.particleType,
+                  pairs: t.pairs,
+                  total: t.total.toExponential(4),
+                }))}
+                columns={[
+                  { key: "number", header: "Tally" },
+                  { key: "particle", header: "Particle", align: "right" },
+                  { key: "pairs", header: "Pairs", align: "right" },
+                  { key: "total", header: "Total", align: "right" },
+                ]}
+              />
             </div>
           )}
         </>

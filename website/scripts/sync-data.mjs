@@ -30,6 +30,10 @@ await copyFile(
   path.join(fixturesRoot, "mcnp", "xsdir", "dummy_xsdir"),
   path.join(dst, "xsdir_sample.txt"),
 );
+await copyFile(
+  path.join(fixturesRoot, "mcnp", "mctal", "synthetic_tally_bodies.mctal"),
+  path.join(dst, "mctal_sample.mctal"),
+);
 
 // Depletion chain sample.
 await copyFile(
@@ -90,7 +94,7 @@ for (const f of figures) {
 
 console.log(
   `sync-data: staged MaterialsCompendium.json (${(minified.length / 1e6).toFixed(1)} MB) + LICENSE, ` +
-    `meshtal_sample.txt, xsdir_sample.txt, chain_simple.xml, deck_minimal.txt, deck_l3.txt, ` +
+    `meshtal_sample.txt, xsdir_sample.txt, mctal_sample.mctal, chain_simple.xml, deck_minimal.txt, deck_l3.txt, ` +
     `serpent_res_sample.m, serpent_dep_sample.m, serpent_det_sample.m, ` +
     `alara_output_sample.out, fispact_inventory_sample.fis, usrbin_sample.lis, ` +
     `${figures.length} theory figures`,

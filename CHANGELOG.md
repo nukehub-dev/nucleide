@@ -74,6 +74,10 @@ workspace crates from tags.
   Cs-137 ENSDF lines through `pyne.data` round-trip the reader (energy
   column within 1e-9, E9 normalization to 1.0), loud SKIP when PyNE is
   absent or the energy/intensity pairing stays open.
+- Interactive MCTAL demo: `parseMctal` WASM function over the new tally
+  bodies (header plus per-tally pair counts and totals) with an `mctal`
+  mode in the MCNP parser demo (inline sample plus the staged
+  `synthetic_tally_bodies.mctal` fixture) and E2E coverage.
 
 ### Fixed
 

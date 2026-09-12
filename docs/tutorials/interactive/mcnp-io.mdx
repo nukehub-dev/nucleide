@@ -1,6 +1,6 @@
 ---
 title: MCNP I/O
-description: Parse MCNP material cards, xsdir, meshtal, and WWINP files in the browser.
+description: Parse MCNP material cards, xsdir, meshtal, MCTAL, and WWINP files in the browser.
 sidebar:
   order: 5
 ---
@@ -17,6 +17,8 @@ decks and convert small files.
   entries.
 - **meshtal** — `fmesh` tally output with structured mesh results and relative
   errors.
+- **MCTAL** — header, standard tally bodies (`f`/`d`/`u`/`s`/`m`/`c`/`e`/`t`
+  bins plus `vals` pairs), and `kcode` cycles.
 - **WWINP** — Cartesian weight-window lower bounds.
 
 ## Try it
@@ -25,7 +27,8 @@ Select a parser and paste a file snippet. The WASM binding returns a JSON
 summary that you can inspect without leaving the page. For meshtal files, load
  the sample and view the tally as a z-slice heatmap; parsed xsdir tables are
  summarised as a histogram by element, with companion views of table counts by
- library suffix and the AWR distribution.
+ library suffix and the AWR distribution. For MCTAL files, load the sample to
+ see the header plus a per-tally table of pair counts and totals.
 
 <InteractiveDemo kind="mcnp-io" />
 

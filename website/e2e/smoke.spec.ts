@@ -87,7 +87,13 @@ const INTERACTIVE_PAGES: InteractivePage[] = [
       actions: ["meshtal", "Load sample meshtal", "Parse", "xsdir", "Load sample xsdir", "Parse"],
       selector: ".js-plotly-plot",
     },
-    extraSteps: [{ button: "wwinp" }, { button: "Parse", output: "text=ni:" }],
+    extraSteps: [
+      { button: "wwinp" },
+      { button: "Parse", output: "text=ni:" },
+      { button: "mctal" },
+      { button: "Load sample mctal" },
+      { button: "Parse", output: "text=Tallies: 2" },
+    ],
   },
   {
     path: "tutorials/interactive/serpent-io",

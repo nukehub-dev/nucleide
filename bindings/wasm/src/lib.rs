@@ -1138,6 +1138,74 @@ pub fn parse_wwinp(text: &str) -> Result<JsValue, JsValue> {
     })
 }
 
+#[derive(Serialize)]
+struct MctalTallySummary {
+    number: u32,
+    #[serde(rename = "particleType")]
+    particle_type: i32,
+    #[serde(rename = "detectorType")]
+    detector_type: Option<i32>,
+    /// Effective bin counts per card (`f`, `d`, `u`, `s`, `m`, `c`, `e`, `t`).
+    bins: Vec<usize>,
+    /// Parsed `(value, rel_error)` pair count.
+    pairs: usize,
+    /// Sum of tally values (errors excluded).
+    total: f64,
+}
+
+#[derive(Serialize)]
+struct MctalSummary {
+    #[serde(rename = "codeName")]
+    code_name: String,
+    #[serde(rename = "codeVersion")]
+    code_version: String,
+    #[serde(rename = "nHistories")]
+    n_histories: u64,
+    #[serde(rename = "tallyNums")]
+    tally_nums: Vec<u32>,
+    npert: Option<String>,
+    tallies: Vec<MctalTallySummary>,
+    #[serde(rename = "nCycles")]
+    n_cycles: usize,
+}
+
+/// Parse an MCNP `MCTAL` file into a JSON summary of its header, standard
+/// tally bodies, and kcode cycle count.
+#[wasm_bindgen(js_name = parseMctal)]
+pub fn parse_mctal(text: &str) -> Result<JsValue, JsValue> {
+    let mctal = nucleide_mcnp_io::mctal::Mctal::parse(text).map_err(js_err)?;
+    let tallies = mctal
+        .tallies
+        .iter()
+        .map(|t| MctalTallySummary {
+            number: t.number,
+            particle_type: t.particle_type,
+            detector_type: t.detector_type,
+            bins: vec![
+                t.f.bins(),
+                t.d.bins(),
+                t.u.bins(),
+                t.s.bins(),
+                t.m.bins(),
+                t.c.bins(),
+                t.e.bins(),
+                t.t.bins(),
+            ],
+            pairs: t.vals.len(),
+            total: t.total_val(),
+        })
+        .collect();
+    to_js(&MctalSummary {
+        code_name: mctal.code_name,
+        code_version: mctal.code_version,
+        n_histories: mctal.n_histories,
+        tally_nums: mctal.tally_nums,
+        npert: mctal.npert,
+        tallies,
+        n_cycles: mctal.n_cycles,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Variance reduction
 // ---------------------------------------------------------------------------
