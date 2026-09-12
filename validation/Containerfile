@@ -68,3 +68,11 @@ RUN pip install --no-cache-dir pint "pyrk @ git+https://github.com/pyrk/pyrk@c2b
 # boundary). Pinned for reproducibility (latest stable at time of writing).
 RUN pip install --no-cache-dir radioactivedecay==0.6.1 \
  && python -c "import radioactivedecay as rd; print('radioactivedecay', rd.__version__)"
+
+# mcpl: upstream particle-list tooling for validation/mcpl_vs_refs.py
+# (tier-2 presence probe; record-level cross-checks run where this package
+# is installed). `mcpl` carries the Python reader, `mcpl-extra` the
+# `mcpltool` CLI. Pinned for reproducibility; tier 2 SKIPs loudly when the
+# import fails (e.g. local runs without this layer).
+RUN pip install --no-cache-dir "mcpl==2.2.8" "mcpl-extra==2.2.8" \
+ && python -c "import mcpl; print('mcpl oracle available')"

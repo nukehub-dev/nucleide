@@ -18,6 +18,8 @@ from nucleide._internal import (
     r2s_expand,
     r2s_from_deck,
     r2s_from_snapshot,
+    r2s_photon_group_sums,
+    r2s_tag_zone_strength,
     r2s_validate,
 )
 
@@ -27,6 +29,8 @@ from_snapshot = r2s_from_snapshot
 validate = r2s_validate
 expand = r2s_expand
 assemble = r2s_assemble
+tag_zone_strength = r2s_tag_zone_strength
+photon_group_sums = r2s_photon_group_sums
 
 __all__ = [
     "r2s_from_deck",
@@ -34,9 +38,13 @@ __all__ = [
     "r2s_validate",
     "r2s_expand",
     "r2s_assemble",
+    "r2s_tag_zone_strength",
+    "r2s_photon_group_sums",
     "from_deck",
     "from_snapshot",
     "validate",
     "expand",
     "assemble",
+    "tag_zone_strength",
+    "photon_group_sums",
 ]

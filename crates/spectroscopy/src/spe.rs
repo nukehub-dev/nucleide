@@ -272,6 +272,20 @@ $SHAPE_CAL:
     }
 
     #[test]
+    fn fwhm_triplet_is_carried_never_evaluated() {
+        // Gap record: the upstream analysis subset parses the
+        // `$SHAPE_CAL:`/`FWHM Fit` triplet and stores it, but defines no
+        // evaluation routine over it — so neither does this crate. Pin the
+        // carried-without-evaluation posture: mutating the triplet leaves
+        // the E6 energy bins untouched.
+        let mut s = parse_dollar_spe(DOLLAR, "").unwrap();
+        let before = s.spectrum.ebin.clone();
+        s.calib_fwhm_fit = vec![0.0, 0.0, 0.0];
+        s.calc_ebins().unwrap();
+        assert_eq!(s.spectrum.ebin, before);
+    }
+
+    #[test]
     fn dollar_rejects_plain_magic_and_missing_tags() {
         assert_eq!(
             parse_dollar_spe("Spectrum name: x\n", ""),

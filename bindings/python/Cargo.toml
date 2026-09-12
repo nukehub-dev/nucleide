@@ -17,6 +17,7 @@ numpy.workspace = true
 nucleide-nuclei.workspace = true
 nucleide-material.workspace = true
 nucleide-mcnp-io.workspace = true
+nucleide-mcpl-io.workspace = true
 nucleide-depletion = { workspace = true, default-features = true }
 nucleide-kinetics.workspace = true
 nucleide-spectroscopy.workspace = true

@@ -29,3 +29,5 @@ and assumes you have already installed the project (see
     point-kinetics transients.
 11. [Run spectroscopy](run-spectroscopy.md) — smooth spectra, count peaks,
     calibrate energy/efficiency, evaluate X-ray lines, and read `.spe` files.
+12. [MCPL particle interchange](mcpl-interchange.md) — read and write MCPL
+    particle lists.

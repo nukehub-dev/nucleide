@@ -26,6 +26,7 @@
 
 mod check;
 mod compendium;
+mod cusum;
 mod expansion;
 mod material;
 mod xml;
@@ -35,6 +36,7 @@ pub use compendium::{
     CompendiumElement, CompendiumEntry, CompendiumIsotope, Error as CompendiumError,
     MaterialsLibrary,
 };
+pub use cusum::Cusum;
 pub use expansion::{
     parse_formula, AbundanceProvider, FormulaError, FormulaResult, NaturalAbundances, NoAbundances,
 };
@@ -76,6 +78,12 @@ pub enum Error {
     /// A mixing fraction was negative.
     #[error("negative mixing fraction `{0}`")]
     NegativeFraction(f64),
+    /// A separation efficiency was outside `[0, 1]` or non-finite.
+    #[error("separation efficiency `{0}` is outside [0, 1]")]
+    InvalidEfficiency(f64),
+    /// A CUSUM detector parameter was invalid.
+    #[error("invalid CUSUM parameter: {0}")]
+    InvalidCusum(String),
     /// Writing the XML document failed.
     #[error(transparent)]
     Write(#[from] std::io::Error),

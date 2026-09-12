@@ -7,6 +7,7 @@ Functionality is grouped into domain submodules mirroring the Rust crates:
 `nucleide.depletion`, `nucleide.kinetics`, `nucleide.spectroscopy`,
 `nucleide.alara`, `nucleide.cccc`,
 `nucleide.fispact`, `nucleide.origen`, and `nucleide.r2s`.
+`nucleide.mcpl` reads/writes MCPL particle lists.
 `nucleide.data` fetches repo data files (compendium, sample chains) pinned
 to the installed release.
 """
@@ -23,6 +24,7 @@ from nucleide import (
     kinetics,
     material,
     mcnp,
+    mcpl,
     nuclei,
     origen,
     r2s,
@@ -51,5 +53,6 @@ __all__ = [
     "fispact",
     "origen",
     "r2s",
+    "mcpl",
     "data",
 ]

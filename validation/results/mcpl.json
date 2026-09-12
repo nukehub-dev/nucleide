@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "name": "mcpl",
+  "title": "MCPL interchange vs upstream tooling",
+  "environment": {
+    "date": "2026-09-12",
+    "python": "3.12.10",
+    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.44",
+    "nucleide": "0.6.0",
+    "pyne": "not installed",
+    "openmc": "not installed"
+  },
+  "sections": [
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Expected",
+        "Got",
+        "Status"
+      ],
+      "rows": [
+        [
+          "G1 particle count",
+          "2",
+          "2",
+          "PASS"
+        ],
+        [
+          "G2 energy+PDG conserved",
+          "2.5/2112, 0.662/22",
+          "2.500000e+00/2112, 6.620000e-01/22",
+          "PASS"
+        ],
+        [
+          "G3 directions conserved",
+          "+z, +x",
+          "['0.000000e+00', '0.000000e+00', '1.000000e+00'], ['1.000000e+00', '0.000000e+00', '0.000000e+00']",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Tier 1 uses hand-built synthetic records only; no upstream files are read."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Check",
+        "Expected",
+        "Got",
+        "Status"
+      ],
+      "rows": [
+        [
+          "T1 upstream particle count",
+          "2",
+          "2",
+          "PASS"
+        ],
+        [
+          "T2 upstream energy+PDG",
+          "2.5/2112, 0.662/22",
+          "2.500000e+00/2112, 6.620000e-01/22",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Tier 2 opens the nucleide-written synthetic file with upstream tooling."
+    }
+  ]
+}

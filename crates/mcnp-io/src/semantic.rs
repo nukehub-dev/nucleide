@@ -2018,18 +2018,14 @@ mod tests {
         let deck = parse_deck(&deck_l3()).unwrap();
         let fills = parse_fills(&deck.cells, &deck.data).unwrap();
         assert_eq!(fills.len(), 1);
-        match &fills[0].target {
+        assert_eq!(
+            fills[0].target,
             FillTarget::Matrix {
-                min_index,
-                max_index,
-                universes,
-            } => {
-                assert_eq!(*min_index, [0, 0, 0]);
-                assert_eq!(*max_index, [1, 0, 0]);
-                assert_eq!(universes, &vec![Some(1), Some(1)]);
+                min_index: [0, 0, 0],
+                max_index: [1, 0, 0],
+                universes: vec![Some(1), Some(1)],
             }
-            other => panic!("expected matrix, got {other:?}"),
-        }
+        );
         // Hidden inline transform with *FILL degrees.
         let text = "msg\ntitle\n1 0 -1 *fill=1 (1.5 0.0 0.0)\n\n1 so 1\n\n";
         let deck = parse_deck(text).unwrap();
@@ -2163,6 +2159,16 @@ mod tests {
                 Slot::Text("MID".to_string())
             ]
         );
+    }
+
+    #[test]
+    fn interpolate_near_miss_literals_stay_text() {
+        // Tokens containing `I` that end in an interpolation suffix with a
+        // non-numeric head fall through `is_interpolate` and stay literals.
+        for token in ["XI", "XILOG"] {
+            let slots = expand_shortcuts(&[token.to_string()], 1, "E4 card").unwrap();
+            assert_eq!(slots, vec![Slot::Text(token.to_string())], "{token}");
+        }
     }
 
     #[test]
@@ -2758,5 +2764,55 @@ mod tests {
         let notes = validation_notes_for(&deck.cells, &deck.data);
         assert_eq!(notes.len(), 1);
         assert!(notes[0].contains("IMP:P"));
+    }
+
+    #[test]
+    fn validate_accepts_existing_complement_cell() {
+        // A complement naming an existing cell passes the missing-cell arm.
+        let text = "msg\ntitle\n1 0 -1 (#2)\n2 0 -2\n\n1 so 1\n2 so 2\n\n";
+        let deck = parse_deck(text).unwrap();
+        validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap();
+    }
+
+    #[test]
+    fn validate_rejects_surface_arity_mismatch() {
+        // The surf parser enforces arity up front, so this defensive
+        // validate arm is built directly: `SO` needs exactly 1 coefficient.
+        use crate::cell::{CellCard, GeomExpr, HalfSpace};
+        use crate::surf::{SurfCard, SurfKind};
+        let cell = CellCard {
+            num: 1,
+            mat: 0,
+            dens: None,
+            geom: GeomExpr::HalfSpace(HalfSpace {
+                surf: -1,
+                reflecting: false,
+            }),
+            params: Vec::new(),
+            line: 1,
+            raw_lines: Vec::new(),
+            prefix_lines: Vec::new(),
+        };
+        let surf = SurfCard {
+            num: 1,
+            reflecting: false,
+            transform: None,
+            periodic: None,
+            kind: SurfKind::So,
+            coeffs: vec![1.0, 2.0],
+            line: 1,
+            raw_lines: Vec::new(),
+            prefix_lines: Vec::new(),
+        };
+        let err = validate_problem(&[cell], &[surf], &[], &[]).unwrap_err();
+        assert!(err.to_string().contains("required constants"), "{err}");
+    }
+
+    #[test]
+    fn validate_accepts_variable_arity_surface() {
+        // `ARB` has no fixed arity, so it skips the coefficient-count arm.
+        let text = "msg\ntitle\n1 0 -1\n\n1 arb 1 2 3\n\n";
+        let deck = parse_deck(text).unwrap();
+        validate_problem(&deck.cells, &deck.surfs, &deck.materials, &deck.data).unwrap();
     }
 }

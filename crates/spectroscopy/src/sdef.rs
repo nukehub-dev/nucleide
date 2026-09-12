@@ -22,7 +22,8 @@
 //! Those semantics are the caller's responsibility against the MCNP manual;
 //! this renderer only guarantees the card shapes above and that the emitted
 //! probabilities are normalized to sum to 1.0 (E9) before 6-significant-digit
-//! card formatting.
+//! card formatting. Re-checked against that parser suite: it exercises only
+//! the surface shapes above, so the semantics stay unverified.
 
 use nucleide_nuclei::particles::ParticleId;
 

@@ -10,7 +10,7 @@ caller vectors; no tabulated data, no I/O beyond `&str` parsing.
 ## Ownership
 
 Owns `crates/spectroscopy/src/` (`spectrum.rs`, `smooth.rs`, `counts.rs`,
-`calib.rs`, `spe.rs`, `xray.rs`, `sdef.rs`, `error.rs`), the Python surface
+`calib.rs`, `spe.rs`, `xray.rs`, `sdef.rs`, `lines.rs`, `error.rs`), the Python surface
 (`nucleide.spectroscopy`, `spectroscopy_*` in `_internal`),
 `tests/test_spectroscopy.py`, the `fixtures/spectroscopy/` synthetic
 oracles, and the `spectroscopy_vs_pyne.py` validation oracle.
@@ -30,9 +30,10 @@ oracles, and the `spectroscopy_vs_pyne.py` validation oracle.
   double-space `Energy Fit:` indices 0/2/4, positional 0-based dollar
   labels under nonzero `start_chan_num`, positional E3–E5 indexing.
 - Caller constants only: atomic yields/ratios/energies, calibration fits,
-  efficiency coefficients, and decay lines (energy + intensity pairs) are
-  inputs. No vendored atomic tables or decay-line libraries, no
-  coefficient fitting, no FWHM evaluation.
+  efficiency coefficients, and decay lines (energy + intensity pairs, from
+  lists or the runtime TSV interchange in `lines.rs`) are inputs. No
+  vendored atomic tables or decay-line libraries, no coefficient fitting,
+  no FWHM evaluation, no legacy line-list reader.
 - SDEF decay sources (E9): caller lines merge at duplicate energies, sort
   ascending, and normalize to probabilities summing to 1.0; cards keep the
   upstream monoenergetic field order (single line → inline `ERG=<E>`,

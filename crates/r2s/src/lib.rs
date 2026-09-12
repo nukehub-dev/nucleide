@@ -9,11 +9,15 @@
 pub mod error;
 pub mod photon;
 pub mod snapshot;
+pub mod tags;
 pub mod workflow;
 
 pub use error::{Error, Result};
 pub use photon::ZonePhotonSource;
 pub use snapshot::{
     deck_from_snapshot, snapshot_workflow, SnapshotFluxDef, SnapshotInput, SnapshotZone,
+};
+pub use tags::{
+    photon_groups_at, split_zone_totals, sum_group_strengths, tag_zone_totals, VoxelTags,
 };
 pub use workflow::{R2sStep, R2sWorkflow};

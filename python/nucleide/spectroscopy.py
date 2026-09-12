@@ -10,7 +10,9 @@ from nucleide._internal import (
     spectroscopy_gross_count,
     spectroscopy_net_counts,
     spectroscopy_parse_dollar_spe,
+    spectroscopy_parse_lines_tsv,
     spectroscopy_parse_spe,
+    spectroscopy_read_decay_lines,
     spectroscopy_read_dollar_spe,
     spectroscopy_read_spe,
     spectroscopy_rect_smooth,
@@ -30,8 +32,10 @@ __all__ = [
     "sdef_decay_source",
     "parse_dollar_spe",
     "parse_spe",
+    "parse_lines_tsv",
     "read_dollar_spe",
     "read_spe",
+    "read_decay_lines",
 ]
 
 
@@ -135,3 +139,18 @@ def read_dollar_spe(path: str) -> dict[str, Any]:
 def read_spe(path: str) -> dict[str, Any]:
     """Read a plain-format ``.spe`` file."""
     return spectroscopy_read_spe(path)
+
+
+def parse_lines_tsv(text: str) -> list[tuple[float, float]]:
+    """Parse decay-lines interchange TSV text into ``(energy_mev, intensity)`` pairs.
+
+    One ``energy_MeV intensity`` pair per line; ``#`` comments and blank
+    lines skipped. Feed the pairs to :func:`sdef_decay_source` for E9
+    normalization — no decay data is vendored.
+    """
+    return spectroscopy_parse_lines_tsv(text)
+
+
+def read_decay_lines(path: str) -> list[tuple[float, float]]:
+    """Read a decay-lines interchange TSV file (same grammar as :func:`parse_lines_tsv`)."""
+    return spectroscopy_read_decay_lines(path)

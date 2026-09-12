@@ -94,9 +94,26 @@ calibration fits, and `file_name`. Note the pinned quirks: `$MEAS_TIM:` is
 live-then-real, dollar channel labels stay positional under a nonzero
 `start_chan_num`, and `$ROI:`/`$PRESETS:`/`$ENER_FIT:` are ignored.
 
+## Emit an SDEF decay source
+
+```python
+from nucleide.spectroscopy import parse_lines_tsv, read_decay_lines, sdef_decay_source
+
+lines = read_decay_lines("lines.tsv")  # energy_MeV intensity rows, # comments ok
+bins, card = sdef_decay_source(lines, particle="Photon")
+print(card)
+```
+
+`read_decay_lines` (or `parse_lines_tsv` on text) reads the runtime
+decay-lines TSV interchange into `(energy_MeV, intensity)` pairs — no decay
+data is vendored. `sdef_decay_source` merges duplicates, sorts, normalizes
+to probabilities (E9), and renders the MCNP point-source card (inline
+`ERG=<E>` for one line, `ERG=D1` + `SI1 L`/`SP1 D` for several). Card
+*syntax* is verified; MCNP sampling *semantics* stay yours.
+
 ## See also
 
-- [Gamma-ray spectroscopy theory](../../theory/spectroscopy.mdx) for E1–E8
+- [Gamma-ray spectroscopy theory](../../theory/spectroscopy.mdx) for E1–E9
   and the full quirk list.
 - [Run kinetics](run-kinetics.md) for the companion counting-era toolkit.
 - [Cross-code validation results](https://github.com/nukehub-dev/nucleide/blob/main/validation/results.md)

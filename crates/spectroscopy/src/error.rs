@@ -68,6 +68,14 @@ pub enum Error {
     /// No decay lines supplied to the SDEF normalizer (E9).
     #[error("spectroscopy: no decay lines supplied")]
     EmptyLines,
+    /// A decay-lines TSV row does not hold exactly two floats (E9 input).
+    #[error("spectroscopy: malformed decay-lines row {line}: {text}")]
+    MalformedLinesRow {
+        /// 1-based line number in the TSV text.
+        line: usize,
+        /// Offending row verbatim.
+        text: String,
+    },
     /// A decay line energy is negative (E9): `{0}`.
     #[error("spectroscopy: decay line energy {0} is negative")]
     NegativeEnergy(f64),

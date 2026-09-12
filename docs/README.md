@@ -83,6 +83,7 @@ status, and license.
 | [Emit code cards](tutorials/python/emit-cards.md) | Render one material to MCNP, Serpent, FLUKA, ALARA, and PARTISN cards, including ARMI blueprint keys |
 | [Run kinetics](tutorials/python/run-kinetics.md) | Solve prescribed-reactivity point-kinetics transients |
 | [Run spectroscopy](tutorials/python/run-spectroscopy.md) | Smooth spectra, count peaks, calibrate energy/efficiency, evaluate X-ray lines, read `.spe` files |
+| [MCPL particle interchange](tutorials/python/mcpl-interchange.md) | Read and write MCPL particle lists |
 | [Interactive tutorials](tutorials/interactive/index.mdx) | Run Nucleide in the browser through the WASM build |
 | [Interactive — nuclides](tutorials/interactive/nuclides.mdx) | Nuclide identifiers and nuclear data |
 | [Interactive — materials](tutorials/interactive/materials.mdx) | Formulas, fractions, mixing, and XML export |

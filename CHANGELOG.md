@@ -13,6 +13,77 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Added
+
+- Fuel-cycle micro-adds (`nucleide-material`, `nucleide-enrichment`):
+  `Material::separate` splits a composition into product/tails streams by
+  per-nuclide efficiency (finite values in `[0, 1]`, unlisted nuclides go
+  wholly to tails, per-nuclide mass conserved), `Material::blend` mixes
+  streams at fixed ratios with explicit normalization (errors on empty,
+  all-zero, or negative recipes — never a silent uniform split), and a
+  dependency-free one-sided Page CUSUM change detector (`Cusum` with
+  Welford running mean/variance, `new(ref_shift_k=0.5, alarm_h=4.0,
+  startup=10)` tuning plus `update`/`status`/`statistic`/`reset`).
+- Python API: `nucleide.material.separate_material` / `blend_material` /
+  `Cusum` and `nucleide.enrichment.value_func` / `swu_per_feed` /
+  `swu_per_prod` / `swu_per_tail` thin wrappers over the new core.
+- `validation/enrichment_swu_vs_cyclus.py`: two-tier SWU oracle —
+  hand-recomputed closed-form gates on the cyclus assay ladder (feed
+  0.0072, product 0.05, tails 0.002, 10 units of product) plus a live
+  `cyclus.toolkit.enrichment` cross-check with a loud SKIP when cyclus is
+  absent.
+- Full MCTAL tally bodies (`nucleide-mcnp-io`): the standard (non-mesh,
+  non-radiograph) per-tally layout — `f`/`d`/`u`/`s`/`m`/`c`/`e`/`t` bin
+  cards plus `vals` `(value, rel_error)` pairs — with a synthetic
+  `fixtures/mcnp/mctal/synthetic_tally_bodies.mctal` oracle (closed-form
+  val/err pairing). Mesh tallies, radiograph/point-detector specials,
+  `tfc` blocks, total/cumulative variants, and perturbation bodies stay
+  named-open errors, never silent skips.
+- Python API: `Mctal.tallies` / `tally_nums` / `npert` views plus
+  `Mctal.tally_vals_array` NumPy bridge (`(n_pairs, 2)`, float64 C-order)
+  over the new bodies.
+- MCPL particle-interchange reader/writer (new `nucleide-mcpl-io` crate):
+  format versions 2 (read-only octahedral directions) and 3 (read/write,
+  adaptive-projection directions), single/double precision, polarisation,
+  user flags, universal PDG/weight, header comments/blobs with upstream
+  `stat:sum` syntax validation, gzip-transparent paths, and byte-exact
+  synthetic round-trips. Record-level interop is cross-checked both
+  directions against the upstream 2.2.8 implementation. SSW conversion is
+  deferred.
+- Python API: `nucleide.mcpl.read_mcpl` / `write_mcpl` / `McplFile` thin
+  wrappers over the new crate, plus a `docs/tutorials/python/
+  mcpl-interchange.md` tutorial.
+- `validation/mcpl_vs_refs.py`: synthetic round-trip gates plus an upstream
+  `mcpl`-package record-level cross-check (count, energies, PDG codes) with
+  a loud SKIP when absent.
+- R2S per-voxel photon-source tags (`nucleide-r2s`, no MOAB/HDF5):
+  `VoxelTags` mapping zone totals onto native-mesh voxels
+  (`tag_zone_totals` copies, `split_zone_totals` conserves), plus
+  `.photonSrc` group selection (`photon_groups_at`) and element-wise sums
+  (`sum_group_strengths`) feeding real group spectra where the uniform-split
+  placeholder stood.
+- Python API: `nucleide.r2s.tag_zone_strength` / `photon_group_sums` thin
+  wrappers over the new tags.
+- SDEF runtime line tables (`nucleide-spectroscopy`, E9 input path): the
+  documented decay-lines TSV interchange (`parse_lines_tsv` /
+  `read_decay_lines` over `energy_MeV intensity` rows) feeding the existing
+  normalizer — no vendored lines, no legacy reader, synthetic fixtures only.
+- Python API: `nucleide.spectroscopy.parse_lines_tsv` / `read_decay_lines`
+  thin wrappers over the new reader.
+- `validation/spectroscopy_vs_pyne.py`: runtime TSV interchange oracle —
+  Cs-137 ENSDF lines through `pyne.data` round-trip the reader (energy
+  column within 1e-9, E9 normalization to 1.0), loud SKIP when PyNE is
+  absent or the energy/intensity pairing stays open.
+
+### Fixed
+
+- Hostile-input hardening in the MCTAL reader (`nucleide-mcnp-io`):
+  allocations now follow the bytes actually present instead of reserving
+  from declared bin/cycle counts (same class as the 0.5.0 `FILL`-matrix
+  cap), the eight-card bin product saturates instead of wrapping, and
+  fractional/negative bin counts are malformed-input errors rather than
+  silent truncations. Valid files parse identically.
+
 ## [0.6.0] - 2026-09-12
 
 ### Added

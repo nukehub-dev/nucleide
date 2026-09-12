@@ -113,6 +113,13 @@ intensities, and non-finite values are errors; zero-intensity lines are
 dropped (a zero-probability `SP1` entry has unverified transport meaning);
 input order is irrelevant.
 
+Line lists also arrive from files: the runtime decay-lines TSV interchange
+(`energy_MeV intensity` pairs, `#` comments, blank lines skipped) parses to
+the same `(E_i, I_i)` pairs E9 consumes — same validation, no vendored data.
+No legacy line-list reader ships: upstream line families query a compiled
+data store with no text format to mirror, ENSDF text is out of proportion,
+ICRP-107 exports are license-blocked, and ENDF mean energies are not lines.
+
 The card keeps the upstream field order. One surviving line keeps the
 upstream inline `ERG=<E>`; several lines switch to the discrete-distribution
 form `ERG=D1`, with the energies on an `SI1 L` card and the probabilities on
@@ -126,6 +133,8 @@ and round-trip through an MCNP input parser. The sampling semantics behind
 them (what the `L`/`D` flags select, `SPn`-omitted defaults, zero/negative
 probability handling, MCNP renormalization) are not verified from local
 files and are the caller's responsibility against the MCNP manual.
+Re-checked against the parser suite: it exercises only this surface, so the
+semantics stay unverified.
 
 ## Algorithm
 
@@ -160,7 +169,8 @@ Counts `[2, 5, 1, 6, 3, 8, 4]`, peak window `c1 = 2`, `c2 = 5`:
 
 - Counts, channels, fits, coefficients, atomic constants, and decay lines are
   all caller inputs; nothing is fetched or fitted.
-- FWHM fits are parsed, never evaluated.
+- FWHM fits are parsed, never evaluated: no evaluation form for the triplet
+  is pinned by the upstream analysis subset, so no evaluator exists here.
 - X-ray energies are in keV; efficiency energies are in MeV; SDEF decay-line
   energies are in MeV.
 - Smoothing edges copy rather than extrapolate.

@@ -4,5 +4,6 @@
   "OpenMC": "built from the upstream `v0.16.0` release tag",
   "PyRK": "upstream git `c2bfebf9` (point-kinetics oracle only)",
   "radioactivedecay": "PyPI `0.6.1` (decay oracle only)",
+  "mcpl": "PyPI `2.2.8` + `mcpl-extra` (MCPL oracle probe only)",
   "Python": "miniforge3 base"
 }

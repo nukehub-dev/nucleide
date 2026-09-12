@@ -187,7 +187,44 @@ PyNE optimizes `M*`.
 With `M*` optimization enabled on both sides, the tungsten scalar quantities
 agree to better than **1e-3** and product compositions to a few × 1e-3.
 
-## 4. MAGIC weight windows (`magic_vs_pyne.py`)
+## 4. Enrichment SWU (`enrichment_swu_vs_cyclus.py`)
+
+Two-tier oracle for the `nucleide-enrichment` separative-work helpers: closed-form gates G1-G3 on
+the cyclus assay ladder (tier 1, always run), and a live cross-check against
+`cyclus.toolkit.enrichment` (`ValueFunc`/`SwuRequired`) when the cyclus package is importable (tier
+2).
+
+G1 V(feed=0.0072): nucleide 4.855507e+00, closed form 4.855507e+00.
+
+G1 V(product=0.05): nucleide 2.649995e+00, closed form 2.649995e+00.
+
+G1 V(tails=0.002): nucleide 6.187756e+00, closed form 6.187756e+00.
+
+G2 SWU via feed: nucleide 8.759916e+01, closed form 8.759916e+01.
+
+G2 SWU via product: nucleide 8.759916e+01, closed form 8.759916e+01.
+
+G2 SWU via tails: nucleide 8.759916e+01, closed form 8.759916e+01.
+
+G3 three-stream spread: 9.948e-14 SWU across feed/product/tails views.
+
+| Gate                       | Rel err      | Tol     | Status |
+|----------------------------|--------------|---------|--------|
+| G1 value_func (feed)       | 0.000000e+00 | < 1e-12 | PASS   |
+| G1 value_func (product)    | 0.000000e+00 | < 1e-12 | PASS   |
+| G1 value_func (tails)      | 0.000000e+00 | < 1e-12 | PASS   |
+| G2 SWU total (via feed)    | 1.622259e-16 | < 1e-12 | PASS   |
+| G2 SWU total (via product) | 6.489037e-16 | < 1e-12 | PASS   |
+| G2 SWU total (via tails)   | 9.733555e-16 | < 1e-12 | PASS   |
+| G3 stream agreement        | 1.135581e-15 | < 1e-12 | PASS   |
+
+Tier 2 (cyclus toolkit cross-check) SKIPPED: No module named 'cyclus'
+
+| Gate                         | Status                    |
+|------------------------------|---------------------------|
+| cyclus ValueFunc/SwuRequired | SKIP (cyclus unavailable) |
+
+## 5. MAGIC weight windows (`magic_vs_pyne.py`)
 
 PyNE in this environment is built without PyMOAB, so `pyne.variancereduction.magic`
 cannot be called directly. The comparison below uses a pure-Python reimplementation
@@ -201,7 +238,7 @@ of PyNE's documented MAGIC formula.
 Nucleide's MAGIC output matched the reference formula exactly for the synthetic
 test tally.
 
-## 5. Point kinetics (`kinetics_vs_pyrk.py`)
+## 6. Point kinetics (`kinetics_vs_pyrk.py`)
 
 Two-tier oracle for `nucleide.kinetics`: analytic gates O1-O4 plus invariants on synthetic fixtures
 (tier 1, always run), and a ramp cross-check against the upstream PyRK neutronics block on runtime-
@@ -260,7 +297,7 @@ O5 ramp vs PyRK: worst rel err 1.556e-04 at 3 probes.
 | O5 ramp t=3.50 s | 1.847717e+00 | 1.847736e+00 | 1.048574e-05 | PASS   |
 | O5 ramp t=5.00 s | 2.041719e+00 | 2.041736e+00 | 8.650656e-06 | PASS   |
 
-## 6. Spectroscopy (`spectroscopy_vs_pyne.py`)
+## 7. Spectroscopy (`spectroscopy_vs_pyne.py`)
 
 Two-tier oracle for `nucleide.spectroscopy`: synthetic E1-E9 gates on hand-built fixtures (tier 1,
 always run), and a cross-check against the upstream `pyne.spectanalysis` / `pyne.gammaspec` routines
@@ -335,7 +372,7 @@ counterpart and is pinned by the synthetic card goldens in tier 1.
 | sdef beam vs PyNE      | exact        | equal   | PASS   |
 | sdef proton v6 vs PyNE | exact        | equal   | PASS   |
 
-## 7. Nuclear data (`nuclear_data_vs_refs.py`)
+## 8. Nuclear data (`nuclear_data_vs_refs.py`)
 
 ### Atomic masses
 
@@ -445,7 +482,7 @@ branch table. SF branches are dropped at generation, so they never appear here.
 | He8      | Li8 [beta-]      | 8.400000e-01 | 8.400000e-01 | 0.000000e+00 |
 | He8      | Li7 [beta-]      | 1.600000e-01 | 1.600000e-01 | 0.000000e+00 |
 
-## 8. Dose coefficients (`dose_vs_pyne.py`)
+## 9. Dose coefficients (`dose_vs_pyne.py`)
 
 Nucleide dose factors (HNF-SD-WM-TI-707 Rev.1 / HNF-5636 App. O via PyNE `dbgen/dosefactors*.csv`)
 vs the PyNE `Material::dose_per_g` equations (source ids 0=EPA/1=DOE/2=GENII). Screening-level only;
@@ -475,7 +512,7 @@ H3 air GENII sentinel: -1.0 (PyNE -1-for-missing-air).
 
 1 g K-40 soil EPA per-gram dose: 3.103665e-03 mrem/h per g per m^2.
 
-## 9. Parser cross-validation (`parsers_vs_refs.py`)
+## 10. Parser cross-validation (`parsers_vs_refs.py`)
 
 Nucleide's readers are cross-checked against independent oracle readers on the
 same committed fixture files. Skipped comparisons (missing or incapable oracle)
@@ -579,7 +616,24 @@ SKIPPED: no working FLUKA oracle exists in this environment. `pyne.fluka.Usrbin`
 fixtures are ASCII `.lis` files (fluka_usrbin_degenerate.lis, fluka_usrbin_multiple.lis,
 fluka_usrbin_single.lis).
 
-## 10. Activation I/O (`activation_vs_refs.py`)
+## 11. MCPL interchange vs upstream tooling
+
+| Gate                    | Expected           | Got                                                                                                | Status |
+|-------------------------|--------------------|----------------------------------------------------------------------------------------------------|--------|
+| G1 particle count       | 2                  | 2                                                                                                  | PASS   |
+| G2 energy+PDG conserved | 2.5/2112, 0.662/22 | 2.500000e+00/2112, 6.620000e-01/22                                                                 | PASS   |
+| G3 directions conserved | +z, +x             | ['0.000000e+00', '0.000000e+00', '1.000000e+00'], ['1.000000e+00', '0.000000e+00', '0.000000e+00'] | PASS   |
+
+Tier 1 uses hand-built synthetic records only; no upstream files are read.
+
+| Check                      | Expected           | Got                                | Status |
+|----------------------------|--------------------|------------------------------------|--------|
+| T1 upstream particle count | 2                  | 2                                  | PASS   |
+| T2 upstream energy+PDG     | 2.5/2112, 0.662/22 | 2.500000e+00/2112, 6.620000e-01/22 | PASS   |
+
+Tier 2 opens the nucleide-written synthetic file with upstream tooling.
+
+## 12. Activation I/O (`activation_vs_refs.py`)
 
 Nucleide's activation-code readers (alara-io, cccc-io, fispact-io, origen-io)
 and the r2s workflow builder are checked against committed fixtures.
@@ -763,7 +817,7 @@ reader, so the corresponding fixtures remain synthetic self-consistency checks.
 
 `pyne.cccc` is unexpectedly importable; no comparison is defined for it yet.
 
-## 11. Emission drift (`emit_vs_self.py`)
+## 13. Emission drift (`emit_vs_self.py`)
 
 Self-consistency oracle for `nucleide.emit` (no external code offers this comparison). Uranium metal
 must emit losslessly on all five dialects; the FLUKA O16 gap is asserted as reported drift.
@@ -782,7 +836,7 @@ Water-like mix: FLUKA accounts 1.000000e+00 of 3.0 g with 1 dropped nuclide(s).
 
 ARMI database keys (`nU235`) emit the same five cards as GNDS names.
 
-## 12. Decay (`decay_vs_radioactivedecay.py`)
+## 14. Decay (`decay_vs_radioactivedecay.py`)
 
 Nucleide depletion decay analytics (CRAM-48 parent atoms + Inventory parent activity) vs the
 radioactivedecay oracle (version 0.6.1, default ICRP-107 dataset, pip-pinned in `Containerfile`) on
@@ -847,7 +901,7 @@ Worst table-corrected residual over all cases, times, and both channels: 2.88653
 to that residual — both solvers agree with their own analytics to ~1e-12, and the remaining gap is
 the tables.
 
-## 13. Timings (`timings.py`)
+## 15. Timings (`timings.py`)
 
 Mean wall time over 20 repeats. The CRAM comparison now times **only the solve
 step** on pre-built systems/matrices.

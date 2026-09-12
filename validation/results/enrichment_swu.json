@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "name": "enrichment_swu",
+  "title": "Enrichment SWU (`enrichment_swu_vs_cyclus.py`)",
+  "environment": {
+    "date": "2026-09-12",
+    "python": "3.12.10",
+    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.44",
+    "nucleide": "0.6.0",
+    "pyne": "not installed",
+    "openmc": "not installed"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "text": "Two-tier oracle for the `nucleide-enrichment` separative-work helpers: closed-form gates G1-G3 on the cyclus assay ladder (tier 1, always run), and a live cross-check against `cyclus.toolkit.enrichment` (`ValueFunc`/`SwuRequired`) when the cyclus package is importable (tier 2)."
+    },
+    {
+      "kind": "prose",
+      "text": "G1 V(feed=0.0072): nucleide 4.855507e+00, closed form 4.855507e+00."
+    },
+    {
+      "kind": "prose",
+      "text": "G1 V(product=0.05): nucleide 2.649995e+00, closed form 2.649995e+00."
+    },
+    {
+      "kind": "prose",
+      "text": "G1 V(tails=0.002): nucleide 6.187756e+00, closed form 6.187756e+00."
+    },
+    {
+      "kind": "prose",
+      "text": "G2 SWU via feed: nucleide 8.759916e+01, closed form 8.759916e+01."
+    },
+    {
+      "kind": "prose",
+      "text": "G2 SWU via product: nucleide 8.759916e+01, closed form 8.759916e+01."
+    },
+    {
+      "kind": "prose",
+      "text": "G2 SWU via tails: nucleide 8.759916e+01, closed form 8.759916e+01."
+    },
+    {
+      "kind": "prose",
+      "text": "G3 three-stream spread: 9.948e-14 SWU across feed/product/tails views."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Rel err",
+        "Tol",
+        "Status"
+      ],
+      "rows": [
+        [
+          "G1 value_func (feed)",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "G1 value_func (product)",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "G1 value_func (tails)",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "G2 SWU total (via feed)",
+          "1.622259e-16",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "G2 SWU total (via product)",
+          "6.489037e-16",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "G2 SWU total (via tails)",
+          "9.733555e-16",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "G3 stream agreement",
+          "1.135581e-15",
+          "< 1e-12",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Tier 2 (cyclus toolkit cross-check) SKIPPED: No module named 'cyclus'"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Status"
+      ],
+      "rows": [
+        [
+          "cyclus ValueFunc/SwuRequired",
+          "SKIP (cyclus unavailable)"
+        ]
+      ]
+    }
+  ]
+}

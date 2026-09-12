@@ -5,8 +5,8 @@
 //! five-point smoothing (E1–E2), background/gross/net counting (E3–E5),
 //! quadratic energy calibration (E6), log-polynomial detector-efficiency
 //! evaluation (E7), caller-constant X-ray algebra (E8), the two text `.spe`
-//! readers (dollar and plain formats), and caller-line SDEF decay-source
-//! cards (E9).
+//! readers (dollar and plain formats), caller-line SDEF decay-source
+//! cards (E9), and the runtime decay-lines TSV interchange feeding E9.
 //!
 //! No tabulated data lives here: atomic constants, calibration fits,
 //! efficiency coefficients, and decay lines are all caller inputs. No I/O
@@ -20,6 +20,7 @@
 pub mod calib;
 pub mod counts;
 pub mod error;
+pub mod lines;
 pub mod sdef;
 pub mod smooth;
 pub mod spe;
@@ -29,6 +30,7 @@ pub mod xray;
 pub use calib::{detector_efficiency, energy_bins};
 pub use counts::{calc_bg, gross_count, net_counts};
 pub use error::Error;
+pub use lines::parse_lines_tsv;
 pub use sdef::{normalize_decay_lines, sdef_card, PointSource};
 pub use smooth::{five_point_smooth, rect_smooth};
 pub use spe::{parse_dollar_spe, parse_plain_spe};

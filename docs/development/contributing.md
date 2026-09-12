@@ -166,6 +166,9 @@ cargo test --workspace
 cargo test -p nuclei
 ```
 
+The `cargo llvm-cov` `TOTAL` denominator includes the binding facades plus
+test/bench code.
+
 ### Python tests
 
 ```bash

@@ -260,7 +260,80 @@ def tier2_pyne() -> tuple[list[list[str]], list[str], bool]:
         "designator); the multi-line ERG=D1 distribution form has no upstream "
         "counterpart and is pinned by the synthetic card goldens in tier 1."
     )
+    rows.extend(tier2_lines_tsv())
     return rows, notes, False
+
+
+def tier2_lines_tsv() -> list[list[str]]:
+    """Runtime TSV interchange oracle against PyNE ENSDF line data.
+
+    Reads Cs-137 gamma energies (keV) and photon intensities through
+    ``pyne.data`` at harness runtime only (nothing vendored, nothing
+    committed), writes them into the interchange TSV in memory, and checks
+    our reader end to end: energy-column round-trip within 1e-9 and E9
+    normalization summing to 1.0 on real ENSDF magnitudes. Any import, API,
+    or data surprise is a loud SKIP row, never a silent pass.
+    """
+    try:
+        from pyne import data as pyne_data
+        from pyne import nucname
+
+        pid = nucname.id("Cs137")
+        energies = [(float(e[0]), float(e[1])) for e in pyne_data.gamma_energy(pid)]
+        intensities = [(float(v[0]), float(v[1])) for v in pyne_data.gamma_photon_intensity(pid)]
+        if not energies or not intensities:
+            raise ValueError("empty Cs-137 line lists")
+    except Exception as exc:  # noqa: BLE001 — oracle is optional; reason recorded
+        note = f"Tier 2 (TSV interchange) SKIPPED: {exc}"
+        print(note)
+        return [["tsv interchange vs PyNE ENSDF", "—", "—", "SKIP (see prose)"]]
+    rows: list[list[str]] = []
+    tsv = "".join(f"{kev / 1000.0!r} 1.0\n" for kev, _ in energies)
+    got = sp.parse_lines_tsv(tsv)
+    ok = len(got) == len(energies) and all(
+        abs(g - kev / 1000.0) <= 1e-9 * max(1.0, kev / 1000.0)
+        for (g, _), (kev, _) in zip(got, energies, strict=True)
+    )
+    rows.append(
+        [
+            "tsv energy column vs PyNE Cs-137",
+            f"{fmt(_worst_rel([g for g, _ in got], [kev / 1000.0 for kev, _ in energies]))}",
+            "1e-9",
+            _check(ok, "tsv energies"),
+        ]
+    )
+    if len(intensities) != len(energies):
+        # Energy/intensity pairing across the two PyNE lists is an open
+        # format question — record it instead of guessing.
+        print(
+            "Tier 2 (TSV normalization) SKIPPED: "
+            f"{len(energies)} energies vs {len(intensities)} intensities"
+        )
+        rows.append(
+            [
+                "tsv E9 normalization on ENSDF magnitudes",
+                "—",
+                "—",
+                "SKIP (energy/intensity pairing open)",
+            ]
+        )
+        return rows
+    tsv = "".join(
+        f"{kev / 1000.0!r} {inten!r}\n"
+        for (kev, _), (inten, _) in zip(energies, intensities, strict=True)
+    )
+    bins, _ = sp.sdef_decay_source(sp.parse_lines_tsv(tsv))
+    total = sum(p for _, p in bins)
+    ok = len(bins) == len(energies) and abs(total - 1.0) < 1e-12
+    rows.append(
+        [
+            "tsv E9 normalization on ENSDF magnitudes",
+            fmt(abs(total - 1.0)),
+            "1e-12",
+            _check(ok, "tsv normalization"),
+        ]
+    )
+    return rows
 
 
 def main() -> int:

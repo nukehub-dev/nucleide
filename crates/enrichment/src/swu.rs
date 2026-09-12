@@ -114,6 +114,35 @@ mod tests {
     }
 
     #[test]
+    fn swu_cyclus_assays_match_closed_form() {
+        // Cyclus toolkit assay ladder (feed 0.0072, product 0.05,
+        // tails 0.002) with 10 units of product. Closed form:
+        // V(x) = (2x-1) ln(x/(1-x)); F = P(xP-xT)/(xF-xT); T = F-P;
+        // SWU = P V(xP) + T V(xT) - F V(xF).
+        let (xf, xp, xt) = (0.0072_f64, 0.05_f64, 0.002_f64);
+        assert_rel_close(value_func(xf), 4.855507353675083, 1e-12, "V(feed)");
+        assert_rel_close(value_func(xp), 2.6499950812497963, 1e-12, "V(prod)");
+        assert_rel_close(value_func(xt), 6.187755671368513, 1e-12, "V(tails)");
+        let (feed, tails) = (92.3076923076923_f64, 82.3076923076923_f64);
+        assert_rel_close(
+            crate::feed_per_prod(xf, xp, xt) * 10.0,
+            feed,
+            1e-12,
+            "feed qty",
+        );
+        assert_rel_close(
+            crate::tail_per_prod(xf, xp, xt) * 10.0,
+            tails,
+            1e-12,
+            "tails qty",
+        );
+        let exp_swu = 87.59916188589864_f64;
+        assert_rel_close(10.0 * swu_per_prod(xf, xp, xt), exp_swu, 1e-12, "SWU/P");
+        assert_rel_close(feed * swu_per_feed(xf, xp, xt), exp_swu, 1e-12, "SWU/F");
+        assert_rel_close(tails * swu_per_tail(xf, xp, xt), exp_swu, 1e-12, "SWU/T");
+    }
+
+    #[test]
     fn swu_per_stream_identities() {
         // The three ratios are consistent views of one separative work:
         // SWU/F = (P/F) * SWU/P and SWU/F = (T/F) * SWU/T.

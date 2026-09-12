@@ -203,3 +203,28 @@ def test_e9_zero_intensity_line_drops_to_single_line_form() -> None:
     bins, card = sp.sdef_decay_source([(0.662, 2.0), (1.17, 0.0)])
     assert bins == pytest.approx([(0.662, 1.0)])
     assert card == "SDEF POS=0 0 0\n     ERG=0.662\n     WGT=1\n     PAR=n"
+
+
+def test_e9_lines_tsv_fixture_feeds_normalization() -> None:
+    # decay_lines_sample.tsv rows (0.662x2 + 1.0, 1.170x1.0) merge to
+    # (0.662 → 3/4, 1.17 → 1/4) through the same E9 path as list input.
+    text = (FIX / "decay_lines_sample.tsv").read_text()
+    assert sp.parse_lines_tsv(text) == pytest.approx([(0.662, 2.0), (1.17, 1.0), (0.662, 1.0)])
+    assert sp.read_decay_lines(str(FIX / "decay_lines_sample.tsv")) == pytest.approx(
+        [(0.662, 2.0), (1.17, 1.0), (0.662, 1.0)]
+    )
+    bins, _ = sp.sdef_decay_source(sp.parse_lines_tsv(text))
+    assert bins == pytest.approx([(0.662, 0.75), (1.17, 0.25)])
+
+
+def test_e9_lines_tsv_rejects_malformed_rows() -> None:
+    with pytest.raises(ValueError):
+        sp.parse_lines_tsv("")
+    with pytest.raises(ValueError):
+        sp.parse_lines_tsv("# only a comment\n")
+    with pytest.raises(ValueError):
+        sp.parse_lines_tsv("0.662\n")
+    with pytest.raises(ValueError):
+        sp.parse_lines_tsv("0.662 1.0 3.0\n")
+    with pytest.raises(ValueError):
+        sp.parse_lines_tsv("0.662 lots\n")

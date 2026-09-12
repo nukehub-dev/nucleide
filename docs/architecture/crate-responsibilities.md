@@ -43,6 +43,12 @@ MCNP-family file I/O: `xsdir`, `meshtal`, SSW/SURFSRC, PTRAC, WWINP, MCTAL
 readers; material extraction from input decks; mesh-to-geometry deck
 generation. Depends on `nucleide-nuclei`.
 
+### `nucleide-mcpl-io`
+
+MCPL particle-list interchange read/write (format versions 2 and 3,
+single/double precision, gzip-transparent paths). No internal crate
+dependencies; SSW conversion stays deferred.
+
 ### `nucleide-serpent-io`
 
 Parsers for Serpent MATLAB-style output files (`_res.m`, `_dep.m`, `_det.m`).
@@ -144,15 +150,16 @@ When publishing to crates.io, publish in dependency order:
 2. `nucleide-nuclei`
 3. `nucleide-material`
 4. `nucleide-mcnp-io`
-5. `nucleide-serpent-io`
-6. `nucleide-fluka-io`
-7. `nucleide-enrichment`
-8. `nucleide-depletion`
-9. `nucleide-vr-tools`
-10. `nucleide-alara-io`
-11. `nucleide-cccc-io`
-12. `nucleide-fispact-io`
-13. `nucleide-origen-io`
-14. `nucleide-r2s`
-15. `nucleide-emit`
-16. `nucleide-bindings`
+5. `nucleide-mcpl-io`
+6. `nucleide-serpent-io`
+7. `nucleide-fluka-io`
+8. `nucleide-enrichment`
+9. `nucleide-depletion`
+10. `nucleide-vr-tools`
+11. `nucleide-alara-io`
+12. `nucleide-cccc-io`
+13. `nucleide-fispact-io`
+14. `nucleide-origen-io`
+15. `nucleide-r2s`
+16. `nucleide-emit`
+17. `nucleide-bindings`

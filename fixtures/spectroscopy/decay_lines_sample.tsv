@@ -1,0 +1,9 @@
+# decay_lines_sample.tsv — hand-built synthetic decay lines (MeV)
+#
+# Hand values only (a Cs-137-like pair plus a duplicate-energy row); no
+# laboratory or evaluated-library data. E9 normalizes the merged energies
+# (0.662 → 3/4, 1.170 → 1/4) up to float rounding.
+# energy_MeV intensity
+0.662 2.0
+1.170 1.0
+0.662 1.0

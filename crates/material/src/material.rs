@@ -223,6 +223,78 @@ impl Material {
         Ok(out)
     }
 
+    /// Split this material into product and tails streams by per-nuclide
+    /// separation efficiency.
+    ///
+    /// Each listed nuclide sends the fraction `eff` of its stored mass to
+    /// the product stream and `1 - eff` to the tails stream; nuclides absent
+    /// from `effs` send nothing to product (`eff = 0`). Mass is conserved
+    /// per nuclide: `product + tails == self` up to floating-point rounding.
+    /// Efficiencies must be finite values in `[0, 1]` (else
+    /// [`crate::Error::InvalidEfficiency`]); a repeated nuclide keeps its
+    /// last-listed efficiency. Both outputs clear density and metadata (a
+    /// split stream has no single density), and nuclides with exactly zero
+    /// mass on a side are dropped from that side.
+    pub fn separate(&self, effs: &[(NuclideId, f64)]) -> crate::Result<(Self, Self)> {
+        let mut table = BTreeMap::new();
+        for &(id, eff) in effs {
+            if !eff.is_finite() || eff < 0.0 || eff > 1.0 {
+                return Err(crate::Error::InvalidEfficiency(eff));
+            }
+            table.insert(id, eff);
+        }
+        let mut product = Self::new();
+        let mut tails = Self::new();
+        for (&id, &m) in &self.comp {
+            let eff = table.get(&id).copied().unwrap_or(0.0);
+            let p = m * eff;
+            let t = m - p;
+            if p != 0.0 {
+                product.comp.insert(id, p);
+            }
+            if t != 0.0 {
+                tails.comp.insert(id, t);
+            }
+        }
+        Ok((product, tails))
+    }
+
+    /// Blend streams at fixed ratios with explicit normalization.
+    ///
+    /// Ratios are relative target proportions: they are normalized by their
+    /// sum (`w_i = r_i / Σr`) and the output is the weighted average
+    /// `Σ w_i · mat_i` (density and metadata cleared, as for the arithmetic
+    /// operators). Unlike the cycamore mixer this never falls back to a
+    /// silent uniform split: an empty slice or an all-zero (or non-finite)
+    /// ratio sum fails with [`crate::Error::Degenerate`], and any negative
+    /// or non-finite ratio fails with [`crate::Error::NegativeFraction`].
+    pub fn blend(parts: &[(&Material, f64)]) -> crate::Result<Self> {
+        if parts.is_empty() {
+            return Err(crate::Error::Degenerate);
+        }
+        let mut sum = 0.0;
+        for &(_, ratio) in parts {
+            if !ratio.is_finite() || ratio < 0.0 {
+                return Err(crate::Error::NegativeFraction(ratio));
+            }
+            sum += ratio;
+        }
+        if !(sum > 0.0 && sum.is_finite()) {
+            return Err(crate::Error::Degenerate);
+        }
+        let mut out = Self::new();
+        for &(mat, ratio) in parts {
+            let w = ratio / sum;
+            for (&id, &m) in &mat.comp {
+                out.add_nuclide(id, w * m);
+            }
+        }
+        if not_positive(out.mass()) {
+            return Err(crate::Error::Degenerate);
+        }
+        Ok(out)
+    }
+
     /// Scale all stored masses by `factor`, keeping density and metadata.
     fn scaled(&self, factor: f64) -> Self {
         Self {
@@ -1032,6 +1104,149 @@ mod tests {
             Material::mix_by_mass(&[(&mat, -1.0)]),
             Err(Error::NegativeFraction(_))
         ));
+    }
+
+    /// Feed for the separation tests: U235 10 g, U238 90 g, Pu239 1 g,
+    /// Pu240 2 g, Am241 3 g, Am242 2.8 g (108.8 g total).
+    fn sep_feed() -> Material {
+        let mut mat = Material::new();
+        mat.add_nuclide(id("U235"), 10.0);
+        mat.add_nuclide(id("U238"), 90.0);
+        mat.add_nuclide(id("Pu239"), 1.0);
+        mat.add_nuclide(id("Pu240"), 2.0);
+        mat.add_nuclide(id("Am241"), 3.0);
+        mat.add_nuclide(id("Am242"), 2.8);
+        mat
+    }
+
+    #[test]
+    fn separate_splits_by_efficiency_and_conserves_mass() {
+        // Element shorthands expanded per nuclide: U at 0.7, Pu at 0.4,
+        // Am241 at 0.4; unlisted Am242 goes entirely to tails.
+        let feed = sep_feed();
+        let effs = [
+            (id("U235"), 0.7),
+            (id("U238"), 0.7),
+            (id("Pu239"), 0.4),
+            (id("Pu240"), 0.4),
+            (id("Am241"), 0.4),
+        ];
+        let (product, tails) = feed.separate(&effs).unwrap();
+
+        // Hand-computed product masses (g).
+        close(product.comp[&id("U235")], 7.0);
+        close(product.comp[&id("U238")], 63.0);
+        close(product.comp[&id("Pu239")], 0.4);
+        close(product.comp[&id("Pu240")], 0.8);
+        close(product.comp[&id("Am241")], 1.2);
+        assert!(!product.comp.contains_key(&id("Am242")));
+        close(product.mass(), 72.4);
+
+        // Hand-computed tails masses (g).
+        close(tails.comp[&id("U235")], 3.0);
+        close(tails.comp[&id("U238")], 27.0);
+        close(tails.comp[&id("Pu239")], 0.6);
+        close(tails.comp[&id("Pu240")], 1.2);
+        close(tails.comp[&id("Am241")], 1.8);
+        close(tails.comp[&id("Am242")], 2.8);
+        close(tails.mass(), 36.4);
+
+        // Per-nuclide conservation: product + tails == feed.
+        for (&nuc, &m) in &feed.comp {
+            let p = product.comp.get(&nuc).copied().unwrap_or(0.0);
+            let t = tails.comp.get(&nuc).copied().unwrap_or(0.0);
+            close(p + t, m);
+        }
+        close(product.mass() + tails.mass(), feed.mass());
+        assert_eq!(product.density(), None);
+        assert_eq!(tails.density(), None);
+    }
+
+    #[test]
+    fn separate_edge_efficiencies_route_wholly() {
+        let feed = sep_feed();
+        // eff 1 sends everything to product; eff 0 sends all to tails.
+        let (all_product, no_tails) = feed
+            .separate(&[
+                (id("U235"), 1.0),
+                (id("U238"), 1.0),
+                (id("Pu239"), 1.0),
+                (id("Pu240"), 1.0),
+                (id("Am241"), 1.0),
+                (id("Am242"), 1.0),
+            ])
+            .unwrap();
+        close(all_product.mass(), feed.mass());
+        assert!(no_tails.comp.is_empty());
+
+        let (no_product, all_tails) = feed.separate(&[]).unwrap();
+        assert!(no_product.comp.is_empty());
+        close(all_tails.mass(), feed.mass());
+    }
+
+    #[test]
+    fn separate_rejects_out_of_range_efficiencies() {
+        let feed = sep_feed();
+        for bad in [-0.1, 1.1, f64::NAN, f64::INFINITY] {
+            assert!(
+                matches!(
+                    feed.separate(&[(id("U235"), bad)]),
+                    Err(Error::InvalidEfficiency(_))
+                ),
+                "efficiency {bad} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn blend_normalizes_fixed_ratios() {
+        let mut a = Material::new();
+        a.add_nuclide(id("U235"), 1.0);
+        a.add_nuclide(id("Pu239"), 1.0);
+        let mut b = Material::new();
+        b.add_nuclide(id("U238"), 1.0);
+
+        // Ratios [1, 2] normalize to [1/3, 2/3]: the output is the
+        // weighted average (1/3)*a + (2/3)*b, total 4/3 g.
+        let out = Material::blend(&[(&a, 1.0), (&b, 2.0)]).unwrap();
+        close(out.comp[&id("U235")], 1.0 / 3.0);
+        close(out.comp[&id("Pu239")], 1.0 / 3.0);
+        close(out.comp[&id("U238")], 2.0 / 3.0);
+        close(out.mass(), 4.0 / 3.0);
+        let wf = out.weight_fractions().unwrap();
+        close(wf[&id("U235")], 0.25);
+        close(wf[&id("Pu239")], 0.25);
+        close(wf[&id("U238")], 0.5);
+
+        // Equal ratios [2, 2] give the plain mean: total 1.5 g.
+        let half = Material::blend(&[(&a, 2.0), (&b, 2.0)]).unwrap();
+        close(half.comp[&id("U235")], 0.5);
+        close(half.comp[&id("Pu239")], 0.5);
+        close(half.comp[&id("U238")], 0.5);
+        close(half.mass(), 1.5);
+        assert_eq!(half.density(), None);
+    }
+
+    #[test]
+    fn blend_rejects_degenerate_and_negative_recipes() {
+        let mut a = Material::new();
+        a.add_nuclide(id("U235"), 1.0);
+        // Empty and all-zero recipes are degenerate (no silent 1/N split).
+        assert!(matches!(Material::blend(&[]), Err(Error::Degenerate)));
+        assert!(matches!(
+            Material::blend(&[(&a, 0.0)]),
+            Err(Error::Degenerate)
+        ));
+        // Negative, NaN, and infinite ratios are rejected outright.
+        for bad in [-1.0, f64::NAN, f64::INFINITY] {
+            assert!(
+                matches!(
+                    Material::blend(&[(&a, bad)]),
+                    Err(Error::NegativeFraction(_))
+                ),
+                "ratio {bad} must be rejected"
+            );
+        }
     }
 
     #[test]
