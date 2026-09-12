@@ -144,8 +144,9 @@ cargo clippy --all-targets -- -D warnings   # zero warnings tolerated
 cargo test --workspace
 maturin develop                              # rebuild Python extension
 pytest tests/
-ruff format --check python tests && ruff check python tests
+ruff format --check python tests validation && ruff check python tests validation
 mypy                                         # strict; stubs in *.pyi
+python3 scripts/gen-reference.py --check     # crate/module/fixture indexes fresh
 cd website && npm run format:check && npm run build:wasm && npm run check && npm run build && npm run test:e2e:ci
 ```
 
@@ -169,9 +170,9 @@ Notes:
 High-level layout; see the Child NAD Index below for domain-specific details.
 
 - `crates/` — Rust workspace members (one crate per capability area):
-  `nuclei`, `material`, `mcnp-io`, `serpent-io`, `fluka-io`, `alara-io`,
-  `cccc-io`, `fispact-io`, `origen-io`, `r2s`, `vr-tools`, `enrichment`,
-  `depletion`, `linalg`, `emit`, `kinetics`, `spectroscopy`.
+  `nuclei`, `material`, `mcnp-io`, `mcpl-io`, `serpent-io`, `fluka-io`,
+  `alara-io`, `cccc-io`, `fispact-io`, `origen-io`, `r2s`, `vr-tools`,
+  `enrichment`, `depletion`, `linalg`, `emit`, `kinetics`, `spectroscopy`.
 - `bindings/python/` — PyO3 crate exposing `nucleide._internal`; thin facade,
   no business logic.
 - `bindings/wasm/` — `wasm-bindgen` crate that lets tutorials run Nucleide in
@@ -188,6 +189,24 @@ High-level layout; see the Child NAD Index below for domain-specific details.
 - Criterion benchmarks live in `crates/*/benches/`; run with `cargo bench`.
 - `.research/` — local-only working notes; git-ignored, never referenced by
   committed docs or code.
+
+## New crates and Python submodules
+
+Adding a workspace crate touches generated indexes and release machinery
+beyond the code. In the same change, update:
+
+- Root `Cargo.toml` workspace members + `workspace.dependencies`, and the
+  `bindings/python` dependency when the crate gets a Python facade.
+- `scripts/gen-reference.py` `CRATE_ORDER` (plus `MODULE_ORDER` and a GEN
+  region in `docs/reference/python-api.mdx` for a new `python/nucleide/`
+  submodule); verify with `gen-reference.py --check`.
+- `.github/workflows/release.yml` publish list in dependency order (a
+  fail-fast guard rejects omissions — the 0.6.0 list predated two crates).
+- `docs/architecture/crate-responsibilities.md` (crate section + release
+  order) and the root `README.md` feature table + layout tree.
+- `validation/`: new `*_vs_*.py` oracle scripts are auto-discovered by
+  `run_all.sh`; register report names in `render_results.py`
+  `SECTION_ORDER` and new oracle dependencies in `environment.json`.
 
 ## Documentation
 

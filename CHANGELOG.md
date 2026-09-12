@@ -79,6 +79,16 @@ workspace crates from tags.
   mode in the MCNP parser demo (inline sample plus the staged
   `synthetic_tally_bodies.mctal` fixture) and E2E coverage.
 
+### Changed
+
+- Release workflow (`release.yml`): the crates.io publish list now covers
+  every publishable workspace member (`nucleide-kinetics` and
+  `nucleide-spectroscopy` were never listed, which failed the 0.6.0
+  release at `nucleide-bindings` with `no matching package named
+  nucleide-kinetics`), plus the new `nucleide-mcpl-io`, and a fail-fast
+  guard rejects future omissions instead of retrying lag-waits against a
+  deterministic failure.
+
 ### Fixed
 
 - Hostile-input hardening in the MCTAL reader (`nucleide-mcnp-io`):

@@ -151,7 +151,31 @@ jobs:
       - name: Publish workspace crates
         run: |
           set -euo pipefail
-          for crate in nucleide-linalg nucleide-nuclei nucleide-material nucleide-mcnp-io nucleide-serpent-io nucleide-fluka-io nucleide-enrichment nucleide-depletion nucleide-vr-tools nucleide-alara-io nucleide-cccc-io nucleide-fispact-io nucleide-origen-io nucleide-r2s nucleide-emit nucleide-bindings; do
+          # Dependency order: every crate appears only after its workspace
+          # dependencies. `nucleide-wasm` is deliberately absent (cdylib-only
+          # browser artifact, never published to crates.io).
+          publish_list="nucleide-linalg nucleide-nuclei nucleide-material nucleide-mcnp-io nucleide-mcpl-io nucleide-serpent-io nucleide-fluka-io nucleide-enrichment nucleide-depletion nucleide-kinetics nucleide-spectroscopy nucleide-vr-tools nucleide-alara-io nucleide-cccc-io nucleide-fispact-io nucleide-origen-io nucleide-r2s nucleide-emit nucleide-bindings"
+          # Fail fast if a publishable workspace member is missing from the
+          # list: `cargo publish` reports that as "no matching package named",
+          # which the retry loop below would otherwise mistake for
+          # registry-index lag and retry for an hour.
+          missing=0
+          members=$(sed -n '/^members = \[/,/^\]/p' Cargo.toml | sed -n 's/^ *"\([^"]*\)".*/\1/p')
+          for member in $members; do
+            name=$(sed -n 's/^name = "\([^"]*\)".*/\1/p' "$member/Cargo.toml" | head -n 1)
+            case "$name" in
+              nucleide-wasm) continue ;;
+            esac
+            case " $publish_list " in
+              *" $name "*) ;;
+              *)
+                echo "error: workspace member $name ($member) missing from release publish list"
+                missing=1
+                ;;
+            esac
+          done
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+          for crate in $publish_list; do
             echo "--- cargo publish -p $crate ---"
             attempt=1
             while true; do

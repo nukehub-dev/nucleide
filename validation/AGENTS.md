@@ -28,6 +28,10 @@ reference tally (`magic_tally.txt`), and the committed results document.
 - `validation/environment.json` is the **only hand-maintained input** for the
   environment table; keep it up to date when the container or dependency
   channels change.
+- New oracle scripts (`*_vs_*.py`) are auto-discovered by `run_all.sh` with
+  no wiring; register each report name in `render_results.py`
+  `SECTION_ORDER` (it errors on missing reports) and record new oracle
+  dependencies in `environment.json`.
 - Every number quoted in `paper.md` must come from a recorded `run_all.sh` run.
 - Scripts must pass `ruff format --check` and `ruff check` (repo
   `pyproject.toml` settings, line-length 100).

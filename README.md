@@ -33,20 +33,21 @@ rebuilds the high-value subset in memory-safe Rust with one-command
 | Area | Capabilities |
 | --- | --- |
 | Nuclide core (`nucleide-nuclei`) | Canonical nucid representation, particle registry, reaction-name registry (labels, MT mapping, hashes), name-dialect conversions (ZZAAAMM, ZAID/MCNP, Serpent, FLUKA, NIST, CINDER, ALARA, SZA, ARMI/MCC3), AME2020 masses (incl. isomer masses), natural abundances, half-lives, screening cross sections / scattering lengths / prompt decay energies (generated from ENDF/B + NIST), ENDF/B-VIII.0 decay branches, free-form name normalization, dose factors |
-| Materials (`nucleide-material`) | Compositions, mixing arithmetic, unit conversions, DOE/PNNL Materials Compendium loading, materials XML export, activity/decay-heat/dose-per-gram analytics, label-collision checks and conservation audits |
-| MCNP I/O (`nucleide-mcnp-io`) | xsdir, meshtal, SSW/SURFSRC, PTRAC, WWINP, MCTAL, ENDL readers; NumPy `result_array()` / `totals_array()` meshtal bridge; material extraction from input decks; full-deck parse/edit/write round-trip (cells, surfaces, materials); L3 semantic views (MODE/TRn/universes/lattices/FILL/tallies) with validation; mesh-to-geometry deck generation |
+| Materials (`nucleide-material`) | Compositions, mixing arithmetic, unit conversions, DOE/PNNL Materials Compendium loading, materials XML export, activity/decay-heat/dose-per-gram analytics, label-collision checks and conservation audits, mass-efficiency separator / fixed-ratio blender, Page CUSUM change detector |
+| MCNP I/O (`nucleide-mcnp-io`) | xsdir, meshtal, SSW/SURFSRC, PTRAC, WWINP, MCTAL (headers, kcode, standard tally bodies), ENDL readers; NumPy `result_array()` / `totals_array()` meshtal and `tally_vals_array()` MCTAL bridges; material extraction from input decks; full-deck parse/edit/write round-trip (cells, surfaces, materials); L3 semantic views (MODE/TRn/universes/lattices/FILL/tallies) with validation; mesh-to-geometry deck generation |
+| MCPL I/O (`nucleide-mcpl-io`) | Monte Carlo Particle List interchange reader/writer (format versions 2/3, single/double precision, gzip-transparent) |
 | Serpent I/O (`nucleide-serpent-io`) | `_res.m`, `_dep.m`, `_det.m` readers producing structured records |
 | FLUKA I/O (`nucleide-fluka-io`) | USRBIN tally reader, material/compound card generation |
 | ALARA I/O (`nucleide-alara-io`) | Deck/flux/matlib-elelib-WDR/output/photon/schedule-expansion glue; solver out of scope |
 | Depletion (`nucleide-depletion`) | CRAM (orders 16/48) matrix exponential, analytic Bateman fast path (`method=` selector with CRAM-48 fallback), depletion-chain XML parsing, Predictor/CECM/CF4 time-series integrators with activity/decay-heat observables, unit-aware decay inventories, cumulative decays and chain-lineage queries |
 | Enrichment (`nucleide-enrichment`) | Multicomponent cascade solver (numeric), SWU closed-form helpers |
 | Point kinetics (`nucleide-kinetics`) | Prescribed-reactivity PKE solver, inhour roots, prompt-jump factor |
-| Spectroscopy (`nucleide-spectroscopy`) | Spectrum smoothing, gross/net counting, energy/efficiency calibration, X-ray lines, SPE parsing, decay-line SDEF source cards (E9) |
+| Spectroscopy (`nucleide-spectroscopy`) | Spectrum smoothing, gross/net counting, energy/efficiency calibration, X-ray lines, SPE parsing, decay-line SDEF source cards (E9) fed from caller lists or the runtime decay-lines TSV interchange |
 | Variance reduction (`nucleide-vr-tools`) | MAGIC weight-window generation, mesh source sampling with alias tables |
 | CCCC I/O (`nucleide-cccc-io`) | ISOTXS/RTFLUX text-subset parsers + PARTISN deck writer (no solver) |
 | FISPACT I/O (`nucleide-fispact-io`) | FISPACT-II inventory output parser reusing the ALARA response frame (output-only) |
 | ORIGEN I/O (`nucleide-origen-io`) | Scoped ORIGEN 2.2 TAPE5 input-echo, TAPE6 inventory, and TAPE9 decay readers |
-| R2S (`nucleide-r2s`) | Scoped R2S workflow builder: zone-to-flux linking, schedule expansion, uniform-split photon assembly, ARMI database-snapshot adapter |
+| R2S (`nucleide-r2s`) | Scoped R2S workflow builder: zone-to-flux linking, schedule expansion, photon assembly (uniform-split placeholder plus per-voxel source tags and `.photonSrc` group spectra), ARMI database-snapshot adapter |
 | Emit (`nucleide-emit`) | Single-material emission to MCNP/Serpent/FLUKA/ALARA/PARTISN cards with mass-drift report, plus an ARMI blueprint-key bridge |
 | Python bindings | PyO3 extension module behind a typed pure-Python facade (`nucleide._internal`, `.pyi` stubs, `py.typed`) |
 
@@ -63,13 +64,14 @@ nucleide/
 │   ├── nuclei/        # nuclide ids, naming conventions, physical data
 │   ├── material/      # compositions, mixing, libraries, XML export
 │   ├── mcnp-io/       # xsdir/meshtal/SSW/MCTAL/PTRAC/WWINP
+│   ├── mcpl-io/       # MCPL particle-list interchange read/write
 │   ├── serpent-io/    # res/dep/det readers
 │   ├── fluka-io/      # usrbin reader, material cards
 │   ├── alara-io/      # ALARA deck/flux/libs/output/photon/schedule glue (no solver)
 │   ├── cccc-io/       # ISOTXS/RTFLUX text-subset parsers + PARTISN writer (no solver)
 │   ├── fispact-io/    # FISPACT-II inventory output parser (output-only)
 │   ├── origen-io/     # scoped ORIGEN TAPE5/6/9 readers
-│   ├── r2s/           # scoped R2S workflow builder (uniform-split photon approximation)
+│   ├── r2s/           # scoped R2S workflow builder (photon tags + spectra)
 │   ├── vr-tools/      # MAGIC weight windows, source sampling
 │   ├── enrichment/    # cascades, SWU
 │   ├── depletion/     # CRAM + chain files
