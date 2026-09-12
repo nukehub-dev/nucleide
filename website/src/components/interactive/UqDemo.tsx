@@ -4,6 +4,7 @@ import type { UqSampleResult } from "../../types/nucleide-wasm";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
+import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 
 // Defaults trace to a synthetic source only (no evaluated data):
 // fixtures/uq/cov_2x2.json (mean [1, 2], variances 0.25/0.16,
@@ -199,6 +200,41 @@ export function UqDemo() {
                   </tbody>
                 </table>
               </div>
+              <Plotly
+                aspect="video"
+                data={
+                  mean.length === 2
+                    ? [
+                        {
+                          type: "scatter",
+                          mode: "markers",
+                          name: "draws",
+                          x: result.samples.map((s) => s[0]),
+                          y: result.samples.map((s) => s[1]),
+                          marker: { size: 3, opacity: 0.5 },
+                        },
+                      ]
+                    : [
+                        {
+                          type: "histogram",
+                          name: "dim 0",
+                          x: result.samples.map((s) => s[0]),
+                        },
+                      ]
+                }
+                layout={{
+                  xaxis: {
+                    title: { text: mean.length === 2 ? "x₀" : "x₀ (histogram)" },
+                    type: "linear",
+                  },
+                  yaxis: {
+                    title: { text: mean.length === 2 ? "x₁" : "count" },
+                    type: "linear",
+                  },
+                  margin: { t: 16, r: 24, b: 48, l: 64 },
+                  legend: { orientation: "h", y: -0.25 },
+                }}
+              />
             </div>
           )}
         </>

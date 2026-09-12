@@ -218,6 +218,7 @@ NUCLIDE PU239 94239 2
     path: "tutorials/interactive/uq",
     button: "Run sampling",
     output: "text=Sample mean",
+    chart: { button: "Run sampling", selector: ".js-plotly-plot" },
   },
 ];
 
