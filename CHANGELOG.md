@@ -13,6 +13,8 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-13
+
 ### Added
 
 - MCTAL mesh tallies (`nucleide-mcnp-io` `mctal` headline): parses mesh-tally bodies (`detector_type <= -1`) — the 4-int

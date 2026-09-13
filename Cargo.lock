@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-alara-io"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "nucleide-nuclei",
  "serde",
@@ -762,7 +762,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-bindings"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "nucleide-alara-io",
  "nucleide-cccc-io",
@@ -788,7 +788,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-cccc-io"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "nucleide-nuclei",
  "serde",
@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-depletion"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "criterion",
  "nucleide-linalg",
@@ -809,7 +809,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-emit"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "nucleide-alara-io",
  "nucleide-cccc-io",
@@ -823,7 +823,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-enrichment"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "criterion",
  "nucleide-nuclei",
@@ -831,7 +831,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-fispact-io"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "nucleide-alara-io",
  "nucleide-nuclei",
@@ -841,14 +841,14 @@ dependencies = [
 
 [[package]]
 name = "nucleide-fluka-io"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "nucleide-nuclei",
 ]
 
 [[package]]
 name = "nucleide-kinetics"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "serde_json",
  "thiserror 2.0.20",
@@ -856,7 +856,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-linalg"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "criterion",
  "faer",
@@ -868,7 +868,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-material"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "nucleide-nuclei",
  "quick-xml",
@@ -879,7 +879,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-mcnp-io"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "binrw",
  "criterion",
@@ -889,7 +889,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-mcpl-io"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "flate2",
  "nucleide-mcnp-io",
@@ -898,14 +898,14 @@ dependencies = [
 
 [[package]]
 name = "nucleide-nuclei"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "criterion",
 ]
 
 [[package]]
 name = "nucleide-origen-io"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "nucleide-nuclei",
  "serde",
@@ -914,7 +914,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-r2s"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "nucleide-alara-io",
  "nucleide-depletion",
@@ -928,11 +928,11 @@ dependencies = [
 
 [[package]]
 name = "nucleide-serpent-io"
-version = "0.8.0"
+version = "0.9.0"
 
 [[package]]
 name = "nucleide-spectroscopy"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "criterion",
  "nucleide-linalg",
@@ -943,7 +943,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-vr-tools"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "criterion",
  "nucleide-mcnp-io",
@@ -951,7 +951,7 @@ dependencies = [
 
 [[package]]
 name = "nucleide-wasm"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "flate2",
  "js-sys",
