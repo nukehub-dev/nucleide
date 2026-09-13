@@ -83,6 +83,17 @@ await copyFile(
   path.join(dst, "usrbin_sample.lis"),
 );
 
+// MCPL/SSW samples consumed by the mcpl-io tutorial (binary staging:
+// golden MCPL output + synthetic SSW reference; gzip sniffed by magic).
+await copyFile(
+  path.join(fixturesRoot, "mcpl", "ssw_conversion", "ssw2mcpl_expected.mcpl"),
+  path.join(dst, "ssw2mcpl_expected.mcpl"),
+);
+await copyFile(
+  path.join(fixturesRoot, "mcpl", "ssw_conversion", "reference.w"),
+  path.join(dst, "reference.w"),
+);
+
 // Theory-page SVG figures (docs/theory/figures/ is the source of truth).
 const figuresSrc = path.join(repoRoot, "docs", "theory", "figures");
 const figuresDst = path.join(here, "..", "public", "theory", "figures");
@@ -97,5 +108,6 @@ console.log(
     `meshtal_sample.txt, xsdir_sample.txt, mctal_sample.mctal, chain_simple.xml, deck_minimal.txt, deck_l3.txt, ` +
     `serpent_res_sample.m, serpent_dep_sample.m, serpent_det_sample.m, ` +
     `alara_output_sample.out, fispact_inventory_sample.fis, usrbin_sample.lis, ` +
+    `ssw2mcpl_expected.mcpl, reference.w, ` +
     `${figures.length} theory figures`,
 );

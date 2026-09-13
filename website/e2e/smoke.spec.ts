@@ -63,6 +63,9 @@ const INTERACTIVE_PAGES: InteractivePage[] = [
         fill: { label: "Formula", text: "U" },
         output: "text=Dose per gram",
       },
+      { button: "Separate", output: "text=product U235" },
+      { button: "Blend", output: "text=blended nuclides" },
+      { button: "Detect shift", output: "text=CUSUM alarmed" },
     ],
   },
   {
@@ -159,6 +162,9 @@ end`,
       { button: "Parse", output: "text=total activity:" },
       { button: "ORIGEN TAPE9" },
       { button: "Parse", output: "text=Entries:" },
+      { button: "ORIGEN TAPE6" },
+      { button: "Parse", output: "text=total activity:" },
+      { button: "Compare steps", output: "text=Per-step activities" },
       { button: "R2S workflow" },
       { button: "Parse", output: "text=Top schedule:" },
       { button: "R2S snapshot" },
@@ -175,6 +181,17 @@ NUCLIDE U235 92235 2
 1.1 2.2
 NUCLIDE PU239 94239 2
 4.4 5.5`,
+    extraSteps: [{ button: "Parse RTFLUX", output: "text=Flux kind:" }],
+  },
+  {
+    path: "tutorials/interactive/mcpl-io",
+    button: "Load golden MCPL",
+    output: "text=particles:",
+    extraSteps: [
+      { button: "Write MCPL", output: "text=Wrote MCPL bytes:" },
+      { button: "Convert SSW→MCPL", output: "text=Converted MCPL bytes:" },
+      { button: "Convert MCPL→SSW", output: "text=SSW bytes:" },
+    ],
   },
   {
     path: "tutorials/interactive/deck-editor",
@@ -201,6 +218,7 @@ NUCLIDE PU239 94239 2
     extraSteps: [
       { button: "Six-group preset" },
       { button: "Run transient", output: "text=Final n" },
+      { button: "Inhour analysis", output: "text=stable period" },
     ],
   },
   {
@@ -212,6 +230,10 @@ NUCLIDE PU239 94239 2
     extraSteps: [
       { button: "Synthetic peak" },
       { button: "Smooth spectrum", output: "text=Net counts" },
+      { button: "Parse TSV", output: "text=TSV rows:" },
+      { button: "Calibrate", output: "text=eff(1 MeV)" },
+      { button: "Parse dollar SPE", output: "text=SYNTH" },
+      { button: "Parse plain SPE", output: "text=SYNTH-PLAIN" },
     ],
   },
   {
@@ -231,7 +253,7 @@ for (const { path, button, output, cell, chart, paste, extraSteps } of INTERACTI
     if (paste) {
       await page.locator("textarea").first().fill(paste);
     }
-    await page.getByRole("button", { name: button }).click();
+    await page.getByRole("button", { name: button, exact: true }).click();
 
     await assertNoWasmError(page);
     await expect(page.locator(output).first()).toBeVisible();
@@ -250,10 +272,10 @@ for (const { path, button, output, cell, chart, paste, extraSteps } of INTERACTI
     if (chart) {
       if (chart.actions) {
         for (const action of chart.actions) {
-          await page.getByRole("button", { name: action }).click();
+          await page.getByRole("button", { name: action, exact: true }).click();
         }
       } else if (chart.button) {
-        await page.getByRole("button", { name: chart.button }).click();
+        await page.getByRole("button", { name: chart.button, exact: true }).click();
       }
       await assertNoWasmError(page);
       await expect(page.locator(chart.selector).first()).toBeVisible({ timeout: 10_000 });

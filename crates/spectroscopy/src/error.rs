@@ -50,6 +50,44 @@ pub enum Error {
     /// No efficiency coefficients supplied.
     #[error("spectroscopy: no efficiency coefficients supplied")]
     EmptyCoefficients,
+    /// No efficiency-fit points supplied (E7-fit).
+    #[error("spectroscopy: no efficiency-fit points supplied")]
+    EmptyFitInput,
+    /// Efficiency-fit vectors have mismatched lengths (E7-fit).
+    #[error(
+        "spectroscopy: efficiency-fit length mismatch: energies {energies}, effs {effs}, weights {weights}"
+    )]
+    MismatchedFitLengths {
+        /// Energy count.
+        energies: usize,
+        /// Efficiency count.
+        effs: usize,
+        /// Weight count.
+        weights: usize,
+    },
+    /// An efficiency-fit energy is not positive (E7-fit log basis): `{0}`.
+    #[error("spectroscopy: efficiency-fit energy {0} is not positive")]
+    NonPositiveEnergy(f64),
+    /// An efficiency-fit efficiency is not positive (E7-fit log target): `{0}`.
+    #[error("spectroscopy: efficiency-fit efficiency {0} is not positive")]
+    NonPositiveEfficiency(f64),
+    /// An efficiency-fit value is not finite (E7-fit): `{0}`.
+    #[error("spectroscopy: efficiency-fit value {0} is not finite")]
+    NonFiniteFitValue(&'static str),
+    /// An efficiency-fit weight is negative (E7-fit): `{0}`.
+    #[error("spectroscopy: efficiency-fit weight {0} is negative")]
+    NegativeWeight(f64),
+    /// Fewer efficiency-fit points than coefficients (E7-fit).
+    #[error("spectroscopy: efficiency-fit needs at least {coeffs} points, got {points}")]
+    UnderdeterminedFit {
+        /// Point count.
+        points: usize,
+        /// Coefficient count.
+        coeffs: usize,
+    },
+    /// The least-squares backend rejected the efficiency fit (E7-fit): `{0}`.
+    #[error("spectroscopy: efficiency fit failed: {0}")]
+    LstsqFit(String),
     /// Energy calibration needs 3 fit coefficients (got `{0}`).
     #[error("spectroscopy: energy calibration needs 3 fit coefficients, got {0}")]
     MissingCalibration(usize),

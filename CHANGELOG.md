@@ -13,6 +13,146 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Added
+
+- MCTAL mesh tallies (`nucleide-mcnp-io` `mctal` headline): parses mesh-tally bodies (`detector_type <= -1`) — the 4-int
+  mesh `f` line (`unknown ni nj nk`, bare-`f` or `f<tally>` spellings),
+  `(ni+1)+(nj+1)+(nk+1)` `cora`/`corb`/`corc` bounds, the shared
+  `d`/`u`/`s`/`m`/`c`/`e`/`t` cards, and `vals` pairs over the
+  `ni*nj*nk` mesh cells (writer-loop order, `i` fastest). Synthetic
+  `fixtures/mcnp/mctal/synthetic_mesh.mctal` oracle with closed-form
+  val/err pairing, Rust tests, and Python `Mctal.mesh_tallies` /
+  `mesh_tally_vals_array` views. Radiograph (`detector_type >= 3`),
+  point-detector (tally names ending in 5), and perturbation bodies stay
+  named-open errors.
+- MCTAL S-tails: optional `tfc` blocks after standard
+  tallies (`jtf` line plus 3–4-float data rows, exposed as
+  `tallies[].tfc`), total/cumulative card variants (`ut`/`uc`/…, stored
+  verbatim in `tallies[]` card `variant`), and third-token flags on
+  `c`/`e`/`t` cards (stored verbatim as card `flag`), with synthetic
+  `fixtures/mcnp/mctal/synthetic_tfc_variants.mctal` coverage. WWINP
+  cylindrical (`nr=16`), Serpent `UnsupportedExpr`, SDEF versions beyond
+  5/6, and SPE gating stay as-is (loud errors or unchanged surfaces —
+  no second field-order source on disk).
+- `validation/parsers_vs_refs.py`: MCTAL section comparing header
+  scalars plus per-cycle keff/lifetime series against PyNE `Mctal` on
+  the kcode-only fixtures; body-bearing files (standard, mesh,
+  tfc/variant) are loud SKIPs — PyNE skips tally bodies without
+   advancing past them, so no oracle exists there.
+- Interactive completion bundle (WASM thin facades only —
+  no new math): MCPL `readMcpl` / `writeMcpl` / `ssw2mcpl` / `mcpl2ssw`
+  (bytes-based, gzip magic-sniffed, 200-row cap) with a file-upload
+  `mcpl-io` tutorial staging the golden `ssw2mcpl_expected.mcpl` +
+  `reference.w` pair; material `materialSeparate` / `materialBlend` /
+  `cusumDetect`; spectroscopy `parseLinesTsv` / `energyBins` /
+  `detectorEfficiency` / `parseDollarSpe` / `parsePlainSpe`; kinetics
+  `inhourRho` / `stablePeriod` / `promptJump`; deterministic `parseRtflux`
+  (kind-switch mirrors Python); ORIGEN per-step comparison over
+  `parseOrigenTape6` plus chart-only ISOTXS totals, TAPE5 flux-vs-step,
+  and TAPE6 per-nuclide views. Named-open and recorded in AD-13: R2S
+  `VoxelTags` port (rayon feature unification), PARTISN writer, RTFLUX
+  profile / ORIGEN per-step full views, multi-snapshot TAPE6 grammar.
+
+- Shared dense-real weighted least-squares kernel (`nucleide-linalg`
+  `lstsq` module, zero dependency change — faer 0.20 column-pivoted QR
+  `solve_lstsq` route): `weighted_lstsq(X, y, w)` over caller
+  `Vec<Vec<f64>>` inputs (non-negative caller weights, `sqrt(w)` row
+  scaling, named errors for shape/finiteness/weight/underdetermined
+  inputs) with closed-form synthetic gates. One module, two consumers —
+  the UQ-lite sampler keeps its Cholesky/eigen factor path.
+- Efficiency-coefficient fit (`nucleide-spectroscopy`, E7-fit extension,
+  not a new equation number): `fit_efficiency` solves the log-space linear
+  least squares (`y = ln eff`, `X[i][j] = (ln E_i)^j` for `fit == 1` or
+  `(1/E_i)^j` for `fit == 2`, caller-supplied weights) through the shared
+  kernel, returning `order + 1` coefficients for `detector_efficiency`.
+  Peak search/fit and FWHM stay out; every other coefficient vector stays
+  a caller input. Synthetic `fixtures/spectroscopy/efficiency_fit.json`
+  oracle (recovery + round-trip at 1e-9).
+- Python API: `nucleide.spectroscopy.fit_efficiency` thin wrapper over the
+  new fit.
+- `validation/spectroscopy_vs_pyne.py`: E7-fit synthetic recovery +
+  round-trip gates (always run) plus a loud tier-2 SKIP — the upstream
+  module ships no efficiency-fitting routine, so there is no container
+   cross-check.
+- Python facade bundle over existing Rust (thin wrappers
+  only — no new math or data): `nucleide.nuclei` gains `rxname_label` /
+  `rxname_doc` / `rxname_reaction` / `rxname_id_from_nucdelta` /
+  `rxname_child` / `rxname_parent`, `particle_is_valid` /
+  `particle_is_valid_pdc` / `particle_is_hydrogen` /
+  `particle_is_heavy_ion`, and `dose_f1` / `dose_lung_model`;
+  `nucleide.material` gains `mix_by_mass` / `mix_by_volume` /
+  `specific_activity` / `materials_doc_to_xml` / `expand_elements` /
+  `collapse_elements` (bare element symbols map to natural-element
+  placeholders); `nucleide.fluka` gains `fluka_material_str` /
+  `fluka_compound_str` / `fluka_builtin_set`; `nucleide.alara` gains
+  `alara_validate_deck` / `alara_check_block` / `alara_flux_total` /
+  `alara_flux_len` / `alara_output_totals` /
+  `alara_output_total_activity` / `alara_photon_total_strength` /
+  `alara_schedule_total_time`; `nucleide.origen` gains
+  `origen_tape6_find` / `origen_tape6_total_activity` /
+  `origen_tape9_find`; `nucleide.cccc` gains `cccc_rtflux_npoints` /
+  `cccc_rtflux_point` / `cccc_rtflux_total` / `cccc_isotxs_find` /
+  `cccc_isotxs_len`; `nucleide.fispact` gains `fispact_is_output`;
+  `nucleide.enrichment` gains the six assay mass ratios
+  (`prod_per_feed`, `tail_per_feed`, `tail_per_prod`, `feed_per_prod`,
+  `feed_per_tail`, `prod_per_tail`) plus `alphastar_i`;
+  `nucleide.kinetics` gains `from_ifp`; `nucleide.vr` gains `magic_with`
+  plus `MeshSourceSampler` `mode` / `num_voxels` / `table_len`
+  accessors; `nucleide.mcnp` is unchanged (dict surface complete);
+  `nucleide.mcpl` gains `mcpl_statsum_validate` /
+  `mcpl_statsum_comment`. `depletion`/`serpent` stay internals by design
+  (no wrappers). Covered by `tests/test_facade_bundle.py` on
+  synthetic inputs and committed fixtures.
+- Python tutorials: new `docs/tutorials/python/
+  vr-magic.md` (MAGIC + alias-table sampling) and
+  `docs/tutorials/python/rxname.md` (registry, graph ops, particle
+  helpers), a standalone-SWU section in `enrichment-cascade.md`, and
+  worked mixing/specific-activity/`MaterialsDoc`/element-expansion
+  sections in `build-materials.md` (replacing the "not yet exposed"
+  note); all registered in `docs/tutorials/python/index.md` and
+   `docs/README.md`.
+- UQ-lite log-normal sampling (log-normal scope only; LHS stays out):
+  `nucleide-linalg` `sample` gains a `LogNormal` perturbation convention
+  (`parse("lognormal"/"log_normal"/"log-normal")`,
+  `apply` as `nominal * exp(delta)`) plus `sample_lognormal` (shared
+  Cholesky/eigen-clip factor path and ChaCha RNG as `sample_mvn`, then a
+  `y = exp(x)` post-transform with log-space mean/covariance semantics)
+  and the closed-form (U6) `lognormal_mean` / `lognormal_cov` helpers.
+  Synthetic `fixtures/uq/lognormal_2x2.json` oracle with pinned seed and
+  separate U5 validation gate (`validation/uq_lite_vs_sandy.py`: `ln(y)`
+  MVN recovery plus closed-form mean; existing k-SE gates untouched).
+  Python API: `nucleide.uq.sample_lognormal` / `lognormal_mean` /
+  `lognormal_cov` thin wrappers (`perturb_energies(..., "lognormal")`
+  now parses).
+- SSW↔MCPL fidelity tail (`nucleide-mcpl-io` `ssw`; bitarray words stay
+  out — no `isurf`/`rawtype` decode, no type-word reverse-engineering
+  without a licensed type-table source; synthetic fixtures only, no
+  transport semantics):
+  `mcpl2ssw` gains `force_cs_to_one` (default `false` keeps the true cosine;
+  opt-in forces the stored `cs` slot to `1.0` with `u`/`v` verbatim,
+  removing the stored-cosine delta vs the 2.2.8 binary), `niss_override` (`None` =
+  reference passthrough, the upstream-2.2.8 spelling verified over the
+  synthetic pair; `Some(v >= 0)` stamps the tally-convention value, negative
+  is `NissOutOfRange`), and `allow_polarisation` (default rejects non-zero
+  input vectors with `PolarisationPresent`; opt-in drops them since SSW has
+  no slot); `ssw2mcpl` gains opt-in `polarisation` (uniform vector +
+  `has_polarisation`, non-finite is `InvalidPolarisation`), `universal_pdg`
+  (single-kind inputs collapse file-wide, mixed is `MixedPdgForUniversal`),
+  and `universal_weight` (equal weights collapse file-wide, mixed is
+  `MixedWeightForUniversal`); the SSW-PDG table widens beyond neutron/gamma
+  to electron 11 / positron −11 / proton 2212 with identical verbatim
+  geometry (anything else stays loud `UnsupportedPdg`, no particle framework
+  beyond the table). Each leg has named errors, synthetic both-direction
+  Rust tests, Python facade options (`ssw2mcpl` `polarisation` /
+  `universal_pdg` / `universal_weight`; `mcpl2ssw` `force_cs_to_one` /
+  `niss` / `allow_polarisation`; five accepted kind spellings), committed
+  `fixtures/mcpl/ssw_conversion/` goldens (extended, polarised, universal),
+  and `validation/mcpl_vs_refs.py` gates S5–S8 in the same `mcpl` report
+  (no `SECTION_ORDER` change). WASM/demo untouched (no cheap surface).
+- Python API: `nucleide.mcpl.mcpl2ssw` keyword args `force_cs_to_one` /
+  `niss` / `allow_polarisation` and `ssw2mcpl` options `polarisation` /
+  `universal_pdg` / `universal_weight` over the widened kind table.
+
 ## [0.8.0] - 2026-09-13
 
 ### Added
@@ -54,7 +194,7 @@ workspace crates from tags.
   (`perturb_branches` preserving the `1-BR(SF)` deficit by renormalisation,
   `perturb_energies`, finiteness-checked `passthrough`). Fission-yield
   perturbation stays a named-open hook (`FissionYieldsOpen`, waits on
-  cycle 01 FY tapes); ERRORR/NJOY, MF32/40, transport coupling, and
+  ENDF fission-yield tapes); ERRORR/NJOY, MF32/40, transport coupling, and
   vendored covariance stores stay out. Closed-form covariance-recovery
   gates on synthetic blocks only (pinned seeds, k-SE statistical
   tolerances, `fixtures/uq/`).

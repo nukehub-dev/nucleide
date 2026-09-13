@@ -7,7 +7,11 @@ Two tiers:
    mean/covariance within k standard errors at the pinned seeds — the same
    statistical derivation as the Rust tests, never round-number guesses),
    U3 decay-branch deficit preservation + seed reproducibility, U4
-   eigen-clip fallback on a rank-deficient block. No evaluated data: every
+   eigen-clip fallback on a rank-deficient block, U5 log-normal moment
+   recovery on `fixtures/uq/lognormal_2x2.json` (separate gate: the MVN
+   k-SE gates are not valid after the exp transform, so U5 checks ln(y)
+   against the log-space block plus the sample mean of y against the
+   closed-form E[y_i]). No evaluated data: every
    input is a synthetic round value.
 2. SANDY cross-check: the same nucleide draws wrapped in
    ``sandy.samples.Samples`` (rows = variables, columns = realizations) with
@@ -66,8 +70,42 @@ def _recovery_gate(fx: dict, label: str) -> tuple[list[str], str]:
     return [label, f"<= {k} SE", f"{worst:.3f} SE", _check(ok, label)], note
 
 
+def _lognormal_gate(fx: dict, label: str) -> tuple[list[str], str]:
+    """Separate log-normal gate (the MVN k-SE gates are not valid after exp).
+
+    L1 checks ln(y) recovers the log-space block within the MVN k-SE gate
+    (exact); L2 checks the sample mean of y against the closed-form
+    E[y_i] = exp(mu_i + C_ii/2) within k standard errors with the
+    closed-form Var(y_i). Existing U1/U2 gates are untouched.
+    """
+    mean_log, cov, n, k, seed = fx["mean_log"], fx["cov"], fx["n"], fx["k"], fx["seed"]
+    out = uq.sample_lognormal(mean_log, cov, n, seed)
+    dim = len(mean_log)
+    ln = [[math.log(v) for v in s] for s in out["samples"]]
+    sm = uq.sample_mean(ln)
+    sc = uq.sample_cov(ln)
+    worst = 0.0
+    for i in range(dim):
+        worst = max(worst, abs(sm[i] - mean_log[i]) / (math.sqrt(cov[i][i] / n) or 1.0))
+        for j in range(dim):
+            se = math.sqrt((cov[i][i] * cov[j][j] + cov[i][j] ** 2) / (n - 1))
+            worst = max(worst, abs(sc[i][j] - cov[i][j]) / (se or 1.0))
+    expected = uq.lognormal_mean(mean_log, cov)
+    var_y = uq.lognormal_cov(mean_log, cov)
+    sm_y = uq.sample_mean(out["samples"])
+    worst_ln = 0.0
+    for i in range(dim):
+        worst_ln = max(worst_ln, abs(sm_y[i] - expected[i]) / (math.sqrt(var_y[i][i] / n) or 1.0))
+    ok = out["method"] == "cholesky" and worst <= k and worst_ln <= k
+    note = (
+        f"{label}: method {out['method']}, ln-block worst {worst:.3f} SE, "
+        f"closed-form mean worst {worst_ln:.3f} SE (k = {k})."
+    )
+    return [label, f"<= {k} SE", f"{worst:.3f}/{worst_ln:.3f} SE", _check(ok, label)], note
+
+
 def tier1() -> tuple[list[list[str]], list[str]]:
-    """Synthetic gates U1-U4 (always run)."""
+    """Synthetic gates U1-U5 (always run)."""
     rows: list[list[str]] = []
     notes: list[str] = []
 
@@ -99,6 +137,10 @@ def tier1() -> tuple[list[list[str]], list[str]]:
     ok = out["method"] == "eigen_clip"
     notes.append(f"U4 rank-1 block factorisation path: {out['method']}.")
     rows.append(["U4 eigen-clip path", "eigen_clip", out["method"], _check(ok, "U4 path")])
+
+    row, note = _lognormal_gate(_load("lognormal_2x2.json"), "U5 lognormal recovery")
+    rows.append(row)
+    notes.append(note)
     return rows, notes
 
 

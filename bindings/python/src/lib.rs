@@ -725,6 +725,20 @@ fn read_wwinp(path: &str) -> PyResult<PyWwinp> {
 }
 
 /// Parsed MCTAL kcode data.
+/// One MCTAL bin card as a plain dict (`count`, `values`, plus the
+/// verbatim `variant`/`flag` spellings, each `None` when absent).
+fn mctal_card_dict<'py>(
+    py: Python<'py>,
+    card: &nucleide_mcnp_io::mctal::BinCard,
+) -> PyResult<pyo3::Bound<'py, pyo3::types::PyDict>> {
+    let c = pyo3::types::PyDict::new(py);
+    c.set_item("count", card.count)?;
+    c.set_item("values", card.values.clone())?;
+    c.set_item("variant", card.variant.map(|v| v.to_string()))?;
+    c.set_item("flag", card.flag)?;
+    Ok(c)
+}
+
 #[pyclass(name = "Mctal")]
 struct PyMctal {
     inner: nucleide_mcnp_io::mctal::Mctal,
@@ -890,9 +904,12 @@ impl PyMctal {
     /// Parsed standard-tally bodies in file order (empty for legacy
     /// kcode-only files). Each entry is a dict with `number`,
     /// `particle_type`, `detector_type` (or None), `particle_list`,
-    /// `comment` (FC lines), one `{count, values}` dict per bin card
-    /// (`f`, `d`, `u`, `s`, `m`, `c`, `e`, `t`), `vals` (list of
-    /// `(value, rel_error)` pairs in file order), and `total` (sum of values).
+    /// `comment` (FC lines), one `{count, values, variant, flag}` dict per
+    /// bin card (`f`, `d`, `u`, `s`, `m`, `c`, `e`, `t`; `variant`/`flag`
+    /// are the stored-verbatim total/cumulative spelling and third-token
+    /// flag, each `None` when absent), `vals` (list of `(value, rel_error)`
+    /// pairs in file order), `tfc` (the tally-fluctuation-chart
+    /// `{jtf, rows}` dict, or `None`), and `total` (sum of values).
     #[getter]
     fn tallies(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
         use pyo3::types::PyDict;
@@ -914,10 +931,68 @@ impl PyMctal {
                 ("e", &t.e),
                 ("t", &t.t),
             ] {
-                let c = PyDict::new(py);
-                c.set_item("count", card.count)?;
-                c.set_item("values", card.values.clone())?;
-                d.set_item(key, c)?;
+                d.set_item(key, mctal_card_dict(py, card)?)?;
+            }
+            let vals: Vec<(f64, f64)> = t.vals.clone();
+            d.set_item("vals", vals)?;
+            let tfc_obj = if let Some(tfc) = &t.tfc {
+                let td = PyDict::new(py);
+                td.set_item("jtf", tfc.jtf.clone())?;
+                let mut rows = Vec::with_capacity(tfc.rows.len());
+                for r in &tfc.rows {
+                    let rd = PyDict::new(py);
+                    rd.set_item("nps", r.nps)?;
+                    rd.set_item("value", r.value)?;
+                    rd.set_item("rel_err", r.rel_err)?;
+                    rd.set_item("fom", r.fom)?;
+                    rows.push(rd.into_any().unbind());
+                }
+                td.set_item("rows", rows)?;
+                td.into_any().unbind()
+            } else {
+                py.None()
+            };
+            d.set_item("tfc", tfc_obj)?;
+            d.set_item("total", t.total_val())?;
+            out.push(d.into_any().unbind());
+        }
+        Ok(out)
+    }
+    /// Parsed mesh-tally bodies (`detector_type <= -1`) in file order.
+    /// Each entry mirrors a `tallies` dict plus `mesh_unknown`, the
+    /// `ni`/`nj`/`nk` mesh counts, `dims`, `num_cells`, and the
+    /// `cora`/`corb`/`corc` bound vectors (`ni+1`/`nj+1`/`nk+1` values).
+    /// Mesh tallies carry no `tfc` block.
+    #[getter]
+    fn mesh_tallies(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+        use pyo3::types::PyDict;
+        let mut out = Vec::with_capacity(self.inner.mesh_tallies.len());
+        for t in &self.inner.mesh_tallies {
+            let d = PyDict::new(py);
+            d.set_item("number", t.number)?;
+            d.set_item("particle_type", t.particle_type)?;
+            d.set_item("detector_type", t.detector_type)?;
+            d.set_item("particle_list", t.particle_list.clone())?;
+            d.set_item("comment", t.comment.clone())?;
+            d.set_item("mesh_unknown", t.mesh_unknown)?;
+            d.set_item("ni", t.ni)?;
+            d.set_item("nj", t.nj)?;
+            d.set_item("nk", t.nk)?;
+            d.set_item("dims", t.dims().to_vec())?;
+            d.set_item("num_cells", t.num_cells())?;
+            d.set_item("cora", t.cora.clone())?;
+            d.set_item("corb", t.corb.clone())?;
+            d.set_item("corc", t.corc.clone())?;
+            for (key, card) in [
+                ("d", &t.d),
+                ("u", &t.u),
+                ("s", &t.s),
+                ("m", &t.m),
+                ("c", &t.c),
+                ("e", &t.e),
+                ("t", &t.t),
+            ] {
+                d.set_item(key, mctal_card_dict(py, card)?)?;
             }
             let vals: Vec<(f64, f64)> = t.vals.clone();
             d.set_item("vals", vals)?;
@@ -958,9 +1033,40 @@ impl PyMctal {
                 .map_err(|e| e.to_string()),
         )
     }
+    /// Mesh tally `vals` as a 2-D float64 NumPy array.
+    ///
+    /// Same `(n_pairs, 2)` `(value, rel_error)` layout as
+    /// `tally_vals_array`, over the `mesh_tallies` bodies in mesh-cell
+    /// order (`i` fastest). Unknown tally numbers raise `ValueError`.
+    fn mesh_tally_vals_array<'py>(
+        &self,
+        py: Python<'py>,
+        number: u32,
+    ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+        let tally = self
+            .inner
+            .mesh_tallies
+            .iter()
+            .find(|t| t.number == number)
+            .ok_or_else(|| {
+                PyValueError::new_err(format!("mctal has no parsed mesh body for tally {number}"))
+            })?;
+        let mut flat = Vec::with_capacity(tally.vals.len() * 2);
+        for (v, e) in &tally.vals {
+            flat.push(*v);
+            flat.push(*e);
+        }
+        let n = tally.vals.len();
+        m_err(
+            flat.into_pyarray(py)
+                .reshape((n, 2))
+                .map_err(|e| e.to_string()),
+        )
+    }
 }
 
-/// Parse an MCNP MCTAL file (headers, standard tally bodies, and kcode).
+/// Parse an MCNP MCTAL file (headers, standard + mesh tally bodies with
+/// optional `tfc` blocks, and kcode).
 #[pyfunction]
 fn read_mctal(path: &str) -> PyResult<PyMctal> {
     m_err(nucleide_mcnp_io::mctal::Mctal::from_file(path).map(|inner| PyMctal { inner }))
@@ -1405,12 +1511,14 @@ fn write_mcpl(
 }
 
 /// Convert an SSW surface-source file to an MCPL particle-list file
-/// (neutron/gamma-only v1; see `nucleide-mcpl-io` `ssw`).
+/// (SSW-PDG table; see `nucleide-mcpl-io` `ssw`).
 ///
 /// The SSW format stores no per-track surface id or particle kind, so every
 /// track needs an explicit caller parameter: `surfs[i]`/`kinds[i]` pair with
-/// track `i` (`kinds` holds `"neutron"`/`"gamma"` only). `options` (dict or
-/// None) holds `double_prec`/`surf_to_userflags`/`gzip` (bool),
+/// track `i` (`kinds` holds `"neutron"`/`"gamma"`/`"electron"`/`"positron"`/
+/// `"proton"`). `options` (dict or None) holds
+/// `double_prec`/`surf_to_userflags`/`gzip`/`universal_pdg`/
+/// `universal_weight` (bool), `polarisation` (3-list or None),
 /// `srcname` (str), `comments` (list of str), and `deck_blob`
 /// (`(key, bytes)` pair or None); absent keys take the crate defaults.
 /// Output is gzip-compressed when `options["gzip"]` is set or `mcpl_path`
@@ -1450,7 +1558,8 @@ fn ssw2mcpl(
     {
         let kind = SswParticleKind::parse(kind).ok_or_else(|| {
             PyValueError::new_err(format!(
-                "track {i} kind `{kind}` unknown (expected \"neutron\" or \"gamma\")"
+                "track {i} kind `{kind}` unknown (expected one of \
+                 \"neutron\", \"gamma\", \"electron\", \"positron\", \"proton\")"
             ))
         })?;
         tracks.push(SswTrack {
@@ -1503,6 +1612,27 @@ fn parse_ssw2mcpl_options(
     if let Some(v) = flag("gzip")? {
         opts.gzip = v;
     }
+    if let Some(v) = flag("universal_pdg")? {
+        opts.universal_pdg = v;
+    }
+    if let Some(v) = flag("universal_weight")? {
+        opts.universal_weight = v;
+    }
+    if let Ok(v) = d.get_item("polarisation") {
+        if v.is_none() {
+            opts.polarisation = None;
+        } else {
+            let vec: Vec<f64> = v.extract().map_err(|_| {
+                PyValueError::new_err("options `polarisation` must be a 3-list or None")
+            })?;
+            if vec.len() != 3 {
+                return Err(PyValueError::new_err(
+                    "options `polarisation` must have exactly 3 entries",
+                ));
+            }
+            opts.polarisation = Some([vec[0], vec[1], vec[2]]);
+        }
+    }
     if let Ok(v) = d.get_item("srcname") {
         opts.srcname = v
             .extract()
@@ -1525,21 +1655,28 @@ fn parse_ssw2mcpl_options(
 }
 
 /// Convert an MCPL particle-list file back to an SSW surface-source file
-/// (neutron/gamma-only v1; see `nucleide-mcpl-io` `ssw`).
+/// (SSW-PDG table; see `nucleide-mcpl-io` `ssw`).
 ///
 /// The output header clones `reference_ssw_path` (code/version/deck
-/// passthrough) with `nrss` patched to the particle count. Surface ids come
-/// from each particle's `userflags`; pass `surface` to stamp one id on every
-/// track instead (either way `[1, 999999]` is enforced). PDG codes outside
-/// 2112/22 are errors. Returns the track count. Thin wrapper over
-/// `nucleide-mcpl-io`.
+/// passthrough) with `nrss`/`np1`/`orignp1` patched to the particle count and
+/// `niss` passed through unless `niss` stamps an explicit value. Surface ids
+/// come from each particle's `userflags`; pass `surface` to stamp one id on
+/// every track instead (either way `[1, 999999]` is enforced). PDG codes
+/// outside the SSW-PDG table (2112/22/11/-11/2212) are errors. Pass
+/// `force_cs_to_one=True` to reproduce the upstream 2.2.8 `cs = 1.0`
+/// spelling (default keeps the true cosine); pass `allow_polarisation=True`
+/// to drop non-zero input polarisation (default rejects it). Returns the
+/// track count. Thin wrapper over `nucleide-mcpl-io`.
 #[pyfunction]
-#[pyo3(signature = (mcpl_path, reference_ssw_path, ssw_out_path, surface=None))]
+#[pyo3(signature = (mcpl_path, reference_ssw_path, ssw_out_path, surface=None, force_cs_to_one=false, niss=None, allow_polarisation=false))]
 fn mcpl2ssw(
     mcpl_path: &str,
     reference_ssw_path: &str,
     ssw_out_path: &str,
     surface: Option<u32>,
+    force_cs_to_one: bool,
+    niss: Option<i64>,
+    allow_polarisation: bool,
 ) -> PyResult<u64> {
     use nucleide_mcnp_io::surfsrc::SurfSrc;
     use nucleide_mcpl_io::ssw::Mcpl2SswOptions;
@@ -1553,7 +1690,12 @@ fn mcpl2ssw(
     let (header, tracks) = nucleide_mcpl_io::ssw::mcpl2ssw(
         &particles,
         &reference.header,
-        &Mcpl2SswOptions { surface },
+        &Mcpl2SswOptions {
+            surface,
+            force_cs_to_one,
+            niss_override: niss,
+            allow_polarisation,
+        },
     )
     .map_err(|e| PyValueError::new_err(e.to_string()))?;
     nucleide_mcnp_io::surfsrc::write_to_path(ssw_out_path, &header, &tracks)
@@ -2043,6 +2185,22 @@ impl PyMeshSourceSampler {
         d.insert("k".into(), s.k as f64);
         d.insert("weight".into(), s.weight);
         d
+    }
+    /// The bias mode this sampler was constructed with.
+    fn mode(&self) -> &'static str {
+        match self.inner.mode() {
+            nucleide_vr_tools::sampling::Mode::Analog => "analog",
+            nucleide_vr_tools::sampling::Mode::Uniform => "uniform",
+            nucleide_vr_tools::sampling::Mode::User => "user",
+        }
+    }
+    /// Number of voxels in the sampling domain.
+    fn num_voxels(&self) -> usize {
+        self.inner.num_voxels()
+    }
+    /// Length of the underlying alias table (one entry per voxel).
+    fn table_len(&self) -> usize {
+        self.inner.table().len()
     }
 }
 
@@ -5699,6 +5857,24 @@ fn spectroscopy_detector_efficiency(
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+/// Efficiency-coefficient fit (E7-fit): log-space weighted least squares over
+/// caller `(energies_mev, effs, weights)` points with `order + 1` coefficients
+/// under the `eff_fit` 1 (`(ln E)^j`) or 2 (`(1/E)^j`) basis. Thin wrapper
+/// over `nucleide-spectroscopy` `fit_efficiency` (which solves through the
+/// workspace `nucleide-linalg` least-squares kernel).
+#[pyfunction]
+#[pyo3(signature = (energies, effs, weights, order, eff_fit=1))]
+fn spectroscopy_fit_efficiency(
+    energies: Vec<f64>,
+    effs: Vec<f64>,
+    weights: Vec<f64>,
+    order: usize,
+    eff_fit: i64,
+) -> PyResult<Vec<f64>> {
+    nucleide_spectroscopy::fit_efficiency(&energies, &effs, &weights, order, eff_fit)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
 /// Fetch one caller-supplied atomic constant or raise a `ValueError`.
 fn atomic_key(atomic: &BTreeMap<String, f64>, key: &str) -> PyResult<f64> {
     atomic
@@ -5959,13 +6135,64 @@ fn uq_perturb_branches(base: Vec<f64>, rel: Vec<f64>) -> PyResult<Vec<f64>> {
     nucleide_linalg::decay::perturb_branches(&base, &rel).map_err(uq_decay_err)
 }
 
-/// Perturb decay energies under `convention` (`"relative"`/`"absolute"`);
-/// negative results clamp to zero.
+/// Perturb decay energies under `convention`
+/// (`"relative"`/`"absolute"`/`"lognormal"`); negative results clamp to zero
+/// (a no-op for lognormal draws, which stay positive for non-negative bases).
 #[pyfunction]
 fn uq_perturb_energies(base: Vec<f64>, delta: Vec<f64>, convention: &str) -> PyResult<Vec<f64>> {
     let conv = nucleide_linalg::sample::PerturbConvention::parse(convention)
         .map_err(PyValueError::new_err)?;
     nucleide_linalg::decay::perturb_energies(&base, &delta, conv).map_err(uq_decay_err)
+}
+
+/// Seeded log-normal draws: `x ~ N(mean_log, cov_log)` via the shared MVN
+/// factor path and RNG, then `y = exp(x)` elementwise.
+///
+/// Returns the same dict shape as [`uq_sample_mvn`]; `mean_log`/`cov_log`
+/// are log-space MVN parameters (never the moments of `y`). Thin wrapper
+/// over `nucleide-linalg` `sample`.
+#[pyfunction]
+fn uq_sample_lognormal(
+    py: Python<'_>,
+    mean_log: Vec<f64>,
+    cov: Vec<Vec<f64>>,
+    n: usize,
+    seed: u64,
+) -> PyResult<Py<PyAny>> {
+    use pyo3::types::PyDict;
+    let set = nucleide_linalg::sample::sample_lognormal(&mean_log, &cov, n, seed)
+        .map_err(uq_sample_err)?;
+    let d = PyDict::new(py);
+    d.set_item("samples", set.samples)?;
+    d.set_item("method", set.method.name())?;
+    match &set.method {
+        nucleide_linalg::sample::FactorMethod::Cholesky => {
+            d.set_item("min_eigen", py.None())?;
+            d.set_item("max_eigen", py.None())?;
+        }
+        nucleide_linalg::sample::FactorMethod::EigenClip {
+            min_eigen,
+            max_eigen,
+        } => {
+            d.set_item("min_eigen", *min_eigen)?;
+            d.set_item("max_eigen", *max_eigen)?;
+        }
+    }
+    Ok(d.into_any().unbind())
+}
+
+/// Closed-form log-normal mean `E[y_i] = exp(mu_i + C_ii/2)` over the
+/// log-space `(mean_log, cov)` parameters.
+#[pyfunction]
+fn uq_lognormal_mean(mean_log: Vec<f64>, cov: Vec<Vec<f64>>) -> PyResult<Vec<f64>> {
+    nucleide_linalg::sample::lognormal_mean(&mean_log, &cov).map_err(uq_sample_err)
+}
+
+/// Closed-form log-normal covariance
+/// `Cov(y_i, y_j) = exp(mu_i + mu_j + (C_ii + C_jj)/2) (exp(C_ij) - 1)`.
+#[pyfunction]
+fn uq_lognormal_cov(mean_log: Vec<f64>, cov: Vec<Vec<f64>>) -> PyResult<Vec<Vec<f64>>> {
+    nucleide_linalg::sample::lognormal_cov(&mean_log, &cov).map_err(uq_sample_err)
 }
 
 /// Passthrough copy of a perturbation vector (finiteness-checked).
@@ -5974,11 +6201,656 @@ fn uq_passthrough(delta: Vec<f64>) -> PyResult<Vec<f64>> {
     nucleide_linalg::decay::passthrough(&delta).map_err(uq_decay_err)
 }
 
-/// Fission-yield perturbation — named-open hook (waits on cycle 01 FY
-/// tapes); always raises.
+/// Fission-yield perturbation — named-open hook (waits on ENDF
+/// fission-yield tapes); always raises.
 #[pyfunction]
 fn uq_perturb_fission_yields(base: Vec<f64>, rel: Vec<f64>) -> PyResult<Vec<f64>> {
     nucleide_linalg::decay::perturb_fission_yields(&base, &rel).map_err(uq_decay_err)
+}
+
+// ---------------------------------------------------------------------------
+// Thin reader facade bundle over existing Rust (no new math/data)
+// ---------------------------------------------------------------------------
+
+fn parse_projectile(flag: &str) -> PyResult<nucleide_nuclei::rxname::Projectile> {
+    flag.parse::<nucleide_nuclei::rxname::Projectile>()
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+fn resolve_rx_id(spec: &Bound<'_, PyAny>) -> PyResult<u32> {
+    if let Ok(id) = spec.extract::<u32>() {
+        return Ok(id);
+    }
+    if let Ok(s) = spec.extract::<&str>() {
+        return nucleide_nuclei::rxname::name_to_id(s)
+            .map_err(|e| PyValueError::new_err(e.to_string()));
+    }
+    Err(PyTypeError::new_err(
+        "expected reaction id (int) or name (str)",
+    ))
+}
+
+/// Short `"(z,a)"`-style label for a reaction id ("" when unknown).
+#[pyfunction]
+fn rxname_label(id: u32) -> &'static str {
+    nucleide_nuclei::rxname::label(id)
+}
+
+/// Long documentation string for a reaction id ("" when unknown).
+#[pyfunction]
+fn rxname_doc(id: u32) -> &'static str {
+    nucleide_nuclei::rxname::doc(id)
+}
+
+/// Registry row for a reaction id as {id, name, mt, label, doc}, or None.
+#[pyfunction]
+fn rxname_reaction(py: Python<'_>, id: u32) -> PyResult<Option<Py<PyAny>>> {
+    use pyo3::types::PyDict;
+    Ok(nucleide_nuclei::rxname::reaction(id).map(|r| {
+        let d = PyDict::new(py);
+        d.set_item("id", r.id).ok();
+        d.set_item("name", r.name).ok();
+        d.set_item("mt", r.mt).ok();
+        d.set_item("label", r.label).ok();
+        d.set_item("doc", r.doc).ok();
+        d.into_any().unbind()
+    }))
+}
+
+/// Reaction channel connecting `from_nucid` to `to_nucid` under `projectile`.
+#[pyfunction]
+#[pyo3(signature = (from_nucid, to_nucid, projectile="n"))]
+fn rxname_id_from_nucdelta(from_nucid: u32, to_nucid: u32, projectile: &str) -> PyResult<u32> {
+    let p = parse_projectile(projectile)?;
+    nucleide_nuclei::rxname::id_from_nucdelta(from_nucid, to_nucid, p)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Daughter nuclide (GNDS name) when `parent` undergoes `rx` under `projectile`.
+#[pyfunction]
+#[pyo3(signature = (parent, rx, projectile="n"))]
+fn rxname_child(parent: &str, rx: &Bound<'_, PyAny>, projectile: &str) -> PyResult<String> {
+    let p = parse_projectile(projectile)?;
+    let rx = resolve_rx_id(rx)?;
+    let parent_id = NuclideId::from_name(parent)
+        .map_err(|e| PyValueError::new_err(format!("`{parent}`: {e}")))?;
+    nucleide_nuclei::rxname::child(parent_id, rx, p)
+        .map(|id| id.to_name())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Parent nuclide (GNDS name) whose `rx` under `projectile` yields `child`.
+#[pyfunction]
+#[pyo3(signature = (child, rx, projectile="n"))]
+fn rxname_parent(child: &str, rx: &Bound<'_, PyAny>, projectile: &str) -> PyResult<String> {
+    let p = parse_projectile(projectile)?;
+    let rx = resolve_rx_id(rx)?;
+    let child_id = NuclideId::from_name(child)
+        .map_err(|e| PyValueError::new_err(format!("`{child}`: {e}")))?;
+    nucleide_nuclei::rxname::parent(child_id, rx, p)
+        .map(|id| id.to_name())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// True when `spec` names a particle or a nuclide (hydrogen or heavy ion).
+#[pyfunction]
+fn particle_is_valid(spec: &str) -> bool {
+    nucleide_nuclei::particles::is_valid(spec)
+}
+
+/// True when `n` is a registered PDC number.
+#[pyfunction]
+fn particle_is_valid_pdc(n: i32) -> bool {
+    nucleide_nuclei::particles::is_valid_pdc(n)
+}
+
+/// True when `spec` is ground-state hydrogen.
+#[pyfunction]
+fn particle_is_hydrogen(spec: &str) -> bool {
+    nucleide_nuclei::particles::is_hydrogen(spec)
+}
+
+/// True when `spec` is a nuclide heavier than ground-state hydrogen.
+#[pyfunction]
+fn particle_is_heavy_ion(spec: &str) -> bool {
+    nucleide_nuclei::particles::is_heavy_ion(spec)
+}
+
+/// Gut-uptake fraction `f1` for ingestion rows, or None (source default EPA).
+#[pyfunction]
+#[pyo3(signature = (name, source="EPA"))]
+fn dose_f1(name: &str, source: &str) -> PyResult<Option<f64>> {
+    NuclideId::from_name(name).map_err(wrap_nucid_err)?;
+    let s = parse_dose_source(source)?;
+    Ok(nucleide_nuclei::data::dose_f1_by_name(name, s))
+}
+
+/// Lung-clearance class for inhalation rows, or None (source default EPA).
+#[pyfunction]
+#[pyo3(signature = (name, source="EPA"))]
+fn dose_lung_model(name: &str, source: &str) -> PyResult<Option<char>> {
+    NuclideId::from_name(name).map_err(wrap_nucid_err)?;
+    let s = parse_dose_source(source)?;
+    Ok(nucleide_nuclei::data::dose_lung_model_by_name(name, s))
+}
+
+/// Canonical element symbol for a bare-symbol comp key, or None.
+fn bare_element_z(name: &str) -> Option<u32> {
+    let t = name.trim();
+    if t.is_empty() {
+        return None;
+    }
+    let mut chars = t.chars();
+    let first = chars.next()?.to_uppercase().next()?;
+    let rest: String = chars.collect::<String>().to_lowercase();
+    let canon = format!("{first}{rest}");
+    nucleide_nuclei::element_z(&canon)
+}
+
+fn mat_from_comp_elements(comp: BTreeMap<String, f64>) -> PyResult<nucleide_material::Material> {
+    let mut mat = nucleide_material::Material::new();
+    for (name, grams) in &comp {
+        let id = match NuclideId::from_name(name) {
+            Ok(id) => id,
+            Err(_) => match bare_element_z(name) {
+                Some(z) => NuclideId::from_nucid(z * 10_000_000),
+                None => {
+                    return Err(PyValueError::new_err(format!(
+                        "`{name}`: unknown nuclide or element"
+                    )));
+                }
+            },
+        };
+        mat.add_nuclide(id, *grams);
+    }
+    Ok(mat)
+}
+
+fn mat_to_comp_elements(mat: &nucleide_material::Material) -> BTreeMap<String, f64> {
+    let mut out = BTreeMap::new();
+    for (&id, &grams) in &mat.comp {
+        let key = if id.a() == 0 && id.state() == 0 {
+            nucleide_nuclei::element_symbol(id.z())
+                .unwrap_or("X")
+                .to_string()
+        } else {
+            id.to_name()
+        };
+        *out.entry(key).or_insert(0.0) += grams;
+    }
+    out
+}
+
+/// Mix streams weighted by relative mass amounts (thin wrapper over
+/// `Material::mix_by_mass`). Bare element symbols map to natural-element
+/// placeholders; collapsed/elemental keys round-trip as symbols.
+#[pyfunction]
+fn mix_by_mass(parts: Vec<(BTreeMap<String, f64>, f64)>) -> PyResult<BTreeMap<String, f64>> {
+    let mats: Vec<nucleide_material::Material> = parts
+        .iter()
+        .map(|(comp, _)| mat_from_comp_elements(comp.clone()))
+        .collect::<PyResult<_>>()?;
+    let refs: Vec<(&nucleide_material::Material, f64)> =
+        mats.iter().zip(parts.iter().map(|(_, w)| *w)).collect();
+    let out = nucleide_material::Material::mix_by_mass(&refs)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(mat_to_comp_elements(&out))
+}
+
+/// Mix streams weighted by relative volumes, converting through each
+/// stream's density (thin wrapper over `Material::mix_by_volume`).
+/// `parts` holds `(comp, volume, density)` triples.
+#[pyfunction]
+fn mix_by_volume(parts: Vec<(BTreeMap<String, f64>, f64, f64)>) -> PyResult<BTreeMap<String, f64>> {
+    let mut mats: Vec<nucleide_material::Material> = Vec::with_capacity(parts.len());
+    for (comp, _, density) in &parts {
+        let mut m = mat_from_comp_elements(comp.clone())?;
+        m.set_density(Some(*density));
+        mats.push(m);
+    }
+    let refs: Vec<(&nucleide_material::Material, f64)> =
+        mats.iter().zip(parts.iter().map(|(_, v, _)| *v)).collect();
+    let out = nucleide_material::Material::mix_by_volume(&refs)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(mat_to_comp_elements(&out))
+}
+
+/// Specific activity of a composition in Bq/g (AME2020 + chain decays).
+#[pyfunction]
+fn specific_activity(comp: BTreeMap<String, f64>) -> PyResult<f64> {
+    let mat = mat_from_comp_elements(comp)?;
+    let analytics = nucleide_material::Analytics {
+        masses: &nucleide_material::Ame2020,
+        decays: &nucleide_material::ChainDecays,
+    };
+    mat.specific_activity(&analytics)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Serialize a `<materials>` document bundling named materials.
+/// `entries` holds `(name, comp, density)` triples; `cross_sections`
+/// sets the root attribute when given.
+#[pyfunction]
+#[pyo3(signature = (entries, cross_sections=None))]
+fn materials_doc_to_xml(
+    entries: Vec<(String, BTreeMap<String, f64>, f64)>,
+    cross_sections: Option<String>,
+) -> PyResult<String> {
+    let mut doc = nucleide_material::MaterialsDoc::new();
+    if let Some(path) = cross_sections {
+        doc = doc.cross_sections(path);
+    }
+    for (name, comp, density) in entries {
+        let mut mat = mat_from_comp_elements(comp)?;
+        mat.set_density(Some(density));
+        doc = doc.push(name, mat);
+    }
+    doc.to_xml()
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Replace natural-element placeholders with isotopic breakdowns (AME2020 +
+/// natural abundances). Bare element symbols are placeholders; nuclide
+/// names pass through untouched.
+#[pyfunction]
+fn expand_elements(comp: BTreeMap<String, f64>) -> PyResult<BTreeMap<String, f64>> {
+    let mut mat = mat_from_comp_elements(comp)?;
+    mat.expand_elements(
+        &nucleide_material::Ame2020,
+        &nucleide_material::NaturalAbundances,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(mat_to_comp_elements(&mat))
+}
+
+/// Fold every nuclide into its element placeholder (bare-symbol keys).
+#[pyfunction]
+fn collapse_elements(comp: BTreeMap<String, f64>) -> PyResult<BTreeMap<String, f64>> {
+    let mat = mat_from_comp_elements(comp)?;
+    Ok(mat_to_comp_elements(&mat.collapse_elements()))
+}
+
+fn parse_fluka_nuc(spec: &str) -> PyResult<nucleide_fluka_io::material::FlukaNuc> {
+    use nucleide_fluka_io::material::FlukaNuc;
+    if let Ok(id) = NuclideId::from_name(spec) {
+        return Ok(FlukaNuc::Nuclide(id));
+    }
+    if let Some(z) = bare_element_z(spec) {
+        return Ok(FlukaNuc::Element(z));
+    }
+    if let Ok(z) = spec.trim().parse::<u32>() {
+        if nucleide_nuclei::element_symbol(z).is_some() {
+            return Ok(FlukaNuc::Element(z));
+        }
+    }
+    Err(PyValueError::new_err(format!(
+        "`{spec}`: unknown nuclide or element"
+    )))
+}
+
+/// Render the MATERIAL record for an elemental nuclide ("", when builtin).
+#[pyfunction]
+fn fluka_material_str(fid: u32, nuc: &str, density: f64) -> PyResult<String> {
+    let parsed = parse_fluka_nuc(nuc)?;
+    nucleide_fluka_io::material::material_str(fid, parsed, density)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Render MATERIAL + COMPOUND records for a compound.
+/// `frac_type` is "mass" (default) or "atom"; `components` holds
+/// `(nuclide-or-element, fraction)` pairs.
+#[pyfunction]
+#[pyo3(signature = (fid, compound_name, density, frac_type="mass", components=None))]
+fn fluka_compound_str(
+    fid: u32,
+    compound_name: &str,
+    density: f64,
+    frac_type: &str,
+    components: Option<Vec<(String, f64)>>,
+) -> PyResult<String> {
+    use nucleide_fluka_io::material::{Component, FracType};
+    let frac = match frac_type.trim().to_ascii_lowercase().as_str() {
+        "mass" => FracType::Mass,
+        "atom" => FracType::Atom,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "frac_type must be mass|atom, got `{other}`"
+            )));
+        }
+    };
+    let pairs = components.unwrap_or_default();
+    let comps: Vec<Component> = pairs
+        .iter()
+        .map(|(nuc, frac)| parse_fluka_nuc(nuc).map(|n| Component::new(n, *frac)))
+        .collect::<PyResult<_>>()?;
+    nucleide_fluka_io::material::compound_str(fid, compound_name, density, frac, &comps)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Sorted built-in FLUKA material names.
+#[pyfunction]
+fn fluka_builtin_set() -> Vec<String> {
+    let mut out: Vec<String> = nucleide_fluka_io::material::builtin_set()
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    out.sort();
+    out
+}
+
+/// Validate an ALARA deck's cross-references (parse + `validate`).
+#[pyfunction]
+fn alara_validate_deck(text: &str) -> PyResult<()> {
+    let deck = nucleide_alara_io::AlaraDeck::parse(text)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    deck.validate()
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Reject an unknown ALARA block keyword (`line` is 1-based).
+#[pyfunction]
+fn alara_check_block(block: &str, line: usize) -> PyResult<()> {
+    nucleide_alara_io::AlaraDeck::check_block(block, line)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Sum of an ALARA group-flux spectrum over its groups.
+#[pyfunction]
+fn alara_flux_total(name: &str, text: &str) -> PyResult<f64> {
+    nucleide_alara_io::FluxSpec::parse(name, text)
+        .map(|f| f.total())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Number of groups in an ALARA group-flux spectrum.
+#[pyfunction]
+fn alara_flux_len(name: &str, text: &str) -> PyResult<usize> {
+    nucleide_alara_io::FluxSpec::parse(name, text)
+        .map(|f| f.len())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Keep only the `total` aggregate rows of an ALARA/FISPACT response frame.
+#[pyfunction]
+fn alara_output_totals(
+    py: Python<'_>,
+    text: &str,
+    run_lbl: &str,
+) -> PyResult<Vec<BTreeMap<String, Py<PyAny>>>> {
+    let owned_text = text.to_owned();
+    let owned_lbl = run_lbl.to_owned();
+    let frame = py
+        .detach(move || {
+            nucleide_alara_io::output::ResponseFrame::parse(&owned_text, &owned_lbl)
+                .map(|f| f.totals())
+        })
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(frame
+        .rows
+        .iter()
+        .map(|r| fispact_row_to_map(py, r))
+        .collect())
+}
+
+/// Sum of `value` over SpecificActivity rows of a response frame.
+#[pyfunction]
+fn alara_output_total_activity(text: &str, run_lbl: &str) -> PyResult<f64> {
+    nucleide_alara_io::output::ResponseFrame::parse(text, run_lbl)
+        .map(|f| f.total_activity())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Sum over every group and strength of a `.photonSrc` listing.
+#[pyfunction]
+fn alara_photon_total_strength(text: &str) -> PyResult<f64> {
+    nucleide_alara_io::PhotonSource::from_str(text)
+        .map(|p| p.total_strength())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Total schedule time in seconds over a deck's expanded flat steps.
+#[pyfunction]
+#[pyo3(signature = (deck_text, top=None))]
+fn alara_schedule_total_time(deck_text: &str, top: Option<&str>) -> PyResult<f64> {
+    let owned = deck_text.to_owned();
+    let owned_top = top.map(str::to_owned);
+    let steps =
+        expand_deck_schedules(&owned, owned_top.as_deref()).map_err(PyValueError::new_err)?;
+    Ok(nucleide_alara_io::schedule::total_time(&steps))
+}
+
+/// Find a TAPE6 record by nuclide name, or None.
+#[pyfunction]
+fn origen_tape6_find(py: Python<'_>, text: &str, nuclide: &str) -> PyResult<Option<Py<PyAny>>> {
+    use pyo3::types::PyDict;
+    let owned = text.to_owned();
+    let query = nuclide.to_owned();
+    let found = py
+        .detach(move || nucleide_origen_io::Tape6::parse(&owned).map(|t| t.find(&query).cloned()))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(found.map(|r| {
+        let d = PyDict::new(py);
+        d.set_item("nuclide", &r.nuclide).ok();
+        d.set_item("grams", r.grams).ok();
+        d.set_item("activity_bq", r.activity_bq).ok();
+        d.into_any().unbind()
+    }))
+}
+
+/// Total TAPE6 inventory activity in becquerel.
+#[pyfunction]
+fn origen_tape6_total_activity(text: &str) -> PyResult<f64> {
+    nucleide_origen_io::Tape6::parse(text)
+        .map(|t| t.total_activity())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Find a TAPE9 decay entry by nuclide name, or None.
+#[pyfunction]
+fn origen_tape9_find(py: Python<'_>, text: &str, nuclide: &str) -> PyResult<Option<Py<PyAny>>> {
+    use pyo3::types::PyDict;
+    let owned = text.to_owned();
+    let query = nuclide.to_owned();
+    let found = py
+        .detach(move || {
+            nucleide_origen_io::Tape9Entry::parse(&owned)
+                .map(|entries| nucleide_origen_io::Tape9Entry::find(&entries, &query).cloned())
+        })
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(found.map(|e| {
+        let d = PyDict::new(py);
+        d.set_item("nuclide", &e.nuclide).ok();
+        d.set_item("decay_const", e.decay_const).ok();
+        d.into_any().unbind()
+    }))
+}
+
+/// Number of spatial points in an RTFLUX/ATFLUX/RZFLUX file.
+#[pyfunction]
+#[pyo3(signature = (text, kind="rtflux"))]
+fn cccc_rtflux_npoints(text: &str, kind: &str) -> PyResult<usize> {
+    let flux_kind = parse_flux_kind(kind)?;
+    nucleide_cccc_io::FluxFile::parse(flux_kind, text)
+        .map(|f| f.npoints())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Flux vector for point `i`, or None when out of range.
+#[pyfunction]
+#[pyo3(signature = (text, kind="rtflux", index=0))]
+fn cccc_rtflux_point(text: &str, kind: &str, index: usize) -> PyResult<Option<Vec<f64>>> {
+    let flux_kind = parse_flux_kind(kind)?;
+    let flux = nucleide_cccc_io::FluxFile::parse(flux_kind, text)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(flux.point(index).map(<[f64]>::to_vec))
+}
+
+/// Sum of all flux values in an RTFLUX/ATFLUX/RZFLUX file.
+#[pyfunction]
+#[pyo3(signature = (text, kind="rtflux"))]
+fn cccc_rtflux_total(text: &str, kind: &str) -> PyResult<f64> {
+    let flux_kind = parse_flux_kind(kind)?;
+    nucleide_cccc_io::FluxFile::parse(flux_kind, text)
+        .map(|f| f.total())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+fn parse_flux_kind(kind: &str) -> PyResult<nucleide_cccc_io::rtflux::FluxKind> {
+    match kind.to_ascii_lowercase().as_str() {
+        "rtflux" => Ok(nucleide_cccc_io::rtflux::FluxKind::Rtflux),
+        "atflux" => Ok(nucleide_cccc_io::rtflux::FluxKind::Atflux),
+        "rzflux" => Ok(nucleide_cccc_io::rtflux::FluxKind::Rzflux),
+        other => Err(PyValueError::new_err(format!(
+            "kind must be rtflux|atflux|rzflux, got `{other}`"
+        ))),
+    }
+}
+
+/// Find an ISOTXS nuclide by label, or None.
+#[pyfunction]
+fn cccc_isotxs_find(py: Python<'_>, text: &str, label: &str) -> PyResult<Option<Py<PyAny>>> {
+    use pyo3::types::PyDict;
+    let owned = text.to_owned();
+    let query = label.to_owned();
+    let found = py
+        .detach(move || {
+            nucleide_cccc_io::IsotxsLib::parse(&owned).map(|lib| lib.find(&query).cloned())
+        })
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(found.map(|n| {
+        let d = PyDict::new(py);
+        d.set_item("label", &n.label).ok();
+        d.set_item("zaid", &n.zaid).ok();
+        d.set_item("groups", n.groups).ok();
+        d.set_item("total_xs", n.total_xs.clone()).ok();
+        d.into_any().unbind()
+    }))
+}
+
+/// Number of nuclides in an ISOTXS library.
+#[pyfunction]
+fn cccc_isotxs_len(text: &str) -> PyResult<usize> {
+    nucleide_cccc_io::IsotxsLib::parse(text)
+        .map(|lib| lib.len())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Identify a FISPACT-II output by its `.fis` suffix convention.
+#[pyfunction]
+fn fispact_is_output(path: &str) -> bool {
+    nucleide_fispact_io::is_fispact_output(path)
+}
+
+/// Product-per-feed mass ratio for assays `x_feed`, `x_prod`, `x_tail`.
+#[pyfunction]
+fn enrichment_prod_per_feed(x_feed: f64, x_prod: f64, x_tail: f64) -> f64 {
+    nucleide_enrichment::prod_per_feed(x_feed, x_prod, x_tail)
+}
+
+/// Tails-per-feed mass ratio.
+#[pyfunction]
+fn enrichment_tail_per_feed(x_feed: f64, x_prod: f64, x_tail: f64) -> f64 {
+    nucleide_enrichment::tail_per_feed(x_feed, x_prod, x_tail)
+}
+
+/// Tails-per-product mass ratio.
+#[pyfunction]
+fn enrichment_tail_per_prod(x_feed: f64, x_prod: f64, x_tail: f64) -> f64 {
+    nucleide_enrichment::tail_per_prod(x_feed, x_prod, x_tail)
+}
+
+/// Feed-per-product mass ratio.
+#[pyfunction]
+fn enrichment_feed_per_prod(x_feed: f64, x_prod: f64, x_tail: f64) -> f64 {
+    nucleide_enrichment::feed_per_prod(x_feed, x_prod, x_tail)
+}
+
+/// Feed-per-tails mass ratio.
+#[pyfunction]
+fn enrichment_feed_per_tail(x_feed: f64, x_prod: f64, x_tail: f64) -> f64 {
+    nucleide_enrichment::feed_per_tail(x_feed, x_prod, x_tail)
+}
+
+/// Product-per-tails mass ratio.
+#[pyfunction]
+fn enrichment_prod_per_tail(x_feed: f64, x_prod: f64, x_tail: f64) -> f64 {
+    nucleide_enrichment::prod_per_tail(x_feed, x_prod, x_tail)
+}
+
+/// Stage separation factor for a component of mass `m_i`.
+#[pyfunction]
+#[allow(non_snake_case)]
+fn enrichment_alphastar_i(alpha: f64, Mstar: f64, M_i: f64) -> f64 {
+    nucleide_enrichment::alphastar_i(alpha, Mstar, M_i)
+}
+
+/// Validated delayed-neutron data from OpenMC IFP kinetics data.
+///
+/// OpenMC's IFP estimator reports effective delayed fractions (`betas`)
+/// and the generation time (`lambda_gen`) but no precursor decay
+/// constants: the caller supplies `lambdas` from the same data library.
+/// Returns {betas, lambdas, lambda_gen, beta_total, groups}.
+#[pyfunction]
+fn kinetics_from_ifp(
+    py: Python<'_>,
+    betas: Vec<f64>,
+    lambda_gen: f64,
+    lambdas: Vec<f64>,
+) -> PyResult<Py<PyAny>> {
+    use pyo3::types::PyDict;
+    let params = nucleide_kinetics::KineticParams::from_ifp(betas, lambda_gen, lambdas)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let d = PyDict::new(py);
+    d.set_item("betas", params.betas()).ok();
+    d.set_item("lambdas", params.lambdas()).ok();
+    d.set_item("lambda_gen", params.lambda_gen()).ok();
+    d.set_item("beta_total", params.beta_total()).ok();
+    d.set_item("groups", params.groups()).ok();
+    Ok(d.into_any().unbind())
+}
+
+/// Run MAGIC with explicit array selection and parameters.
+/// `selection` is "total" (default) or "per_group".
+#[pyfunction]
+#[pyo3(signature = (tally, selection="total", tolerance=0.5, null_value=0.0))]
+fn magic_with(
+    tally: &PyMeshTally,
+    selection: &str,
+    tolerance: f64,
+    null_value: f64,
+) -> PyResult<PyMagicOutput> {
+    let sel = match selection.trim().to_ascii_lowercase().as_str() {
+        "total" => nucleide_vr_tools::magic::MagicSelection::Total,
+        "per_group" | "pergroup" | "per-group" => {
+            nucleide_vr_tools::magic::MagicSelection::PerGroup
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "selection must be total|per_group, got `{other}`"
+            )));
+        }
+    };
+    let params = nucleide_vr_tools::magic::MagicParams {
+        tolerance,
+        null_value,
+    };
+    nucleide_vr_tools::magic::magic_with(&tally.inner, sel, params)
+        .map(|inner| PyMagicOutput { inner })
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Check one `stat:sum:<key>:<24-char value>` MCPL header comment.
+#[pyfunction]
+fn mcpl_statsum_validate(comment: &str) -> PyResult<String> {
+    nucleide_mcpl_io::statsum_validate(comment)
+        .map(str::to_string)
+        .map_err(PyValueError::new_err)
+}
+
+/// Build a well-formed `stat:sum:` MCPL header comment.
+#[pyfunction]
+fn mcpl_statsum_comment(key: &str, value: f64) -> PyResult<String> {
+    nucleide_mcpl_io::statsum_comment(key, value).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 /// Python module entry point.
@@ -5991,6 +6863,18 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rxname_id, m)?)?;
     m.add_function(wrap_pyfunction!(rxname_name, m)?)?;
     m.add_function(wrap_pyfunction!(rxname_mt, m)?)?;
+    m.add_function(wrap_pyfunction!(rxname_label, m)?)?;
+    m.add_function(wrap_pyfunction!(rxname_doc, m)?)?;
+    m.add_function(wrap_pyfunction!(rxname_reaction, m)?)?;
+    m.add_function(wrap_pyfunction!(rxname_id_from_nucdelta, m)?)?;
+    m.add_function(wrap_pyfunction!(rxname_child, m)?)?;
+    m.add_function(wrap_pyfunction!(rxname_parent, m)?)?;
+    m.add_function(wrap_pyfunction!(particle_is_valid, m)?)?;
+    m.add_function(wrap_pyfunction!(particle_is_valid_pdc, m)?)?;
+    m.add_function(wrap_pyfunction!(particle_is_hydrogen, m)?)?;
+    m.add_function(wrap_pyfunction!(particle_is_heavy_ion, m)?)?;
+    m.add_function(wrap_pyfunction!(dose_f1, m)?)?;
+    m.add_function(wrap_pyfunction!(dose_lung_model, m)?)?;
     m.add_function(wrap_pyfunction!(read_xsdir, m)?)?;
     m.add_function(wrap_pyfunction!(read_meshtal, m)?)?;
     m.add_function(wrap_pyfunction!(read_wwinp, m)?)?;
@@ -6017,9 +6901,19 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(decay_heat, m)?)?;
     m.add_function(wrap_pyfunction!(dose_factor, m)?)?;
     m.add_function(wrap_pyfunction!(dose_per_g, m)?)?;
+    m.add_function(wrap_pyfunction!(mix_by_mass, m)?)?;
+    m.add_function(wrap_pyfunction!(mix_by_volume, m)?)?;
+    m.add_function(wrap_pyfunction!(specific_activity, m)?)?;
+    m.add_function(wrap_pyfunction!(materials_doc_to_xml, m)?)?;
+    m.add_function(wrap_pyfunction!(expand_elements, m)?)?;
+    m.add_function(wrap_pyfunction!(collapse_elements, m)?)?;
     m.add_function(wrap_pyfunction!(read_serpent, m)?)?;
     m.add_function(wrap_pyfunction!(read_usrbin, m)?)?;
+    m.add_function(wrap_pyfunction!(fluka_material_str, m)?)?;
+    m.add_function(wrap_pyfunction!(fluka_compound_str, m)?)?;
+    m.add_function(wrap_pyfunction!(fluka_builtin_set, m)?)?;
     m.add_function(wrap_pyfunction!(magic, m)?)?;
+    m.add_function(wrap_pyfunction!(magic_with, m)?)?;
     m.add_function(wrap_pyfunction!(write_ssw, m)?)?;
     m.add_function(wrap_pyfunction!(mesh_to_geom, m)?)?;
     m.add_function(wrap_pyfunction!(half_life, m)?)?;
@@ -6034,14 +6928,31 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(alara_parse_flux, m)?)?;
     m.add_function(wrap_pyfunction!(alara_parse_output, m)?)?;
     m.add_function(wrap_pyfunction!(alara_expand_schedule, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_validate_deck, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_check_block, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_flux_total, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_flux_len, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_output_totals, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_output_total_activity, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_photon_total_strength, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_schedule_total_time, m)?)?;
     m.add_function(wrap_pyfunction!(isotxs_parse, m)?)?;
     m.add_function(wrap_pyfunction!(rtflux_parse, m)?)?;
+    m.add_function(wrap_pyfunction!(cccc_rtflux_npoints, m)?)?;
+    m.add_function(wrap_pyfunction!(cccc_rtflux_point, m)?)?;
+    m.add_function(wrap_pyfunction!(cccc_rtflux_total, m)?)?;
+    m.add_function(wrap_pyfunction!(cccc_isotxs_find, m)?)?;
+    m.add_function(wrap_pyfunction!(cccc_isotxs_len, m)?)?;
     m.add_function(wrap_pyfunction!(partisn_render, m)?)?;
     m.add_function(wrap_pyfunction!(partisn_validate, m)?)?;
     m.add_function(wrap_pyfunction!(fispact_parse_output, m)?)?;
+    m.add_function(wrap_pyfunction!(fispact_is_output, m)?)?;
     m.add_function(wrap_pyfunction!(origen_parse_tape5, m)?)?;
     m.add_function(wrap_pyfunction!(origen_parse_tape6, m)?)?;
     m.add_function(wrap_pyfunction!(origen_parse_tape9, m)?)?;
+    m.add_function(wrap_pyfunction!(origen_tape6_find, m)?)?;
+    m.add_function(wrap_pyfunction!(origen_tape6_total_activity, m)?)?;
+    m.add_function(wrap_pyfunction!(origen_tape9_find, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_from_deck, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_from_snapshot, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_validate, m)?)?;
@@ -6055,6 +6966,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(kinetics_inhour_rho, m)?)?;
     m.add_function(wrap_pyfunction!(kinetics_stable_period, m)?)?;
     m.add_function(wrap_pyfunction!(kinetics_prompt_jump, m)?)?;
+    m.add_function(wrap_pyfunction!(kinetics_from_ifp, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_rect_smooth, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_five_point_smooth, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_calc_bg, m)?)?;
@@ -6062,6 +6974,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(spectroscopy_net_counts, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_energy_bins, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_detector_efficiency, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_fit_efficiency, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_xray_lines, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_sdef_decay_source, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_parse_dollar_spe, m)?)?;
@@ -6071,6 +6984,9 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(spectroscopy_parse_lines_tsv, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_read_decay_lines, m)?)?;
     m.add_function(wrap_pyfunction!(uq_sample_mvn, m)?)?;
+    m.add_function(wrap_pyfunction!(uq_sample_lognormal, m)?)?;
+    m.add_function(wrap_pyfunction!(uq_lognormal_mean, m)?)?;
+    m.add_function(wrap_pyfunction!(uq_lognormal_cov, m)?)?;
     m.add_function(wrap_pyfunction!(uq_sample_mean, m)?)?;
     m.add_function(wrap_pyfunction!(uq_sample_cov, m)?)?;
     m.add_function(wrap_pyfunction!(uq_check_convergence, m)?)?;
@@ -6096,6 +7012,15 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(enrichment_swu_per_feed, m)?)?;
     m.add_function(wrap_pyfunction!(enrichment_swu_per_prod, m)?)?;
     m.add_function(wrap_pyfunction!(enrichment_swu_per_tail, m)?)?;
+    m.add_function(wrap_pyfunction!(enrichment_prod_per_feed, m)?)?;
+    m.add_function(wrap_pyfunction!(enrichment_tail_per_feed, m)?)?;
+    m.add_function(wrap_pyfunction!(enrichment_tail_per_prod, m)?)?;
+    m.add_function(wrap_pyfunction!(enrichment_feed_per_prod, m)?)?;
+    m.add_function(wrap_pyfunction!(enrichment_feed_per_tail, m)?)?;
+    m.add_function(wrap_pyfunction!(enrichment_prod_per_tail, m)?)?;
+    m.add_function(wrap_pyfunction!(enrichment_alphastar_i, m)?)?;
+    m.add_function(wrap_pyfunction!(mcpl_statsum_validate, m)?)?;
+    m.add_function(wrap_pyfunction!(mcpl_statsum_comment, m)?)?;
     m.add_class::<PyCusum>()?;
     m.add_function(wrap_pyfunction!(emit_cards, m)?)?;
     m.add_function(wrap_pyfunction!(emit_drift_table, m)?)?;

@@ -184,12 +184,15 @@ def tier2(path: str) -> tuple[list[list[str]], list[str], bool]:
 
 
 def tier_ssw(tmp: str) -> tuple[list[list[str]], list[str]]:
-    """SSW round-trip gates S1-S4 on the synthetic reference pair.
+    """SSW round-trip gates S1-S8 on the synthetic reference pair.
 
     Converts the committed hand-built `reference.w` (two tracks, explicit
     surface/kind pairing) to MCPL and back against the same reference header,
-    checking closed-form energy/time/userflag conservation. Synthetic pairs
-    only: no MCNP run, no vendored upstream bytes.
+    checking closed-form energy/time/userflag conservation (S1-S4) plus the
+    fidelity tail: upstream `cs = 1.0` compat (S5), `niss`
+    passthrough vs override (S6), polarisation/universal opt-ins (S7), and
+    the widened SSW-PDG table (S8). Synthetic pairs only: no MCNP run, no
+    vendored upstream bytes.
     """
     rows: list[list[str]] = []
     notes: list[str] = []
@@ -243,10 +246,105 @@ def tier_ssw(tmp: str) -> tuple[list[list[str]], list[str]]:
             _check(ok, "S4 round-trip"),
         ]
     )
+    # S5: force_cs_to_one reproduces the upstream 2.2.8 `cs = 1.0` spelling
+    # (u/v stay verbatim); default keeps the true cosine (S4 above).
+    cs_w = os.path.join(tmp, "ssw_cs1.w")
+    mcpl.mcpl2ssw(probe, str(SSW_REF), cs_w, force_cs_to_one=True)
+    cs_tracks = read_ssw(cs_w).tracks()
+    ok = (
+        len(cs_tracks) == 2
+        and all(abs(t["cs"] - 1.0) < 1e-12 for t in cs_tracks)
+        and abs(cs_tracks[1]["u"] - 1.0) < 1e-6
+        and abs(cs_tracks[1]["v"]) < 1e-6
+    )
+    rows.append(
+        [
+            "S5 force_cs_to_one compat",
+            "cs 1.0/1.0, u/v verbatim",
+            f"cs {[fmt(t['cs']) for t in cs_tracks]}, u {fmt(cs_tracks[1]['u'])}",
+            _check(ok, "S5 cs compat"),
+        ]
+    )
+    # S6: niss passes the reference header through by default (upstream-2.2.8
+    # spelling); niss= stamps an explicit override.
+    ref_niss = read_ssw(str(SSW_REF)).niss
+    back_niss = read_ssw(back_w).niss
+    ok = back_niss == ref_niss
+    rows.append(
+        [
+            "S6 niss passthrough",
+            f"niss {ref_niss}",
+            f"niss {back_niss}",
+            _check(ok, "S6 passthrough"),
+        ]
+    )
+    niss_w = os.path.join(tmp, "ssw_niss.w")
+    mcpl.mcpl2ssw(probe, str(SSW_REF), niss_w, niss=7)
+    got_niss = read_ssw(niss_w).niss
+    ok = got_niss == 7
+    rows.append(
+        [
+            "S6b niss override",
+            "niss 7",
+            f"niss {got_niss}",
+            _check(ok, "S6b override"),
+        ]
+    )
+    # S7: polarisation + universal-PDG opt-ins round-trip through the header.
+    pol_mcpl = os.path.join(tmp, "pol.mcpl")
+    mcpl.ssw2mcpl(str(SSW_REF), pol_mcpl, SSW_SURFS, SSW_KINDS, {"polarisation": [0.1, 0.2, 0.3]})
+    pol_back = mcpl.read_mcpl(pol_mcpl)
+    ok = pol_back.has_polarisation and all(
+        abs(a - b) < 1e-6
+        for p in pol_back.particles()
+        for a, b in zip(p["polarisation"], [0.1, 0.2, 0.3], strict=True)
+    )
+    rows.append(
+        [
+            "S7 polarisation carry",
+            "has_polarisation [0.1, 0.2, 0.3]",
+            f"{pol_back.has_polarisation} {pol_back.particles()[0]['polarisation']}",
+            _check(ok, "S7 polarisation"),
+        ]
+    )
+    uni_mcpl = os.path.join(tmp, "uni.mcpl")
+    mcpl.ssw2mcpl(
+        str(SSW_REF), uni_mcpl, [100, 200], ["neutron", "neutron"], {"universal_pdg": True}
+    )
+    uni_back = mcpl.read_mcpl(uni_mcpl)
+    ok = uni_back.universal_pdgcode == 2112 and [p["pdgcode"] for p in uni_back.particles()] == [
+        2112,
+        2112,
+    ]
+    rows.append(
+        [
+            "S7b universal PDG carry",
+            "universal 2112",
+            f"universal {uni_back.universal_pdgcode}",
+            _check(ok, "S7b universal"),
+        ]
+    )
+    # S8: widened SSW-PDG table over the same reference geometry.
+    ext_mcpl = os.path.join(tmp, "ext.mcpl")
+    mcpl.ssw2mcpl(str(SSW_REF), ext_mcpl, SSW_SURFS, ["electron", "positron"])
+    ext = mcpl.read_mcpl(ext_mcpl).particles()
+    ok = [p["pdgcode"] for p in ext] == [11, -11] and all(
+        rel_diff(p["ekin"], w) < 1e-6 for p, w in zip(ext, [2.5, 0.662], strict=True)
+    )
+    rows.append(
+        [
+            "S8 extended PDG table",
+            "11/-11, energies verbatim",
+            f"{[p['pdgcode'] for p in ext]}, {[fmt(p['ekin']) for p in ext]}",
+            _check(ok, "S8 pdg table"),
+        ]
+    )
     notes.append(
         "Tier 3 converts the committed synthetic SSW reference (hand-framed, "
         "no MCNP run) with the documented surface/kind pairing; the "
-        "`mcpl2ssw` leg clones the same reference header."
+        "`mcpl2ssw` leg clones the same reference header (S1-S4 baseline, "
+        "S5-S8 fidelity tail: cs compat, niss, polarisation/universal, "
+        "extended PDG)."
     )
     return rows, notes
 

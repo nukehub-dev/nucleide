@@ -1,34 +1,45 @@
-//! MCNP MCTAL output parsing — header, tally bodies, and `kcode` data.
+//! MCNP MCTAL output parsing — header, tally bodies, mesh tallies, and
+//! `kcode` data.
 //!
-//! Reads the header, per-tally bodies for the standard (non-mesh,
-//! non-radiograph) layout, and `kcode` criticality data.
+//! Reads the header, per-tally bodies for the standard layout plus
+//! rectangular/cylindrical/spherical mesh tallies (`detector_type <= -1`),
+//! and `kcode` criticality data.
 //!
-//! Body card order (`f`/`d`/`u`/`s`/`m`/`c`/`e`/`t`, then `vals` val/err
-//! pairs) follows the standard MCTAL tally-block layout: one count line per
-//! bin card (`<letter><tally> <count>`) plus that many values, then a `vals`
-//! block of `(value, rel_error)` pairs stored in file order. Upstream PyNE's
-//! `Mctal` reads header and `kcode` data only (tally numbers are collected,
-//! bodies skipped), so headers and cycles stay byte-compatible with that
-//! negative oracle; bodies have no upstream oracle and are validated with
-//! hand-built synthetic fixtures instead (closed-form val/err pairing).
+//! Body card order (`f`/`d`/`u`/`s`/`m`/`c`/`e`/`t`, then `vals`, then an
+//! optional `tfc` block) follows the MCTAL tally-block layout: one count
+//! line per bin card plus that many values, then a `vals` block of
+//! `(value, rel_error)` pairs stored in file order, then the tally
+//! fluctuation chart (`tfc` jtf line plus 3–4-float data rows) when present.
+//! Upstream PyNE's `Mctal` reads header and `kcode` data only (tally numbers
+//! are collected, bodies skipped), so headers and cycles stay
+//! byte-compatible with that negative oracle; bodies have no upstream oracle
+//! and are validated with hand-built synthetic fixtures instead (closed-form
+//! val/err pairing).
 //!
-//! Verifiable subset only: plain `<letter><tally>` bin cards with a count plus
-//! that many values, and a `vals` block holding exactly
-//! `2 * prod(counts, 0 -> 1)` floats paired as `(value, rel_error)` in file
-//! order (pairs are stored verbatim; no bin-to-pair mapping is assumed).
-//! Everything
-//! else is a loud named-open error, not a silent skip:
-//! mesh tallies (multi-token `f` lines), radiograph/point-detector specials
-//! (`detector_type >= 3`, tally names ending in 5 with elided objects),
-//! `tfc` blocks, `ut`/`uc`/`st`/`sc`/`mt`/`mc`/`ct`/`cc`/`et`/`ec`/`tt`/`tc`
-//! total/cumulative variants, third-token cosine/energy/time flags,
-//! negative-`particle_type` particle lists beyond one plain line, and
-//! perturbation (`npert`) bodies.
+//! Supported subset: bin cards spelled `<letter>[t|c][<tally>]` (bare `d` or
+//! numbered `d4`, total `ut`/`ut4`, cumulative `uc`/`uc4`, same for
+//! `f`/`s`/`m`/`c`/`e`/`t`) with a count plus that many values; a third
+//! flag token on `c`/`e`/`t` cards (stored, never interpreted); a `vals`
+//! block holding exactly `2 * prod(counts, 0 -> 1)` floats paired as
+//! `(value, rel_error)` in file order (mesh tallies multiply by the
+//! `ni*nj*nk` mesh cells; pairs stored verbatim, no bin-to-pair mapping
+//! assumed); an optional `tfc` block after `vals` for standard tallies
+//! (mesh tallies carry no `tfc`); mesh `f` lines carrying the 4-int mesh
+//! info (`tally unknown ni nj nk`, bare-`f` or `f<tally>` spellings) plus
+//! `(ni+1)+(nj+1)+(nk+1)` cora/b/c bounds. Mesh cell ordering matches the
+//! writer loop (`i` fastest, `k` slowest among the mesh axes); the
+//! rectangular (`-1`) cora/b/c map onto x/y/z with the same expanded-bounds
+//! convention as `meshtal.rs`.
+//! Everything else is a loud named-open error, not a silent skip:
+//! radiograph/point-detector specials (`detector_type >= 3`, tally names
+//! ending in 5 with elided objects), negative-`particle_type` particle lists
+//! beyond one plain line, and perturbation (`npert`) bodies.
 //!
 //! No public MCTAL fixture corpus exists, so validation uses hand-built
 //! synthetic files in `fixtures/mcnp/mctal/`: the two legacy kcode-only
-//! files exercising the 5-value and 19-value cycle record variants, plus a
-//! body-bearing file with closed-form val/err pairing.
+//! files exercising the 5-value and 19-value cycle record variants, a
+//! body-bearing file with closed-form val/err pairing, a mesh-tally file
+//! with closed-form pairing, and a tfc/total-variant/flag file.
 
 use std::fmt;
 use std::path::Path;
@@ -83,11 +94,20 @@ pub struct CycleAverages {
 /// boundaries. A count of 0 means a single implicit bin with no values.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BinCard {
-    /// Declared bin count from the card line (`<letter><tally> <count>`).
+    /// Declared bin count from the card line.
     pub count: usize,
     /// Values that followed the card line (length must equal `count`,
     /// except `count == 0` which carries no values).
     pub values: Vec<f64>,
+    /// Total (`t`) / cumulative (`c`) variant from the card spelling
+    /// (`ut`/`uc`/…, `None` for the plain card). The declared `count`
+    /// already includes the total/cumulative bin; the flag is stored
+    /// verbatim, never interpreted.
+    pub variant: Option<char>,
+    /// Third-token flag on `c`/`e`/`t` cards (`cosFlag`/`ergFlag`/`timFlag`
+    /// in reader parlance); `None` when absent. Stored verbatim, never
+    /// interpreted.
+    pub flag: Option<i32>,
 }
 
 impl BinCard {
@@ -99,6 +119,29 @@ impl BinCard {
             self.count
         }
     }
+}
+
+/// One tally-fluctuation-chart data row: history count, tally value,
+/// relative error, and optional figure of merit.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TfcEntry {
+    /// History (`nps`) count for the row.
+    pub nps: i64,
+    /// Tally value at this checkpoint.
+    pub value: f64,
+    /// Relative error at this checkpoint.
+    pub rel_err: f64,
+    /// Figure of merit, when the row carries a fourth field.
+    pub fom: Option<f64>,
+}
+
+/// Tally fluctuation chart (`tfc`) block after a standard tally's `vals`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TfcBlock {
+    /// Nine-joint `tfc` bin indices (`jtf` line after the `tfc` keyword).
+    pub jtf: Vec<i64>,
+    /// One entry per data row until the next `tally`/`kcode` block.
+    pub rows: Vec<TfcEntry>,
 }
 
 /// One parsed standard-tally body (see module docs for the subset).
@@ -134,6 +177,108 @@ pub struct TallyBody {
     /// `(value, rel_error)` pairs in file order (stored verbatim; no
     /// bin-to-pair mapping is assumed).
     pub vals: Vec<(f64, f64)>,
+    /// Tally fluctuation chart block after `vals` (`None` when the tally
+    /// carries no `tfc` lines).
+    pub tfc: Option<TfcBlock>,
+}
+
+/// One parsed mesh-tally body (`detector_type <= -1`).
+///
+/// The `f` line carries the 4-int mesh info instead of cell IDs; cora/b/c
+/// hold `(ni+1)+(nj+1)+(nk+1)` bounds in file order. The remaining cards,
+/// `vals` pairing, and total/cumulative/flag spellings match [`TallyBody`].
+/// Mesh tallies carry no `tfc` block. Cell ordering is the writer loop
+/// order: `i` (cora) fastest, then `j`, then `k` slowest among the mesh
+/// axes, inside the `f/d/u/s/m/c/e/t` outer bins.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct MeshTallyBody {
+    /// Tally number (must appear in the header `tally_nums` list).
+    pub number: u32,
+    /// Particle-type token from the `tally` line.
+    pub particle_type: i32,
+    /// Mesh-type token from the `tally` line (`-1` rectangular, `-2`
+    /// cylindrical, `-3` spherical, `-4..-6` r/c/smesh; stored verbatim).
+    pub detector_type: i32,
+    /// Particle list for negative `particle_type` (one line of integers;
+    /// empty otherwise).
+    pub particle_list: Vec<i32>,
+    /// `FC` comment lines preceding the `f` card (may be empty).
+    pub comment: Vec<String>,
+    /// First mesh-info int (unknown/reserved; stored verbatim).
+    pub mesh_unknown: i64,
+    /// Mesh bin counts along cora/b/c.
+    pub ni: usize,
+    /// Mesh bin counts along cora/b/c.
+    pub nj: usize,
+    /// Mesh bin counts along cora/b/c.
+    pub nk: usize,
+    /// Cora bounds (`ni + 1` values).
+    pub cora: Vec<f64>,
+    /// Corb bounds (`nj + 1` values).
+    pub corb: Vec<f64>,
+    /// Corc bounds (`nk + 1` values).
+    pub corc: Vec<f64>,
+    /// Total-vs-direct bins.
+    pub d: BinCard,
+    /// User bins.
+    pub u: BinCard,
+    /// Segment bins.
+    pub s: BinCard,
+    /// Multiplier bins.
+    pub m: BinCard,
+    /// Cosine bins.
+    pub c: BinCard,
+    /// Energy bins.
+    pub e: BinCard,
+    /// Time bins.
+    pub t: BinCard,
+    /// `(value, rel_error)` pairs in file order (stored verbatim).
+    pub vals: Vec<(f64, f64)>,
+}
+
+impl MeshTallyBody {
+    /// `[ni, nj, nk]` mesh cell counts.
+    pub fn dims(&self) -> [usize; 3] {
+        [self.ni, self.nj, self.nk]
+    }
+
+    /// Total mesh cells (`ni*nj*nk`, saturating).
+    pub fn num_cells(&self) -> usize {
+        self.ni.saturating_mul(self.nj).saturating_mul(self.nk)
+    }
+
+    /// Flat mesh index for logical cell `(i, j, k)`: `i` fastest
+    /// (`(k*nj + j)*ni + i`), matching the writer loop order.
+    pub fn mesh_index(&self, i: usize, j: usize, k: usize) -> usize {
+        (k * self.nj + j) * self.ni + i
+    }
+
+    /// Expected pair count: outer-bin product times mesh cells, saturating
+    /// at `usize::MAX` instead of wrapping.
+    pub fn expected_pairs(&self) -> usize {
+        let mut acc = 1usize;
+        for bins in [
+            self.d.bins(),
+            self.u.bins(),
+            self.s.bins(),
+            self.m.bins(),
+            self.c.bins(),
+            self.e.bins(),
+            self.t.bins(),
+            self.num_cells(),
+        ] {
+            acc = acc.saturating_mul(bins);
+            if acc == usize::MAX {
+                break;
+            }
+        }
+        acc
+    }
+
+    /// Sum of all tally values (errors excluded).
+    pub fn total_val(&self) -> f64 {
+        self.vals.iter().map(|(v, _)| v).sum()
+    }
 }
 
 impl TallyBody {
@@ -192,6 +337,8 @@ pub struct Mctal {
     /// when they declare tally numbers; body/count completeness is
     /// caller-side.
     pub tallies: Vec<TallyBody>,
+    /// Parsed mesh-tally bodies (`detector_type <= -1`) in file order.
+    pub mesh_tallies: Vec<MeshTallyBody>,
     pub n_cycles: usize,
     pub n_inactive: usize,
     /// 0/5 = one 5-float line per cycle; 19 = four lines per cycle.
@@ -279,6 +426,7 @@ impl Mctal {
         // but carry no bodies — zero bodies then is accepted for backward
         // compatibility (PyNE parity path: jump straight to `kcode`).
         let mut tallies = Vec::new();
+        let mut mesh_tallies = Vec::new();
         loop {
             skip_blank(&raw, &mut pos);
             let is_tally = raw
@@ -288,20 +436,46 @@ impl Mctal {
             if !is_tally {
                 break;
             }
-            let body = parse_tally_body(&raw, &mut pos)?;
-            if !tally_nums.contains(&body.number) {
-                return Err(Error::BadStructure(format!(
-                    "tally body {} is not in the declared tally list {:?}",
-                    body.number, tally_nums
-                )));
+            match parse_tally_block(&raw, &mut pos)? {
+                TallyBlock::Standard(body) => {
+                    if !tally_nums.contains(&body.number) {
+                        return Err(Error::BadStructure(format!(
+                            "tally body {} is not in the declared tally list {:?}",
+                            body.number, tally_nums
+                        )));
+                    }
+                    if tallies.iter().any(|b: &TallyBody| b.number == body.number)
+                        || mesh_tallies
+                            .iter()
+                            .any(|b: &MeshTallyBody| b.number == body.number)
+                    {
+                        return Err(Error::BadStructure(format!(
+                            "duplicate tally body {}",
+                            body.number
+                        )));
+                    }
+                    tallies.push(body);
+                }
+                TallyBlock::Mesh(body) => {
+                    if !tally_nums.contains(&body.number) {
+                        return Err(Error::BadStructure(format!(
+                            "tally body {} is not in the declared tally list {:?}",
+                            body.number, tally_nums
+                        )));
+                    }
+                    if tallies.iter().any(|b: &TallyBody| b.number == body.number)
+                        || mesh_tallies
+                            .iter()
+                            .any(|b: &MeshTallyBody| b.number == body.number)
+                    {
+                        return Err(Error::BadStructure(format!(
+                            "duplicate tally body {}",
+                            body.number
+                        )));
+                    }
+                    mesh_tallies.push(body);
+                }
             }
-            if tallies.iter().any(|b: &TallyBody| b.number == body.number) {
-                return Err(Error::BadStructure(format!(
-                    "duplicate tally body {}",
-                    body.number
-                )));
-            }
-            tallies.push(body);
         }
 
         // Like upstream, jump to the kcode line (junk-tolerant: blank and
@@ -400,6 +574,7 @@ impl Mctal {
             npert,
             tally_nums,
             tallies,
+            mesh_tallies,
             n_cycles,
             n_inactive,
             vars_per_cycle,
@@ -435,14 +610,56 @@ fn opens(line: &str, keyword: &str) -> bool {
     first_token(line) == keyword
 }
 
-/// Parse one `<letter><tally>` bin card plus its values.
+/// Parsed card head: bin letter, total/cumulative variant, and optional
+/// tally number (`d4` → (`d`, None, Some(4)); `ut` → (`u`, Some('t'), None)).
+fn split_card_head(head: &str) -> Option<(char, Option<char>, Option<u32>)> {
+    let b = head.as_bytes();
+    if b.is_empty() {
+        return None;
+    }
+    let letter = (b[0] as char).to_ascii_lowercase();
+    if !matches!(letter, 'f' | 'd' | 'u' | 's' | 'm' | 'c' | 'e' | 't') {
+        return None;
+    }
+    let rest = &head[1..];
+    if rest.is_empty() {
+        return Some((letter, None, None));
+    }
+    let (variant, digits) = match rest.as_bytes().first() {
+        Some(c) if *c == b't' || *c == b'T' || *c == b'c' || *c == b'C' => {
+            (Some((*c as char).to_ascii_lowercase()), &rest[1..])
+        }
+        _ => (None, rest),
+    };
+    if digits.is_empty() {
+        return Some((letter, variant, None));
+    }
+    if !digits.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let n: u32 = digits.parse().ok()?;
+    Some((letter, variant, Some(n)))
+}
+
+/// True when the lowercased first token looks like a bin card: a bin letter
+/// with an optional `t`/`c` variant and an optional tally number (`d`,
+/// `d4`, `ut`, `ut4`, …). Exact keywords (`tfc`, `tally`, `kcode`, `vals`)
+/// never classify as bin cards.
+fn is_bin_card(head: &str) -> bool {
+    if matches!(head, "tfc" | "tally" | "kcode" | "vals") {
+        return false;
+    }
+    split_card_head(head).is_some()
+}
+
+/// Parse one bin card plus its values.
 ///
-/// Expects the card line `<letter><tally> <count>` with no variant suffix or
-/// flag tokens, then collects exactly `count` floats from the following
-/// lines (blank lines skipped). A `count` of 0 carries no values. Stops
-/// collecting when the next section keyword (`f`/`d`/`u`/`s`/`m`/`c`/`e`/
-/// `t`/`vals`/`tfc`/`tally`/`kcode`) is reached; anything else is a
-/// named-open layout.
+/// Accepts `<letter>[t|c][<tally>] <count> [flag]`: bare (`d`) or numbered
+/// (`d4`) heads, total (`t`) / cumulative (`c`) variants, and a third flag
+/// token on `c`/`e`/`t` cards (stored verbatim). Then collects exactly
+/// `count` floats from the following lines (blank lines skipped). A `count`
+/// of 0 carries no values. Stops collecting when the next section keyword
+/// is reached; anything else is a named-open layout.
 fn parse_bin_card(
     raw: &[&str],
     pos: &mut usize,
@@ -455,31 +672,54 @@ fn parse_bin_card(
         Error::BadStructure(format!("tally {tally}: truncated before `{letter}` card"))
     })?;
     let toks: Vec<&str> = line.split_whitespace().collect();
-    let want = format!("{letter}{tally}");
     let got = toks.first().copied().unwrap_or("").to_ascii_lowercase();
-    // Total/cumulative variants spell `ut`/`et`/… — named-open.
-    if got.len() > want.len() && got.starts_with(letter) {
+    let (got_letter, variant, got_num) = split_card_head(&got).ok_or_else(|| {
+        Error::BadStructure(format!(
+            "tally {tally}: expected `{letter}{tally}` card, got `{line}`"
+        ))
+    })?;
+    if got_letter != letter {
         return Err(Error::BadStructure(format!(
-            "named-open: tally {tally}: `{got}` total/cumulative variants are not parsed"
+            "tally {tally}: expected `{letter}{tally}` card, got `{line}`"
         )));
     }
-    if got != want {
-        return Err(Error::BadStructure(format!(
-            "tally {tally}: expected `{want}` card, got `{line}`"
-        )));
-    }
-    if toks.len() > 2 {
-        // Mesh tallies spell extra mesh-info tokens on the `f` line; other
-        // cards never carry flag tokens in the verifiable subset.
-        if letter == 'f' {
+    if let Some(n) = got_num {
+        if n != tally {
             return Err(Error::BadStructure(format!(
-                "named-open: tally {tally}: mesh-tally `f` line `{line}` is not parsed"
+                "tally {tally}: expected `{letter}{tally}` card, got `{line}`"
             )));
         }
+    }
+    if toks.len() > 3 {
         return Err(Error::BadStructure(format!(
-            "named-open: tally {tally}: `{got}` flag tokens `{line}` are not parsed"
+            "named-open: tally {tally}: `{got}` has too many tokens `{line}`"
         )));
     }
+    let flag = if toks.len() == 3 {
+        if !matches!(letter, 'c' | 'e' | 't') {
+            return Err(Error::BadStructure(format!(
+                "named-open: tally {tally}: `{got}` flag tokens `{line}` are not parsed"
+            )));
+        }
+        let f = num(context, toks[2])?;
+        if !(f.is_finite() && f.fract() == 0.0) {
+            return Err(Error::BadStructure(format!(
+                "tally {tally}: `{got}` flag `{}` is not an integer",
+                toks[2]
+            )));
+        }
+        // Flags ride the file as small ints; clamp loudly instead of
+        // wrapping on hostile input.
+        if f < i32::MIN as f64 || f > i32::MAX as f64 {
+            return Err(Error::BadStructure(format!(
+                "tally {tally}: `{got}` flag `{}` out of range",
+                toks[2]
+            )));
+        }
+        Some(f as i32)
+    } else {
+        None
+    };
     let count_tok = toks.get(1).copied().unwrap_or("0");
     // Bin counts come from the file: require a non-negative integer (float
     // truncation and wraparound would silently misparse), and never reserve
@@ -487,7 +727,7 @@ fn parse_bin_card(
     let count_f = num(context, count_tok)?;
     if !(count_f.is_finite() && count_f >= 0.0 && count_f.fract() == 0.0) {
         return Err(Error::BadStructure(format!(
-            "tally {tally}: `{want}` count `{count_tok}` is not a non-negative integer"
+            "tally {tally}: `{got}` count `{count_tok}` is not a non-negative integer"
         )));
     }
     let count = count_f as usize;
@@ -518,25 +758,112 @@ fn parse_bin_card(
         }
         *pos += 1;
     }
-    Ok(BinCard { count, values })
+    Ok(BinCard {
+        count,
+        values,
+        variant,
+        flag,
+    })
 }
 
-/// True when the lowercased first token looks like a bin card
-/// (`f4`, `d4`, …, `t4`).
-fn is_bin_card(head: &str) -> bool {
-    let b = head.as_bytes();
-    if b.len() < 2 {
-        return false;
+/// Parse the optional `tfc` block at the cursor.
+///
+/// The cursor must sit past a tally's `vals`. When the next non-blank line
+/// opens `tfc`, consumes the `tfc` jtf line (exactly 9 ints) plus the
+/// following 3–4-float data rows until the next `tally`/`kcode` block;
+/// otherwise returns `None` without advancing past blanks.
+///
+/// Interim: not yet wired into `parse_tally_body` (the `tfc` owner wires it
+/// when the block stops being named-open).
+#[allow(dead_code)]
+fn parse_optional_tfc(
+    raw: &[&str],
+    pos: &mut usize,
+    tally: u32,
+) -> Result<Option<TfcBlock>, Error> {
+    let save = *pos;
+    skip_blank(raw, pos);
+    let peek = match raw.get(*pos) {
+        Some(l) => *l,
+        None => {
+            *pos = save;
+            return Ok(None);
+        }
+    };
+    if first_token(peek) != "tfc" {
+        *pos = save;
+        return Ok(None);
     }
-    matches!(b[0], b'f' | b'd' | b'u' | b's' | b'm' | b'c' | b'e' | b't')
-        && b[1..].iter().all(|c| c.is_ascii_digit())
+    let toks: Vec<&str> = peek.split_whitespace().collect();
+    if toks.len() != 10 {
+        return Err(Error::BadStructure(format!(
+            "tally {tally}: `tfc` jtf line needs 9 ints, got `{peek}`"
+        )));
+    }
+    let mut jtf = Vec::with_capacity(9);
+    for tok in &toks[1..] {
+        let v: i64 = tok.parse().map_err(|_| Error::BadNumber {
+            context: "tfc jtf",
+            text: (*tok).to_string(),
+        })?;
+        jtf.push(v);
+    }
+    *pos += 1;
+    let mut rows = Vec::new();
+    loop {
+        skip_blank(raw, pos);
+        let line = match raw.get(*pos) {
+            Some(l) => *l,
+            None => break,
+        };
+        let head = first_token(line);
+        if head == "tally" || head == "kcode" {
+            break;
+        }
+        if head == "tfc" || head == "vals" || is_bin_card(&head) {
+            return Err(Error::BadStructure(format!(
+                "tally {tally}: unexpected `{head}` inside `tfc` data"
+            )));
+        }
+        let toks: Vec<&str> = line.split_whitespace().collect();
+        if toks.len() != 3 && toks.len() != 4 {
+            return Err(Error::BadStructure(format!(
+                "tally {tally}: `tfc` data rows need 3-4 floats, got `{line}`"
+            )));
+        }
+        let nps: i64 = toks[0].parse().map_err(|_| Error::BadNumber {
+            context: "tfc nps",
+            text: toks[0].to_string(),
+        })?;
+        let value = num("tfc value", toks[1])?;
+        let rel_err = num("tfc rel error", toks[2])?;
+        let fom = if toks.len() == 4 {
+            Some(num("tfc fom", toks[3])?)
+        } else {
+            None
+        };
+        rows.push(TfcEntry {
+            nps,
+            value,
+            rel_err,
+            fom,
+        });
+        *pos += 1;
+    }
+    Ok(Some(TfcBlock { jtf, rows }))
 }
 
-/// Parse one standard-tally body at the cursor (cursor must sit on its
-/// `tally` line; blank lines already skipped by the caller).
-fn parse_tally_body(raw: &[&str], pos: &mut usize) -> Result<TallyBody, Error> {
+/// One parsed tally block: standard or mesh.
+enum TallyBlock {
+    Standard(TallyBody),
+    Mesh(MeshTallyBody),
+}
+
+/// Read the `tally` head line at the cursor (cursor must sit on it) without
+/// advancing past anything else.
+fn read_tally_head(raw: &[&str], pos: usize) -> Result<(u32, i32, Option<i32>), Error> {
     let line = raw
-        .get(*pos)
+        .get(pos)
         .ok_or_else(|| Error::BadStructure("truncated tally body".into()))?;
     let toks: Vec<&str> = line.split_whitespace().collect();
     if toks.first() != Some(&"tally") {
@@ -555,11 +882,212 @@ fn parse_tally_body(raw: &[&str], pos: &mut usize) -> Result<TallyBody, Error> {
         .get(3)
         .map(|t| num("tally detector type", t).map(|v| v as i32))
         .transpose()?;
+    Ok((number, particle_type, detector_type))
+}
+
+/// Parse one integer field verbatim from the file (no float truncation,
+/// no wraparound: finite, integral, and inside `i64`).
+fn int_field(context: &'static str, tok: &str) -> Result<i64, Error> {
+    let v = num(context, tok)?;
+    if !(v.is_finite() && v.fract() == 0.0) {
+        return Err(Error::BadStructure(format!(
+            "{context} `{tok}` is not an integer"
+        )));
+    }
+    if v < i64::MIN as f64 || v > i64::MAX as f64 {
+        return Err(Error::BadStructure(format!(
+            "{context} `{tok}` is out of range"
+        )));
+    }
+    Ok(v as i64)
+}
+
+/// Parse one mesh-tally body at the cursor (cursor must sit on its `tally`
+/// line with `detector_type <= -1`; blank lines already skipped by the
+/// caller).
+///
+/// The `f` line carries the 4-int mesh info (`f[<tally>] <unknown> <ni>
+/// <nj> <nk>`, bare-`f` accepted), followed by `(ni+1)+(nj+1)+(nk+1)`
+/// cora/b/c bound floats across as many lines as needed (blank lines
+/// skipped; a section keyword ends the bounds run and trips a truncation
+/// error). Bounds are partitioned in file order: the first `ni+1` values
+/// are `cora`, the next `nj+1` are `corb`, the rest are `corc`. The
+/// remaining cards, `vals` pairing, and total/cumulative/flag spellings
+/// match the standard body; mesh tallies carry no `tfc` block (a trailing
+/// `tfc` is a loud named-open error, not a silent skip).
+fn parse_mesh_body(raw: &[&str], pos: &mut usize) -> Result<MeshTallyBody, Error> {
+    let (number, particle_type, detector_type) = read_tally_head(raw, *pos)?;
+    let mesh_kind = detector_type.unwrap_or(-1);
+    *pos += 1;
+
+    let particle_list = if particle_type < 0 {
+        read_particle_list(raw, pos, number)?
+    } else {
+        Vec::new()
+    };
+
+    let comment = read_comments(raw, pos, number)?;
+
+    // Mesh `f` line: head plus exactly 4 ints.
+    skip_blank(raw, pos);
+    let fline = raw.get(*pos).ok_or_else(|| {
+        Error::BadStructure(format!("tally {number}: truncated before mesh `f` line"))
+    })?;
+    let ftoks: Vec<&str> = fline.split_whitespace().collect();
+    let fhead = ftoks.first().copied().unwrap_or("").to_ascii_lowercase();
+    let (fletter, fvariant, fnum) = split_card_head(&fhead).ok_or_else(|| {
+        Error::BadStructure(format!(
+            "tally {number}: expected mesh `f{number}` line, got `{fline}`"
+        ))
+    })?;
+    if fletter != 'f' {
+        return Err(Error::BadStructure(format!(
+            "tally {number}: expected mesh `f{number}` line, got `{fline}`"
+        )));
+    }
+    if let Some(n) = fnum {
+        if n != number {
+            return Err(Error::BadStructure(format!(
+                "tally {number}: expected mesh `f{number}` line, got `{fline}`"
+            )));
+        }
+    }
+    if fvariant.is_some() {
+        return Err(Error::BadStructure(format!(
+            "named-open: tally {number}: mesh total/cumulative `f` variants are not parsed"
+        )));
+    }
+    if ftoks.len() != 5 {
+        return Err(Error::BadStructure(format!(
+            "tally {number}: mesh `f` line needs 4 ints (`unknown ni nj nk`), got `{fline}`"
+        )));
+    }
+    let mesh_unknown = int_field("mesh unknown", ftoks[1])?;
+    let mut dims = [0usize; 3];
+    for (i, tok) in ftoks[2..].iter().enumerate() {
+        let v = int_field("mesh bin count", tok)?;
+        if v < 1 {
+            return Err(Error::BadStructure(format!(
+                "tally {number}: mesh axis {i} needs >= 1 bins, got `{tok}`"
+            )));
+        }
+        dims[i] = v as usize;
+    }
+    let (ni, nj, nk) = (dims[0], dims[1], dims[2]);
+    *pos += 1;
+
+    // Bounds: allocation follows file bytes, never the declared counts.
+    let need_bounds = (ni + 1)
+        .checked_add(nj + 1)
+        .and_then(|s| s.checked_add(nk + 1))
+        .ok_or_else(|| Error::BadStructure(format!("tally {number}: mesh bounds overflow")))?;
+    let mut flat: Vec<f64> = Vec::new();
+    while flat.len() < need_bounds {
+        skip_blank(raw, pos);
+        let peek = raw.get(*pos).ok_or_else(|| {
+            Error::BadStructure(format!("tally {number}: truncated in mesh bounds"))
+        })?;
+        let head = first_token(peek);
+        if head == "tally" || head == "kcode" || head == "vals" || head == "tfc" {
+            return Err(Error::BadStructure(format!(
+                "tally {number}: mesh bounds need {need_bounds} floats, found {}",
+                flat.len()
+            )));
+        }
+        if is_bin_card(&head) {
+            return Err(Error::BadStructure(format!(
+                "tally {number}: mesh bounds need {need_bounds} floats, found {} before `{head}`",
+                flat.len()
+            )));
+        }
+        for tok in peek.split_whitespace() {
+            if flat.len() == need_bounds {
+                break;
+            }
+            flat.push(num("mesh bound", tok)?);
+        }
+        *pos += 1;
+    }
+    let corc_split = flat.len() - (nk + 1);
+    let corb_split = corc_split - (nj + 1);
+    let corc = flat[corc_split..].to_vec();
+    let corb = flat[corb_split..corc_split].to_vec();
+    let cora = flat[..corb_split].to_vec();
+
+    let d = parse_bin_card(raw, pos, 'd', number, "tally direct bins")?;
+    let u = parse_bin_card(raw, pos, 'u', number, "tally user bins")?;
+    let s = parse_bin_card(raw, pos, 's', number, "tally segment bins")?;
+    let m = parse_bin_card(raw, pos, 'm', number, "tally multiplier bins")?;
+    let c = parse_bin_card(raw, pos, 'c', number, "tally cosine bins")?;
+    let e = parse_bin_card(raw, pos, 'e', number, "tally energy bins")?;
+    let t = parse_bin_card(raw, pos, 't', number, "tally time bins")?;
+
+    let probe = MeshTallyBody {
+        number,
+        particle_type,
+        detector_type: mesh_kind,
+        particle_list: particle_list.clone(),
+        comment: Vec::new(),
+        mesh_unknown,
+        ni,
+        nj,
+        nk,
+        cora: Vec::new(),
+        corb: Vec::new(),
+        corc: Vec::new(),
+        d: d.clone(),
+        u: u.clone(),
+        s: s.clone(),
+        m: m.clone(),
+        c: c.clone(),
+        e: e.clone(),
+        t: t.clone(),
+        vals: Vec::new(),
+    };
+    let vals = read_vals_block(raw, pos, number, probe.expected_pairs())?;
+
+    // Mesh tallies carry no `tfc`: a trailing block is named-open, loud.
+    skip_blank(raw, pos);
+    if let Some(peek) = raw.get(*pos) {
+        if opens(peek, "tfc") {
+            return Err(Error::BadStructure(format!(
+                "named-open: tally {number}: mesh-tally `tfc` blocks are not parsed"
+            )));
+        }
+    }
+
+    Ok(MeshTallyBody {
+        number,
+        particle_type,
+        detector_type: mesh_kind,
+        particle_list,
+        comment,
+        mesh_unknown,
+        ni,
+        nj,
+        nk,
+        cora,
+        corb,
+        corc,
+        d,
+        u,
+        s,
+        m,
+        c,
+        e,
+        t,
+        vals,
+    })
+}
+
+/// Parse one tally block at the cursor (cursor must sit on its `tally`
+/// line; blank lines already skipped by the caller), dispatching to the
+/// standard or mesh body parser on `detector_type`.
+fn parse_tally_block(raw: &[&str], pos: &mut usize) -> Result<TallyBlock, Error> {
+    let (number, _particle_type, detector_type) = read_tally_head(raw, *pos)?;
     if let Some(d) = detector_type {
         if d <= -1 {
-            return Err(Error::BadStructure(format!(
-                "named-open: tally {number}: mesh tallies (detector_type {d}) are not parsed"
-            )));
+            return parse_mesh_body(raw, pos).map(TallyBlock::Mesh);
         }
         if d >= 3 {
             return Err(Error::BadStructure(format!(
@@ -572,35 +1100,32 @@ fn parse_tally_body(raw: &[&str], pos: &mut usize) -> Result<TallyBody, Error> {
             "named-open: tally {number}: point-detector tallies are not parsed"
         )));
     }
-    *pos += 1;
+    parse_tally_body(raw, pos).map(TallyBlock::Standard)
+}
 
-    // Negative particle types carry one particle-list line (open-source
-    // readers agree on this single-line form; anything else is named-open).
-    let mut particle_list = Vec::new();
-    if particle_type < 0 {
-        skip_blank(raw, pos);
-        let pl = raw.get(*pos).ok_or_else(|| {
-            Error::BadStructure(format!("tally {number}: truncated particle list"))
-        })?;
-        let head = first_token(pl);
-        if head == "tally"
-            || head == "kcode"
-            || head == "vals"
-            || head == "tfc"
-            || is_bin_card(&head)
-        {
-            return Err(Error::BadStructure(format!(
-                "tally {number}: missing particle list for negative particle type"
-            )));
-        }
-        for t in pl.split_whitespace() {
-            particle_list.push(num("tally particle list", t)? as i32);
-        }
-        *pos += 1;
+/// Read one particle-list line for a negative `particle_type`.
+fn read_particle_list(raw: &[&str], pos: &mut usize, number: u32) -> Result<Vec<i32>, Error> {
+    skip_blank(raw, pos);
+    let pl = raw
+        .get(*pos)
+        .ok_or_else(|| Error::BadStructure(format!("tally {number}: truncated particle list")))?;
+    let head = first_token(pl);
+    if head == "tally" || head == "kcode" || head == "vals" || head == "tfc" || is_bin_card(&head) {
+        return Err(Error::BadStructure(format!(
+            "tally {number}: missing particle list for negative particle type"
+        )));
     }
+    let mut out = Vec::new();
+    for t in pl.split_whitespace() {
+        out.push(num("tally particle list", t)? as i32);
+    }
+    *pos += 1;
+    Ok(out)
+}
 
-    // FC comment lines: anything before the `f` card that is not itself a
-    // section keyword.
+/// Collect `FC` comment lines at the cursor (anything before the `f` card
+/// that is not itself a section keyword).
+fn read_comments(raw: &[&str], pos: &mut usize, number: u32) -> Result<Vec<String>, Error> {
     let mut comment = Vec::new();
     loop {
         skip_blank(raw, pos);
@@ -619,6 +1144,92 @@ fn parse_tally_body(raw: &[&str], pos: &mut usize) -> Result<TallyBody, Error> {
         comment.push(peek.trim().to_string());
         *pos += 1;
     }
+    Ok(comment)
+}
+
+/// Read a `vals` block of exactly `need_pairs` val/err pairs at the cursor
+/// (cursor must sit past the `t` card).
+fn read_vals_block(
+    raw: &[&str],
+    pos: &mut usize,
+    number: u32,
+    need_pairs: usize,
+) -> Result<Vec<(f64, f64)>, Error> {
+    skip_blank(raw, pos);
+    let vline = raw
+        .get(*pos)
+        .ok_or_else(|| Error::BadStructure(format!("tally {number}: truncated before `vals`")))?;
+    if !opens(vline, "vals") {
+        return Err(Error::BadStructure(format!(
+            "tally {number}: expected `vals` block, got `{vline}`"
+        )));
+    }
+    *pos += 1;
+    let need_floats = need_pairs
+        .checked_mul(2)
+        .ok_or_else(|| Error::BadStructure(format!("tally {number}: bin product overflows")))?;
+    let mut flat = Vec::new();
+    while flat.len() < need_floats {
+        skip_blank(raw, pos);
+        let peek = raw
+            .get(*pos)
+            .ok_or_else(|| Error::BadStructure(format!("tally {number}: truncated in `vals`")))?;
+        let head = first_token(peek);
+        if head == "tally" || head == "kcode" {
+            return Err(Error::BadStructure(format!(
+                "tally {number}: `vals` needs {need_floats} floats, found {}",
+                flat.len()
+            )));
+        }
+        if head == "tfc" || is_bin_card(&head) || head == "vals" {
+            return Err(Error::BadStructure(format!(
+                "tally {number}: `vals` needs {need_floats} floats, found {} before `{head}`",
+                flat.len()
+            )));
+        }
+        for tok in peek.split_whitespace() {
+            if flat.len() == need_floats {
+                break;
+            }
+            flat.push(num("tally vals value", tok)?);
+        }
+        *pos += 1;
+    }
+    // `flat.len()` is exact here, so this reservation is file-bounded.
+    let mut vals = Vec::with_capacity(flat.len() / 2);
+    for pair in flat.chunks_exact(2) {
+        vals.push((pair[0], pair[1]));
+    }
+    Ok(vals)
+}
+
+/// Parse one standard-tally body at the cursor (cursor must sit on its
+/// `tally` line; blank lines already skipped by the caller).
+fn parse_tally_body(raw: &[&str], pos: &mut usize) -> Result<TallyBody, Error> {
+    let (number, particle_type, detector_type) = read_tally_head(raw, *pos)?;
+    // The dispatcher keeps mesh/radiograph/point-detector arms out of here;
+    // re-check defensively so a direct caller still hears a loud named-open.
+    if let Some(d) = detector_type {
+        if d >= 3 {
+            return Err(Error::BadStructure(format!(
+                "named-open: tally {number}: radiograph tallies (detector_type {d}) are not parsed"
+            )));
+        }
+    }
+    if number % 10 == 5 {
+        return Err(Error::BadStructure(format!(
+            "named-open: tally {number}: point-detector tallies are not parsed"
+        )));
+    }
+    *pos += 1;
+
+    let particle_list = if particle_type < 0 {
+        read_particle_list(raw, pos, number)?
+    } else {
+        Vec::new()
+    };
+
+    let comment = read_comments(raw, pos, number)?;
 
     let f = parse_bin_card(raw, pos, 'f', number, "tally object bins")?;
     let d = parse_bin_card(raw, pos, 'd', number, "tally direct bins")?;
@@ -679,6 +1290,7 @@ fn parse_tally_body(raw: &[&str], pos: &mut usize) -> Result<TallyBody, Error> {
         e: e.clone(),
         t: t.clone(),
         vals: Vec::new(),
+        tfc: None,
     };
     let need_pairs = probe.expected_pairs();
     let need_floats = need_pairs
@@ -717,15 +1329,9 @@ fn parse_tally_body(raw: &[&str], pos: &mut usize) -> Result<TallyBody, Error> {
         vals.push((pair[0], pair[1]));
     }
 
-    // What follows must be the next tally, `kcode`, or a named-open `tfc`.
-    skip_blank(raw, pos);
-    if let Some(peek) = raw.get(*pos) {
-        if opens(peek, "tfc") {
-            return Err(Error::BadStructure(format!(
-                "named-open: tally {number}: `tfc` blocks are not parsed"
-            )));
-        }
-    }
+    // Optional `tfc` block after `vals` (standard tallies only; mesh
+    // tallies reject it in `parse_mesh_body`).
+    let tfc = parse_optional_tfc(raw, pos, number)?;
 
     Ok(TallyBody {
         number,
@@ -742,6 +1348,7 @@ fn parse_tally_body(raw: &[&str], pos: &mut usize) -> Result<TallyBody, Error> {
         e,
         t,
         vals,
+        tfc,
     })
 }
 
@@ -996,29 +1603,87 @@ mod tests {
     }
 
     #[test]
-    fn body_tfc_is_named_open() {
-        let middle = format!("{MIN_BODY}tfc 1 2 3 4 5 6 7 8 9\n");
+    fn body_tfc_parsed() {
+        // `tfc` jtf line (exactly 9 ints) plus 3-float and 4-float rows.
+        let middle =
+            format!("{MIN_BODY}tfc 1 2 3 4 5 6 7 8 9\n 1000 11.5 0.2\n 2000 11.75 0.15 3.5\n");
+        let m = Mctal::parse(&body_probe(&middle)).unwrap();
+        let tfc = m.tallies[0].tfc.as_ref().expect("tfc block parsed");
+        assert_eq!(tfc.jtf, vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        assert_eq!(tfc.rows.len(), 2);
+        assert_eq!(tfc.rows[0].nps, 1000);
+        assert_eq!((tfc.rows[0].value, tfc.rows[0].rel_err), (11.5, 0.2));
+        assert_eq!(tfc.rows[0].fom, None);
+        assert_eq!(tfc.rows[1].fom, Some(3.5));
+        // No `tfc` lines means no block (cursor left before `kcode`).
+        let plain = Mctal::parse(&body_probe(MIN_BODY)).unwrap();
+        assert!(plain.tallies[0].tfc.is_none());
+    }
+
+    #[test]
+    fn body_tfc_bad_jtf_errors() {
+        let middle = format!("{MIN_BODY}tfc 1 2 3\n");
         assert!(matches!(
             Mctal::parse(&body_probe(&middle)),
-            Err(Error::BadStructure(m)) if m.contains("named-open") && m.contains("tfc")
+            Err(Error::BadStructure(m)) if m.contains("jtf line needs 9 ints")
+        ));
+    }
+
+    /// Minimal rectangular mesh-tally body (`detector_type -1`, 2x1x1
+    /// cells, closed-form val/err pairing like the mesh fixture).
+    const MIN_MESH_BODY: &str = "tally 4 1 -1\nf4 0 2 1 1\n 0.0 5.0 10.0\n 0.0 10.0\n 0.0 10.0\nd4 0\nu4 0\ns4 0\nm4 0\nc4 0\ne4 0\nt4 0\nvals\n 11.0 1.375 12.0 1.5\n";
+
+    #[test]
+    fn mesh_body_parsed() {
+        let m = Mctal::parse(&body_probe(MIN_MESH_BODY)).unwrap();
+        assert!(m.tallies.is_empty());
+        assert_eq!(m.mesh_tallies.len(), 1);
+        let b = &m.mesh_tallies[0];
+        assert_eq!(b.number, 4);
+        assert_eq!(b.detector_type, -1);
+        assert_eq!(b.mesh_unknown, 0);
+        assert_eq!(b.dims(), [2, 1, 1]);
+        assert_eq!(b.num_cells(), 2);
+        assert_eq!(b.cora, vec![0.0, 5.0, 10.0]);
+        assert_eq!(b.corb, vec![0.0, 10.0]);
+        assert_eq!(b.corc, vec![0.0, 10.0]);
+        assert_eq!(b.expected_pairs(), 2);
+        assert_eq!(b.vals, vec![(11.0, 1.375), (12.0, 1.5)]);
+        assert_eq!(b.total_val(), 23.0);
+        assert_eq!(b.mesh_index(1, 0, 0), 1);
+    }
+
+    #[test]
+    fn mesh_body_errors_are_loud() {
+        // Short bounds run: 7 floats needed, section keyword ends the run.
+        let short = MIN_MESH_BODY.replace(" 0.0 10.0\n 0.0 10.0\nd4", "d4");
+        assert!(matches!(
+            Mctal::parse(&body_probe(&short)),
+            Err(Error::BadStructure(m)) if m.contains("mesh bounds need 7 floats")
+        ));
+        // Non-integral mesh dimension.
+        let bad_dim = MIN_MESH_BODY.replace("f4 0 2 1 1", "f4 0 2.5 1 1");
+        assert!(matches!(
+            Mctal::parse(&body_probe(&bad_dim)),
+            Err(Error::BadStructure(m)) if m.contains("is not an integer")
+        ));
+        // Mesh tallies carry no `tfc`.
+        let with_tfc = format!("{MIN_MESH_BODY}tfc 1 2 3 4 5 6 7 8 9\n 1000 1.0 0.1\n");
+        assert!(matches!(
+            Mctal::parse(&body_probe(&with_tfc)),
+            Err(Error::BadStructure(m)) if m.contains("named-open") && m.contains("mesh-tally `tfc`")
         ));
     }
 
     #[test]
-    fn body_mesh_f_line_is_named_open() {
-        let middle =
-            "tally 4 1 -4\nf4 1 2 3 4 5\nd4 0\nu4 0\ns4 0\nm4 0\nc4 0\ne4 0\nt4 0\nvals\n 3.0 0.375\n";
-        // Detector-type mesh trips first (also named-open).
-        assert!(matches!(
-            Mctal::parse(&body_probe(middle)),
-            Err(Error::BadStructure(m)) if m.contains("named-open")
-        ));
-        // Bare multi-token `f` line without a mesh detector type.
+    fn body_naked_multi_token_f_is_named_open() {
+        // A multi-token `f` line on a standard (non-mesh) tally is mesh
+        // info without a mesh detector type: loud, never parsed as flags.
         let middle =
             "tally 4 1 0\nf4 1 2 3 4 5\nd4 0\nu4 0\ns4 0\nm4 0\nc4 0\ne4 0\nt4 0\nvals\n 3.0 0.375\n";
         assert!(matches!(
             Mctal::parse(&body_probe(middle)),
-            Err(Error::BadStructure(m)) if m.contains("named-open") && m.contains("mesh-tally")
+            Err(Error::BadStructure(m)) if m.contains("named-open") && m.contains("too many tokens")
         ));
     }
 
@@ -1034,13 +1699,50 @@ mod tests {
     }
 
     #[test]
-    fn body_total_variant_is_named_open() {
+    fn body_total_variant_stored_verbatim() {
+        // Total-variant cards (`et4`) now parse with the variant stored
+        // verbatim (see `BinCard::variant`); they are no longer named-open.
         let middle =
-            "tally 4 1 0\nf4 1\n 1\nd4 0\nu4 0\ns4 0\nm4 0\nc4 0\net4 2\n 0.5 2.0\nt4 0\nvals\n 3.0 0.375\n";
-        assert!(matches!(
-            Mctal::parse(&body_probe(middle)),
-            Err(Error::BadStructure(m)) if m.contains("named-open") && m.contains("total/cumulative")
-        ));
+            "tally 4 1 0\nf4 1\n 1\nd4 0\nu4 0\ns4 0\nm4 0\nc4 0\net4 2\n 0.5 2.0\nt4 0\nvals\n 3.0 0.375\n 4.0 0.5\n";
+        let m = Mctal::parse(&body_probe(middle)).unwrap();
+        assert_eq!(m.tallies[0].e.variant, Some('t'));
+    }
+
+    #[test]
+    fn mesh_fixture_closed_form_pairs() {
+        let m = Mctal::from_file(fixture("synthetic_mesh.mctal")).unwrap();
+        assert_eq!(m.tally_nums, vec![4]);
+        assert!(m.tallies.is_empty());
+        assert_eq!(m.mesh_tallies.len(), 1);
+        let b = &m.mesh_tallies[0];
+        assert_eq!((b.number, b.detector_type, b.mesh_unknown), (4, -1, 0));
+        assert_eq!(b.dims(), [2, 1, 1]);
+        assert_eq!(b.cora, vec![0.0, 5.0, 10.0]);
+        assert_eq!(b.corb, vec![0.0, 10.0]);
+        assert_eq!(b.corc, vec![0.0, 10.0]);
+        // Closed-form pairing: val = 11 + cell, err = val/8.
+        assert_eq!(b.vals, vec![(11.0, 1.375), (12.0, 1.5)]);
+        assert_eq!(b.total_val(), 23.0);
+        assert_eq!(m.k_col, vec![0.99, 1.01]);
+    }
+
+    #[test]
+    fn tfc_variant_fixture() {
+        let m = Mctal::from_file(fixture("synthetic_tfc_variants.mctal")).unwrap();
+        assert_eq!(m.tally_nums, vec![6]);
+        assert_eq!(m.tallies.len(), 1);
+        let t = &m.tallies[0];
+        // Total-variant energy card and flag-carrying time card stored
+        // verbatim; pair count already includes the total bin.
+        assert_eq!(t.e.variant, Some('t'));
+        assert_eq!(t.e.values, vec![0.5, 2.0]);
+        assert_eq!(t.t.flag, Some(0));
+        assert_eq!(t.vals, vec![(11.0, 1.375), (12.0, 1.5)]);
+        let tfc = t.tfc.as_ref().expect("tfc block parsed");
+        assert_eq!(tfc.jtf, vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        assert_eq!(tfc.rows.len(), 2);
+        assert_eq!(tfc.rows[1].fom, Some(3.5));
+        assert!(m.mesh_tallies.is_empty());
     }
 
     #[test]
@@ -1085,6 +1787,8 @@ mod tests {
         let big = BinCard {
             count: usize::MAX / 2,
             values: Vec::new(),
+            variant: None,
+            flag: None,
         };
         let body = TallyBody {
             number: 4,
@@ -1097,28 +1801,41 @@ mod tests {
             u: BinCard {
                 count: 0,
                 values: Vec::new(),
+                variant: None,
+                flag: None,
             },
             s: BinCard {
                 count: 0,
                 values: Vec::new(),
+                variant: None,
+                flag: None,
             },
             m: BinCard {
                 count: 0,
                 values: Vec::new(),
+                variant: None,
+                flag: None,
             },
             c: BinCard {
                 count: 0,
                 values: Vec::new(),
+                variant: None,
+                flag: None,
             },
             e: BinCard {
                 count: 0,
                 values: Vec::new(),
+                variant: None,
+                flag: None,
             },
             t: BinCard {
                 count: 0,
                 values: Vec::new(),
+                variant: None,
+                flag: None,
             },
             vals: Vec::new(),
+            tfc: None,
         };
         assert_eq!(body.expected_pairs(), usize::MAX);
     }

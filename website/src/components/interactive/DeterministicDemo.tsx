@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useWasm } from "../../lib/wasm";
-import type { IsotxsSummary } from "../../types/nucleide-wasm";
+import type { IsotxsSummary, RtfluxSummary } from "../../types/nucleide-wasm";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Textarea } from "@nukehub/docs-kit/components/ui/Textarea";
 import { DataTable } from "@nukehub/docs-kit/components/mdx/DataTable";
+import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
+import { Select } from "@nukehub/docs-kit/components/ui/Select";
 
 const DEFAULT_ISOTXS = `ISOTXS 2
 NUCLIDE U235 92235 2
@@ -11,10 +13,17 @@ NUCLIDE U235 92235 2
 NUCLIDE PU239 94239 2
 4.4 5.5`;
 
+const DEFAULT_RTFLUX = `RTFLUX 2 3
+1.0 2.0 3.0
+4.0 5.0 6.0`;
+
 export function DeterministicDemo() {
   const { wasm, ready, error } = useWasm();
   const [text, setText] = useState(DEFAULT_ISOTXS);
   const [summary, setSummary] = useState<IsotxsSummary | null>(null);
+  const [rtfluxText, setRtfluxText] = useState(DEFAULT_RTFLUX);
+  const [rtfluxKind, setRtfluxKind] = useState("rtflux");
+  const [rtflux, setRtflux] = useState<RtfluxSummary | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function clearError() {
@@ -86,8 +95,70 @@ export function DeterministicDemo() {
                 pagination
                 pageSize={10}
               />
+              <Plotly
+                aspect="video"
+                data={summary.nuclides.map((n) => ({
+                  type: "bar",
+                  name: n.label,
+                  x: n.total_xs.map((_, g) => `g${g + 1}`),
+                  y: n.total_xs,
+                }))}
+                layout={{
+                  barmode: "group",
+                  xaxis: { title: { text: "Energy group" } },
+                  yaxis: { title: { text: "Total xs" } },
+                  margin: { t: 16, r: 16, b: 48, l: 64 },
+                  legend: { orientation: "h", y: -0.25 },
+                }}
+              />
             </div>
           )}
+
+          <div className="space-y-2 border-t border-border/50 pt-4">
+            <p className="text-sm font-medium">RTFLUX fluxes (PARTISN stays Python-only)</p>
+            <Textarea
+              value={rtfluxText}
+              onChange={(e) => {
+                setRtfluxText(e.target.value);
+                clearError();
+              }}
+              className="font-mono text-xs"
+            />
+            <div className="flex flex-wrap items-end gap-2">
+              <Select
+                value={rtfluxKind}
+                onChange={(v) => {
+                  setRtfluxKind(v);
+                  clearError();
+                }}
+                options={[
+                  { value: "rtflux", label: "RTFLUX" },
+                  { value: "atflux", label: "ATFLUX" },
+                  { value: "rzflux", label: "RZFLUX" },
+                ]}
+              />
+              <Button
+                onClick={() => {
+                  if (!wasm) return;
+                  try {
+                    setRtflux(wasm.parseRtflux(rtfluxText, rtfluxKind));
+                    clearError();
+                  } catch (e) {
+                    setLocalError(e instanceof Error ? e.message : String(e));
+                    setRtflux(null);
+                  }
+                }}
+              >
+                Parse RTFLUX
+              </Button>
+            </div>
+            {rtflux && (
+              <p className="text-sm">
+                Flux kind: <span className="font-mono">{rtflux.kind}</span>, groups: {rtflux.groups}
+                , points: {rtflux.npoints}
+              </p>
+            )}
+          </div>
         </>
       )}
     </div>

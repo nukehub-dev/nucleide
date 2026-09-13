@@ -4,6 +4,7 @@ from typing import Any
 
 from nucleide._internal import (
     kinetics_equilibrium,
+    kinetics_from_ifp,
     kinetics_inhour_rho,
     kinetics_initial_rate,
     kinetics_prompt_jump,
@@ -18,7 +19,20 @@ __all__ = [
     "inhour_rho",
     "stable_period",
     "prompt_jump",
+    "from_ifp",
 ]
+
+
+def from_ifp(betas: list[float], lambda_gen: float, lambdas: list[float]) -> dict[str, Any]:
+    """Validated delayed-neutron data from OpenMC IFP kinetics data.
+
+    OpenMC's IFP estimator reports effective delayed fractions (``betas``)
+    and the generation time (``lambda_gen``) but no precursor decay
+    constants: the caller supplies ``lambdas`` from the same data library.
+    Returns ``betas``/``lambdas``/``lambda_gen`` plus ``beta_total`` and
+    ``groups``.
+    """
+    return kinetics_from_ifp(betas, lambda_gen, lambdas)
 
 
 def solve(

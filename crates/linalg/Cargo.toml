@@ -23,4 +23,9 @@ roxmltree = "0.20"
 rand = { version = "0.9", default-features = false, features = ["std", "std_rng", "small_rng"] }
 
 [dev-dependencies]
+criterion = "0.5"
 serde_json.workspace = true
+
+[[bench]]
+name = "linalg_bench"
+harness = false

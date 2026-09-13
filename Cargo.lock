@@ -858,6 +858,7 @@ dependencies = [
 name = "nucleide-linalg"
 version = "0.8.0"
 dependencies = [
+ "criterion",
  "faer",
  "num-complex",
  "rand",
@@ -933,6 +934,8 @@ version = "0.8.0"
 name = "nucleide-spectroscopy"
 version = "0.8.0"
 dependencies = [
+ "criterion",
+ "nucleide-linalg",
  "nucleide-nuclei",
  "serde_json",
  "thiserror 2.0.20",
@@ -950,6 +953,7 @@ dependencies = [
 name = "nucleide-wasm"
 version = "0.8.0"
 dependencies = [
+ "flate2",
  "js-sys",
  "nucleide-alara-io",
  "nucleide-cccc-io",
@@ -962,6 +966,7 @@ dependencies = [
  "nucleide-linalg",
  "nucleide-material",
  "nucleide-mcnp-io",
+ "nucleide-mcpl-io",
  "nucleide-nuclei",
  "nucleide-origen-io",
  "nucleide-serpent-io",

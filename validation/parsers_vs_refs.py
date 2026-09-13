@@ -284,6 +284,67 @@ def compare_ptrac() -> tuple[list[list[str]], list[str]]:
     return rows, skips
 
 
+def compare_mctal() -> tuple[list[list[str]], list[str]]:
+    """Compare MCTAL headers/cycles against `pyne.mcnp.Mctal`.
+
+    PyNE's reader (`Mctal().read(path)`) parses the header, the declared
+    tally numbers, and the `kcode` cycles only — tally bodies are skipped
+    without advancing past them, so body-bearing files have no PyNE oracle
+    at all. Comparison therefore runs only on the kcode-only fixtures;
+    every body-bearing file (standard, mesh, tfc/variant) is a loud SKIP
+    whose contents are covered instead by the synthetic closed-form
+    fixtures (`crates/mcnp-io` tests plus `tests/test_mcnp_io.py`).
+    """
+    try:
+        from pyne.mcnp import Mctal as PyneMctal
+    except ImportError as exc:
+        return [], [_note(f"SKIPPED mctal: PyNE oracle unavailable ({exc})")]
+
+    rows: list[list[str]] = []
+    skips: list[str] = []
+    kcode_only = {"synthetic_kcode5.mctal", "synthetic_kcode19.mctal"}
+    series = ["k_col", "k_abs", "k_path", "prompt_life_col", "prompt_life_path"]
+    for path in sorted((MCNP_DIR / "mctal").glob("*.mctal")):
+        if path.name not in kcode_only:
+            skips.append(
+                _note(
+                    f"SKIPPED {path.name}: PyNE Mctal skips tally bodies without "
+                    "advancing past them, so body-bearing files have no PyNE "
+                    "oracle; covered by synthetic closed-form fixtures instead."
+                )
+            )
+            continue
+        try:
+            ref = PyneMctal()
+            ref.read(str(path))
+        except Exception as exc:
+            skips.append(
+                _note(f"SKIPPED {path.name}: PyNE Mctal failed ({type(exc).__name__}: {exc})")
+            )
+            continue
+        nuc = nucleide.mcnp.read_mctal(str(path))
+        header_ok = (
+            nuc.code_name == ref.code_name
+            and nuc.comment == ref.comment
+            and nuc.n_histories == ref.n_histories
+            and nuc.n_cycles == ref.n_cycles
+            and nuc.n_inactive == ref.n_inactive
+        )
+        if not header_ok:
+            _track(1.0)
+        rows.append([path.name, "header scalars", "5", "OK" if header_ok else "MISMATCH"])
+        for field in series:
+            d, n = arr_max_rel_diff(getattr(nuc, field), getattr(ref, field))
+            rows.append([path.name, field, str(n), fmt(d)])
+        if ref.avg_k_col:
+            got = [(r["avg_k_col"], r["avg_k_col_stdev"]) for r in nuc.averages]
+            d, n = arr_max_rel_diff(
+                [v for pair in got for v in pair], [v for pair in ref.avg_k_col for v in pair]
+            )
+            rows.append([path.name, "avg_k_col pairs", str(n), fmt(d)])
+    return rows, skips
+
+
 def compare_endl() -> tuple[list[list[str]], list[str]]:
     """Compare ENDL tables against `pyne.endl.Library` (EEDL/EPDL scope)."""
     try:
@@ -347,7 +408,11 @@ def mcnp_section(report: Report) -> None:
         "\nssw: header (`kod`, `ver`, `np1`, `nrss`, `ncrd`, `njsw`, `niss`) and per-track"
         "\n`nps`, `wgt`, `erg`, `tme`, `x`, `y`, `z`, `u`, `v`, `w`, `cs` payloads;"
         "\nptrac: problem title and per-record variable counts (PyNE has no `PtracFile`"
-        "\nclass; its low-level `PtracReader` exposes only headers)."
+        "\nclass; its low-level `PtracReader` exposes only headers);"
+        "\nmctal: header scalars plus per-cycle keff/lifetime series on the"
+        "\nkcode-only fixtures (PyNE `Mctal` skips tally bodies, so body-bearing"
+        "\nfiles — standard, mesh, tfc/variant — are loud skips covered by"
+        "\nsynthetic closed-form fixtures instead)."
     )
 
     rows: list[list[str]] = []
@@ -360,9 +425,12 @@ def mcnp_section(report: Report) -> None:
     ptrac_rows, ptrac_skips = compare_ptrac()
     for name, what, status in ptrac_rows:
         rows.append(["ptrac", name, what, status])
+    mctal_rows, mctal_skips = compare_mctal()
+    for name, field, n_vals, status in mctal_rows:
+        rows.append(["mctal", f"{name} {field}", n_vals, status])
     report.table(["Format", "Item", "Values compared", "Max rel diff / status"], rows)
 
-    skips = xsdir_skips + ssw_skips + ptrac_skips
+    skips = xsdir_skips + ssw_skips + ptrac_skips + mctal_skips
     for what, reason in [
         ("wwinp", "`pyne.mcnp.Wwinp` requires PyMOAB to build its mesh (nomoab build)"),
         ("meshtal", "`pyne.mcnp.Meshtal` requires PyMOAB (nomoab build)"),

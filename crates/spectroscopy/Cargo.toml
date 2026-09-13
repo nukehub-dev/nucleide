@@ -8,8 +8,14 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+nucleide-linalg.workspace = true
 nucleide-nuclei.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+criterion = "0.5"
 serde_json.workspace = true
+
+[[bench]]
+name = "spectroscopy_bench"
+harness = false

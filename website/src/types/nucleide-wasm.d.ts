@@ -577,6 +577,60 @@ export interface UqSampleResult {
   maxEigen: number | null;
 }
 
+export interface McplParticleJson {
+  ekin: number;
+  position: [number, number, number];
+  direction: [number, number, number];
+  time: number;
+  weight: number;
+  pdgcode: number;
+  userflags: number;
+}
+
+export interface McplSummary {
+  version: number;
+  nparticles: number;
+  srcname: string;
+  comments: string[];
+  hasUserflags: boolean;
+  hasPolarisation: boolean;
+  doublePrec: boolean;
+  universalPdgcode?: number;
+  universalWeight?: number;
+  blobs: { key: string; len: number }[];
+  particles: McplParticleJson[];
+  truncated: boolean;
+}
+
+export interface SpeSummary {
+  spec_name: string;
+  channels: number;
+  startChan: number;
+  liveTime: number;
+  realTime: number;
+  detId: string;
+  energyFit: number[];
+  counts: number[];
+  ebins: number[];
+  truncated: boolean;
+}
+
+export interface RtfluxSummary {
+  kind: string;
+  groups: number;
+  npoints: number;
+  values: number[];
+  truncated: boolean;
+}
+
+export interface CusumResult {
+  alarmed: boolean;
+  statistic: number;
+  mean: number;
+  std: number;
+  count: number;
+}
+
 export interface WasmMaterialsCompendium {
   len: number;
   is_empty: boolean;
@@ -724,5 +778,24 @@ export interface WasmApi {
     c1: number,
     c2: number,
   ): SpectroscopySmoothResult;
+  parseLinesTsv(text: string): [number, number][];
+  energyBins(channels: number[], fit: number[]): number[];
+  detectorEfficiency(energyMev: number, coeff: number[], effFit: number): number;
+  parseDollarSpe(text: string): SpeSummary;
+  parsePlainSpe(text: string): SpeSummary;
+  inhourRho(betas: number[], lambdas: number[], lambdaGen: number, omega: number): number;
+  stablePeriod(betas: number[], lambdas: number[], lambdaGen: number, rho: number): number;
+  promptJump(nBefore: number, rhoBefore: number, rhoAfter: number, betaTotal: number): number;
+  parseRtflux(text: string, kind: string): RtfluxSummary;
+  materialSeparate(
+    comp: Record<string, number>,
+    effs: Record<string, number>,
+  ): { product: Record<string, number>; tails: Record<string, number> };
+  materialBlend(parts: { comp: Record<string, number>; ratio: number }[]): Record<string, number>;
+  cusumDetect(series: number[], k?: number, h?: number, startup?: number): CusumResult;
+  readMcpl(bytes: Uint8Array): McplSummary;
+  writeMcpl(header: unknown, particles: unknown): Uint8Array;
+  ssw2mcpl(sswBytes: Uint8Array, surfs: number[], kinds: string[], options?: unknown): Uint8Array;
+  mcpl2ssw(mcplBytes: Uint8Array, referenceSswBytes: Uint8Array, surface?: number): Uint8Array;
   uqSample(mean: number[], cov: number[][], n: number, seed: number): UqSampleResult;
 }

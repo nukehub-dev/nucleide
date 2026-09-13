@@ -6,6 +6,7 @@ from nucleide._internal import (
     spectroscopy_calc_bg,
     spectroscopy_detector_efficiency,
     spectroscopy_energy_bins,
+    spectroscopy_fit_efficiency,
     spectroscopy_five_point_smooth,
     spectroscopy_gross_count,
     spectroscopy_net_counts,
@@ -28,6 +29,7 @@ __all__ = [
     "net_counts",
     "energy_bins",
     "detector_efficiency",
+    "fit_efficiency",
     "xray_lines",
     "sdef_decay_source",
     "parse_dollar_spe",
@@ -72,6 +74,23 @@ def energy_bins(channels: list[float], calib_e_fit: list[float]) -> list[float]:
 def detector_efficiency(energy_mev: float, eff_coeff: list[float], eff_fit: int = 1) -> float:
     """Detector efficiency at ``energy_mev`` [MeV] (``eff_fit`` 1 or 2)."""
     return spectroscopy_detector_efficiency(energy_mev, eff_coeff, eff_fit)
+
+
+def fit_efficiency(
+    energies: list[float],
+    effs: list[float],
+    weights: list[float],
+    order: int,
+    eff_fit: int = 1,
+) -> list[float]:
+    """Efficiency coefficients from caller points (E7-fit).
+
+    Log-space weighted least squares: targets ``ln(effs)`` over the
+    ``(ln E)^j`` (``eff_fit`` 1) or ``(1/E)^j`` (``eff_fit`` 2) basis with
+    caller-supplied ``weights``, solved through the workspace least-squares
+    kernel. Returns ``order + 1`` coefficients for :func:`detector_efficiency`.
+    """
+    return spectroscopy_fit_efficiency(energies, effs, weights, order, eff_fit)
 
 
 def xray_lines(

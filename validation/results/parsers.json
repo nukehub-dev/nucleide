@@ -3,10 +3,10 @@
   "name": "parsers",
   "title": "Parser cross-validation (`parsers_vs_refs.py`)",
   "environment": {
-    "date": "2026-09-11",
+    "date": "2026-09-13",
     "python": "3.12.14",
-    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
-    "nucleide": "0.5.0",
+    "platform": "Linux-7.2.4-arch1-2-x86_64-with-glibc2.39",
+    "nucleide": "0.8.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
@@ -190,7 +190,7 @@
     },
     {
       "kind": "prose",
-      "text": "PyNE 0.7.5 (`nomoab` build) `pyne.mcnp` readers run on the committed\n`fixtures/mcnp/` files. Compared fields \u2014 xsdir: per-table `name`, `awr`,\n`filename`, `filetype`, `address`, `tablelength`, `temperature`, `ptable`;\nssw: header (`kod`, `ver`, `np1`, `nrss`, `ncrd`, `njsw`, `niss`) and per-track\n`nps`, `wgt`, `erg`, `tme`, `x`, `y`, `z`, `u`, `v`, `w`, `cs` payloads;\nptrac: problem title and per-record variable counts (PyNE has no `PtracFile`\nclass; its low-level `PtracReader` exposes only headers)."
+      "text": "PyNE 0.7.5 (`nomoab` build) `pyne.mcnp` readers run on the committed\n`fixtures/mcnp/` files. Compared fields \u2014 xsdir: per-table `name`, `awr`,\n`filename`, `filetype`, `address`, `tablelength`, `temperature`, `ptable`;\nssw: header (`kod`, `ver`, `np1`, `nrss`, `ncrd`, `njsw`, `niss`) and per-track\n`nps`, `wgt`, `erg`, `tme`, `x`, `y`, `z`, `u`, `v`, `w`, `cs` payloads;\nptrac: problem title and per-record variable counts (PyNE has no `PtracFile`\nclass; its low-level `PtracReader` exposes only headers);\nmctal: header scalars plus per-cycle keff/lifetime series on the\nkcode-only fixtures (PyNE `Mctal` skips tally bodies, so body-bearing\nfiles \u2014 standard, mesh, tfc/variant \u2014 are loud skips covered by\nsynthetic closed-form fixtures instead)."
     },
     {
       "kind": "table",
@@ -266,12 +266,102 @@
           "mcnp_ptrac_i8_little.ptrac",
           "problem_title + variable_nums",
           "OK"
+        ],
+        [
+          "mctal",
+          "synthetic_kcode19.mctal header scalars",
+          "5",
+          "OK"
+        ],
+        [
+          "mctal",
+          "synthetic_kcode19.mctal k_col",
+          "6",
+          "0.000000e+00"
+        ],
+        [
+          "mctal",
+          "synthetic_kcode19.mctal k_abs",
+          "6",
+          "0.000000e+00"
+        ],
+        [
+          "mctal",
+          "synthetic_kcode19.mctal k_path",
+          "6",
+          "0.000000e+00"
+        ],
+        [
+          "mctal",
+          "synthetic_kcode19.mctal prompt_life_col",
+          "6",
+          "0.000000e+00"
+        ],
+        [
+          "mctal",
+          "synthetic_kcode19.mctal prompt_life_path",
+          "6",
+          "0.000000e+00"
+        ],
+        [
+          "mctal",
+          "synthetic_kcode19.mctal avg_k_col pairs",
+          "12",
+          "0.000000e+00"
+        ],
+        [
+          "mctal",
+          "synthetic_kcode5.mctal header scalars",
+          "5",
+          "OK"
+        ],
+        [
+          "mctal",
+          "synthetic_kcode5.mctal k_col",
+          "8",
+          "0.000000e+00"
+        ],
+        [
+          "mctal",
+          "synthetic_kcode5.mctal k_abs",
+          "8",
+          "0.000000e+00"
+        ],
+        [
+          "mctal",
+          "synthetic_kcode5.mctal k_path",
+          "8",
+          "0.000000e+00"
+        ],
+        [
+          "mctal",
+          "synthetic_kcode5.mctal prompt_life_col",
+          "8",
+          "0.000000e+00"
+        ],
+        [
+          "mctal",
+          "synthetic_kcode5.mctal prompt_life_path",
+          "8",
+          "0.000000e+00"
         ]
       ]
     },
     {
       "kind": "prose",
       "text": "SKIPPED mcnp6_serial_ptrac_i4_little.ptrac: PyNE PtracReader failed (AssertionError: )"
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED synthetic_mesh.mctal: PyNE Mctal skips tally bodies without advancing past them, so body-\nbearing files have no PyNE oracle; covered by synthetic closed-form fixtures instead."
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED synthetic_tally_bodies.mctal: PyNE Mctal skips tally bodies without advancing past them, so\nbody-bearing files have no PyNE oracle; covered by synthetic closed-form fixtures instead."
+    },
+    {
+      "kind": "prose",
+      "text": "SKIPPED synthetic_tfc_variants.mctal: PyNE Mctal skips tally bodies without advancing past them, so\nbody-bearing files have no PyNE oracle; covered by synthetic closed-form fixtures instead."
     },
     {
       "kind": "prose",

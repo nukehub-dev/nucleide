@@ -4,17 +4,23 @@ from typing import Any
 
 from nucleide._internal import (
     uq_check_convergence,
+    uq_lognormal_cov,
+    uq_lognormal_mean,
     uq_passthrough,
     uq_perturb_branches,
     uq_perturb_energies,
     uq_perturb_fission_yields,
     uq_sample_cov,
+    uq_sample_lognormal,
     uq_sample_mean,
     uq_sample_mvn,
 )
 
 __all__ = [
     "sample_mvn",
+    "sample_lognormal",
+    "lognormal_mean",
+    "lognormal_cov",
     "sample_mean",
     "sample_cov",
     "check_convergence",
@@ -35,6 +41,29 @@ def sample_mvn(mean: list[float], cov: list[list[float]], n: int, seed: int) -> 
     identical samples.
     """
     return uq_sample_mvn(mean, cov, n, seed)
+
+
+def sample_lognormal(
+    mean_log: list[float], cov: list[list[float]], n: int, seed: int
+) -> dict[str, Any]:
+    """Draw ``n`` log-normal samples ``y = exp(x)``, ``x ~ N(mean_log, cov)``.
+
+    ``mean_log``/``cov`` are log-space MVN parameters (never the moments of
+    ``y``); the closed-form moments are ``E[y_i] = exp(mu_i + C_ii/2)`` (see
+    :func:`lognormal_mean` / :func:`lognormal_cov`). Same return shape as
+    :func:`sample_mvn`; identical inputs always yield identical samples.
+    """
+    return uq_sample_lognormal(mean_log, cov, n, seed)
+
+
+def lognormal_mean(mean_log: list[float], cov: list[list[float]]) -> list[float]:
+    """Closed-form log-normal mean ``E[y_i] = exp(mu_i + C_ii/2)``."""
+    return uq_lognormal_mean(mean_log, cov)
+
+
+def lognormal_cov(mean_log: list[float], cov: list[list[float]]) -> list[list[float]]:
+    """Closed-form log-normal covariance."""
+    return uq_lognormal_cov(mean_log, cov)
 
 
 def sample_mean(samples: list[list[float]]) -> list[float]:
@@ -68,8 +97,9 @@ def perturb_branches(base: list[float], rel: list[float]) -> list[float]:
 def perturb_energies(
     base: list[float], delta: list[float], convention: str = "relative"
 ) -> list[float]:
-    """Perturb decay energies under ``convention`` (``"relative"`` or
-    ``"absolute"``); negative results clamp to zero."""
+    """Perturb decay energies under ``convention`` (``"relative"``,
+    ``"absolute"``, or ``"lognormal"`` (``nominal * exp(delta)``); negative
+    results clamp to zero (a no-op for lognormal draws)."""
     return uq_perturb_energies(base, delta, convention)
 
 
@@ -79,7 +109,7 @@ def passthrough(delta: list[float]) -> list[float]:
 
 
 def perturb_fission_yields(base: list[float], rel: list[float]) -> list[float]:
-    """Fission-yield perturbation (named-open: waits on cycle 01 FY tapes).
+    """Fission-yield perturbation (named-open: waits on ENDF fission-yield tapes).
 
     Always raises; fission-yield blocks stay out of the decay-only sub-scope.
     """

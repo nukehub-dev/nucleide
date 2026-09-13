@@ -23,11 +23,11 @@
 //! constraint) and follow the [`PerturbConvention`](crate::sample::PerturbConvention)
 //! elementwise, with negative results clamped to zero as above.
 //!
-//! Fission-yield perturbation is explicitly OUT: cycle 01 (the ENDF-decay
-//! tape validator role) is NO-GO with no FY tapes on disk, so
+//! Fission-yield perturbation is explicitly OUT: no ENDF fission-yield
+//! tapes are vendored or read anywhere in this workspace, so
 //! [`perturb_fission_yields`](crate::decay::perturb_fission_yields) is a named-open hook that always returns
-//! [`DecayError::FissionYieldsOpen`](crate::decay::DecayError). Owner: cycle 01 follow-up; next step is
-//! landing the tape reader, then wiring real FY blocks through this hook.
+//! [`DecayError::FissionYieldsOpen`](crate::decay::DecayError). Next step is
+//! landing a tape reader, then wiring real FY blocks through this hook.
 
 use crate::sample::PerturbConvention;
 
@@ -53,8 +53,8 @@ pub enum DecayError {
     /// Renormalisation is impossible: the kept-branch sum is zero, or every
     /// perturbed branch clamped to zero.
     Degenerate,
-    /// Fission-yield perturbation is named-open (waits on cycle 01 FY
-    /// tapes); no FY perturbation is performed.
+    /// Fission-yield perturbation is named-open (waits on ENDF
+    /// fission-yield tapes); no FY perturbation is performed.
     FissionYieldsOpen,
 }
 
@@ -81,7 +81,7 @@ impl std::fmt::Display for DecayError {
             ),
             DecayError::FissionYieldsOpen => write!(
                 f,
-                "fission-yield perturbation is named-open (waits on cycle 01 FY tapes)"
+                "fission-yield perturbation is named-open (waits on ENDF fission-yield tapes)"
             ),
         }
     }
@@ -171,12 +171,11 @@ pub fn passthrough(delta: &[f64]) -> Result<Vec<f64>, DecayError> {
 
 /// Fission-yield perturbation — named-open hook, always errors.
 ///
-/// Cycle 01 (ENDF-decay tape validator role) is NO-GO: no FY tapes exist on
-/// disk, so there is no evaluated nominal to perturb and no FY covariance
-/// contract to sample from. Owner: cycle 01 follow-up. Next step: land the
-/// tape reader there, then replace this stub with a real FY perturber taking
-/// caller-supplied FY blocks (same deficit discipline as [`perturb_branches`]
-/// where the evaluation defines one).
+/// No ENDF fission-yield tapes exist on disk, so there is no evaluated
+/// nominal to perturb and no FY covariance contract to sample from.
+/// Next step: land a tape reader, then replace this stub with a real FY
+/// perturber taking caller-supplied FY blocks (same deficit discipline as
+/// [`perturb_branches`] where the evaluation defines one).
 pub fn perturb_fission_yields(_base: &[f64], _rel: &[f64]) -> Result<Vec<f64>, DecayError> {
     Err(DecayError::FissionYieldsOpen)
 }

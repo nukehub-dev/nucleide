@@ -42,3 +42,22 @@ pdg 2112, userflags 100)` and `(ekin 0.662, time 0.0 ms, pdg 22,
 userflags 200)`; positions/directions/weights verbatim from the table above.
 Regenerate only deliberately (same pairing + defaults), and say why in the
 commit message.
+
+Fidelity-tail goldens (same `reference.w`, documented pairings only — no new SSW
+bytes, no transport semantics):
+
+- `ssw2mcpl_extended_expected.mcpl`: pairing `electron`/`positron` over
+  surfs `[100, 200]` with defaults — PDG codes `[11, -11]`, geometry verbatim
+  (the SSW-PDG table accepts neutron 2112, gamma 22, electron 11, positron
+  −11, proton 2212; anything else stays `UnsupportedPdg`).
+- `ssw2mcpl_polarised_expected.mcpl`: default `neutron`/`gamma` pairing with
+  `polarisation = [0.1, 0.2, 0.3]` — `has_polarisation` set, every particle
+  stamped uniformly.
+- `ssw2mcpl_universal_pdg_expected.mcpl`: single-kind pairing
+  `neutron`/`neutron` with `universal_pdg = true` — file-wide PDG 2112.
+
+`mcpl2ssw` opt-ins (`force_cs_to_one`, `niss_override`, `allow_polarisation`)
+need no new SSW goldens: they are pinned by re-parse assertions in
+`crates/mcpl-io/src/ssw.rs` (forced `cs == 1.0` with `u`/`v` verbatim,
+`niss` passthrough vs stamped override, polarisation gate vs opt-in drop)
+plus the `S5`–`S8` oracle gates in `validation/mcpl_vs_refs.py`.

@@ -5,10 +5,12 @@ from nucleide._internal import (
     MagicOutput,
     MeshSourceSampler,
     magic,
+    magic_with,
 )
 
 __all__ = [
     "magic",
+    "magic_with",
     "MagicOutput",
     "AliasTable",
     "MeshSourceSampler",

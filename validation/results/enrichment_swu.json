@@ -3,12 +3,12 @@
   "name": "enrichment_swu",
   "title": "Enrichment SWU (`enrichment_swu_vs_cyclus.py`)",
   "environment": {
-    "date": "2026-09-12",
-    "python": "3.12.10",
-    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.44",
-    "nucleide": "0.6.0",
-    "pyne": "not installed",
-    "openmc": "not installed"
+    "date": "2026-09-13",
+    "python": "3.12.14",
+    "platform": "Linux-7.2.4-arch1-2-x86_64-with-glibc2.39",
+    "nucleide": "0.8.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
   },
   "sections": [
     {

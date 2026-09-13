@@ -25,6 +25,36 @@ Custom cascades are configured on the Rust side by specifying component
 molecular weights, assays, and separation factors; the Python API exposes the
 result objects.
 
+## Standalone SWU and mass-ratio helpers
+
+Without building a cascade, the closed-form helpers evaluate the Dirac
+separation potential, SWU per unit feed/product/tails, and the six assay
+mass ratios on any `(x_feed, x_prod, x_tail)` ladder:
+
+```python
+from nucleide.enrichment import (
+    alphastar_i,
+    feed_per_prod,
+    prod_per_feed,
+    swu_per_feed,
+    swu_per_prod,
+    tail_per_feed,
+    value_func,
+)
+
+x_feed, x_prod, x_tail = 0.0072, 0.05, 0.002
+print(value_func(x_prod))
+print(swu_per_feed(x_feed, x_prod, x_tail))
+print(swu_per_prod(x_feed, x_prod, x_tail))
+print(prod_per_feed(x_feed, x_prod, x_tail))  # (xf - xt) / (xp - xt)
+print(tail_per_feed(x_feed, x_prod, x_tail))  # 1 - prod_per_feed
+print(feed_per_prod(x_feed, x_prod, x_tail))  # 1 / prod_per_feed
+print(alphastar_i(1.05, 236.0, 235.0))  # stage factor for mass 235
+```
+
+`tail_per_prod`, `feed_per_tail`, and `prod_per_tail` complete the ratio set;
+each is the quotient of the two corresponding per-feed ratios.
+
 ## See also
 
 - [`crates/enrichment/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/enrichment/src/lib.rs)

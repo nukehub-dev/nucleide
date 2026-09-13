@@ -7,10 +7,16 @@ from nucleide._internal import (
     audit_material,
     blend_material,
     check_labels,
+    collapse_elements,
     decay_heat,
     dose_per_g,
+    expand_elements,
     from_formula,
+    materials_doc_to_xml,
+    mix_by_mass,
+    mix_by_volume,
     separate_material,
+    specific_activity,
     to_xml,
 )
 
@@ -26,4 +32,10 @@ __all__ = [
     "audit_material",
     "separate_material",
     "blend_material",
+    "mix_by_mass",
+    "mix_by_volume",
+    "specific_activity",
+    "materials_doc_to_xml",
+    "expand_elements",
+    "collapse_elements",
 ]

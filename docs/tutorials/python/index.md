@@ -33,3 +33,7 @@ and assumes you have already installed the project (see
     particle lists.
 13. [UQ sampling](uq-sampling.md) — draw seeded MVN samples over
     caller-supplied covariance blocks and perturb decay data.
+14. [VR and MAGIC](vr-magic.md) — derive weight-window lower bounds with
+    MAGIC and sample birth voxels through alias tables.
+15. [Reaction names](rxname.md) — resolve reaction names/ids/MT numbers and
+    walk the parent/daughter reaction graph.

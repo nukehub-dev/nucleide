@@ -19,10 +19,13 @@ nuclide labels, ZAIDs, and total cross sections per group.
 
 ## Flux files and PARTISN decks
 
-RTFLUX/ATFLUX/RZFLUX point-flux files (`rtflux_parse`) and PARTISN deck
+RTFLUX/ATFLUX/RZFLUX point-flux files parse in the browser below
+(`parseRtflux` with the `rtflux`|`atflux`|`rzflux` kind-switch mirroring
+Python); the RTFLUX profile chart stays RECORD. PARTISN deck
 rendering/validation (`partisn_render`, `partisn_validate`) need structured
 deck dicts rather than plain text, so they stay in the Python package — see
-the crate docs for the deck shape.
+the crate docs for the deck shape. ISOTXS totals render as a grouped bar
+chart (chart-only).
 
 ## Try it
 

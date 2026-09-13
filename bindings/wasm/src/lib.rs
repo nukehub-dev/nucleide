@@ -4029,3 +4029,640 @@ pub fn uq_sample(mean: Vec<f64>, cov: JsValue, n: usize, seed: f64) -> Result<Js
         max_eigen,
     })
 }
+
+// ---------------------------------------------------------------------------
+// MCPL particle lists (bytes-based; no filesystem in the browser)
+// ---------------------------------------------------------------------------
+//
+// Spike note (A1): `nucleide-mcpl-io` pulls `thiserror` + `flate2` (pure-Rust
+// miniz_oxide/crc32fast, no `std::fs`) + `nucleide-mcnp-io` (already a WASM
+// dep). `cargo check -p nucleide-wasm --target wasm32-unknown-unknown`
+// passes. Gzip is detected by magic bytes (`1f 8b`), never by suffix, and
+// the `open`/`write_to_path` path-based APIs are reference only (Python
+// shape at `bindings/python/src/lib.rs`): WASM uses `from_bytes` /
+// `encode_file` / `ssw2mcpl_bytes` plus `SurfSrc::from_bytes` and the SSW
+// `write_to(&mut Vec<u8>, …)` writer form.
+
+/// Demo cap on surfaced particles: the browser slice stays cheap.
+const MAX_MCPL_PARTICLES: usize = 200;
+
+fn maybe_gunzip_bytes(data: &[u8]) -> Result<Vec<u8>, JsValue> {
+    if data.len() >= 2 && data[0] == 0x1f && data[1] == 0x8b {
+        use std::io::Read as _;
+        let mut dec = flate2::read::GzDecoder::new(data);
+        let mut out = Vec::new();
+        dec.read_to_end(&mut out)
+            .map_err(|e| js_err(format!("gzip decode: {e}")))?;
+        Ok(out)
+    } else {
+        Ok(data.to_vec())
+    }
+}
+
+fn gzip_bytes(data: &[u8]) -> Result<Vec<u8>, JsValue> {
+    use std::io::Write as _;
+    let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    enc.write_all(data)
+        .map_err(|e| js_err(format!("gzip encode: {e}")))?;
+    enc.finish()
+        .map_err(|e| js_err(format!("gzip finish: {e}")))
+}
+
+#[derive(Serialize)]
+struct McplParticleJson {
+    ekin: f64,
+    position: [f64; 3],
+    direction: [f64; 3],
+    time: f64,
+    weight: f64,
+    pdgcode: i32,
+    userflags: u32,
+}
+
+#[derive(Serialize)]
+struct McplBlobJson {
+    key: String,
+    len: usize,
+}
+
+#[derive(Serialize)]
+struct McplSummary {
+    version: u16,
+    #[serde(rename = "nparticles")]
+    nparticles: u64,
+    srcname: String,
+    comments: Vec<String>,
+    #[serde(rename = "hasUserflags")]
+    has_userflags: bool,
+    #[serde(rename = "hasPolarisation")]
+    has_polarisation: bool,
+    #[serde(rename = "doublePrec")]
+    double_prec: bool,
+    #[serde(rename = "universalPdgcode")]
+    universal_pdgcode: Option<i32>,
+    #[serde(rename = "universalWeight")]
+    universal_weight: Option<f64>,
+    blobs: Vec<McplBlobJson>,
+    particles: Vec<McplParticleJson>,
+    truncated: bool,
+}
+
+fn mcpl_summary_of(file: &nucleide_mcpl_io::McplFile) -> Result<McplSummary, JsValue> {
+    let ps = file.particles().map_err(js_err)?;
+    let truncated = ps.len() > MAX_MCPL_PARTICLES;
+    let particles: Vec<McplParticleJson> = ps
+        .iter()
+        .take(MAX_MCPL_PARTICLES)
+        .map(|p| McplParticleJson {
+            ekin: p.ekin,
+            position: p.position,
+            direction: p.direction,
+            time: p.time,
+            weight: p.weight,
+            pdgcode: p.pdgcode,
+            userflags: p.userflags,
+        })
+        .collect();
+    Ok(McplSummary {
+        version: file.header.version,
+        nparticles: file.header.nparticles,
+        srcname: file.header.srcname.clone(),
+        comments: file.header.comments.clone(),
+        has_userflags: file.header.has_userflags,
+        has_polarisation: file.header.has_polarisation,
+        double_prec: file.header.double_prec,
+        universal_pdgcode: file.header.universal_pdgcode,
+        universal_weight: file.header.universal_weight,
+        blobs: file
+            .header
+            .blobs
+            .iter()
+            .map(|b| McplBlobJson {
+                key: b.key.clone(),
+                len: b.data.len(),
+            })
+            .collect(),
+        particles,
+        truncated,
+    })
+}
+
+/// Parse MCPL bytes (`Uint8Array`) into a capped JSON summary.
+///
+/// Gzip is sniffed by magic bytes, never by suffix. Particle lists are
+/// capped at [`MAX_MCPL_PARTICLES`] (`truncated: true` when capped).
+#[wasm_bindgen(js_name = readMcpl)]
+pub fn read_mcpl(bytes: js_sys::Uint8Array) -> Result<JsValue, JsValue> {
+    let raw = bytes.to_vec();
+    let data = maybe_gunzip_bytes(&raw)?;
+    let file = nucleide_mcpl_io::McplFile::from_bytes(data).map_err(js_err)?;
+    to_js(&mcpl_summary_of(&file)?)
+}
+
+#[derive(Deserialize)]
+struct McplHeaderJson {
+    #[serde(default = "default_srcname")]
+    srcname: String,
+    #[serde(default)]
+    comments: Vec<String>,
+    #[serde(default, rename = "hasUserflags", alias = "has_userflags")]
+    has_userflags: bool,
+    #[serde(default, rename = "hasPolarisation", alias = "has_polarisation")]
+    has_polarisation: bool,
+    #[serde(default, rename = "doublePrec", alias = "double_prec")]
+    double_prec: bool,
+    #[serde(default, rename = "universalPdgcode", alias = "universal_pdgcode")]
+    universal_pdgcode: Option<i32>,
+    #[serde(default, rename = "universalWeight", alias = "universal_weight")]
+    universal_weight: Option<f64>,
+    #[serde(default)]
+    gzip: bool,
+}
+
+fn default_srcname() -> String {
+    "nucleide-wasm".to_string()
+}
+
+#[derive(Deserialize)]
+struct McplParticleIn {
+    #[serde(default)]
+    ekin: f64,
+    #[serde(default)]
+    position: Option<[f64; 3]>,
+    #[serde(default)]
+    direction: Option<[f64; 3]>,
+    #[serde(default)]
+    time: f64,
+    #[serde(default = "default_weight")]
+    weight: f64,
+    #[serde(default = "default_pdg")]
+    pdgcode: i32,
+    #[serde(default)]
+    userflags: u32,
+}
+
+fn default_weight() -> f64 {
+    1.0
+}
+fn default_pdg() -> i32 {
+    2112
+}
+
+/// Encode MCPL bytes from a header object plus particle rows.
+///
+/// Returns a `Uint8Array` (gzip-compressed when `header.gzip` is set).
+#[wasm_bindgen(js_name = writeMcpl)]
+pub fn write_mcpl(header: JsValue, particles: JsValue) -> Result<js_sys::Uint8Array, JsValue> {
+    let h: McplHeaderJson = serde_wasm_bindgen::from_value(header).map_err(js_err)?;
+    let rows: Vec<McplParticleIn> = serde_wasm_bindgen::from_value(particles).map_err(js_err)?;
+    if rows.len() > MAX_MCPL_PARTICLES {
+        return Err(js_err(format!(
+            "particle count {} exceeds the demo cap of {MAX_MCPL_PARTICLES}",
+            rows.len()
+        )));
+    }
+    let ps: Vec<nucleide_mcpl_io::Particle> = rows
+        .into_iter()
+        .map(|r| nucleide_mcpl_io::Particle {
+            ekin: r.ekin,
+            polarisation: [0.0; 3],
+            position: r.position.unwrap_or([0.0; 3]),
+            direction: r.direction.unwrap_or([0.0, 0.0, 1.0]),
+            time: r.time,
+            weight: r.weight,
+            pdgcode: r.pdgcode,
+            userflags: r.userflags,
+        })
+        .collect();
+    let header = nucleide_mcpl_io::Header {
+        has_userflags: h.has_userflags,
+        has_polarisation: h.has_polarisation,
+        double_prec: h.double_prec,
+        universal_pdgcode: h.universal_pdgcode,
+        universal_weight: h.universal_weight,
+        srcname: h.srcname,
+        comments: h.comments,
+        blobs: Vec::new(),
+        nparticles: ps.len() as u64,
+        ..nucleide_mcpl_io::Header::default()
+    };
+    let bytes = nucleide_mcpl_io::encode_file(&header, &ps).map_err(js_err)?;
+    let out = if h.gzip { gzip_bytes(&bytes)? } else { bytes };
+    Ok(js_sys::Uint8Array::from(out.as_slice()))
+}
+
+#[derive(Deserialize, Default)]
+struct Ssw2McplOptsJson {
+    #[serde(default, rename = "doublePrec", alias = "double_prec")]
+    double_prec: bool,
+    #[serde(
+        default = "default_true",
+        rename = "surfToUserflags",
+        alias = "surf_to_userflags"
+    )]
+    surf_to_userflags: bool,
+    #[serde(default)]
+    gzip: bool,
+    #[serde(default)]
+    srcname: Option<String>,
+    #[serde(default)]
+    comments: Vec<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Convert SSW bytes to MCPL bytes (neutron/gamma-only v1).
+///
+/// `sswBytes` is a `Uint8Array` of the SSW file; `surfs`/`kinds` pair each
+/// track (`kinds` holds `"neutron"`/`"gamma"` only — v1 rejects other PDG
+/// codes loudly). Returns MCPL file bytes as a `Uint8Array`.
+#[wasm_bindgen(js_name = ssw2mcpl)]
+pub fn ssw2mcpl(
+    ssw_bytes: js_sys::Uint8Array,
+    surfs: Vec<u32>,
+    kinds: Vec<String>,
+    options: JsValue,
+) -> Result<js_sys::Uint8Array, JsValue> {
+    let opts: Ssw2McplOptsJson = if options.is_undefined() || options.is_null() {
+        Ssw2McplOptsJson::default()
+    } else {
+        serde_wasm_bindgen::from_value(options).map_err(js_err)?
+    };
+    let ssw = nucleide_mcnp_io::surfsrc::SurfSrc::from_bytes(ssw_bytes.to_vec()).map_err(js_err)?;
+    let raw = ssw.read_tracklist().map_err(js_err)?;
+    if raw.len() != surfs.len() || raw.len() != kinds.len() {
+        return Err(js_err(format!(
+            "ssw2mcpl: SSW holds {} tracks but got {} surfs and {} kinds (one surf+kind per track required)",
+            raw.len(),
+            surfs.len(),
+            kinds.len()
+        )));
+    }
+    let mut tracks = Vec::with_capacity(raw.len());
+    for (i, ((t, surf), kind)) in raw.iter().zip(surfs).zip(kinds.iter()).enumerate() {
+        let kind = nucleide_mcpl_io::ssw::SswParticleKind::parse(kind).ok_or_else(|| {
+            js_err(format!(
+                "track {i} kind `{kind}` unknown (expected \"neutron\" or \"gamma\")"
+            ))
+        })?;
+        // Demo scope is neutron/gamma-only v1; other table kinds are
+        // named-open here (the crate converts the full 5-kind table).
+        if !matches!(
+            kind,
+            nucleide_mcpl_io::ssw::SswParticleKind::Neutron
+                | nucleide_mcpl_io::ssw::SswParticleKind::Gamma
+        ) {
+            return Err(js_err(format!(
+                "track {i} kind `{}` is named-open in this demo (neutron/gamma only)",
+                kind.as_str()
+            )));
+        }
+        tracks.push(nucleide_mcpl_io::ssw::SswTrack {
+            ekin: t.erg,
+            time_shakes: t.tme,
+            position: [t.x, t.y, t.z],
+            direction: [t.u, t.v, t.cs],
+            weight: t.wgt,
+            surf,
+            kind,
+        });
+    }
+    let options = nucleide_mcpl_io::ssw::Ssw2McplOptions {
+        double_prec: opts.double_prec,
+        surf_to_userflags: opts.surf_to_userflags,
+        gzip: opts.gzip,
+        deck_blob: None,
+        srcname: opts.srcname.unwrap_or_else(|| "ssw2mcpl".to_string()),
+        comments: opts.comments,
+        polarisation: None,
+        universal_pdg: false,
+        universal_weight: false,
+    };
+    let bytes = nucleide_mcpl_io::ssw::ssw2mcpl_bytes(&tracks, &options).map_err(js_err)?;
+    Ok(js_sys::Uint8Array::from(bytes.as_slice()))
+}
+
+/// Convert MCPL bytes back to SSW bytes against a reference SSW header.
+///
+/// `surface` overrides every track's surface id (`[1, 999999]`); without it
+/// each particle's `userflags` supplies the id. Returns SSW file bytes.
+#[wasm_bindgen(js_name = mcpl2ssw)]
+pub fn mcpl2ssw(
+    mcpl_bytes: js_sys::Uint8Array,
+    reference_ssw_bytes: js_sys::Uint8Array,
+    surface: Option<u32>,
+) -> Result<js_sys::Uint8Array, JsValue> {
+    let mcpl_data = maybe_gunzip_bytes(&mcpl_bytes.to_vec())?;
+    let mcpl = nucleide_mcpl_io::McplFile::from_bytes(mcpl_data).map_err(js_err)?;
+    let particles = mcpl.particles().map_err(js_err)?;
+    if particles.len() > MAX_MCPL_PARTICLES {
+        return Err(js_err(format!(
+            "particle count {} exceeds the demo cap of {MAX_MCPL_PARTICLES}",
+            particles.len()
+        )));
+    }
+    let reference = nucleide_mcnp_io::surfsrc::SurfSrc::from_bytes(reference_ssw_bytes.to_vec())
+        .map_err(js_err)?;
+    let options = nucleide_mcpl_io::ssw::Mcpl2SswOptions {
+        surface,
+        ..Default::default()
+    };
+    let (header, tracks) =
+        nucleide_mcpl_io::ssw::mcpl2ssw(&particles, &reference.header, &options).map_err(js_err)?;
+    let mut out = Vec::new();
+    nucleide_mcnp_io::surfsrc::write_to(&mut out, &header, &tracks).map_err(js_err)?;
+    Ok(js_sys::Uint8Array::from(out.as_slice()))
+}
+
+// ---------------------------------------------------------------------------
+// Material scalar bundle (separator / blender / CUSUM)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct SeparateResult {
+    product: BTreeMap<String, f64>,
+    tails: BTreeMap<String, f64>,
+}
+
+fn comp_to_material(comp: JsValue) -> Result<nucleide_material::Material, JsValue> {
+    comp_to_emit_material(comp)
+}
+
+fn material_to_comp(mat: &nucleide_material::Material) -> Result<BTreeMap<String, f64>, JsValue> {
+    let mut out = BTreeMap::new();
+    for (id, grams) in &mat.comp {
+        out.insert(id.to_name(), *grams);
+    }
+    Ok(out)
+}
+
+/// Split one composition by per-nuclide product efficiencies.
+///
+/// `comp` maps GNDS names to grams; `effs` maps GNDS names to `∈ [0, 1]`.
+/// Returns `{ product, tails }` (grams by nuclide name).
+#[wasm_bindgen(js_name = materialSeparate)]
+pub fn material_separate(comp: JsValue, effs: JsValue) -> Result<JsValue, JsValue> {
+    let mat = comp_to_material(comp)?;
+    let eff_map: BTreeMap<String, f64> = serde_wasm_bindgen::from_value(effs).map_err(js_err)?;
+    let effs: Vec<(NuclideId, f64)> = eff_map
+        .into_iter()
+        .map(|(k, v)| Ok((k.parse::<NuclideId>().map_err(js_err)?, v)))
+        .collect::<Result<Vec<_>, JsValue>>()?;
+    let (product, tails) = mat.separate(&effs).map_err(js_err)?;
+    to_js(&SeparateResult {
+        product: material_to_comp(&product)?,
+        tails: material_to_comp(&tails)?,
+    })
+}
+
+/// Blend several compositions by fixed ratios.
+///
+/// `parts` is `[{ comp: {nuclide: grams}, ratio: number }]`; ratios are
+/// normalized. Returns the blended composition (grams by nuclide name).
+#[wasm_bindgen(js_name = materialBlend)]
+pub fn material_blend(parts: JsValue) -> Result<JsValue, JsValue> {
+    #[derive(Deserialize)]
+    struct BlendPart {
+        comp: BTreeMap<String, f64>,
+        ratio: f64,
+    }
+    let parts: Vec<BlendPart> = serde_wasm_bindgen::from_value(parts).map_err(js_err)?;
+    let mats: Vec<nucleide_material::Material> = parts
+        .iter()
+        .map(|p| {
+            let mut mat = nucleide_material::Material::new();
+            for (name, grams) in &p.comp {
+                let id = name
+                    .parse::<NuclideId>()
+                    .map_err(|e| js_err(format!("`{name}`: {e}")))?;
+                mat.add_nuclide(id, *grams);
+            }
+            Ok(mat)
+        })
+        .collect::<Result<Vec<_>, JsValue>>()?;
+    let refs: Vec<(&nucleide_material::Material, f64)> =
+        mats.iter().zip(parts.iter().map(|p| p.ratio)).collect();
+    let out = nucleide_material::Material::blend(&refs).map_err(js_err)?;
+    to_js(&material_to_comp(&out)?)
+}
+
+#[derive(Serialize)]
+struct CusumResult {
+    alarmed: bool,
+    statistic: f64,
+    mean: f64,
+    std: f64,
+    count: usize,
+}
+
+/// Run a one-sided upper Page CUSUM over a scalar series.
+///
+/// Thin facade over `nucleide-material` `Cusum` (Welford statistics):
+/// feeds `series` in order with the crate defaults (`k = 0.5`, `h = 4.0`,
+/// `startup = 10`) unless overridden. Returns
+/// `{ alarmed, statistic, mean, std, count }`.
+#[wasm_bindgen(js_name = cusumDetect)]
+pub fn cusum_detect(
+    series: Vec<f64>,
+    k: Option<f64>,
+    h: Option<f64>,
+    startup: Option<usize>,
+) -> Result<JsValue, JsValue> {
+    let mut cusum =
+        nucleide_material::Cusum::new(k.unwrap_or(0.5), h.unwrap_or(4.0), startup.unwrap_or(10))
+            .map_err(js_err)?;
+    let mut alarmed = false;
+    for x in series {
+        alarmed = cusum.update(x);
+    }
+    to_js(&CusumResult {
+        alarmed,
+        statistic: cusum.statistic(),
+        mean: cusum.mean(),
+        std: cusum.std(),
+        count: cusum.count(),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Spectroscopy scalar bundle (TSV / calib / SPE readers)
+// ---------------------------------------------------------------------------
+
+/// Parse interchange-TSV decay lines into `[[energyMeV, intensity]]`.
+///
+/// Thin facade over `parse_lines_tsv` (comments/`#`, blanks skipped).
+#[wasm_bindgen(js_name = parseLinesTsv)]
+pub fn parse_lines_tsv(text: &str) -> Result<JsValue, JsValue> {
+    let rows = nucleide_spectroscopy::parse_lines_tsv(text).map_err(js_err)?;
+    to_js(&rows)
+}
+
+/// Quadratic energy bins (E6): `ebin[ch] = a0 + a1*ch + a2*ch^2`.
+#[wasm_bindgen(js_name = energyBins)]
+pub fn energy_bins(channels: Vec<f64>, fit: Vec<f64>) -> Result<JsValue, JsValue> {
+    to_js(&nucleide_spectroscopy::energy_bins(&channels, &fit).map_err(js_err)?)
+}
+
+/// Detector efficiency at `energyMev` (E7, `effFit` 1 or 2).
+#[wasm_bindgen(js_name = detectorEfficiency)]
+pub fn detector_efficiency(energy_mev: f64, coeff: Vec<f64>, eff_fit: i32) -> Result<f64, JsValue> {
+    nucleide_spectroscopy::detector_efficiency(energy_mev, &coeff, i64::from(eff_fit))
+        .map_err(js_err)
+}
+
+#[derive(Serialize)]
+struct SpeSummary {
+    spec_name: String,
+    channels: usize,
+    #[serde(rename = "startChan")]
+    start_chan: i64,
+    #[serde(rename = "liveTime")]
+    live_time: f64,
+    #[serde(rename = "realTime")]
+    real_time: f64,
+    #[serde(rename = "detId")]
+    det_id: String,
+    #[serde(rename = "energyFit")]
+    energy_fit: Vec<f64>,
+    counts: Vec<f64>,
+    ebins: Vec<f64>,
+    truncated: bool,
+}
+
+fn spe_summary_of(spec: &nucleide_spectroscopy::GammaSpectrum) -> SpeSummary {
+    let n = spec.spectrum.counts.len();
+    let truncated = n > MAX_MCPL_PARTICLES;
+    SpeSummary {
+        spec_name: spec.spectrum.spec_name.clone(),
+        channels: n,
+        start_chan: spec.spectrum.start_chan_num,
+        live_time: spec.live_time,
+        real_time: spec.real_time,
+        det_id: spec.det_id.clone(),
+        energy_fit: spec.calib_e_fit.clone(),
+        counts: spec
+            .spectrum
+            .counts
+            .iter()
+            .take(MAX_MCPL_PARTICLES)
+            .copied()
+            .collect(),
+        ebins: spec
+            .spectrum
+            .ebin
+            .iter()
+            .take(MAX_MCPL_PARTICLES)
+            .copied()
+            .collect(),
+        truncated,
+    }
+}
+
+/// Parse a dollar-format `.spe` file into a capped JSON summary.
+///
+/// `GammaSpectrum` has no `Serialize`; this follows the `IsotxsSummary`
+/// precedent (summary struct, capped lists).
+#[wasm_bindgen(js_name = parseDollarSpe)]
+pub fn parse_dollar_spe(text: &str) -> Result<JsValue, JsValue> {
+    let spec = nucleide_spectroscopy::parse_dollar_spe(text, "").map_err(js_err)?;
+    to_js(&spe_summary_of(&spec))
+}
+
+/// Parse a plain-format `.spe` file into a capped JSON summary.
+#[wasm_bindgen(js_name = parsePlainSpe)]
+pub fn parse_plain_spe(text: &str) -> Result<JsValue, JsValue> {
+    let spec = nucleide_spectroscopy::parse_plain_spe(text, "").map_err(js_err)?;
+    to_js(&spe_summary_of(&spec))
+}
+
+// ---------------------------------------------------------------------------
+// Kinetics scalar leftovers (inhour / stable period / prompt jump)
+// ---------------------------------------------------------------------------
+
+fn kinetic_params(
+    betas: Vec<f64>,
+    lambdas: Vec<f64>,
+    lambda_gen: f64,
+) -> Result<nucleide_kinetics::KineticParams, JsValue> {
+    nucleide_kinetics::KineticParams::new(betas, lambdas, lambda_gen).map_err(js_err)
+}
+
+/// Inhour right-hand side `rho(omega)` (E3) [Δk].
+#[wasm_bindgen(js_name = inhourRho)]
+pub fn inhour_rho(
+    betas: Vec<f64>,
+    lambdas: Vec<f64>,
+    lambda_gen: f64,
+    omega: f64,
+) -> Result<f64, JsValue> {
+    let params = kinetic_params(betas, lambdas, lambda_gen)?;
+    nucleide_kinetics::rho_of_omega(&params, omega).map_err(js_err)
+}
+
+/// Asymptotic stable period `T = 1/omega` [s] for `0 < rho < beta`.
+#[wasm_bindgen(js_name = stablePeriod)]
+pub fn stable_period(
+    betas: Vec<f64>,
+    lambdas: Vec<f64>,
+    lambda_gen: f64,
+    rho: f64,
+) -> Result<f64, JsValue> {
+    let params = kinetic_params(betas, lambdas, lambda_gen)?;
+    nucleide_kinetics::stable_period(&params, rho).map_err(js_err)
+}
+
+/// Prompt-jump factor `n_after = n_before * beta / (beta - rho_after)`.
+///
+/// Thin facade over the E4 formula; errors at/past prompt critical.
+#[wasm_bindgen(js_name = promptJump)]
+pub fn prompt_jump(
+    n_before: f64,
+    rho_before: f64,
+    rho_after: f64,
+    beta_total: f64,
+) -> Result<f64, JsValue> {
+    nucleide_kinetics::prompt_jump(n_before, rho_before, rho_after, beta_total).map_err(js_err)
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic scalar (RTFLUX; PARTISN stays RECORD)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct RtfluxSummary {
+    kind: String,
+    groups: usize,
+    npoints: usize,
+    values: Vec<f64>,
+    truncated: bool,
+}
+
+/// Parse an RTFLUX/ATFLUX/RZFLUX flux file into a capped JSON summary.
+///
+/// Mirrors the Python `kind`-switch (`rtflux`|`atflux`|`rzflux`); PARTISN
+/// deck writing stays RECORD (Python-only).
+#[wasm_bindgen(js_name = parseRtflux)]
+pub fn parse_rtflux(text: &str, kind: &str) -> Result<JsValue, JsValue> {
+    let want = match kind.to_ascii_lowercase().as_str() {
+        "rtflux" => nucleide_cccc_io::rtflux::FluxKind::Rtflux,
+        "atflux" => nucleide_cccc_io::rtflux::FluxKind::Atflux,
+        "rzflux" => nucleide_cccc_io::rtflux::FluxKind::Rzflux,
+        other => {
+            return Err(js_err(format!(
+                "kind must be rtflux|atflux|rzflux, got `{other}`"
+            )));
+        }
+    };
+    let flux = nucleide_cccc_io::FluxFile::parse(want, text).map_err(js_err)?;
+    let npoints = flux.values.len() / flux.groups.max(1);
+    let truncated = flux.values.len() > MAX_MCPL_PARTICLES;
+    to_js(&RtfluxSummary {
+        kind: flux.kind.keyword().to_string(),
+        groups: flux.groups,
+        npoints,
+        values: flux.values.into_iter().take(MAX_MCPL_PARTICLES).collect(),
+        truncated,
+    })
+}

@@ -6,6 +6,11 @@ writer with ISOTXS nuclide mapping. No transport solving is performed here.
 """
 
 from nucleide._internal import (
+    cccc_isotxs_find,
+    cccc_isotxs_len,
+    cccc_rtflux_npoints,
+    cccc_rtflux_point,
+    cccc_rtflux_total,
     isotxs_parse,
     partisn_render,
     partisn_validate,
@@ -27,4 +32,9 @@ __all__ = [
     "cccc_parse_rtflux",
     "cccc_render_partisn",
     "cccc_validate_partisn",
+    "cccc_rtflux_npoints",
+    "cccc_rtflux_point",
+    "cccc_rtflux_total",
+    "cccc_isotxs_find",
+    "cccc_isotxs_len",
 ]

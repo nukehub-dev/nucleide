@@ -40,6 +40,9 @@ export function MaterialBuilder() {
   const [pathway, setPathway] = useState("air");
   const [source, setSource] = useState("EPA");
   const [dose, setDose] = useState<number | null>(null);
+  const [sepOut, setSepOut] = useState<string | null>(null);
+  const [blendOut, setBlendOut] = useState<string | null>(null);
+  const [cusumOut, setCusumOut] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function clearError() {
@@ -186,6 +189,66 @@ export function MaterialBuilder() {
                 {xml}
               </pre>
             )}
+          </div>
+
+          <div className="space-y-2 border-t border-border/50 pt-4">
+            <p className="text-sm font-medium">Separator, blender, and CUSUM</p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => {
+                  if (!wasm) return;
+                  try {
+                    const out = wasm.materialSeparate(
+                      { U235: 7.2, U238: 992.8 },
+                      { U235: 0.9, U238: 0.05 },
+                    );
+                    const p = out.product["U235"] ?? 0;
+                    setSepOut(`product U235 = ${p.toFixed(2)} g (tails hold the rest)`);
+                    clearError();
+                  } catch (e) {
+                    setLocalError(e instanceof Error ? e.message : String(e));
+                  }
+                }}
+              >
+                Separate
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!wasm) return;
+                  try {
+                    const out = wasm.materialBlend([
+                      { comp: { U235: 7.2, U238: 992.8 }, ratio: 1 },
+                      { comp: { H1: 111.9, O16: 888.1 }, ratio: 2 },
+                    ]);
+                    setBlendOut(`blended nuclides: ${Object.keys(out).length}`);
+                    clearError();
+                  } catch (e) {
+                    setLocalError(e instanceof Error ? e.message : String(e));
+                  }
+                }}
+              >
+                Blend
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!wasm) return;
+                  try {
+                    const out = wasm.cusumDetect([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2]);
+                    setCusumOut(
+                      `CUSUM alarmed: ${out.alarmed ? "yes" : "no"}, statistic = ${out.statistic.toFixed(4)}`,
+                    );
+                    clearError();
+                  } catch (e) {
+                    setLocalError(e instanceof Error ? e.message : String(e));
+                  }
+                }}
+              >
+                Detect shift
+              </Button>
+            </div>
+            {sepOut && <p className="text-sm">{sepOut}</p>}
+            {blendOut && <p className="text-sm">{blendOut}</p>}
+            {cusumOut && <p className="text-sm">{cusumOut}</p>}
           </div>
 
           <div className="space-y-2">

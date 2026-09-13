@@ -4,10 +4,11 @@ Two tiers:
 
 1. Synthetic gates (always run): E1 rectangular / E2 five-point smoothing,
    E3 background / E4 gross / E5 net counts, E6 energy bins, E7 efficiency
-   (including the 6-coefficient golden), E8 X-ray algebra, E9 decay-source
-   normalization + SDEF card text (hand-built line lists, byte-exact card
-   goldens), and the dollar/plain `.spe` fixture parse with cross-format
-   counts equality. Inputs are the hand-built synthetic
+   (including the 6-coefficient golden) plus the E7-fit log-space coefficient
+   fit (closed-form synthetic points, recovery + round-trip), E8 X-ray
+   algebra, E9 decay-source normalization + SDEF card text (hand-built line
+   lists, byte-exact card goldens), and the dollar/plain `.spe` fixture parse
+   with cross-format counts equality. Inputs are the hand-built synthetic
    `fixtures/spectroscopy/` files.
 2. PyNE cross-check: the same vectors and fixture files driven through the
    upstream ``pyne.spectanalysis`` / ``pyne.gammaspec`` readers on identical
@@ -17,7 +18,9 @@ Two tiers:
    dependency: if it cannot be imported, tier 2 is reported as SKIP with its
    reason (never silently). The X-ray algebra has no container check — the
    upstream routine needs its HDF5 atomic table and no atomic values are
-   vendored here — recorded below.
+   vendored here — recorded below. The E7-fit coefficient fit has no upstream
+   counterpart either (the upstream module ships no fitting routine), so its
+   tier-2 row is always a loud SKIP.
 """
 
 from __future__ import annotations
@@ -69,7 +72,7 @@ def _worst_rel(got: list[float], want: list[float]) -> float:
 
 
 def tier1() -> tuple[list[list[str]], list[str], list[list[str]], str]:
-    """Synthetic gates E1-E8.
+    """Synthetic gates E1-E9 plus the E7-fit coefficient fit.
 
     Returns (gate rows, prose notes, overlay rows, background level). The
     overlay rows tabulate the per-channel smoothing overlay (``Channel``,
@@ -109,6 +112,28 @@ def tier1() -> tuple[list[list[str]], list[str], list[list[str]], str]:
     err = rel_diff(sp.detector_efficiency(1.0, EFF_COEFF, 1), 0.059688551591347033)
     notes.append("E7 golden: 6-coefficient fit-1 efficiency at 1 MeV.")
     rows.append(["E7 efficiency golden", fmt(err), "< 1e-12", _check(err < 1e-12, "E7")])
+
+    import json as _json
+
+    fit_fix = _json.loads((FIX / "efficiency_fit.json").read_text())
+    for case in ("fit1_degree2", "fit2_degree1"):
+        c = fit_fix[case]
+        got = sp.fit_efficiency(c["energies"], c["effs"], c["weights"], c["order"], c["fit"])
+        err = _worst_rel(got, c["expected_coeff"])
+        notes.append(f"E7-fit {case}: coefficient recovery worst rel err {err:.3e}.")
+        rows.append(
+            [f"E7-fit {case} recovery", fmt(err), "< 1e-9", _check(err < 1e-9, f"E7-fit {case}")]
+        )
+        back = [sp.detector_efficiency(e, got, c["fit"]) for e in c["energies"]]
+        err = _worst_rel(back, c["effs"])
+        rows.append(
+            [
+                f"E7-fit {case} round-trip",
+                fmt(err),
+                "< 1e-9",
+                _check(err < 1e-9, f"E7-fit {case} round-trip"),
+            ]
+        )
 
     lines = sp.xray_lines(ATOMIC, k_conv=2.0, l_conv=3.0)
     err = _worst_rel([i for _, i in lines], [1.0, 0.5, 0.3, 1.84])
@@ -200,6 +225,21 @@ def tier2_pyne() -> tuple[list[list[str]], list[str], bool]:
         float(gammaspec.calc_e_eff(1, EFF_COEFF, 1)),
     )
     rows.append(["efficiency vs PyNE", fmt(err), "< 1e-12", _check(err < 1e-12, "eff vs PyNE")])
+
+    rows.append(
+        [
+            "efficiency fit vs PyNE",
+            "—",
+            "—",
+            "SKIP (upstream ships no efficiency-fitting routine)",
+        ]
+    )
+    notes.append(
+        "E7-fit has no container check: the upstream module ships no "
+        "efficiency-coefficient fitting routine, so the fit is pinned by the "
+        "synthetic closed-form recovery + round-trip gates in tier 1."
+    )
+    print("Tier 2 (efficiency fit) SKIPPED: upstream ships no fitting routine")
 
     for label, path, reader, ours_fn in [
         ("dollar", "dollar_min.spe", gammaspec.read_dollar_spe_file, sp.read_dollar_spe),

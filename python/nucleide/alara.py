@@ -1,7 +1,7 @@
 """ALARA activation-code interop (backed by the `nucleide-alara-io` crate).
 
 Thin glue over ALARA input decks, group-flux files, activation-output
-listings, and schedule expansion. The solver itself stays out of scope.
+listings, photon sources, and schedule expansion. The solver itself stays out of scope.
 
 Schedule-expansion choice: :func:`alara_expand_schedule` takes deck text
 (plus an optional top schedule name) instead of JSON schedule/history blobs,
@@ -9,10 +9,18 @@ so callers reuse the already-parsed deck blocks without a parallel schema.
 """
 
 from nucleide._internal import (
+    alara_check_block,
     alara_expand_schedule,
+    alara_flux_len,
+    alara_flux_total,
+    alara_output_total_activity,
+    alara_output_totals,
     alara_parse_deck,
     alara_parse_flux,
     alara_parse_output,
+    alara_photon_total_strength,
+    alara_schedule_total_time,
+    alara_validate_deck,
 )
 
 __all__ = [
@@ -20,4 +28,12 @@ __all__ = [
     "alara_parse_flux",
     "alara_parse_output",
     "alara_expand_schedule",
+    "alara_validate_deck",
+    "alara_check_block",
+    "alara_flux_total",
+    "alara_flux_len",
+    "alara_output_totals",
+    "alara_output_total_activity",
+    "alara_photon_total_strength",
+    "alara_schedule_total_time",
 ]

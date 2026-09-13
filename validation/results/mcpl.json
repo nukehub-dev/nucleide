@@ -3,12 +3,12 @@
   "name": "mcpl",
   "title": "MCPL interchange vs upstream tooling",
   "environment": {
-    "date": "2026-09-12",
-    "python": "3.12.10",
-    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.44",
-    "nucleide": "0.6.0",
-    "pyne": "not installed",
-    "openmc": "not installed"
+    "date": "2026-09-13",
+    "python": "3.12.14",
+    "platform": "Linux-7.2.4-arch1-2-x86_64-with-glibc2.39",
+    "nucleide": "0.8.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
   },
   "sections": [
     {
@@ -70,6 +70,114 @@
     {
       "kind": "prose",
       "text": "Tier 2 opens the nucleide-written synthetic file with upstream tooling."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Expected",
+        "Got",
+        "Status"
+      ],
+      "rows": [
+        [
+          "S1 ssw2mcpl count",
+          "2",
+          "2",
+          "PASS"
+        ],
+        [
+          "S2 ssw2mcpl energy+PDG",
+          "2.5/2112, 0.662/22",
+          "2.500000e+00/2112, 6.620000e-01/22",
+          "PASS"
+        ],
+        [
+          "S3 shakes->ms + surf flags",
+          "3.0 ms/[100, 200]",
+          "3.000000e+00 ms/[100, 200]",
+          "PASS"
+        ],
+        [
+          "S4 mcpl2ssw round-trip",
+          "2.5 erg/3.0e5 tme, 0.662 erg",
+          "2.500000e+00 erg/3.000000e+05 tme, 6.620000e-01 erg",
+          "PASS"
+        ],
+        [
+          "S5 force_cs_to_one compat",
+          "cs 1.0/1.0, u/v verbatim",
+          "cs ['1.000000e+00', '1.000000e+00'], u 1.000000e+00",
+          "PASS"
+        ],
+        [
+          "S6 niss passthrough",
+          "niss 2",
+          "niss 2",
+          "PASS"
+        ],
+        [
+          "S6b niss override",
+          "niss 7",
+          "niss 7",
+          "PASS"
+        ],
+        [
+          "S7 polarisation carry",
+          "has_polarisation [0.1, 0.2, 0.3]",
+          "True [0.10000000149011612, 0.20000000298023224, 0.30000001192092896]",
+          "PASS"
+        ],
+        [
+          "S7b universal PDG carry",
+          "universal 2112",
+          "universal 2112",
+          "PASS"
+        ],
+        [
+          "S8 extended PDG table",
+          "11/-11, energies verbatim",
+          "[11, -11], ['2.500000e+00', '6.620000e-01']",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Tier 3 converts the committed synthetic SSW reference (hand-framed, no MCNP run) with the documented surface/kind pairing; the `mcpl2ssw` leg clones the same reference header (S1-S4 baseline, S5-S8 fidelity tail: cs compat, niss, polarisation/universal, extended PDG)."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Check",
+        "Expected",
+        "Got",
+        "Status"
+      ],
+      "rows": [
+        [
+          "T3 ssw2mcpl count",
+          "2",
+          "2",
+          "PASS"
+        ],
+        [
+          "T4 converter energies",
+          "0.662, 2.5",
+          "6.620000e-01, 2.500000e+00",
+          "PASS"
+        ],
+        [
+          "T5 mcpl2ssw count+energy",
+          "2 tracks: 0.662, 2.5 erg",
+          "2 tracks: 6.620000e-01, 2.500000e+00 erg",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Tier 4 runs the upstream converter scripts over the synthetic pair."
     }
   ]
 }

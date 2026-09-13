@@ -9,6 +9,9 @@ from nucleide._internal import (
     origen_parse_tape5,
     origen_parse_tape6,
     origen_parse_tape9,
+    origen_tape6_find,
+    origen_tape6_total_activity,
+    origen_tape9_find,
 )
 
 # Short aliases for the scoped TAPE readers.
@@ -23,4 +26,7 @@ __all__ = [
     "tape5_parse",
     "tape6_parse",
     "tape9_parse",
+    "origen_tape6_find",
+    "origen_tape6_total_activity",
+    "origen_tape9_find",
 ]

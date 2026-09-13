@@ -1,6 +1,6 @@
 //! Seeded multivariate-normal sampling over caller-supplied covariance blocks.
 //!
-//! UQ-lite kernel (0.8.0 Cycle 02, decay-only sub-scope): draws `n`
+//! UQ-lite kernel (decay-only sub-scope): draws `n`
 //! reproducible samples `x ~ N(mean, cov)` for uncertainty propagation in
 //! the SANDY role (seeded MVN draws over caller-supplied blocks), without
 //! vendored covariance stores, transport coupling, or any ERRORR/NJOY
@@ -33,6 +33,16 @@
 //!   model, whose `truncate_normal` assumes samples centered at 1).
 //! - `Absolute`: `perturbed = nominal + delta` — deltas carry the
 //!   nominal's units.
+//! - `LogNormal`: `perturbed = nominal * exp(delta)` — log-space deltas
+//!   (multiplicative log-normal perturbations, always non-negative for
+//!   non-negative nominals).
+//!
+//! Log-normal sampling ([`sample_lognormal`](crate::sample::sample_lognormal)):
+//! draws `x ~ N(mean_log, cov_log)` with the shared [`sample_mvn`] factor
+//! path and RNG, then maps `y = exp(x)` elementwise. `mean_log`/`cov_log`
+//! are log-space MVN parameters (never the moments of `y` itself); the
+//! closed-form moments are `E[y_i] = exp(mu_i + C_ii/2)` and
+//! `Cov(y_i, y_j) = exp(mu_i + mu_j + (C_ii + C_jj)/2) (exp(C_ij) - 1)`.
 //!
 //! Convergence diagnostics ([`check_convergence`](crate::sample::check_convergence)) compare the sample mean
 //! and unbiased sample covariance against the inputs that generated them —
@@ -41,9 +51,10 @@
 //! tolerances, with the validation oracle (`validation/uq_lite_vs_sandy.py`)
 //! pinning statistical ones derived from the MVN sampling variances.
 //!
-//! Explicitly OUT (see the cycle plan): transport-coupled UQ, ERRORR/NJOY
+//! Explicitly OUT: transport-coupled UQ, ERRORR/NJOY
 //! reimplementation, vendored covariance stores, MF32-resonance machinery,
-//! MF40, and fission-yield perturbation (named-open in [`crate::decay`]).
+//! MF40, fission-yield perturbation (named-open in [`crate::decay`]), and
+//! Latin-hypercube sampling (needs a gate redesign, stays out).
 
 use faer::{Mat, Side};
 use rand::rngs::StdRng;
@@ -161,28 +172,35 @@ pub enum PerturbConvention {
     Relative,
     /// `perturbed = nominal + delta`; deltas carry nominal units.
     Absolute,
+    /// `perturbed = nominal * exp(delta)`; deltas live in log space, so
+    /// non-negative nominals stay non-negative without clamping.
+    LogNormal,
 }
 
 impl PerturbConvention {
-    /// Parse `"relative"` / `"absolute"` (case-insensitive, `-`/`_`
-    /// interchangeable); anything else names the accepted spellings.
+    /// Parse `"relative"` / `"absolute"` / `"lognormal"` (case-insensitive,
+    /// `-`/`_`/nothing interchangeable, so `"log-normal"`, `"log_normal"`,
+    /// and `"lognormal"` all match); anything else names the accepted
+    /// spellings.
     pub fn parse(name: &str) -> Result<Self, String> {
         let norm: String = name
             .chars()
             .map(|c| {
-                if c == '-' {
-                    '_'
+                if c == '-' || c == '_' || c == ' ' {
+                    '\0'
                 } else {
                     c.to_ascii_lowercase()
                 }
             })
+            .filter(|c| *c != '\0')
             .collect();
         match norm.as_str() {
             "relative" | "rel" => Ok(PerturbConvention::Relative),
             "absolute" | "abs" => Ok(PerturbConvention::Absolute),
+            "lognormal" | "lognorm" | "ln" => Ok(PerturbConvention::LogNormal),
             other => Err(format!(
                 "unknown perturbation convention `{other}` \
-                 (supported: \"relative\", \"absolute\")"
+                 (supported: \"relative\", \"absolute\", \"lognormal\")"
             )),
         }
     }
@@ -192,6 +210,7 @@ impl PerturbConvention {
         match self {
             PerturbConvention::Relative => nominal * (1.0 + delta),
             PerturbConvention::Absolute => nominal + delta,
+            PerturbConvention::LogNormal => nominal * delta.exp(),
         }
     }
 }
@@ -355,6 +374,115 @@ pub fn sample_mvn(
         samples.push(x);
     }
     Ok(SampleSet { samples, method })
+}
+
+/// Draw `n` log-normal samples reproducibly from `seed`.
+///
+/// Log-space semantics: draws `x ~ N(mean_log, cov_log)` with the shared
+/// [`sample_mvn`] factor path (Cholesky primary, eigen-clip fallback) and
+/// RNG stream, then maps `y = exp(x)` elementwise (`f64::exp` is the only
+/// addition). `mean_log`/`cov_log` are the MVN parameters in log space —
+/// never the mean/covariance of `y` itself. The closed-form moments of `y`
+/// are `E[y_i] = exp(mu_i + C_ii/2)` and
+/// `Cov(y_i, y_j) = exp(mu_i + mu_j + (C_ii + C_jj)/2) (exp(C_ij) - 1)`.
+///
+/// The same `(mean_log, cov_log, n, seed)` inputs always yield bit-identical
+/// `samples`, and `y[k][i] == exp(x[k][i])` elementwise against
+/// [`sample_mvn`] at the same inputs. All draws are strictly positive
+/// (up to floating-point range); validation, symmetry handling, and the
+/// reported [`FactorMethod`] are exactly the MVN ones.
+pub fn sample_lognormal(
+    mean_log: &[f64],
+    cov_log: &[Vec<f64>],
+    n: usize,
+    seed: u64,
+) -> Result<SampleSet, SampleError> {
+    let mut set = sample_mvn(mean_log, cov_log, n, seed)?;
+    for row in &mut set.samples {
+        for v in row {
+            *v = v.exp();
+        }
+    }
+    Ok(set)
+}
+
+/// Closed-form mean of the log-normal draw `y = exp(x)`,
+/// `x ~ N(mean_log, cov_log)`: `E[y_i] = exp(mu_i + C_ii/2)`.
+///
+/// Thin helper so callers and tests share one spelling of the theory (U6);
+/// inputs are the same log-space parameters [`sample_lognormal`] takes.
+pub fn lognormal_mean(mean_log: &[f64], cov_log: &[Vec<f64>]) -> Result<Vec<f64>, SampleError> {
+    let dim = mean_log.len();
+    if dim == 0 {
+        return Err(SampleError::Empty);
+    }
+    if cov_log.len() != dim {
+        return Err(SampleError::DimensionMismatch {
+            expected: dim,
+            got: cov_log.len(),
+        });
+    }
+    for (i, row) in cov_log.iter().enumerate() {
+        if row.len() != dim {
+            return Err(SampleError::NonSquare {
+                dim,
+                row: i,
+                got: row.len(),
+            });
+        }
+    }
+    if mean_log.iter().any(|v| !v.is_finite()) {
+        return Err(SampleError::NonFinite("mean_log"));
+    }
+    if cov_log.iter().flatten().any(|v| !v.is_finite()) {
+        return Err(SampleError::NonFinite("covariance_log"));
+    }
+    Ok(mean_log
+        .iter()
+        .enumerate()
+        .map(|(i, mu)| (mu + 0.5 * cov_log[i][i]).exp())
+        .collect())
+}
+
+/// Closed-form covariance of the log-normal draw `y = exp(x)`,
+/// `x ~ N(mean_log, cov_log)`:
+/// `Cov(y_i, y_j) = exp(mu_i + mu_j + (C_ii + C_jj)/2) (exp(C_ij) - 1)`.
+///
+/// Same validation as [`lognormal_mean`]; shares one spelling of theory (U6).
+pub fn lognormal_cov(mean_log: &[f64], cov_log: &[Vec<f64>]) -> Result<Vec<Vec<f64>>, SampleError> {
+    let dim = mean_log.len();
+    if dim == 0 {
+        return Err(SampleError::Empty);
+    }
+    if cov_log.len() != dim {
+        return Err(SampleError::DimensionMismatch {
+            expected: dim,
+            got: cov_log.len(),
+        });
+    }
+    for (i, row) in cov_log.iter().enumerate() {
+        if row.len() != dim {
+            return Err(SampleError::NonSquare {
+                dim,
+                row: i,
+                got: row.len(),
+            });
+        }
+    }
+    if mean_log.iter().any(|v| !v.is_finite()) {
+        return Err(SampleError::NonFinite("mean_log"));
+    }
+    if cov_log.iter().flatten().any(|v| !v.is_finite()) {
+        return Err(SampleError::NonFinite("covariance_log"));
+    }
+    let mut out = vec![vec![0.0; dim]; dim];
+    for i in 0..dim {
+        for j in 0..dim {
+            out[i][j] = (mean_log[i] + mean_log[j] + 0.5 * (cov_log[i][i] + cov_log[j][j])).exp()
+                * (cov_log[i][j].exp() - 1.0);
+        }
+    }
+    Ok(out)
 }
 
 /// Sample mean over draws (one entry per dimension).
@@ -626,6 +754,18 @@ mod tests {
             apply_perturbation(&nominal, &delta, PerturbConvention::Absolute).unwrap(),
             vec![2.5, 3.75]
         );
+        // Log-normal: nominal * exp(delta); exp(0) is the identity.
+        assert_eq!(
+            apply_perturbation(&nominal, &[0.0, 0.0], PerturbConvention::LogNormal).unwrap(),
+            nominal
+        );
+        let out = apply_perturbation(
+            &[2.0],
+            &[std::f64::consts::LN_2],
+            PerturbConvention::LogNormal,
+        )
+        .unwrap();
+        assert!((out[0] - 4.0).abs() < 1e-12, "lognormal apply = {out:?}");
         assert_eq!(
             PerturbConvention::parse("relative").unwrap(),
             PerturbConvention::Relative
@@ -634,7 +774,122 @@ mod tests {
             PerturbConvention::parse("ABS").unwrap(),
             PerturbConvention::Absolute
         );
-        assert!(PerturbConvention::parse("lognormal").is_err());
+        for spelling in [
+            "lognormal",
+            "log_normal",
+            "log-normal",
+            "LOGNORMAL",
+            "lognorm",
+        ] {
+            assert_eq!(
+                PerturbConvention::parse(spelling).unwrap(),
+                PerturbConvention::LogNormal,
+                "spelling {spelling}"
+            );
+        }
+        assert!(PerturbConvention::parse("lhs").is_err());
+    }
+
+    #[test]
+    fn lognormal_reuses_mvn_stream_then_exps() {
+        // Same factor path + RNG as sample_mvn at the same seed; f64::exp is
+        // the only addition. Synthetic log-space block (no evaluated data).
+        let mean_log = vec![0.0, 0.0];
+        let cov_log = vec![vec![0.04, 0.01], vec![0.01, 0.09]];
+        let mvn = sample_mvn(&mean_log, &cov_log, 64, SEED).unwrap();
+        let logn = sample_lognormal(&mean_log, &cov_log, 64, SEED).unwrap();
+        assert_eq!(mvn.method, logn.method);
+        assert_eq!(mvn.method, FactorMethod::Cholesky);
+        for (x, y) in mvn.samples.iter().zip(logn.samples.iter()) {
+            for (a, b) in x.iter().zip(y.iter()) {
+                assert_eq!(*b, a.exp());
+                assert!(b.is_finite() && *b > 0.0);
+            }
+        }
+        // Seeded reproducibility.
+        let again = sample_lognormal(&mean_log, &cov_log, 64, SEED).unwrap();
+        assert_eq!(logn.samples, again.samples);
+        let other = sample_lognormal(&mean_log, &cov_log, 64, SEED + 1).unwrap();
+        assert_ne!(logn.samples, other.samples);
+    }
+
+    #[test]
+    fn lognormal_moments_match_closed_form() {
+        // Honest gates on the committed synthetic fixture
+        // (fixtures/uq/lognormal_2x2.json): the log draws ln(y) recover the
+        // log-space inputs within the MVN k-SE gate (exact, since y = exp(x)
+        // is a bijection), and the sample mean of y recovers the closed-form
+        // E[y_i] = exp(mu_i + C_ii/2) within k standard errors with
+        // Var(y_i) = exp(2 mu_i + C_ii)(exp(C_ii) - 1) from theory (U6).
+        let text = include_str!("../../../fixtures/uq/lognormal_2x2.json");
+        let v: serde_json::Value = serde_json::from_str(text).unwrap();
+        let mean_log: Vec<f64> = serde_json::from_value(v["mean_log"].clone()).unwrap();
+        let cov_log: Vec<Vec<f64>> = serde_json::from_value(v["cov"].clone()).unwrap();
+        let seed = v["seed"].as_u64().unwrap();
+        let n = v["n"].as_u64().unwrap() as usize;
+        let k = v["k"].as_f64().unwrap();
+        let dim = mean_log.len();
+        let set = sample_lognormal(&mean_log, &cov_log, n, seed).unwrap();
+        assert_eq!(set.method, FactorMethod::Cholesky);
+        assert!(set.samples.iter().all(|s| s.iter().all(|x| *x > 0.0)));
+        // L1: ln(y) == MVN draws recover the log-space block.
+        let ln: Vec<Vec<f64>> = set
+            .samples
+            .iter()
+            .map(|s| s.iter().map(|x| x.ln()).collect())
+            .collect();
+        let sm = sample_mean(&ln).unwrap();
+        let sc = sample_cov(&ln).unwrap();
+        for i in 0..dim {
+            let se = (cov_log[i][i] / n as f64).sqrt();
+            assert!(
+                (sm[i] - mean_log[i]).abs() <= k * se,
+                "ln mean[{i}] off by {:.3e} (> {k} SE)",
+                (sm[i] - mean_log[i]).abs()
+            );
+            for j in 0..dim {
+                let se_cov = ((cov_log[i][i] * cov_log[j][j] + cov_log[i][j] * cov_log[i][j])
+                    / (n - 1) as f64)
+                    .sqrt();
+                assert!(
+                    (sc[i][j] - cov_log[i][j]).abs() <= k * se_cov,
+                    "ln cov[{i}][{j}] gate failed"
+                );
+            }
+        }
+        // L2: sample mean of y against the closed-form log-normal mean.
+        let expected = lognormal_mean(&mean_log, &cov_log).unwrap();
+        let cov_y = lognormal_cov(&mean_log, &cov_log).unwrap();
+        let sm_y = sample_mean(&set.samples).unwrap();
+        for i in 0..dim {
+            let se = (cov_y[i][i] / n as f64).sqrt();
+            assert!(
+                (sm_y[i] - expected[i]).abs() <= k * se,
+                "lognormal mean[{i}] off by {:.3e} (> {k} SE = {:.3e})",
+                (sm_y[i] - expected[i]).abs(),
+                k * se
+            );
+        }
+    }
+
+    #[test]
+    fn lognormal_closed_form_helpers_match_theory() {
+        // Hand-computed spot: mu = [0, 0], C = [[0.04, 0.01], [0.01, 0.09]].
+        let mu = vec![0.0, 0.0];
+        let cov = vec![vec![0.04, 0.01], vec![0.01, 0.09]];
+        let m = lognormal_mean(&mu, &cov).unwrap();
+        assert!((m[0] - 0.02f64.exp()).abs() < 1e-15);
+        assert!((m[1] - 0.045f64.exp()).abs() < 1e-15);
+        let c = lognormal_cov(&mu, &cov).unwrap();
+        for i in 0..2 {
+            for j in 0..2 {
+                let want =
+                    (mu[i] + mu[j] + 0.5 * (cov[i][i] + cov[j][j])).exp() * (cov[i][j].exp() - 1.0);
+                assert!((c[i][j] - want).abs() < 1e-15);
+            }
+        }
+        assert!(lognormal_mean(&[], &[]).is_err());
+        assert!(lognormal_cov(&mu, &[vec![1.0]]).is_err());
     }
 
     #[test]

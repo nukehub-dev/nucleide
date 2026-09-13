@@ -75,13 +75,16 @@ ss = read_ssw("path/to/ssw")
 ```
 
 `read_mctal` returns the header, the standard tally bodies (`tallies`, each
-with per-card `{count, values}` bins plus `(value, rel_error)` `vals` pairs
-and a `total`), and the `kcode` cycles. Only the standard
-(non-mesh, non-radiograph) body layout is parsed; mesh tallies,
-radiograph/point-detector specials, `tfc` blocks, total/cumulative variants,
-and perturbation bodies raise a named-open error instead of parsing
-silently. `tally_vals_array(number)` exposes one tally's pairs as a NumPy
-`(n_pairs, 2)` array.
+with per-card `{count, values, variant, flag}` bins plus `(value, rel_error)`
+`vals` pairs, an optional `tfc` fluctuation-chart block, and a `total`), the
+rectangular/cylindrical/spherical mesh tallies (`mesh_tallies`, with the
+`ni`/`nj`/`nk` mesh counts and `cora`/`corb`/`corc` bounds), and the `kcode`
+cycles. Total/cumulative card variants (`ut`/`uc`/…) and the `c`/`e`/`t`
+third-token flags are stored verbatim, never interpreted. Radiograph and
+point-detector specials plus perturbation bodies raise a named-open error
+instead of parsing silently. `tally_vals_array(number)` exposes one tally's
+pairs as a NumPy `(n_pairs, 2)` array (`mesh_tally_vals_array` covers mesh
+tallies).
 
 ## Writing SSW files
 

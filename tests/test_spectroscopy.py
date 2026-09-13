@@ -228,3 +228,41 @@ def test_e9_lines_tsv_rejects_malformed_rows() -> None:
         sp.parse_lines_tsv("0.662 1.0 3.0\n")
     with pytest.raises(ValueError):
         sp.parse_lines_tsv("0.662 lots\n")
+
+
+def test_e7_fit_fixture_closed_form() -> None:
+    # Synthetic closed-form points (fixtures/spectroscopy/efficiency_fit.json):
+    # every efficiency sits exactly on its E7 curve, so the fit recovers the
+    # recorded coefficients within 1e-9 and re-evaluates within 1e-9.
+    fix = json.loads((FIX / "efficiency_fit.json").read_text())
+    for case in ("fit1_degree2", "fit2_degree1"):
+        c = fix[case]
+        got = sp.fit_efficiency(c["energies"], c["effs"], c["weights"], c["order"], c["fit"])
+        assert got == pytest.approx(c["expected_coeff"], rel=1e-9, abs=1e-12)
+        for e, v in zip(c["energies"], c["effs"], strict=True):
+            assert sp.detector_efficiency(e, got, c["fit"]) == pytest.approx(v, rel=1e-9)
+
+
+def test_e7_fit_zero_weight_skips_row() -> None:
+    # eff = E pins the fit-1 line a0 + a1 ln E at [0, 1]; (3, 300) is skipped.
+    got = sp.fit_efficiency([1.0, 2.0, 3.0], [1.0, 2.0, 300.0], [1.0, 1.0, 0.0], 1, 1)
+    assert got == pytest.approx([0.0, 1.0], abs=1e-9)
+
+
+def test_e7_fit_rejects() -> None:
+    with pytest.raises(ValueError):
+        sp.fit_efficiency([], [], [], 1, 1)
+    with pytest.raises(ValueError):
+        sp.fit_efficiency([0.5, 1.0], [0.1], [1.0, 1.0], 1, 1)
+    with pytest.raises(ValueError):
+        sp.fit_efficiency([0.5, 1.0], [0.1, 0.2], [1.0, 1.0], 1, 7)
+    with pytest.raises(ValueError):
+        sp.fit_efficiency([0.5, 1.0], [0.1, 0.2], [1.0, 1.0], 5, 1)
+    with pytest.raises(ValueError):
+        sp.fit_efficiency([0.0, 1.0], [0.1, 0.2], [1.0, 1.0], 1, 1)
+    with pytest.raises(ValueError):
+        sp.fit_efficiency([0.5, 1.0], [0.0, 0.2], [1.0, 1.0], 1, 1)
+    with pytest.raises(ValueError):
+        sp.fit_efficiency([0.5, 1.0], [0.1, 0.2], [1.0, -1.0], 1, 1)
+    with pytest.raises(ValueError):
+        sp.fit_efficiency([0.5, 1.0], [0.1, 0.2], [0.0, 0.0], 0, 1)

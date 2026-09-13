@@ -150,6 +150,39 @@ enrichment owner). Every TSV `Regenerate` line names its exact flags.
 without cross-owner edits; explicit regen flags make every table
 reproducible from its pinned inputs.
 
+## AD-13: Interactive completion + quality tail 4
+
+**Decision:** Land the WASM thin-facade bundle in one pass: MCPL bytes-based
+`readMcpl`/`writeMcpl`/`ssw2mcpl`/`mcpl2ssw` (magic-byte gzip sniff, 200-row
+cap, file-upload UX, staged `ssw2mcpl_expected.mcpl` + `reference.w`) with a
+new `mcpl-io` tutorial page; material `materialSeparate`/`materialBlend`/
+`cusumDetect`; spectroscopy `parseLinesTsv`/`energyBins`/
+`detectorEfficiency`/`parseDollarSpe`/`parsePlainSpe` (capped `SpeSummary`
+following the `IsotxsSummary` precedent since `GammaSpectrum` has no
+`Serialize`); kinetics `inhourRho`/`stablePeriod`/`promptJump`; deterministic
+`parseRtflux` with the Python kind-switch; ORIGEN per-step comparison over
+the existing `parseOrigenTape6` (two pasted snapshots → series chart); and
+chart-only ISOTXS totals (bar), TAPE5 flux-vs-step (scatter), TAPE6
+per-nuclide activity (log bar).
+
+**Named-open (owner/pointer, not landed):** R2S `VoxelTags` + 4 pure fns
+copy-port (~150 lines) — the `r2s` crate enables `depletion`/`rayon` with no
+`default-features = false` switch, so the port would touch the whole crate,
+not a subset; drift accepted, owner = r2s (`crates/r2s/src/tags.rs`).
+PARTISN deck writing stays Python-only (`nucleide-cccc-io` `partisn`,
+no text grammar to mirror). RTFLUX profile chart + ORIGEN per-step full views
+stay RECORD. Multi-snapshot TAPE6 grammar stays RECORD (single-record
+`tape6.rs` grammar unchanged). TSV interchange stays the only spectroscopy
+line-list format (no legacy reader).
+
+**Rationale:** Spike-first (`cargo check -p nucleide-wasm --target
+wasm32-unknown-unknown` with `nucleide-mcpl-io`: `thiserror` + pure-Rust
+`flate2 1.1.10` + `mcnp-io`, no `std::fs` from WASM) proved the one risky
+dependency before any UI. Everything else is thin facades over landed crate
+APIs plus capped summaries, so the browser slice stays cheap and the E2E
+matrix (2 MCPL rows + scalar tabs + SPE ×2 + RTFLUX ×1 + ORIGEN per-step)
+guards each landed path.
+
 ## Open questions
 
 - Whether to enable `abi3-py311` or stay on `abi3-py310` as the minimum Python

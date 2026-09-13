@@ -68,8 +68,9 @@ estimators agree exactly with SANDY's `Samples.get_mean` / `get_cov`
 Given a mean vector $\mu \in \mathbb{R}^p$ and a covariance block
 $C \in \mathbb{R}^{p \times p}$, the kernel draws $n$ reproducible samples
 $x \sim N(\mu, C)$, checks the sample moments recover the inputs, and
-optionally applies the draws as relative/absolute perturbations to decay
-data. Seeds pin the ChaCha8 stream, so identical inputs give bit-identical
+optionally applies the draws as relative/absolute/log-normal perturbations
+to decay data. A log-normal entry point draws $x \sim N(\mu_{\log}, C_{\log})$
+in log space and returns $y = \exp(x)$. Seeds pin the ChaCha8 stream, so identical inputs give bit-identical
 samples.
 
 ## Mathematical details
@@ -117,8 +118,22 @@ Perturbation conventions apply one draw elementwise:
 $$
 \mathrm{relative:}\quad x' = b\,(1 + \delta),
 \qquad
-\mathrm{absolute:}\quad x' = b + \delta.
+\mathrm{absolute:}\quad x' = b + \delta,
+\qquad
+\mathrm{lognormal:}\quad x' = b\,\exp(\delta).
 \tag{U4}
+$$
+
+Log-normal draws reuse the (U1) factor path and RNG stream, then map
+$y = \exp(x)$ elementwise; $\mu_{\log}$/$C_{\log}$ are log-space MVN
+parameters, never the moments of $y$ itself. The closed-form moments are
+
+$$
+\mathrm{E}[y_i] = \exp(\mu_i + C_{ii}/2),
+\qquad
+\mathrm{Cov}(y_i, y_j)
+= \exp(\mu_i + \mu_j + (C_{ii} + C_{jj})/2)\,(\exp(C_{ij}) - 1).
+\tag{U6}
 $$
 
 Branch fractions renormalise to preserve the incoming $1 - \mathrm{BR(SF)}$
@@ -141,12 +156,17 @@ absolute.
 ## Algorithm
 
 `sample_mvn` validates (non-empty, square, finite, symmetric within
-$10^{-12}$ relative tolerance — SANDY instead requires exact symmetry),
+$10^{-8}$ relative tolerance — SANDY instead requires exact symmetry),
 factorises (Cholesky, else eigen-clip with the taken path reported, never
 silent), fills a Box–Muller stream from the seed, and applies (U1).
+`sample_lognormal` reuses that path and stream, then applies $y = \exp(x)$
+(`f64::exp` is the only addition); `lognormal_mean` / `lognormal_cov`
+spell the closed-form (U6) moments.
 `sample_mean` / `sample_cov` implement (U2); `check_convergence`
 implements (U3) with caller tolerances. `perturb_branches` implements
-(U5); `perturb_energies` implements (U4) with a zero clamp.
+(U5); `perturb_energies` implements
+(U4) with a zero clamp (a no-op for the log-normal convention, whose draws
+stay positive).
 
 ## Worked example
 
@@ -158,13 +178,22 @@ $0.50^2 = 0.25$, $0.50 \times 0.20 = 0.10$,
 $0.20^2 + 0.3464^2 \approx 0.16$. At the pinned seed the 20,000 draws
 recover the inputs within 0.78 standard errors (U1 gate, $k = 5$).
 
+The `fixtures/uq/lognormal_2x2.json` log-space block
+($\mu_{\log} = 0$, $C_{\log}$ with variances 0.04/0.09 and covariance
+0.01) has closed-form log-normal moments
+$\mathrm{E}[y] = (e^{0.02}, e^{0.045}) \approx (1.0202, 1.0460)$ from (U6).
+At the pinned seed the 50,000 draws satisfy the separate U5 gate: $\ln(y)$
+recovers the log-space block within the MVN $k$-SE gate and the sample mean
+of $y$ recovers $\mathrm{E}[y]$ within $k$ standard errors ($k = 5$) — the
+MVN gates are not reused after the $\exp$ transform.
+
 ## Assumptions and limitations
 
 - Inputs are caller-supplied blocks; no covariance library is read or
   shipped, and no ENDF/ERRORR parsing exists here.
 - Fission-yield perturbation is a named-open hook (waits on FY tapes);
-  MF32/MF40 resonance machinery, transport coupling, and log-normal
-  sampling are explicitly out.
+  MF32/MF40 resonance machinery and transport coupling are explicitly out,
+  and Latin-hypercube sampling stays out (needs a gate redesign).
 - Draws are not interchangeable with SANDY's: the published SANDY scheme
   factorises the correlation structure with Cholesky, but the current
   SANDY implementation uses SVD behind a different RNG stream — same
@@ -174,8 +203,11 @@ recover the inputs within 0.78 standard errors (U1 gate, $k = 5$).
 
 - SANDY samples MF31–MF35/MF8 covariances from ENDF-6 tapes (including
   decay data and fission yields) with NJOY/ERRORR preprocessing, Latin
-  hypercube options, variance-decomposition sensitivity indices, and
-  log-normal sampling — all beyond this kernel's caller-block scope.
+  hypercube options, and variance-decomposition sensitivity indices — all
+  beyond this kernel's caller-block scope. Log-normal sampling is covered
+  here only over caller-supplied blocks ($y = \exp(x)$ post-transform with
+  log-space mean/covariance semantics); tape-driven log-normal workflows
+  stay out.
 - SANDY's `summarize_sample` (Frobenius-norm deviations, normality
   tests) is the closest analogue of `check_convergence`; ours is the
   $k$-standard-error formulation (U3) instead.

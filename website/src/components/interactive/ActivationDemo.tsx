@@ -146,6 +146,12 @@ export function ActivationDemo() {
   const [tape9, setTape9] = useState<OrigenTape9Summary | null>(null);
   const [r2s, setR2s] = useState<R2sSummary | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotBundleJson | null>(null);
+  const [stepB, setStepB] = useState(
+    "U235 10.0 8.0e5\nU238 994.0 1.2e4\nPu239 0.3 6.9e8\nCs137 0.02 6.4e10",
+  );
+  const [stepSeries, setStepSeries] = useState<{ nuclide: string; a: number; b: number }[] | null>(
+    null,
+  );
   const [localError, setLocalError] = useState<string | null>(null);
   const [loadingSample, setLoadingSample] = useState(false);
 
@@ -379,6 +385,23 @@ export function ActivationDemo() {
                   { key: "days", header: "Days", align: "right" },
                 ]}
               />
+              <Plotly
+                aspect="video"
+                data={[
+                  {
+                    type: "scatter",
+                    mode: "lines+markers",
+                    name: "Flux vs step",
+                    x: tape5.steps.map((_, i) => i + 1),
+                    y: tape5.steps.map((s) => s.flux),
+                  },
+                ]}
+                layout={{
+                  xaxis: { title: { text: "Irradiation step" } },
+                  yaxis: { title: { text: "Flux (n/cm²/s)" } },
+                  margin: { t: 16, r: 16, b: 48, l: 64 },
+                }}
+              />
               <div className="space-y-2">
                 <p className="text-sm font-medium">Materials ({tape5.materials.length})</p>
                 <DataTable
@@ -419,6 +442,99 @@ export function ActivationDemo() {
                   { key: "activity", header: "Activity (Bq)", align: "right" },
                 ]}
               />
+              <Plotly
+                aspect="video"
+                data={[
+                  {
+                    type: "bar",
+                    name: "Activity per nuclide",
+                    x: tape6.records.map((r) => r.nuclide),
+                    y: tape6.records.map((r) => r.activity_bq),
+                  },
+                ]}
+                layout={{
+                  xaxis: { title: { text: "Nuclide" } },
+                  yaxis: { title: { text: "Activity (Bq)" }, type: "log" },
+                  margin: { t: 16, r: 16, b: 48, l: 64 },
+                }}
+              />
+              <div className="space-y-2 border-t border-border/50 pt-3">
+                <p className="text-sm font-medium">
+                  ORIGEN per-step comparison (N snapshots → series)
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Step A is the parsed TAPE6 above; paste step B below. Multi-snapshot grammar stays
+                  RECORD (Python-only).
+                </p>
+                <Textarea
+                  value={stepB}
+                  onChange={(e) => {
+                    setStepB(e.target.value);
+                    clearError();
+                  }}
+                  className="font-mono text-xs"
+                />
+                <Button
+                  onClick={() => {
+                    if (!wasm) return;
+                    try {
+                      const b = wasm.parseOrigenTape6(stepB);
+                      const names = Array.from(
+                        new Set([
+                          ...tape6.records.map((r) => r.nuclide),
+                          ...b.records.map((r) => r.nuclide),
+                        ]),
+                      );
+                      const at = (rows: { nuclide: string; activity_bq: number }[], n: string) =>
+                        rows.find((r) => r.nuclide === n)?.activity_bq ?? 0;
+                      setStepSeries(
+                        names.map((n) => ({
+                          nuclide: n,
+                          a: at(tape6.records, n),
+                          b: at(b.records, n),
+                        })),
+                      );
+                      clearError();
+                    } catch (e) {
+                      setLocalError(e instanceof Error ? e.message : String(e));
+                      setStepSeries(null);
+                    }
+                  }}
+                >
+                  Compare steps
+                </Button>
+                {stepSeries && (
+                  <>
+                    <p className="text-sm">
+                      Per-step activities across {stepSeries.length} nuclides
+                    </p>
+                    <Plotly
+                      aspect="video"
+                      data={[
+                        {
+                          type: "bar",
+                          name: "Step A",
+                          x: stepSeries.map((s) => s.nuclide),
+                          y: stepSeries.map((s) => s.a),
+                        },
+                        {
+                          type: "bar",
+                          name: "Step B",
+                          x: stepSeries.map((s) => s.nuclide),
+                          y: stepSeries.map((s) => s.b),
+                        },
+                      ]}
+                      layout={{
+                        barmode: "group",
+                        xaxis: { title: { text: "Nuclide" } },
+                        yaxis: { title: { text: "Activity (Bq)" }, type: "log" },
+                        margin: { t: 16, r: 16, b: 48, l: 64 },
+                        legend: { orientation: "h", y: -0.25 },
+                      }}
+                    />
+                  </>
+                )}
+              </div>
             </div>
           )}
 

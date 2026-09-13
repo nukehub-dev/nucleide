@@ -1,4 +1,4 @@
-//! SSW surface-source ↔ MCPL particle-list conversion (neutron/gamma-only v1).
+//! SSW surface-source ↔ MCPL particle-list conversion (SSW-PDG table v2).
 //!
 //! Thin conversion layer over [`crate::Header`]/[`crate::Particle`] and the
 //! `mcnp-io` SSW header/track types. All business logic lives here; the
@@ -11,8 +11,8 @@
 //! | `erg` (MeV) | `ekin` (MeV) | verbatim both directions |
 //! | `tme` (shakes) | `time` (ms) | shakes → ms `× 1e-5` ([`SHAKES_TO_MS`]), ms → shakes `× 1e5` (`MS_TO_SHAKES`) |
 //! | surface id | `userflags` | SSW → MCPL only when [`Ssw2McplOptions::surf_to_userflags`] is set (default); MCPL → SSW reads `userflags` unless [`Mcpl2SswOptions::surface`] overrides |
-//! | particle kind | `pdgcode` | neutron ↔ 2112, gamma ↔ 22; anything else is [`SswError::UnsupportedPdg`] |
-//! | `wgt`, `x`/`y`/`z`, `u`/`v`/`cs` | `weight`, `position`, `direction` | verbatim |
+//! | particle kind | `pdgcode` | SSW-PDG table ([`SswParticleKind`]): neutron 2112, gamma 22, electron 11, positron −11, proton 2212; anything else is [`SswError::UnsupportedPdg`] |
+//! | `wgt`, `x`/`y`/`z`, `u`/`v`/`cs` | `weight`, `position`, `direction` | verbatim, except opt-in [`Mcpl2SswOptions::force_cs_to_one`] |
 //!
 //! ## Explicit caller parameters instead of guessed decodes
 //!
@@ -28,39 +28,57 @@
 //!
 //! - The 11-double SSW record carries no per-track type slot (particle type
 //!   is file-level `mipts` in the header, passed through opaquely from the
-//!   reference), so `kind` only gates the conversion: non-neutron/gamma PDG
-//!   codes are rejected, never mistyped.
+//!   reference), so `kind` only gates the conversion: PDG codes outside the
+//!   SSW-PDG table are rejected, never mistyped.
 //! - `bitarray` magnitude is 0 (the track's cell and upstream type word are
 //!   unknown to the converter); its sign mirrors the direction z so the
 //!   reader's `copysign`-derived `w` matches `cs`. Third-party tools that
 //!   decode the particle type out of `bitarray` will skip these tracks —
 //!   use the nucleide leg for round-trips (named-open, see below).
 //! - `nps` is the 1-based particle index (MCPL carries no history number).
-//! - No direction cosine is forced: the local SSW writer stores track
-//!   records verbatim, so `(u, v, cs)` propagate the particle direction
+//! - No direction cosine is forced by default: the local SSW writer stores
+//!   track records verbatim, so `(u, v, cs)` propagate the particle direction
 //!   unchanged. Upstream `mcpl2ssw` instead forces the stored `cs` slot to
-//!   1.0 (verified against the 2.2.8 binary); v1 keeps the true cosine and
-//!   documents the difference rather than destroying information.
+//!   1.0 (verified against the 2.2.8 binary); opt in with
+//!   [`Mcpl2SswOptions::force_cs_to_one`] to reproduce that byte (`cs = 1.0`,
+//!   `u`/`v` still verbatim) instead of keeping the true cosine.
 //! - The output header clones the reference (code/version/deck passthrough)
 //!   with the count fields patched to the particle count — `nrss`, `np1`,
 //!   and `orignp1` with the reference's table-2 sign preserved — exactly as
 //!   upstream `mcpl2ssw` reports it ("N particles (nrss) and N histories
-//!   (np1)", verified against the 2.2.8 binary). `niss` passes through
-//!   (upstream behavior there is unverified).
+//!   (np1)", verified against the 2.2.8 binary). `niss` passes through by
+//!   default; set [`Mcpl2SswOptions::niss_override`] to stamp an explicit
+//!   value instead (upstream 2.2.8 leaves `niss` on the reference header
+//!   untouched — verified by running the 2.2.8 `mcpl2ssw` script over the
+//!   synthetic pair and diffing the header — so the passthrough default is
+//!   the compatible spelling and the override is the tally-convention opt-in).
+//! - Polarisation has no SSW slot: MCPL → SSW drops it, loudly by default
+//!   (any non-zero input vector is [`SswError::PolarisationPresent`] unless
+//!   [`Mcpl2SswOptions::allow_polarisation`] opts into the drop). The
+//!   reverse leg carries a uniform vector only when
+//!   [`Ssw2McplOptions::polarisation`] is set (otherwise zeros with
+//!   `has_polarisation == false`). Universal PDG/weight inputs arrive
+//!   already unfolded by the MCPL reader, so their decoded per-particle
+//!   values propagate verbatim; the reverse leg emits file-wide codes only
+//!   when [`Ssw2McplOptions::universal_pdg`]/[`universal_weight`](Ssw2McplOptions::universal_weight)
+//!   opt in (mixed inputs are [`SswError::MixedPdgForUniversal`]/
+//!   [`SswError::MixedWeightForUniversal`]).
 //!
-//! ## Named-open items (explicitly out of v1 scope)
+//! ## Named-open items (explicitly out of scope)
 //!
-//! - Particle types beyond neutron/gamma ([`SswError::UnsupportedPdg`]).
-//! - Polarisation (always zeros; MCPL output never sets `has_polarisation`)
-//!   and universal PDG/weight codes (always per-particle).
+//! - Particle types beyond the SSW-PDG table ([`SswError::UnsupportedPdg`]).
+//!   Accepted set decision: neutron/gamma/electron/positron/proton — the
+//!   five MCPL PDG codes with identical 11-double SSW geometry (energy,
+//!   time, position, direction all verbatim). Heavier ions and mesons stay
+//!   loud errors, never silent skips; no transport semantics ride along.
 //! - Transport semantics; this only re-homes already-transported tracks.
 //! - Reference headers whose `abs(ncrd)` is not
 //!   [`TrackData::RECORD_WIDTH`](nucleide_mcnp_io::surfsrc::TrackData::RECORD_WIDTH)
 //!   ([`SswError::UnsupportedRecordWidth`]).
-//! - Upstream type-word round-trips: v1 never writes cell/type words into
+//! - Upstream type-word round-trips: this converter never writes cell/type words into
 //!   `bitarray` (writing them would transcribe the upstream rawtype table
-//!   into this crate, which the license-clean v1 cut forbids), so
-//!   third-party `bitarray`-decoding tools skip v1-written tracks.
+//!   into this crate, which the license-clean cut forbids), so
+//!   third-party `bitarray`-decoding tools skip converter-written tracks.
 //!   Owner/next step: revisit when a licensed type-table source exists.
 
 use nucleide_mcnp_io::surfsrc::{SurfSrcHeader, TrackData};
@@ -72,34 +90,60 @@ use crate::{encode_file, Blob, Header, Particle};
 pub const SHAKES_TO_MS: f64 = 1e-5;
 /// Milliseconds → shakes.
 pub const MS_TO_SHAKES: f64 = 1e5;
-/// PDG code for the neutron (only non-photon kind v1 converts).
+/// PDG code for the neutron.
 pub const PDG_NEUTRON: i32 = 2112;
-/// PDG code for the gamma (only non-neutron kind v1 converts).
+/// PDG code for the gamma.
 pub const PDG_GAMMA: i32 = 22;
+/// PDG code for the electron.
+pub const PDG_ELECTRON: i32 = 11;
+/// PDG code for the positron.
+pub const PDG_POSITRON: i32 = -11;
+/// PDG code for the proton.
+pub const PDG_PROTON: i32 = 2212;
 /// Largest deck blob accepted by [`Ssw2McplOptions::deck_blob`] (100 MiB).
 pub const MAX_DECK_BLOB_BYTES: usize = 100 * 1024 * 1024;
 /// Largest surface id accepted on the MCPL → SSW path.
 pub const MAX_SURFACE_ID: u32 = 999_999;
 
-/// SSW particle kind (neutron/gamma-only v1).
+/// SSW particle kind (SSW-PDG table: n/γ/e⁻/e⁺/p).
 ///
 /// The kind is an explicit caller parameter on [`SswTrack`]: no particle-type
-/// decode exists in the local SSW reader, so v1 never guesses it from
-/// `bitarray` (see the module docs).
+/// decode exists in the local SSW reader, so the converter never guesses it
+/// from `bitarray` (see the module docs). All five kinds share the identical
+/// 11-double SSW geometry (energy, time, position, direction verbatim); the
+/// kind only gates the PDG mapping, never the layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SswParticleKind {
     /// Neutron (PDG 2112).
     Neutron,
     /// Gamma (PDG 22).
     Gamma,
+    /// Electron (PDG 11).
+    Electron,
+    /// Positron (PDG −11).
+    Positron,
+    /// Proton (PDG 2212).
+    Proton,
 }
 
 impl SswParticleKind {
-    /// PDG code for this kind (neutron 2112, gamma 22).
+    /// All accepted kinds in stable facade order.
+    pub const ALL: [SswParticleKind; 5] = [
+        SswParticleKind::Neutron,
+        SswParticleKind::Gamma,
+        SswParticleKind::Electron,
+        SswParticleKind::Positron,
+        SswParticleKind::Proton,
+    ];
+
+    /// PDG code for this kind.
     pub fn pdg(self) -> i32 {
         match self {
             SswParticleKind::Neutron => PDG_NEUTRON,
             SswParticleKind::Gamma => PDG_GAMMA,
+            SswParticleKind::Electron => PDG_ELECTRON,
+            SswParticleKind::Positron => PDG_POSITRON,
+            SswParticleKind::Proton => PDG_PROTON,
         }
     }
 
@@ -108,24 +152,33 @@ impl SswParticleKind {
         match pdg {
             PDG_NEUTRON => Ok(SswParticleKind::Neutron),
             PDG_GAMMA => Ok(SswParticleKind::Gamma),
+            PDG_ELECTRON => Ok(SswParticleKind::Electron),
+            PDG_POSITRON => Ok(SswParticleKind::Positron),
+            PDG_PROTON => Ok(SswParticleKind::Proton),
             other => Err(SswError::UnsupportedPdg(other)),
         }
     }
 
-    /// `"neutron"` or `"gamma"` (the only spellings the Python facade accepts).
+    /// Accepted spellings (the only strings the Python facade accepts).
     pub fn as_str(self) -> &'static str {
         match self {
             SswParticleKind::Neutron => "neutron",
             SswParticleKind::Gamma => "gamma",
+            SswParticleKind::Electron => "electron",
+            SswParticleKind::Positron => "positron",
+            SswParticleKind::Proton => "proton",
         }
     }
 
-    /// Parse `"neutron"`/`"gamma"`; anything else is `None` (the facade turns
+    /// Parse an accepted spelling; anything else is `None` (the facade turns
     /// this into a `ValueError` naming the accepted values).
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "neutron" => Some(SswParticleKind::Neutron),
             "gamma" => Some(SswParticleKind::Gamma),
+            "electron" => Some(SswParticleKind::Electron),
+            "positron" => Some(SswParticleKind::Positron),
+            "proton" => Some(SswParticleKind::Proton),
             _ => None,
         }
     }
@@ -181,6 +234,18 @@ pub struct Ssw2McplOptions {
     pub srcname: String,
     /// MCPL header comments (round-tripped verbatim, never interpreted).
     pub comments: Vec<String>,
+    /// Uniform polarisation stamped on every output particle (`None` =
+    /// zeros with `has_polarisation == false`, the default). `Some(v)`
+    /// sets `has_polarisation` and stores `v` per particle; `v` must be
+    /// finite (see [`SswError::InvalidPolarisation`]).
+    pub polarisation: Option<[f64; 3]>,
+    /// Emit a file-wide PDG code (`None` = per-particle codes, the default).
+    /// `true` requires every track to share one kind (see
+    /// [`SswError::MixedPdgForUniversal`]).
+    pub universal_pdg: bool,
+    /// Emit a file-wide weight (`true` requires every track weight to be
+    /// exactly equal; see [`SswError::MixedWeightForUniversal`]).
+    pub universal_weight: bool,
 }
 
 impl Default for Ssw2McplOptions {
@@ -192,6 +257,9 @@ impl Default for Ssw2McplOptions {
             deck_blob: None,
             srcname: "ssw2mcpl".to_string(),
             comments: Vec::new(),
+            polarisation: None,
+            universal_pdg: false,
+            universal_weight: false,
         }
     }
 }
@@ -202,6 +270,19 @@ pub struct Mcpl2SswOptions {
     /// Surface id stamped on every output track (`None` = each particle's
     /// `userflags`; must lie in `[1, 999999]` either way).
     pub surface: Option<u32>,
+    /// Reproduce the upstream `mcpl2ssw` 2.2.8 `cs` spelling: force the
+    /// stored `cs` slot to `1.0` (`u`/`v` stay verbatim). Default `false`
+    /// keeps the true direction cosine.
+    pub force_cs_to_one: bool,
+    /// Stamp `niss` on the output header (`None` = pass the reference
+    /// header's `niss` through untouched, the default and the upstream-2.2.8
+    /// spelling). `Some(v)` requires `v >= 0` (see
+    /// [`SswError::NissOutOfRange`]).
+    pub niss_override: Option<i64>,
+    /// Allow polarised MCPL inputs (dropped, since SSW has no slot).
+    /// Default `false` rejects any non-zero input vector with
+    /// [`SswError::PolarisationPresent`]; `true` drops silently.
+    pub allow_polarisation: bool,
 }
 
 /// Errors raised by SSW ↔ MCPL conversion.
@@ -213,9 +294,27 @@ pub enum SswError {
     /// Filesystem or gzip failure while writing conversion output.
     #[error("io error: {0}")]
     Io(String),
-    /// Particle kind outside the neutron/gamma-only v1 scope.
-    #[error("unsupported PDG code {0} (v1 converts neutrons/2112 and gammas/22 only)")]
+    /// Particle kind outside the SSW-PDG table.
+    #[error("unsupported PDG code {0} (accepted: 2112 neutron, 22 gamma, 11 electron, -11 positron, 2212 proton)")]
     UnsupportedPdg(i32),
+    /// `universal_pdg` requested but the tracks mix PDG codes.
+    #[error("universal PDG requested but tracks mix PDG codes {0:?} (pass one kind or leave universal_pdg off)")]
+    MixedPdgForUniversal(Vec<i32>),
+    /// `universal_weight` requested but the track weights differ.
+    #[error("universal weight requested but track weights differ (pass equal weights or leave universal_weight off)")]
+    MixedWeightForUniversal,
+    /// `polarisation` vector holds a non-finite entry.
+    #[error("polarisation vector {0:?} holds a non-finite entry")]
+    InvalidPolarisation([f64; 3]),
+    /// MCPL → SSW input carries polarisation with no SSW slot to hold it.
+    #[error("particle {index} carries non-zero polarisation (pass allow_polarisation to drop it)")]
+    PolarisationPresent {
+        /// Position of the offending particle in the input slice.
+        index: usize,
+    },
+    /// `niss_override` is negative.
+    #[error("niss override {0} is negative (pass >= 0 or leave unset for passthrough)")]
+    NissOutOfRange(i64),
     /// Surface id outside `[1, 999999]`.
     #[error("surface id {0} outside [1, 999999]")]
     SurfaceIdOutOfRange(u32),
@@ -234,7 +333,7 @@ pub enum SswError {
         limit: usize,
     },
     /// Reference header record width is not the 11-double track layout.
-    #[error("reference ncrd width {found} != {expected} (v1 converts 11-double tracks only)")]
+    #[error("reference ncrd width {found} != {expected} (converts 11-double tracks only)")]
     UnsupportedRecordWidth {
         /// Required width ([`TrackData::RECORD_WIDTH`](nucleide_mcnp_io::surfsrc::TrackData::RECORD_WIDTH)).
         expected: usize,
@@ -255,7 +354,11 @@ pub enum SswError {
 /// map to `userflags` when [`Ssw2McplOptions::surf_to_userflags`] is set.
 /// Direction/energy are validated eagerly (unit [`crate::UNIT_TOL`],
 /// non-negative) so the pure function fails exactly where the MCPL writer
-/// would.
+/// would. Opt-in [`Ssw2McplOptions::polarisation`] stamps one uniform vector
+/// on every particle (otherwise zeros); opt-in
+/// [`Ssw2McplOptions::universal_pdg`]/[`universal_weight`](Ssw2McplOptions::universal_weight)
+/// collapse the file-wide codes (mixed inputs are named errors, never silent
+/// per-particle fallbacks).
 pub fn ssw2mcpl(
     tracks: &[SswTrack],
     options: &Ssw2McplOptions,
@@ -268,6 +371,27 @@ pub fn ssw2mcpl(
             });
         }
     }
+    if let Some(pol) = options.polarisation {
+        if !pol.iter().all(|v| v.is_finite()) {
+            return Err(SswError::InvalidPolarisation(pol));
+        }
+    }
+    if options.universal_pdg && !tracks.is_empty() {
+        let first = tracks[0].kind.pdg();
+        if tracks.iter().any(|t| t.kind.pdg() != first) {
+            let mut pdgs: Vec<i32> = tracks.iter().map(|t| t.kind.pdg()).collect();
+            pdgs.sort_unstable();
+            pdgs.dedup();
+            return Err(SswError::MixedPdgForUniversal(pdgs));
+        }
+    }
+    if options.universal_weight && !tracks.is_empty() {
+        let first = tracks[0].weight;
+        if tracks.iter().any(|t| t.weight != first) {
+            return Err(SswError::MixedWeightForUniversal);
+        }
+    }
+    let pol = options.polarisation.unwrap_or([0.0; 3]);
     let mut particles = Vec::with_capacity(tracks.len());
     for (i, t) in tracks.iter().enumerate() {
         let dir2 = t.direction[0] * t.direction[0]
@@ -281,7 +405,7 @@ pub fn ssw2mcpl(
         }
         particles.push(Particle {
             ekin: t.ekin,
-            polarisation: [0.0; 3],
+            polarisation: pol,
             position: t.position,
             direction: t.direction,
             time: t.time_shakes * SHAKES_TO_MS,
@@ -290,9 +414,22 @@ pub fn ssw2mcpl(
             userflags: if options.surf_to_userflags { t.surf } else { 0 },
         });
     }
+    let universal_pdgcode = if options.universal_pdg && !tracks.is_empty() {
+        Some(tracks[0].kind.pdg())
+    } else {
+        None
+    };
+    let universal_weight = if options.universal_weight && !tracks.is_empty() {
+        Some(tracks[0].weight)
+    } else {
+        None
+    };
     let header = Header {
         has_userflags: options.surf_to_userflags,
+        has_polarisation: options.polarisation.is_some(),
         double_prec: options.double_prec,
+        universal_pdgcode,
+        universal_weight,
         srcname: options.srcname.clone(),
         comments: options.comments.clone(),
         blobs: options
@@ -350,11 +487,15 @@ fn resolve_surface(index: usize, p: &Particle, options: &Mcpl2SswOptions) -> Res
 /// The output header clones `reference` (code/version/deck passthrough) with
 /// the count fields patched to the particle count: `nrss` and `np1` become
 /// the particle count and `orignp1` keeps the reference's table-2 sign.
-/// Surface ids come from
-/// `userflags` or [`Mcpl2SswOptions::surface`]; PDG codes outside 2112/22
-/// are [`SswError::UnsupportedPdg`]. Energy maps verbatim (MeV), time maps
-/// ms → shakes (`× 1e5`), `(u, v, cs)` carry the particle direction
-/// unchanged (no cosine is forced; see the module docs).
+/// `niss` passes through unless [`Mcpl2SswOptions::niss_override`] stamps an
+/// explicit value. Surface ids come from
+/// `userflags` or [`Mcpl2SswOptions::surface`]; PDG codes outside the
+/// SSW-PDG table are [`SswError::UnsupportedPdg`]. Energy maps verbatim
+/// (MeV), time maps ms → shakes (`× 1e5`), `(u, v, cs)` carry the particle
+/// direction unchanged unless [`Mcpl2SswOptions::force_cs_to_one`] reproduces
+/// the upstream `cs = 1.0` spelling. Non-zero polarisation is
+/// [`SswError::PolarisationPresent`] unless
+/// [`Mcpl2SswOptions::allow_polarisation`] drops it.
 pub fn mcpl2ssw(
     particles: &[Particle],
     reference: &SurfSrcHeader,
@@ -367,12 +508,20 @@ pub fn mcpl2ssw(
             found: width,
         });
     }
+    if let Some(niss) = options.niss_override {
+        if niss < 0 {
+            return Err(SswError::NissOutOfRange(niss));
+        }
+    }
     let mut tracks = Vec::with_capacity(particles.len());
     for (i, p) in particles.iter().enumerate() {
         // Gate the kind even though the 11-double record has no per-track
-        // type slot: mistyping a proton as a neutron must be loud, not silent.
+        // type slot: mistyping an ion as a neutron must be loud, not silent.
         let _kind = SswParticleKind::from_pdg(p.pdgcode)?;
         let _surf = resolve_surface(i, p, options)?;
+        if !options.allow_polarisation && p.polarisation != [0.0, 0.0, 0.0] {
+            return Err(SswError::PolarisationPresent { index: i });
+        }
         let dir2 = p.direction[0] * p.direction[0]
             + p.direction[1] * p.direction[1]
             + p.direction[2] * p.direction[2];
@@ -383,11 +532,17 @@ pub fn mcpl2ssw(
             return Err(SswError::NegativeEnergy(i, p.ekin));
         }
         // Cell unknown to the converter (magnitude 0); the sign mirrors the
-        // direction z so the reader's copysign-derived `w` matches `cs`.
+        // direction z so the reader's copysign-derived `w` matches `cs`
+        // (under force_cs_to_one the stored cs diverges by upstream design).
         let bitarray = if p.direction[2].is_sign_negative() {
             -0.0
         } else {
             0.0
+        };
+        let cs = if options.force_cs_to_one {
+            1.0
+        } else {
+            p.direction[2]
         };
         let record = vec![
             (i + 1) as f64, // nps: 1-based particle index
@@ -400,7 +555,7 @@ pub fn mcpl2ssw(
             p.position[2],
             p.direction[0],
             p.direction[1],
-            p.direction[2],
+            cs,
         ];
         tracks.push(TrackData::from_record(record));
     }
@@ -409,9 +564,14 @@ pub fn mcpl2ssw(
     header.nrss = n;
     // Upstream patches the history counts to the converted tally (verified:
     // "N particles (nrss) and N histories (np1)"); the table-2 sign rides
-    // along so the cloned deck layout stays writable.
+    // along so the cloned deck layout stays writable. niss passes through
+    // (upstream 2.2.8 leaves it untouched — verified over the synthetic pair)
+    // unless the caller stamps an explicit override.
     header.np1 = n;
     header.orignp1 = if reference.orignp1 < 0 { -n } else { n };
+    if let Some(niss) = options.niss_override {
+        header.niss = niss;
+    }
     Ok((header, tracks))
 }
 
@@ -667,12 +827,18 @@ mod tests {
     fn mcpl2ssw_surface_override_and_range() {
         let (_, ps) = ssw2mcpl(&synth_tracks(), &Ssw2McplOptions::default()).unwrap();
         // Explicit override wins over userflags (which stay [100, 200]).
-        let opts = Mcpl2SswOptions { surface: Some(7) };
+        let opts = Mcpl2SswOptions {
+            surface: Some(7),
+            ..Default::default()
+        };
         let (_, tracks) = mcpl2ssw(&ps, &synth_reference(), &opts).unwrap();
         assert_eq!(tracks.len(), 2);
         // Out-of-range override rejected even with valid userflags present.
         for bad in [0, MAX_SURFACE_ID + 1] {
-            let opts = Mcpl2SswOptions { surface: Some(bad) };
+            let opts = Mcpl2SswOptions {
+                surface: Some(bad),
+                ..Default::default()
+            };
             assert_eq!(
                 mcpl2ssw(&ps, &synth_reference(), &opts).unwrap_err(),
                 SswError::SurfaceIdOutOfRange(bad)
@@ -690,10 +856,10 @@ mod tests {
     #[test]
     fn mcpl2ssw_rejects_unsupported_pdg_and_width() {
         let (_, mut ps) = ssw2mcpl(&synth_tracks(), &Ssw2McplOptions::default()).unwrap();
-        ps[0].pdgcode = 2212; // proton: named-open, never mistyped as neutron
+        ps[0].pdgcode = 211; // pion: outside the SSW-PDG table, never mistyped
         assert_eq!(
             mcpl2ssw(&ps, &synth_reference(), &Mcpl2SswOptions::default()).unwrap_err(),
-            SswError::UnsupportedPdg(2212)
+            SswError::UnsupportedPdg(211)
         );
         let (_, ps) = ssw2mcpl(&synth_tracks(), &Ssw2McplOptions::default()).unwrap();
         let mut reference = synth_reference();
@@ -718,28 +884,209 @@ mod tests {
     fn kind_pdg_round_trip() {
         assert_eq!(SswParticleKind::Neutron.pdg(), 2112);
         assert_eq!(SswParticleKind::Gamma.pdg(), 22);
+        assert_eq!(SswParticleKind::Electron.pdg(), 11);
+        assert_eq!(SswParticleKind::Positron.pdg(), -11);
+        assert_eq!(SswParticleKind::Proton.pdg(), 2212);
+        for kind in SswParticleKind::ALL {
+            assert_eq!(SswParticleKind::from_pdg(kind.pdg()).unwrap(), kind);
+            assert_eq!(SswParticleKind::parse(kind.as_str()), Some(kind));
+        }
         assert_eq!(
-            SswParticleKind::from_pdg(2112).unwrap(),
-            SswParticleKind::Neutron
+            SswParticleKind::from_pdg(211).unwrap_err(),
+            SswError::UnsupportedPdg(211)
         );
         assert_eq!(
-            SswParticleKind::from_pdg(22).unwrap(),
-            SswParticleKind::Gamma
+            SswParticleKind::from_pdg(1_000_020_040).unwrap_err(),
+            SswError::UnsupportedPdg(1_000_020_040)
         );
-        assert_eq!(
-            SswParticleKind::from_pdg(11).unwrap_err(),
-            SswError::UnsupportedPdg(11)
-        );
-        assert_eq!(
-            SswParticleKind::parse("neutron"),
-            Some(SswParticleKind::Neutron)
-        );
-        assert_eq!(
-            SswParticleKind::parse("gamma"),
-            Some(SswParticleKind::Gamma)
-        );
-        assert_eq!(SswParticleKind::parse("proton"), None);
+        assert_eq!(SswParticleKind::parse("pion"), None);
         assert_eq!(SswParticleKind::parse("p"), None);
+    }
+
+    #[test]
+    fn extended_kinds_round_trip_both_directions_verbatim() {
+        // All five SSW-PDG kinds share the identical 11-double geometry:
+        // energy/time/position/direction/weight ride verbatim both ways.
+        let tracks: Vec<SswTrack> = SswParticleKind::ALL
+            .iter()
+            .enumerate()
+            .map(|(i, kind)| SswTrack {
+                ekin: 1.0 + i as f64 * 0.5,
+                time_shakes: 1.0e5 * (i as f64 + 1.0),
+                position: [i as f64, -(i as f64), 0.25 * i as f64],
+                direction: [0.0, 0.0, 1.0],
+                weight: 0.75,
+                surf: 100 + i as u32,
+                kind: *kind,
+            })
+            .collect();
+        let (h, ps) = ssw2mcpl(&tracks, &Ssw2McplOptions::default()).unwrap();
+        assert_eq!(
+            ps.iter().map(|p| p.pdgcode).collect::<Vec<_>>(),
+            vec![2112, 22, 11, -11, 2212]
+        );
+        assert!(!h.has_polarisation);
+        let (oh, back) = mcpl2ssw(&ps, &synth_reference(), &Mcpl2SswOptions::default()).unwrap();
+        assert_eq!((oh.nrss, oh.np1), (5, 5));
+        assert_eq!(back.len(), 5);
+        for (rt, want) in back.iter().zip(tracks.iter()) {
+            assert_eq!(rt.erg, want.ekin);
+            assert!((rt.tme - want.time_shakes).abs() / want.time_shakes < 1e-12);
+            assert_eq!(rt.wgt, want.weight);
+            assert_eq!((rt.u, rt.v, rt.cs), (0.0, 0.0, 1.0));
+        }
+        // Full SSW write + reparse round-trip stays stable.
+        let mut bytes = Vec::new();
+        nucleide_mcnp_io::surfsrc::write_to(&mut bytes, &oh, &back).unwrap();
+        let reparsed = SurfSrc::from_bytes(bytes).unwrap();
+        assert_eq!(reparsed.read_tracklist().unwrap(), back);
+    }
+
+    #[test]
+    fn mcpl2ssw_force_cs_to_one_matches_upstream_spelling() {
+        let (_, ps) = ssw2mcpl(&synth_tracks(), &Ssw2McplOptions::default()).unwrap();
+        // Default keeps the true cosine (gamma track rides +x, cs == 0).
+        let (_, verbatim) = mcpl2ssw(&ps, &synth_reference(), &Mcpl2SswOptions::default()).unwrap();
+        assert_eq!(verbatim[1].cs, 0.0);
+        assert_eq!((verbatim[1].u, verbatim[1].v), (1.0, 0.0));
+        // Opt-in reproduces the upstream 2.2.8 spelling: cs forced to 1.0,
+        // u/v still verbatim.
+        let opts = Mcpl2SswOptions {
+            force_cs_to_one: true,
+            ..Default::default()
+        };
+        let (_, forced) = mcpl2ssw(&ps, &synth_reference(), &opts).unwrap();
+        assert_eq!(forced[0].cs, 1.0);
+        assert_eq!(forced[1].cs, 1.0);
+        assert_eq!((forced[1].u, forced[1].v), (1.0, 0.0));
+        // And back through the writer/reparse leg the forced value persists.
+        let (h, _) = mcpl2ssw(&ps, &synth_reference(), &opts).unwrap();
+        let mut bytes = Vec::new();
+        nucleide_mcnp_io::surfsrc::write_to(&mut bytes, &h, &forced).unwrap();
+        let reparsed = SurfSrc::from_bytes(bytes).unwrap();
+        assert_eq!(reparsed.read_tracklist().unwrap()[1].cs, 1.0);
+    }
+
+    #[test]
+    fn mcpl2ssw_niss_passthrough_default_override_opt_in() {
+        let (_, ps) = ssw2mcpl(&synth_tracks(), &Ssw2McplOptions::default()).unwrap();
+        // Default: reference niss rides through untouched (upstream-2.2.8
+        // spelling, verified over the synthetic pair).
+        let mut reference = synth_reference();
+        reference.niss = 17;
+        let (h, _) = mcpl2ssw(&ps, &reference, &Mcpl2SswOptions::default()).unwrap();
+        assert_eq!(h.niss, 17);
+        // Opt-in: stamp an explicit non-negative value.
+        let opts = Mcpl2SswOptions {
+            niss_override: Some(2),
+            ..Default::default()
+        };
+        let (h, back) = mcpl2ssw(&ps, &reference, &opts).unwrap();
+        assert_eq!(h.niss, 2);
+        assert_eq!(back.len(), 2);
+        // Negative override is a named error, never a silent wrap.
+        let bad = Mcpl2SswOptions {
+            niss_override: Some(-1),
+            ..Default::default()
+        };
+        assert_eq!(
+            mcpl2ssw(&ps, &reference, &bad).unwrap_err(),
+            SswError::NissOutOfRange(-1)
+        );
+    }
+
+    #[test]
+    fn ssw2mcpl_polarisation_and_universal_opt_in() {
+        // Polarisation opt-in stamps one uniform vector + the header flag.
+        let opts = Ssw2McplOptions {
+            polarisation: Some([0.1, 0.2, 0.3]),
+            ..Ssw2McplOptions::default()
+        };
+        let (h, ps) = ssw2mcpl(&synth_tracks(), &opts).unwrap();
+        assert!(h.has_polarisation);
+        assert!(ps.iter().all(|p| p.polarisation == [0.1, 0.2, 0.3]));
+        // Byte-exact re-emit through the MCPL writer (polarised layout).
+        let bytes = encode_file(&h, &ps).unwrap();
+        let file = crate::McplFile::from_bytes(bytes.clone()).unwrap();
+        assert!(file.header.has_polarisation);
+        let rewritten = encode_file(&file.header, &file.particles().unwrap()).unwrap();
+        assert_eq!(rewritten, bytes);
+        // Non-finite vectors are a named error.
+        let bad = Ssw2McplOptions {
+            polarisation: Some([f64::NAN, 0.0, 0.0]),
+            ..Ssw2McplOptions::default()
+        };
+        assert!(matches!(
+            ssw2mcpl(&synth_tracks(), &bad).unwrap_err(),
+            SswError::InvalidPolarisation(_)
+        ));
+        // Universal PDG opt-in over a single-kind pair.
+        let single_kind = vec![
+            SswTrack {
+                kind: SswParticleKind::Neutron,
+                ..synth_tracks()[0].clone()
+            },
+            SswTrack {
+                ekin: 0.5,
+                kind: SswParticleKind::Neutron,
+                ..synth_tracks()[1].clone()
+            },
+        ];
+        let uopts = Ssw2McplOptions {
+            universal_pdg: true,
+            ..Ssw2McplOptions::default()
+        };
+        let (uh, ups) = ssw2mcpl(&single_kind, &uopts).unwrap();
+        assert_eq!(uh.universal_pdgcode, Some(PDG_NEUTRON));
+        assert_eq!(ups.len(), 2);
+        // Mixed kinds under universal_pdg are loud, never silent per-particle.
+        assert_eq!(
+            ssw2mcpl(&synth_tracks(), &uopts).unwrap_err(),
+            SswError::MixedPdgForUniversal(vec![22, 2112])
+        );
+        // Universal weight opt-in over equal weights; mixed weights are loud.
+        let equal_w = vec![
+            SswTrack {
+                weight: 1.0,
+                ..synth_tracks()[0].clone()
+            },
+            SswTrack {
+                weight: 1.0,
+                surf: 200,
+                kind: SswParticleKind::Gamma,
+                ..synth_tracks()[1].clone()
+            },
+        ];
+        let wopts = Ssw2McplOptions {
+            universal_weight: true,
+            ..Ssw2McplOptions::default()
+        };
+        let (wh, _) = ssw2mcpl(&equal_w, &wopts).unwrap();
+        assert_eq!(wh.universal_weight, Some(1.0));
+        assert_eq!(
+            ssw2mcpl(&synth_tracks(), &wopts).unwrap_err(),
+            SswError::MixedWeightForUniversal
+        );
+    }
+
+    #[test]
+    fn mcpl2ssw_polarisation_gate_and_allow_opt_in() {
+        let (h, mut ps) = ssw2mcpl(&synth_tracks(), &Ssw2McplOptions::default()).unwrap();
+        assert!(!h.has_polarisation);
+        ps[0].polarisation = [0.0, 0.0, 1.0];
+        // Default: loud, never a silent drop.
+        assert_eq!(
+            mcpl2ssw(&ps, &synth_reference(), &Mcpl2SswOptions::default()).unwrap_err(),
+            SswError::PolarisationPresent { index: 0 }
+        );
+        // Opt-in: dropped (SSW has no slot), geometry still verbatim.
+        let opts = Mcpl2SswOptions {
+            allow_polarisation: true,
+            ..Default::default()
+        };
+        let (_, tracks) = mcpl2ssw(&ps, &synth_reference(), &opts).unwrap();
+        assert_eq!(tracks.len(), 2);
+        assert_eq!(tracks[0].erg, 2.5);
     }
 
     #[test]
@@ -778,6 +1125,53 @@ mod tests {
             bytes, expected,
             "conversion output drifted from golden bytes"
         );
+        // Committed goldens for the fidelity-tail opt-ins (same reference.w,
+        // documented pairings in fixtures/mcpl/ssw_conversion/README.md).
+        for (name, kinds, opts) in [
+            (
+                "ssw2mcpl_extended_expected.mcpl",
+                vec!["electron", "positron"],
+                Ssw2McplOptions::default(),
+            ),
+            (
+                "ssw2mcpl_polarised_expected.mcpl",
+                vec!["neutron", "gamma"],
+                Ssw2McplOptions {
+                    polarisation: Some([0.1, 0.2, 0.3]),
+                    ..Ssw2McplOptions::default()
+                },
+            ),
+            (
+                "ssw2mcpl_universal_pdg_expected.mcpl",
+                vec!["neutron", "neutron"],
+                Ssw2McplOptions {
+                    universal_pdg: true,
+                    ..Ssw2McplOptions::default()
+                },
+            ),
+        ] {
+            let paired: Vec<(u32, SswParticleKind)> = kinds
+                .iter()
+                .zip([100u32, 200u32])
+                .map(|(k, s)| (s, SswParticleKind::parse(k).unwrap()))
+                .collect();
+            let tracks: Vec<SswTrack> = raw
+                .iter()
+                .zip(paired)
+                .map(|(t, (surf, kind))| SswTrack {
+                    ekin: t.erg,
+                    time_shakes: t.tme,
+                    position: [t.x, t.y, t.z],
+                    direction: [t.u, t.v, t.cs],
+                    weight: t.wgt,
+                    surf,
+                    kind,
+                })
+                .collect();
+            let bytes = ssw2mcpl_bytes(&tracks, &opts).unwrap();
+            let expected = std::fs::read(format!("{dir}/{name}")).unwrap();
+            assert_eq!(bytes, expected, "{name} drifted from golden bytes");
+        }
         // And back: MCPL → SSW against the same reference header.
         let file = crate::McplFile::from_bytes(bytes).unwrap();
         let (h, back) = mcpl2ssw(

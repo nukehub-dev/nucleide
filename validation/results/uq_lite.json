@@ -3,12 +3,12 @@
   "name": "uq_lite",
   "title": "UQ-lite sampling vs SANDY",
   "environment": {
-    "date": "2026-09-12",
-    "python": "3.12.10",
-    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.44",
-    "nucleide": "0.7.0",
-    "pyne": "not installed",
-    "openmc": "not installed"
+    "date": "2026-09-13",
+    "python": "3.12.14",
+    "platform": "Linux-7.2.4-arch1-2-x86_64-with-glibc2.39",
+    "nucleide": "0.8.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
   },
   "sections": [
     {
@@ -43,6 +43,12 @@
           "eigen_clip",
           "eigen_clip",
           "PASS"
+        ],
+        [
+          "U5 lognormal recovery",
+          "<= 5.0 SE",
+          "1.443/0.297 SE",
+          "PASS"
         ]
       ]
     },
@@ -63,21 +69,39 @@
       "text": "U4 rank-1 block factorisation path: eigen_clip."
     },
     {
+      "kind": "prose",
+      "text": "U5 lognormal recovery: method cholesky, ln-block worst 1.443 SE, closed-form mean worst 0.297 SE (k = 5.0)."
+    },
+    {
       "kind": "table",
       "headers": [
         "Check",
+        "Expected",
+        "Got",
         "Status"
       ],
       "rows": [
         [
-          "SANDY Samples moments",
-          "SKIP (see prose)"
+          "SANDY mean",
+          "< 1e-9",
+          "0.000000e+00",
+          "PASS"
+        ],
+        [
+          "SANDY cov",
+          "< 1e-9",
+          "3.746081e-15",
+          "PASS"
         ]
       ]
     },
     {
       "kind": "prose",
-      "text": "Tier 2 (SANDY cross-check) SKIPPED: No module named 'pandas'"
+      "text": "Tier 2 runs SANDY 1.1.0 Samples.get_mean/get_cov over the nucleide U1 draws (tape-free: no ENDF input, no NJOY)."
+    },
+    {
+      "kind": "prose",
+      "text": "Tape-driven sandy.sampling/ERRORR comparisons stay NJOY-gated skips (no tapes vendored, by design)."
     }
   ]
 }

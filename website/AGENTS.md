@@ -26,8 +26,9 @@ Parent-level Rust/Python/verification rules remain in the root `AGENTS.md`.
   simple depletion chain, Serpent `serpent_res_sample.m`/
   `serpent_dep_sample.m`/`serpent_det_sample.m`, the ALARA
   `alara_output_sample.out` and FISPACT `fispact_inventory_sample.fis`
-  activation outputs, and the FLUKA `usrbin_sample.lis` USRBIN file are copied
-  verbatim. It runs automatically via `predev`/`prebuild`.
+  activation outputs, the FLUKA `usrbin_sample.lis` USRBIN file, and the MCPL
+  `ssw2mcpl_expected.mcpl` golden plus the synthetic SSW `reference.w` pair
+  are copied verbatim. It runs automatically via `predev`/`prebuild`.
 - **Theory figures**: `docs/theory/figures/` is the source of truth for the
   hand-authored SVG figures on the theory pages. `npm run sync-data` copies
   them into the git-ignored `website/public/theory/figures/`; pages embed them

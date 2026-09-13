@@ -44,6 +44,13 @@ plots them as grouped horizontal bars.
 `Material::mix_by_mass` combines materials using relative mass weights. The
 fractions do not need to sum to one; they are normalized internally.
 
+## Separator, blender, and CUSUM
+
+The demo's scalar section runs the fuel-cycle micro-adds in the browser:
+`materialSeparate` (mass-efficiency split into product/tails),
+`materialBlend` (fixed-ratio blend), and `cusumDetect` (one-sided upper Page
+CUSUM over a scalar series with Welford statistics).
+
 ## XML export
 
 The `to_xml(name, density)` method produces an OpenMC-style material XML

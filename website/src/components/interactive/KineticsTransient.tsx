@@ -57,6 +57,7 @@ export function KineticsTransient() {
   const [stepsText, setStepsText] = useState(ONE_GROUP.steps);
   const [n0Text, setN0Text] = useState(ONE_GROUP.n0);
   const [result, setResult] = useState<KineticsTransientResult | null>(null);
+  const [inhourOut, setInhourOut] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function clearError() {
@@ -269,6 +270,50 @@ export function KineticsTransient() {
 
           <div className="flex flex-wrap gap-2">
             <Button onClick={run}>Run transient</Button>
+          </div>
+
+          <div className="space-y-2 border-t border-border/50 pt-4">
+            <p className="text-sm font-medium">Inhour and prompt jump (E3–E4 scalars)</p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => {
+                  if (!wasm) return;
+                  try {
+                    const betas = betasText
+                      .split(/[\s,]+/)
+                      .filter(Boolean)
+                      .map(Number);
+                    const lambdas = lambdasText
+                      .split(/[\s,]+/)
+                      .filter(Boolean)
+                      .map(Number);
+                    const rho = wasm.inhourRho(betas, lambdas, parseFloat(lambdaGenText), 0.05);
+                    const period = wasm.stablePeriod(
+                      betas,
+                      lambdas,
+                      parseFloat(lambdaGenText),
+                      0.002,
+                    );
+                    const jump = wasm.promptJump(
+                      1.0,
+                      0.0,
+                      0.002,
+                      betas.reduce((a, b) => a + b, 0),
+                    );
+                    setInhourOut(
+                      `rho(0.05) = ${rho.toExponential(4)}, stable period = ${period.toExponential(4)} s, prompt jump = ${jump.toFixed(4)}`,
+                    );
+                    clearError();
+                  } catch (e) {
+                    setLocalError(e instanceof Error ? e.message : String(e));
+                    setInhourOut(null);
+                  }
+                }}
+              >
+                Inhour analysis
+              </Button>
+            </div>
+            {inhourOut && <p className="text-sm">{inhourOut}</p>}
           </div>
 
           {result && (

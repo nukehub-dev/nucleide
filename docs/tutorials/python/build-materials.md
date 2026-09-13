@@ -43,9 +43,39 @@ curl -LO https://raw.githubusercontent.com/nukehub-dev/nucleide/main/fixtures/da
 
 ## Mix materials
 
-On the Rust side, `Material::mix_by_mass` and `Material::mix_by_volume` combine
-compositions by mass or volume fractions. Mixing is not yet exposed through the
-Python facade.
+`mix_by_mass` combines `(composition, weight)` streams by relative mass;
+`mix_by_volume` combines `(composition, volume, density)` triples through
+each stream's density:
+
+```python
+from nucleide.material import mix_by_mass, mix_by_volume
+
+mass = mix_by_mass([({"U235": 19.0}, 1.0), ({"U238": 1.0}, 1.0)])
+vol = mix_by_volume([({"U235": 19.0}, 1.0, 19.1), ({"U238": 1.0}, 1.0, 19.1)])
+print(mass, vol)
+```
+
+## Specific activity and multi-material documents
+
+`specific_activity` returns the whole-material Bq/g; `materials_doc_to_xml`
+bundles named materials (each with its density) into one `<materials>`
+document, and `expand_elements` / `collapse_elements` convert between
+natural-element placeholders (bare symbols such as `"U"`) and isotopic
+breakdowns:
+
+```python
+from nucleide.material import (
+    collapse_elements,
+    expand_elements,
+    materials_doc_to_xml,
+    specific_activity,
+)
+
+print(specific_activity({"U235": 1.0}))
+xml = materials_doc_to_xml([("fuel", {"U235": 19.0}, 10.0)], cross_sections="xs.xml")
+print(expand_elements({"U": 20.0}))
+print(collapse_elements({"U235": 19.0, "U238": 1.0}))  # {"U": 20.0}
+```
 
 ## Export materials XML
 

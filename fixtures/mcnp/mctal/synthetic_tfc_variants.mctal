@@ -1,0 +1,24 @@
+mcnp   6.2.0 05/08/13 17:50:49 3 50000 5
+Synthetic MCTAL with total variant, flag token, and tfc block
+tally       1
+        6
+tally 6 1 0
+f6 1
+ 1
+d6 0
+u6 0
+s6 0
+m6 0
+c6 0
+et6 2
+ 0.5 2.0
+t6 1 0
+ 5.0
+vals
+ 11.0 1.375 12.0 1.5
+tfc 1 2 3 4 5 6 7 8 9
+ 1000 11.5 0.2
+ 2000 11.75 0.15 3.5
+kcode 2 1 5
+ 0.99 0.99 0.99 5.0e-4 5.0e-4
+ 1.01 1.01 1.01 6.0e-4 6.0e-4

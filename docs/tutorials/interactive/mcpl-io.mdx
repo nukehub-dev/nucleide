@@ -1,0 +1,10 @@
+---
+title: MCPL particle lists
+description: Read, write, and convert MCPL particle lists in the browser.
+---
+
+Read MCPL bytes (`readMcpl`), write small lists (`writeMcpl`), and convert the
+synthetic SSW pair (`ssw2mcpl` / `mcpl2ssw`, neutron/gamma-only v1). Gzip is
+sniffed by magic bytes, never by suffix; particle lists cap at 200 rows.
+
+<InteractiveDemo kind="mcpl-io" />

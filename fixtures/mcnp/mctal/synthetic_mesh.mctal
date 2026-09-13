@@ -1,0 +1,21 @@
+mcnp   6.2.0 05/08/13 17:50:49 3 50000 5
+Synthetic MCTAL with one rectangular mesh tally and closed-form vals
+tally       1
+        4
+tally 4 1 -1
+f4 0 2 1 1
+ 0.0 5.0 10.0
+ 0.0 10.0
+ 0.0 10.0
+d4 0
+u4 0
+s4 0
+m4 0
+c4 0
+e4 0
+t4 0
+vals
+ 11.0 1.375 12.0 1.5
+kcode 2 1 5
+ 0.99 0.99 0.99 5.0e-4 5.0e-4
+ 1.01 1.01 1.01 6.0e-4 6.0e-4

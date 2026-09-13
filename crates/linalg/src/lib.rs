@@ -23,6 +23,11 @@ pub mod sample;
 /// vectors (preserves the `1 − BR(SF)` deficit; fission yields named-open).
 pub mod decay;
 
+/// Dense real weighted least-squares over caller-supplied matrices
+/// (shared kernel: spectroscopy E7-fit consumer; the UQ-lite
+/// sampler keeps its own Cholesky/eigen factor path).
+pub mod lstsq;
+
 /// Complex scalar used throughout the facade.
 pub use faer::complex_native::c64 as C64;
 

@@ -138,8 +138,19 @@ def test_mctal_bodies_fixture_closed_form() -> None:
     bodies = {t["number"]: t for t in m.tallies}
     assert set(bodies) == {4, 14}
     t4 = bodies[4]
-    assert t4["f"] == {"count": 2, "values": pytest.approx([1.0, 2.0])}
-    assert t4["e"] == {"count": 2, "values": pytest.approx([0.5, 2.0])}
+    assert t4["f"] == {
+        "count": 2,
+        "values": pytest.approx([1.0, 2.0]),
+        "variant": None,
+        "flag": None,
+    }
+    assert t4["e"] == {
+        "count": 2,
+        "values": pytest.approx([0.5, 2.0]),
+        "variant": None,
+        "flag": None,
+    }
+    assert t4["tfc"] is None
     assert [v for v, _ in t4["vals"]] == pytest.approx([11.0, 12.0, 21.0, 22.0])
     assert t4["total"] == pytest.approx(66.0)
     assert m.tally_vals_array(4).shape == (4, 2)
@@ -210,11 +221,55 @@ def test_ssw2mcpl_rejects_bad_inputs(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         mcpl.ssw2mcpl(SSW_REF, out, [100], SSW_KINDS)
     with pytest.raises(ValueError):
-        mcpl.ssw2mcpl(SSW_REF, out, SSW_SURFS, ["neutron", "proton"])
+        mcpl.ssw2mcpl(SSW_REF, out, SSW_SURFS, ["neutron", "pion"])
     with pytest.raises(ValueError):
         mcpl.ssw2mcpl(SSW_REF, out, SSW_SURFS, SSW_KINDS, {"double_prec": "yes"})
     with pytest.raises(ValueError):
         mcpl.ssw2mcpl(SSW_REF, out, SSW_SURFS, SSW_KINDS, ["not-a-dict"])  # type: ignore[arg-type]
+
+
+def test_ssw2mcpl_extended_kinds_fixture_closed_form(tmp_path: Path) -> None:
+    out = str(tmp_path / "ext.mcpl")
+    assert mcpl.ssw2mcpl(SSW_REF, out, SSW_SURFS, ["electron", "positron"]) == 2
+    got = mcpl.read_mcpl(out).particles()
+    assert [p["pdgcode"] for p in got] == [11, -11]
+    assert got[0]["ekin"] == pytest.approx(2.5)
+    assert got[0]["direction"] == pytest.approx([0.0, 0.0, 1.0])
+    assert got[1]["direction"] == pytest.approx([1.0, 0.0, 0.0], abs=1e-6)
+    # Proton over the same reference geometry.
+    assert mcpl.ssw2mcpl(SSW_REF, out, SSW_SURFS, ["proton", "neutron"]) == 2
+    assert [p["pdgcode"] for p in mcpl.read_mcpl(out).particles()] == [2212, 2112]
+    # Committed golden for the electron/positron pairing.
+    golden = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "fixtures",
+        "mcpl",
+        "ssw_conversion",
+        "ssw2mcpl_extended_expected.mcpl",
+    )
+    mcpl.ssw2mcpl(SSW_REF, out, SSW_SURFS, ["electron", "positron"])
+    with open(out, "rb") as fh_out, open(golden, "rb") as fh_golden:
+        assert fh_out.read() == fh_golden.read()
+
+
+def test_ssw2mcpl_polarisation_and_universal(tmp_path: Path) -> None:
+    out = str(tmp_path / "conv.mcpl")
+    mcpl.ssw2mcpl(SSW_REF, out, SSW_SURFS, SSW_KINDS, {"polarisation": [0.1, 0.2, 0.3]})
+    back = mcpl.read_mcpl(out)
+    assert back.has_polarisation is True
+    for p in back.particles():
+        assert p["polarisation"] == pytest.approx([0.1, 0.2, 0.3], abs=1e-6)
+    with pytest.raises(ValueError):
+        mcpl.ssw2mcpl(SSW_REF, out, SSW_SURFS, SSW_KINDS, {"polarisation": [0.0, 0.0]})
+    # Universal PDG over a single-kind pairing; mixed kinds are loud.
+    mcpl.ssw2mcpl(SSW_REF, out, [100, 200], ["neutron", "neutron"], {"universal_pdg": True})
+    assert mcpl.read_mcpl(out).universal_pdgcode == 2112
+    with pytest.raises(ValueError):
+        mcpl.ssw2mcpl(SSW_REF, out, SSW_SURFS, SSW_KINDS, {"universal_pdg": True})
+    # Universal weight needs equal weights; the reference pair differs.
+    with pytest.raises(ValueError):
+        mcpl.ssw2mcpl(SSW_REF, out, SSW_SURFS, SSW_KINDS, {"universal_weight": True})
 
 
 def test_mcpl2ssw_round_trip_closed_form(tmp_path: Path) -> None:
@@ -257,7 +312,44 @@ def test_mcpl2ssw_surface_override(tmp_path: Path) -> None:
 
 
 def test_mcpl2ssw_rejects_unsupported_pdg(tmp_path: Path) -> None:
-    probe = str(tmp_path / "proton.mcpl")
-    mcpl.write_mcpl(probe, HEADER, [dict(PARTICLES[0], pdgcode=2212)])
+    probe = str(tmp_path / "pion.mcpl")
+    mcpl.write_mcpl(probe, HEADER, [dict(PARTICLES[0], pdgcode=211)])
     with pytest.raises(ValueError):
         mcpl.mcpl2ssw(probe, SSW_REF, str(tmp_path / "back.w"))
+
+
+def test_mcpl2ssw_force_cs_to_one(tmp_path: Path) -> None:
+    probe = str(tmp_path / "probe.mcpl")
+    mcpl.ssw2mcpl(SSW_REF, probe, SSW_SURFS, SSW_KINDS)
+    out = str(tmp_path / "back.w")
+    assert mcpl.mcpl2ssw(probe, SSW_REF, out) == 2
+    assert read_ssw(out).tracks()[1]["cs"] == pytest.approx(0.0, abs=1e-6)
+    assert mcpl.mcpl2ssw(probe, SSW_REF, out, force_cs_to_one=True) == 2
+    tracks = read_ssw(out).tracks()
+    assert [t["cs"] for t in tracks] == pytest.approx([1.0, 1.0])
+    assert (tracks[1]["u"], tracks[1]["v"]) == pytest.approx((1.0, 0.0), abs=1e-6)
+
+
+def test_mcpl2ssw_niss_passthrough_and_override(tmp_path: Path) -> None:
+    probe = str(tmp_path / "probe.mcpl")
+    mcpl.ssw2mcpl(SSW_REF, probe, SSW_SURFS, SSW_KINDS)
+    out = str(tmp_path / "back.w")
+    mcpl.mcpl2ssw(probe, SSW_REF, out)
+    assert read_ssw(out).niss == read_ssw(SSW_REF).niss
+    mcpl.mcpl2ssw(probe, SSW_REF, out, niss=5)
+    assert read_ssw(out).niss == 5
+    with pytest.raises(ValueError):
+        mcpl.mcpl2ssw(probe, SSW_REF, out, niss=-1)
+
+
+def test_mcpl2ssw_polarisation_gate(tmp_path: Path) -> None:
+    probe = str(tmp_path / "pol.mcpl")
+    mcpl.write_mcpl(
+        probe,
+        {**HEADER, "has_polarisation": True},
+        [dict(PARTICLES[1], polarisation=[0.0, 0.0, 1.0])],
+    )
+    out = str(tmp_path / "back.w")
+    with pytest.raises(ValueError):
+        mcpl.mcpl2ssw(probe, SSW_REF, out)
+    assert mcpl.mcpl2ssw(probe, SSW_REF, out, allow_polarisation=True) == 1

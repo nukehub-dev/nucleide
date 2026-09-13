@@ -77,8 +77,23 @@ With caller-supplied coefficients `a_i`:
 - `fit == 2`: `eff = exp(sum a_i * (1/E)^i)`;
 - anything else is an error.
 
-Coefficients are evaluation inputs only: the upstream module has no
-efficiency-calibration fitting routine, so neither does this crate.
+### E7-fit — Efficiency-coefficient fit (extension of E7, not a new equation)
+
+The upstream module ships no efficiency-calibration fitting routine, so the
+fit has no upstream parity — it is pinned by synthetic closed-form gates
+only. Over caller points `(E_i, eff_i, w_i)` with `E_i > 0`, `eff_i > 0`,
+and caller-supplied weights `w_i >= 0`, the fit solves the log-space linear
+least squares
+
+`y_i = ln eff_i`, `X[i][j] = (ln E_i)^j` (`fit == 1`) or `(1/E_i)^j`
+(`fit == 2`), `min_β sum w_i (X_i β − y_i)^2`,
+
+returning `order + 1` coefficients that feed the E7 evaluation above. The
+solve runs through the workspace least-squares kernel (`nucleide-linalg`
+`lstsq`, faer column-pivoted QR); a zero weight skips its row, all-zero
+weights and fewer points than coefficients are errors. This is the one
+coefficient-fitting path in the toolkit — every other coefficient vector
+(energy fits, X-ray constants, decay lines) stays a caller input.
 
 ### E8 — X-ray line algebra
 
@@ -167,8 +182,10 @@ Counts `[2, 5, 1, 6, 3, 8, 4]`, peak window `c1 = 2`, `c2 = 5`:
 
 ## Assumptions and limitations
 
-- Counts, channels, fits, coefficients, atomic constants, and decay lines are
-  all caller inputs; nothing is fetched or fitted.
+- Counts, channels, fits, atomic constants, decay lines, and efficiency-fit
+  points/weights are all caller inputs; nothing is fetched. Coefficient
+  fitting exists on exactly one path (E7-fit above); every other coefficient
+  vector is an input, never fitted.
 - FWHM fits are parsed, never evaluated: no evaluation form for the triplet
   is pinned by the upstream analysis subset, so no evaluator exists here.
 - X-ray energies are in keV; efficiency energies are in MeV; SDEF decay-line
@@ -183,8 +200,10 @@ Counts `[2, 5, 1, 6, 3, 8, 4]`, peak window `c1 = 2`, `c2 = 5`:
 Peak search, peak fitting, activity calculations, and plotting all sit
 outside this toolkit: none exist in the upstream analysis subset, and
 plotting stays user-side (the upstream plot helpers are an isolated GUI
-module). Decay-spectrum *line data* also stays out: no evaluated line library
-is vendored, so E9 sources are built purely from caller-supplied lines.
+module). The E7-fit efficiency-coefficient fit is not peak fitting — it fits
+the detector-response curve to caller calibration points. Decay-spectrum
+*line data* also stays out: no evaluated line library is vendored, so E9
+sources are built purely from caller-supplied lines.
 
 ## References
 

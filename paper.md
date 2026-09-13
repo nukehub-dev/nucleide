@@ -45,7 +45,7 @@ deterministic-transport file glue (CCCC cross-section and flux readers with a
  calibration, and X-ray lines), single-material card emission across five code
  dialects, ENDL electron-library reading, and NumPy tally bridges.
 
-The core is written in Rust as a composable workspace of seventeen crates. A thin
+The core is written in Rust as a composable workspace of eighteen crates. A thin
 PyO3 layer exposes a typed Python API (wheels for Linux, macOS, and Windows via
 PyPI), and a `wasm-bindgen` build powers interactive tutorials that run
 entirely in the browser. Correctness is anchored by byte-exact golden fixtures,
@@ -89,7 +89,8 @@ The Rust workspace enforces strict layering: capability crates (`nucleide-nuclei
 `nucleide-material`, `nucleide-mcnp-io`, `nucleide-serpent-io`, `nucleide-fluka-io`,
 `nucleide-vr-tools`, `nucleide-enrichment`, `nucleide-depletion`, `nucleide-linalg`,
 `nucleide-alara-io`, `nucleide-cccc-io`, `nucleide-fispact-io`, `nucleide-origen-io`,
-`nucleide-r2s`, `nucleide-kinetics`, `nucleide-spectroscopy`, `nucleide-emit`)
+`nucleide-r2s`, `nucleide-kinetics`, `nucleide-spectroscopy`, `nucleide-emit`,
+`nucleide-mcpl-io`)
  never depend on the bindings; `bindings/python` and
 `bindings/wasm` are thin facades with no business logic; the pure-Python
 package re-exports the compiled module behind `.pyi` stubs so the public API is
@@ -190,7 +191,7 @@ numeric agreement claims are made here.
 
 The documentation website (built with Astro, deployed to GitHub Pages) provides
 tutorials, an API reference, and theory pages deriving the implemented
-mathematics, plus twelve interactive browser tutorials powered by the WebAssembly
+mathematics, plus sixteen interactive browser tutorials powered by the WebAssembly
  build that let users run depletion, enrichment, MAGIC, file-parsing,
  activation-analysis, deterministic-transport, point-kinetics, and
  gamma-spectroscopy examples with no installation.

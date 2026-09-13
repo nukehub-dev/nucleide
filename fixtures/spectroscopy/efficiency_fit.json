@@ -1,0 +1,62 @@
+{
+ "provenance": "Hand-built synthetic efficiency-fit points (E7-fit); no laboratory or evaluated-library data. Efficiencies are closed-form evaluations of the E7 log-polynomial form at small round energies: fit==1 uses coeff [-2.0, -0.8, -0.05] (eff = exp(sum a_i (ln E)^i)), fit==2 uses coeff [0.5, -1.0] (eff = exp(sum a_i (1/E)^i)), computed once in float64. Any positive weights recover the coefficients exactly since every point sits on its curve; the fit==1 case carries non-uniform weights to pin the caller-weights path. Gates refit and require recovery within 1e-9 plus round-trip re-evaluation within 1e-9.",
+ "fit1_degree2": {
+  "fit": 1,
+  "order": 2,
+  "energies": [
+   0.3,
+   0.5,
+   0.662,
+   1.0,
+   1.33,
+   2.0
+  ],
+  "effs": [
+   0.3297899698262548,
+   0.23003934804194423,
+   0.18665083310979558,
+   0.1353352832366127,
+   0.10729110778482642,
+   0.07588468488259613
+  ],
+  "weights": [
+   1.0,
+   1.0,
+   2.0,
+   1.0,
+   1.0,
+   1.0
+  ],
+  "expected_coeff": [
+   -2.0,
+   -0.8,
+   -0.05
+  ]
+ },
+ "fit2_degree1": {
+  "fit": 2,
+  "order": 1,
+  "energies": [
+   0.5,
+   1.0,
+   2.0,
+   3.0
+  ],
+  "effs": [
+   0.22313016014842982,
+   0.6065306597126334,
+   1.0,
+   1.181360412865646
+  ],
+  "weights": [
+   1.0,
+   1.0,
+   1.0,
+   1.0
+  ],
+  "expected_coeff": [
+   0.5,
+   -1.0
+  ]
+ }
+}

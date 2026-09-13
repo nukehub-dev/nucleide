@@ -19,3 +19,7 @@ with the provenance recorded in each file.
   closed-form normalized bins and byte-exact SDEF/SI/SP card text: single
   line isotropic and beam forms, the multi-line `ERG=D1` distribution form,
   and an 80-column-wrapped `SP1` case. No evaluated line data.
+- `efficiency_fit.json` — hand-built synthetic E7-fit points: closed-form E7
+  evaluations at small round energies (fit 1 degree 2, fit 2 degree 1) with
+  the true coefficients recorded; gates refit (recovery within 1e-9) and
+  re-evaluate (round-trip within 1e-9). No laboratory data.

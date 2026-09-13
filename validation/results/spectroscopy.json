@@ -3,10 +3,10 @@
   "name": "spectroscopy",
   "title": "Spectroscopy (`spectroscopy_vs_pyne.py`)",
   "environment": {
-    "date": "2026-09-11",
+    "date": "2026-09-13",
     "python": "3.12.14",
-    "platform": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.39",
-    "nucleide": "0.5.0",
+    "platform": "Linux-7.2.4-arch1-2-x86_64-with-glibc2.39",
+    "nucleide": "0.8.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
@@ -26,6 +26,14 @@
     {
       "kind": "prose",
       "text": "E7 golden: 6-coefficient fit-1 efficiency at 1 MeV."
+    },
+    {
+      "kind": "prose",
+      "text": "E7-fit fit1_degree2: coefficient recovery worst rel err 6.939e-15."
+    },
+    {
+      "kind": "prose",
+      "text": "E7-fit fit2_degree1: coefficient recovery worst rel err 2.220e-16."
     },
     {
       "kind": "prose",
@@ -92,6 +100,30 @@
           "E7 efficiency golden",
           "0.000000e+00",
           "< 1e-12",
+          "PASS"
+        ],
+        [
+          "E7-fit fit1_degree2 recovery",
+          "6.938894e-15",
+          "< 1e-9",
+          "PASS"
+        ],
+        [
+          "E7-fit fit1_degree2 round-trip",
+          "6.732910e-16",
+          "< 1e-9",
+          "PASS"
+        ],
+        [
+          "E7-fit fit2_degree1 recovery",
+          "2.220446e-16",
+          "< 1e-9",
+          "PASS"
+        ],
+        [
+          "E7-fit fit2_degree1 round-trip",
+          "3.731756e-16",
+          "< 1e-9",
           "PASS"
         ],
         [
@@ -199,6 +231,10 @@
     },
     {
       "kind": "prose",
+      "text": "E7-fit has no container check: the upstream module ships no efficiency-coefficient fitting routine, so the fit is pinned by the synthetic closed-form recovery + round-trip gates in tier 1."
+    },
+    {
+      "kind": "prose",
       "text": "X-ray algebra has no container check: the upstream routine reads its HDF5 atomic table at run time and no atomic values are vendored here, so E8 is pinned by the synthetic hand values above."
     },
     {
@@ -257,6 +293,12 @@
           "PASS"
         ],
         [
+          "efficiency fit vs PyNE",
+          "\u2014",
+          "\u2014",
+          "SKIP (upstream ships no efficiency-fitting routine)"
+        ],
+        [
           "dollar counts vs PyNE",
           "0.000000e+00",
           "< 1e-12",
@@ -296,6 +338,18 @@
           "sdef proton v6 vs PyNE",
           "exact",
           "equal",
+          "PASS"
+        ],
+        [
+          "tsv energy column vs PyNE Cs-137",
+          "0.000000e+00",
+          "1e-9",
+          "PASS"
+        ],
+        [
+          "tsv E9 normalization on ENSDF magnitudes",
+          "0.000000e+00",
+          "1e-12",
           "PASS"
         ]
       ]

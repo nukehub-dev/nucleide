@@ -143,3 +143,32 @@ fn sdef_oracle_replay() {
         assert_eq!(card, c["expected_card"].as_str().unwrap(), "{case} card");
     }
 }
+
+#[test]
+fn efficiency_fit_oracle_replay() {
+    // Closed-form synthetic points (fixtures/spectroscopy/efficiency_fit.json):
+    // every efficiency sits exactly on its E7 curve, so any positive weights
+    // recover the recorded coefficients within 1e-9, and the fitted
+    // coefficients re-evaluate to the inputs within 1e-9.
+    let fix = fixture("efficiency_fit.json");
+    for case in ["fit1_degree2", "fit2_degree1"] {
+        let c = &fix[case];
+        let energies = vec_of(&c["energies"]);
+        let effs = vec_of(&c["effs"]);
+        let weights = vec_of(&c["weights"]);
+        let order = c["order"].as_u64().unwrap() as usize;
+        let fit = c["fit"].as_i64().unwrap();
+        let want = vec_of(&c["expected_coeff"]);
+        let got =
+            nucleide_spectroscopy::fit_efficiency(&energies, &effs, &weights, order, fit).unwrap();
+        assert_eq!(got.len(), want.len(), "{case} coeff count");
+        for (g, w) in got.iter().zip(want.iter()) {
+            assert!((g - w).abs() < 1e-9, "{case} coeff {g} vs {w}");
+        }
+        for (e, v) in energies.iter().zip(effs.iter()) {
+            let back = nucleide_spectroscopy::detector_efficiency(*e, &got, fit).unwrap();
+            let rel = (back - v).abs() / v.abs().max(1e-30);
+            assert!(rel < 1e-9, "{case} round-trip at E={e}: {back} vs {v}");
+        }
+    }
+}
