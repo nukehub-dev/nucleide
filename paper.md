@@ -16,7 +16,7 @@ authors:
 affiliations:
   - name: NukeHub
     index: 1
-date: 29 August 2026
+date: 16 September 2026
 bibliography: paper.bib
 ---
 
@@ -42,11 +42,23 @@ FISPACT-II inventory tables; ORIGEN tape readers),
 deterministic-transport file glue (CCCC cross-section and flux readers with a
  PARTISN deck writer), and rigorous two-step shutdown-dose-rate (R2S) workflow
  orchestration. It also provides prescribed-reactivity point kinetics for
- transient analysis, gamma-measurement analytics (spectrum smoothing, counting,
- calibration, and X-ray lines), single-material card emission across five code
- dialects, ENDL electron-library reading, and NumPy tally bridges.
+transient analysis, gamma-measurement analytics (spectrum smoothing, counting,
+calibration, and X-ray lines), single-material card emission across five code
+dialects, ENDL electron-library reading, and NumPy tally bridges. It creates
+tokamak fusion-neutron sources — ring, point, and parametric Miller-geometry
+plasmas with ion-temperature-broadened D-D/D-T spectra, sampled to particle
+vectors and emitted as MCNP `SDEF` and Serpent source cards
+[@brysk1973; @ballabio1998; @fausser2012; @boschhale1992] — and scores their
+first-wall impact with NRT and arc-dpa displacements plus He/H gas production
+folded over caller spectra [@norgett1975; @nordlund2018]. Further analytics
+cover foil-activation spectrum unfolding (SAND-II iteration [@mcelroy1967]),
+clearance screening against nuclide limit tables with the sum-of-fractions rule
+[@sublet2017], and 1D tritium diffusion-trapping transport through single- and
+multi-layer walls. Geometry glue translates MCNP CSG to OpenMC, Serpent, PHITS,
+and GDML inputs, and MCPL utilities merge, extract, profile, and repair
+particle lists.
 
-The core is written in Rust as a composable workspace of eighteen crates. A thin
+The core is written in Rust as a composable workspace of twenty-three crates. A thin
 PyO3 layer exposes a typed Python API (wheels for Linux, macOS, and Windows via
 PyPI), and a `wasm-bindgen` build powers interactive tutorials that run
 entirely in the browser. Correctness is anchored by byte-exact golden fixtures,
@@ -91,7 +103,8 @@ The Rust workspace enforces strict layering: capability crates (`nucleide-nuclei
 `nucleide-vr-tools`, `nucleide-enrichment`, `nucleide-depletion`, `nucleide-linalg`,
 `nucleide-alara-io`, `nucleide-cccc-io`, `nucleide-fispact-io`, `nucleide-origen-io`,
 `nucleide-r2s`, `nucleide-kinetics`, `nucleide-spectroscopy`, `nucleide-emit`,
-`nucleide-mcpl-io`)
+`nucleide-mcpl-io`, `nucleide-csg-xlate`, `nucleide-tritium`,
+`nucleide-plasma-source`, `nucleide-damage`, `nucleide-unfold`)
  never depend on the bindings; `bindings/python` and
 `bindings/wasm` are thin facades with no business logic; the pure-Python
 package re-exports the compiled module behind `.pyi` stubs so the public API is
@@ -108,15 +121,19 @@ tallies). The enrichment solver adds a golden-section polish to the classic
 sign-tracking descent for the optimal mass separation factor $M^*$
 [@wood1999marc; @zeng2014cascade].
 
-The five newer crates are read-only glue and orchestration: they parse the
-text interfaces of their codes and repack them for downstream workflows, never
-reimplementing transport or activation solvers. ALARA and FISPACT-II results
-share one analysis shape (`ResponseFrame`), so activation summaries from
-either code feed the same downstream tooling. The WebAssembly build exposes
-the same glue, with interactive tutorials covering activation analysis,
- deterministic I/O, point-kinetics transients, and gamma-ray spectroscopy
- alongside the existing depletion, enrichment, MAGIC, and
- file-parsing demos.
+The ten newer crates are read-only glue, orchestration, and closed-form
+analytics: they parse the text interfaces of their codes and repack them for
+downstream workflows, never reimplementing transport or activation solvers.
+ALARA and FISPACT-II results share one analysis shape (`ResponseFrame`), so
+activation summaries from either code feed the same downstream tooling —
+including the clearance screen, which pairs parsed inventories with
+caller-supplied limit tables (defaulting to a documented transcription of EU
+2013/59/Euratom Annex VII Table A). The WebAssembly build exposes
+the same surface, with interactive tutorials covering activation analysis,
+deterministic I/O, point-kinetics transients, gamma-ray spectroscopy,
+fusion sources, damage metrics, spectrum unfolding, clearance screening, and
+tritium permeation alongside the existing depletion, enrichment, MAGIC, and
+file-parsing demos.
 
 # Validation and performance
 
@@ -151,8 +168,24 @@ The repository contains a runnable cross-code validation harness
   exactly and agree with `pyne.spectanalysis`/`pyne.gammaspec` [@pyne2014] to
   $\sim10^{-16}$; X-ray line intensities match hand values to
   $1.9\times10^{-16}$.
+- **Fusion sources**: ring/point geometry checks are exact, Ballabio spectrum
+  moments match an independent Table III transcription to $<10^{-12}$, the
+  Miller map matches the upstream `openmc-plasma-source` implementation
+  exactly, reactivities match NeSST to $5.8\times10^{-9}$, and end-to-end
+  parametric birth moments match fine quadrature to $<10^{-2}$.
+- **Damage metrics**: SPECTER-report-transcribed spots (Fe/Ti/Cu dpa, C/Li/B/N
+  He/H appm, Fe He/dpa) fold within the $10^{-4}$ print precision; analytic
+  NRT/arc gates match closed forms to $<10^{-15}$.
+- **Spectrum unfolding**: synthetic forward-fold round-trips recover spectra
+  to $\sim10^{-16}$ (determined) and reproduce rates to $10^{-9}$ with the
+  guess error halved (6-detector/24-group underdetermined case); IRDFF-II
+  analytical benchmark shapes recover to $\sim10^{-16}$.
+- **Clearance screening**: the inventory overlap with the Apache-2.0 `pypact`
+  reader agrees exactly (7 nuclide-steps, $0.0$ difference); hand-computed
+  clearance-index vectors match exactly and the $=1$ boundary classifies both
+  sides correctly.
 - **Nuclear data**: natural abundances and half-lives match OpenMC exactly
-  (both derive from IUPAC 2013 [@meija2016iupac] and ENDF/B-VIII.0
+(both derive from IUPAC 2013 [@meija2016iupac] and ENDF/B-VIII.0
   [@brown2018endf]); masses match OpenMC's AME2020 [@huang2021ame2020;
   @wang2021ame2020] tables exactly and PyNE's AME2016 tables to
   $7.1\times10^{-4}$ u max ($1.6\times10^{-5}$ u mean; the table now also
@@ -182,6 +215,8 @@ oracle probes where PyNE exposes a usable entry point, with every skip
 recorded loudly in the report. Screening dose factors follow HNF-SD-WM-TI-707
 Rev.1 / HNF-5636 App. O via PyNE dbgen [@hnf1999dose; @hnf2001dose], and
 emission-drift plus ARMI-key checks run as self-consistency coverage.
+MCPL merge/extract/stats utilities, GDML schema validation, and OpenMC/Serpent
+weight-window emission likewise run as golden-text and re-parse/load probes.
 Committed results regenerate through the same
 container entry point as the rest of the harness (`run_container.sh`). No
 numeric agreement claims are made here.
@@ -198,7 +233,7 @@ numeric agreement claims are made here.
 
 The documentation website (built with Astro, deployed to GitHub Pages) provides
 tutorials, an API reference, and theory pages deriving the implemented
-mathematics, plus sixteen interactive browser tutorials powered by the WebAssembly
+mathematics, plus twenty-two interactive browser tutorials powered by the WebAssembly
  build that let users run depletion, enrichment, MAGIC, file-parsing,
  activation-analysis, deterministic-transport, point-kinetics, and
  gamma-spectroscopy examples with no installation.
