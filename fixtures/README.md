@@ -41,7 +41,7 @@ FLUKA `fluka_usrbin_single.lis` USRBIN sample.
 | `origen/` | 3 | 681 bytes | origen — Synthetic ORIGEN TAPE samples authored for Nucleide (no license needed) |
 | `serpent/` | 6 | 653,120 bytes | serpent — Serpent 1 & 2 res/dep/det outputs |
 | `spectroscopy/` | 6 | 6,380 bytes | fixtures/spectroscopy/ — synthetic gamma-spectroscopy inputs and oracles |
-| `tritium/` | 6 | 4,978 bytes | fixtures/tritium/ — synthetic 1D tritium-transport analytic-gate oracles |
+| `tritium/` | 6 | 5,168 bytes | fixtures/tritium/ — synthetic 1D tritium-transport analytic-gate oracles |
 | `uq/` | 5 | 1,539 bytes | UQ-lite synthetic oracle inputs |
 
 <!-- GEN:fixture-index:END -->
