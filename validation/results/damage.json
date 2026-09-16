@@ -3,10 +3,10 @@
   "name": "damage",
   "title": "Damage/gas metrics (`damage_vs_specter.py`)",
   "environment": {
-    "date": "2026-09-15",
+    "date": "2026-09-16",
     "python": "3.12.14",
-    "platform": "Linux-7.2.4-arch1-2-x86_64-with-glibc2.39",
-    "nucleide": "0.11.0",
+    "platform": "Linux-7.2.6-arch2-1-x86_64-with-glibc2.39",
+    "nucleide": "0.12.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
@@ -142,7 +142,7 @@
     },
     {
       "kind": "prose",
-      "text": "Spots transcribed from ANL/FPP/TM-197 (US-gov PD): Table VI (HFIR-CTR32, fluence 4.78373E+22) spectrum-averaged dpa cross sections and DPA for Fe/Ti/Cu; Table V spectral-averaged gas production cross sections (mb) and GAS(APPM). One-group fluence folds (seconds=1); bounds are documentation-only. Tolerance 1e-4 relative = 2 half-ulp of the 5-digit print, the finest agreement transcribed inputs allow. No SPECTER table is vendored."
+      "text": "Spots transcribed from ANL/FPP/TM-197 (US-gov PD): Table VI (HFIR-CTR32, fluence 4.78373E+22) spectrum-averaged dpa cross sections and DPA for Fe/Ti/Cu; Table V spectral-averaged gas production cross sections (mb) and GAS(APPM). One-group fluence folds (seconds=1); bounds are documentation-only. Tolerance 1e-4 relative = 2 half-ulp of the 5-digit print, the finest agreement transcribed inputs allow. SPECTER stays this script's oracle; the crate's opt-in Table VII fallback is a separate caller input."
     },
     {
       "kind": "prose",

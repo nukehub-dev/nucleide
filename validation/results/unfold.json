@@ -3,17 +3,17 @@
   "name": "unfold",
   "title": "Neutron spectrum unfolding (`unfold_vs_analytic.py`)",
   "environment": {
-    "date": "2026-09-15",
+    "date": "2026-09-16",
     "python": "3.12.14",
-    "platform": "Linux-7.2.4-arch1-2-x86_64-with-glibc2.39",
-    "nucleide": "0.11.0",
+    "platform": "Linux-7.2.6-arch2-1-x86_64-with-glibc2.39",
+    "nucleide": "0.12.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
   "sections": [
     {
       "kind": "prose",
-      "text": "Two-part oracle for `nucleide.unfold`, both parts always run: analytic gates U1-U4 on synthetic forward folds (fold identity, exact fixed point, determined and underdetermined round-trips at pinned tolerances) and IRDFF-II analytical benchmark-shape probes U5 (Trkov et al. 2020, published facts with citation). No external unfolding oracle exists, so no container dependency is added and no check can SKIP."
+      "text": "Four-part oracle for `nucleide.unfold`, all parts always run: analytic gates U1-U4 on synthetic forward folds (fold identity, exact fixed point, determined and underdetermined round-trips at pinned tolerances), IRDFF-II analytical benchmark-shape probes U5 (Trkov et al. 2020, published facts with citation), STAYSL-class least-squares gates U9-U13, and GRAVEL chi-square-weighted gates U14-U18. No external unfolding oracle exists, so no container dependency is added and no check can SKIP."
     },
     {
       "kind": "prose",
@@ -134,6 +134,194 @@
         ],
         [
           "U8 named input errors",
+          "-",
+          "5 cases",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "U9 determined 6x6 recovery from a 3x-biased guess: 2 cycles; caller-supplied per-detector sigmas are the least-squares weights (a redundant reading with 100x the sigma loses to the precise one)."
+    },
+    {
+      "kind": "prose",
+      "text": "U10 underdetermined case (6 detectors, 24 groups): the least-squares fixed point interpolates the measured rates (6 cycles). Unlike SAND-II's multiplicative spreading it does not promise a spectrum closer than the guess \u2014 weakly constrained group directions take their values from the fit, not the prior \u2014 so the gate pins rate reproduction only."
+    },
+    {
+      "kind": "prose",
+      "text": "U11 shapes are the IRDFF-II analytical benchmark fields named in Trkov et al., Nucl. Data Sheets 163 (2020) 1 (arXiv:1909.03336), re-derived from their closed forms with group bounds bracketing each shape's support; the IAEA-copyright tabulated spectra are never used."
+    },
+    {
+      "kind": "prose",
+      "text": "U12: both methods consume the same fold \u2014 once SAND-II has converged, the anchored least-squares cycle about its spectrum is a no-op, so a SAND-II fixed point is a least-squares fixed point too."
+    },
+    {
+      "kind": "prose",
+      "text": "U13: non-convergence raises (never a partial spectrum), malformed sigmas name their cause, and unreachable rates are loud."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Value",
+        "Tol",
+        "Status"
+      ],
+      "rows": [
+        [
+          "U9 caller sigmas weight",
+          "-",
+          "precise wins",
+          "PASS"
+        ],
+        [
+          "U9 determined recovery",
+          "2.094775e-08",
+          "< 1e-6",
+          "PASS"
+        ],
+        [
+          "U9 rate factors",
+          "1.487943e-11",
+          "< 1e-6",
+          "PASS"
+        ],
+        [
+          "U10 underdetermined rate repro",
+          "3.945865e-06",
+          "< 1e-4",
+          "PASS"
+        ],
+        [
+          "U11 thermal Maxwellian 293.6 K",
+          "3.790052e-07",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U11 pure 1/E",
+          "3.138611e-06",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U11 Maxwellian 25 keV",
+          "1.465684e-08",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U12 SAND-II fp is a LS fp",
+          "0.000000e+00",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U13 named contract errors",
+          "-",
+          "4 cases",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "U14 determined 6x6 recovery from a 3x-biased guess: 2 adjustments; caller-supplied per-detector sigmas are the chi-square weights (a redundant reading with 100x the sigma loses to the precise one)."
+    },
+    {
+      "kind": "prose",
+      "text": "U15 underdetermined case (6 detectors, 24 groups) under counting-statistics sigmas: rates reproduced (40529 adjustments), spectrum error 7.744e-01 vs guess error 1.000e+00."
+    },
+    {
+      "kind": "prose",
+      "text": "U16 shapes are the IRDFF-II analytical benchmark fields named in Trkov et al., Nucl. Data Sheets 163 (2020) 1 (arXiv:1909.03336), re-derived from their closed forms with group bounds bracketing each shape's support; the IAEA-copyright tabulated spectra are never used."
+    },
+    {
+      "kind": "prose",
+      "text": "U17: all three methods consume the same fold \u2014 at a fixed point every rate ratio is 1, so the GRAVEL weights are irrelevant and each method holds the others' fixed points after one confirming cycle."
+    },
+    {
+      "kind": "prose",
+      "text": "U18: non-convergence raises (never a partial spectrum), malformed sigmas name their cause, and unreachable rates are loud."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Value",
+        "Tol",
+        "Status"
+      ],
+      "rows": [
+        [
+          "U14 caller sigmas weight",
+          "-",
+          "precise wins",
+          "PASS"
+        ],
+        [
+          "U14 determined recovery",
+          "3.283852e-16",
+          "< 1e-6",
+          "PASS"
+        ],
+        [
+          "U14 rate factors",
+          "0.000000e+00",
+          "< 1e-9",
+          "PASS"
+        ],
+        [
+          "U15 underdetermined rate repro",
+          "1.107814e-09",
+          "< 1e-6",
+          "PASS"
+        ],
+        [
+          "U15 spectrum error reduction",
+          "7.744045e-01",
+          "< guess err",
+          "PASS"
+        ],
+        [
+          "U16 thermal Maxwellian 293.6 K",
+          "3.923663e-16",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U16 pure 1/E",
+          "5.321414e-16",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U16 Maxwellian 25 keV",
+          "5.776152e-16",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U17 SAND-II fp is a GRAVEL fp",
+          "0.000000e+00",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U17 GRAVEL fp is a SAND-II fp",
+          "1.950345e-16",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U17 GRAVEL fp is a LS fp",
+          "2.126599e-13",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U18 named contract errors",
           "-",
           "5 cases",
           "PASS"

@@ -3,17 +3,17 @@
   "name": "plasma_source",
   "title": "Tokamak fusion sources (`plasma_source_vs_openmc.py`)",
   "environment": {
-    "date": "2026-09-15",
+    "date": "2026-09-16",
     "python": "3.12.14",
-    "platform": "Linux-7.2.4-arch1-2-x86_64-with-glibc2.39",
-    "nucleide": "0.11.0",
+    "platform": "Linux-7.2.6-arch2-1-x86_64-with-glibc2.39",
+    "nucleide": "0.12.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
   "sections": [
     {
       "kind": "prose",
-      "text": "Two-part oracle for `nucleide.plasma_source`: analytic gates P1-P4 on the synthetic ring spec (closed-form ring/spectrum moments, sampler determinism, card emission) and P5-P7 on a parametric Miller-geometry plasma (flat-profile Jacobian closed forms, Bosch-Hale reactivity transcription, sampled moments vs fine quadrature) \u2014 always run \u2014 plus container-only cross-checks O1-O7 against the upstream openmc-plasma-source package and NeSST (Ballabio helpers, sampled ring/point sources, Miller map, Fausser profiles, reactivities, and end-to-end parametric moments)."
+      "text": "Two-part oracle for `nucleide.plasma_source`: analytic gates P1-P4 on the synthetic ring spec (closed-form ring/spectrum moments, sampler determinism, card emission), P5-P7 on a parametric Miller-geometry plasma (flat-profile Jacobian closed forms, Bosch-Hale reactivity transcription, sampled moments vs fine quadrature), and P8 on a pinned 70/30 D/T fuel blend (mixture-rule moments and the D-D branch share vs in-script mixture quadrature) \u2014 always run \u2014 plus container-only cross-checks O1-O8 against the upstream openmc-plasma-source package and NeSST (Ballabio helpers, sampled ring/point sources, Miller map, Fausser profiles, reactivities, end-to-end parametric moments, and the pinned 70/30 blend)."
     },
     {
       "kind": "prose",
@@ -135,6 +135,10 @@
       "text": "P7 H-mode sampled moments vs fine quadrature of S\u00b7R\u00b7|J| (in-script Fausser/Bosch-Hale transcription), n=200000."
     },
     {
+      "kind": "prose",
+      "text": "P8 70/30 D/T blend (fuel dict) vs in-script mixture quadrature (S = n^2\u00b7[f_D\u00b7f_T\u00b7<sv>_DT + (f_D^2/2)\u00b7<sv>_DD], Eriksson/DRESS rate rule), n=200000; the D-D branch share gate proves both Ballabio lines fire in the sampled stream."
+    },
+    {
       "kind": "table",
       "headers": [
         "Gate",
@@ -178,6 +182,24 @@
           "4.408783e-03",
           "< 1e-2",
           "PASS"
+        ],
+        [
+          "P8 mixture mean birth energy",
+          "1.899964e-04",
+          "< 1e-2",
+          "PASS"
+        ],
+        [
+          "P8 mixture birth <r^2>",
+          "3.074722e-03",
+          "< 1e-2",
+          "PASS"
+        ],
+        [
+          "P8 D-D branch share",
+          "-1.566210e-04",
+          "< 8 sigma",
+          "PASS"
         ]
       ]
     },
@@ -208,6 +230,10 @@
     {
       "kind": "prose",
       "text": "O7 end-to-end parametric moments vs quadrature over the upstream map/profiles with the NeSST D-T reactivity, n=200000."
+    },
+    {
+      "kind": "prose",
+      "text": "O8 70/30 D/T blend vs quadrature over the upstream map/profiles with NeSST reac_DT + reac_DD under the mixture rule, n=200000 (upstream T-T branch excluded \u2014 no T-T reaction in Nucleide)."
     },
     {
       "kind": "table",
@@ -293,6 +319,18 @@
         [
           "O7 birth <r^2>",
           "5.026414e-03",
+          "< 1e-2",
+          "PASS"
+        ],
+        [
+          "O8 mixture mean birth energy",
+          "4.163877e-04",
+          "< 1e-2",
+          "PASS"
+        ],
+        [
+          "O8 mixture birth <r^2>",
+          "2.921674e-04",
           "< 1e-2",
           "PASS"
         ]
