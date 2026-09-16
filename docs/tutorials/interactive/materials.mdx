@@ -20,8 +20,8 @@ masses and natural abundances.
 ## Browse the Materials Compendium
 
 The full DOE/PNNL Materials Compendium — hundreds of named materials with
-isotope-level weight fractions — is fetched as JSON and parsed in your browser
-by Nucleide's WASM build, using the same `MaterialsCompendium` API available
+isotope-level weight fractions — is fetched as JSON and parsed on this page,
+using the same `MaterialsCompendium` API available
 in Python. Pick a material to inspect its composition.
 
 <InteractiveDemo kind="materials-compendium" />
@@ -46,7 +46,7 @@ fractions do not need to sum to one; they are normalized internally.
 
 ## Separator, blender, and CUSUM
 
-The demo's scalar section runs the fuel-cycle micro-adds in the browser:
+The demo's scalar section runs the fuel-cycle micro-adds below:
 `materialSeparate` (mass-efficiency split into product/tails),
 `materialBlend` (fixed-ratio blend), and `cusumDetect` (one-sided upper Page
 CUSUM over a scalar series with Welford statistics).
@@ -60,17 +60,17 @@ fragment, including the canonical nuclide list, densities, and mass fractions.
 
 Screening-level dose factors (vendored HNF-5636 tables; `dose_factor`
 lookups and `dose_per_g` per pathway with the `EPA` default) run in the
-browser in the dose section at the end of the demo above: pick a pathway
+dose section at the end of the demo above: pick a pathway
 (`air`/`soil`/`ingest`/`inhale`) and source (`EPA`/`DOE`/`GENII`) to score
 the current formula. Compositions with nuclides outside the tables —
 including the `-1` GENII/DOE air sentinels — report an inline error instead
 of a value; fully stable compositions such as H2O return 0 (no activity to
 convert). For external-exposure coefficients, EPA FGR 15
 (`nucleide.nuclei.fgr15_dose_rate`) is the Python-side complement —
-runtime-downloaded, not vendored, and browser demos do not expose it; it
+runtime-downloaded, not vendored, and the live demos do not expose it; it
 never silently overrides `dose_per_g`. The five-dialect card emitter (`emit_cards` /
 `emit_drift_table`, plus the `emit_armi_cards` ARMI blueprint bridge) runs in
-the browser in the [Code-card emission](emitter.mdx) demo. For batch use see
+the [Code-card emission](emitter.mdx) demo. For batch use see
 the [Build materials](../python/build-materials.md) and
 [Emit code cards](../python/emit-cards.md) tutorials.
 

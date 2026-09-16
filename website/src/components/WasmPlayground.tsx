@@ -115,14 +115,14 @@ export function WasmPlayground({ kind }: WasmPlaygroundProps) {
   if (error) {
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-        WASM error: {error}
+        Demo error: {error}
       </div>
     );
   }
 
   return (
     <div className="rounded-xl border border-border/50 bg-background p-4">
-      {!ready && <p className="text-sm text-muted-foreground">Loading Nucleide WASM…</p>}
+      {!ready && <p className="text-sm text-muted-foreground">Loading the live demo…</p>}
 
       {ready && kind === "material" && (
         <div className="space-y-3">

@@ -1,12 +1,12 @@
 ---
 title: MCNP I/O
-description: Parse MCNP material cards, xsdir, meshtal, MCTAL, and WWINP files in the browser.
+description: Parse MCNP material cards, xsdir, meshtal, MCTAL, and WWINP files.
 sidebar:
   order: 5
 ---
 
-The `mcnp-io` crate reads and writes several MCNP-family file formats. In the
-browser we can only work from text strings, which is still enough to inspect
+The `mcnp-io` crate reads and writes several MCNP-family file formats. On this
+page we can only work from text strings, which is still enough to inspect
 decks and convert small files.
 
 ## Supported formats
@@ -23,7 +23,7 @@ decks and convert small files.
 
 ## Try it
 
-Select a parser and paste a file snippet. The WASM binding returns a JSON
+Select a parser and paste a file snippet. The demo returns a JSON
 summary that you can inspect without leaving the page. For meshtal files, load
  the sample and view the tally as a z-slice heatmap; parsed xsdir tables are
  summarised as a histogram by element, with companion views of table counts by

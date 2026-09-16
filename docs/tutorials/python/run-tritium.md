@@ -159,4 +159,4 @@ print(irreversible_fill(0.1, 1.0, 100.0, [1.0, 10.0]))  # c_t = N * (1 - e^{-kct
 - `tests/test_tritium.py` for replays of those checks and the input-error
   cases.
 - [Interactive tritium permeation](../interactive/tritium.mdx) to run
-  breakthrough curves in the browser.
+  breakthrough curves in the interactive demo.

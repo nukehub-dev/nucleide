@@ -90,10 +90,10 @@ export function UqDemo() {
 
   return (
     <div className="rounded-xl border border-border/50 bg-background p-4 space-y-4">
-      {!ready && <p className="text-sm text-muted-foreground">Loading Nucleide WASM…</p>}
+      {!ready && <p className="text-sm text-muted-foreground">Loading the live demo…</p>}
       {displayError && (
         <div className="flex items-start justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          <span>WASM error: {displayError}</span>
+          <span>Demo error: {displayError}</span>
           <button
             onClick={clearError}
             className="font-bold leading-none"

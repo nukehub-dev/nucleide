@@ -1,10 +1,10 @@
 import { test, expect } from "@playwright/test";
 
 async function waitForWasmReady(page) {
-  // Pages can host several WASM demos, each rendering its own loader and
+  // Pages can host several live demos, each rendering its own loader and
   // hydrating on visibility (client:visible). Scroll the page end-to-end so
   // every demo hydrates, then wait until no loader remains.
-  const loaders = page.locator("text=Loading Nucleide WASM…");
+  const loaders = page.locator("text=Loading the live demo…");
   await loaders.first().waitFor({ state: "attached" });
   try {
     await loaders.first().scrollIntoViewIfNeeded();
@@ -21,7 +21,7 @@ async function assertNoKatexErrors(page) {
 }
 
 async function assertNoWasmError(page) {
-  await expect(page.getByText("WASM error:", { exact: false })).not.toBeVisible();
+  await expect(page.getByText("Demo error:", { exact: false })).not.toBeVisible();
 }
 
 interface ExtraStep {

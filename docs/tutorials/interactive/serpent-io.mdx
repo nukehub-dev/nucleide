@@ -1,12 +1,12 @@
 ---
 title: Serpent output
-description: Parse Serpent _res.m, _dep.m, and _det.m files in the browser.
+description: Parse Serpent _res.m, _dep.m, and _det.m files.
 sidebar:
   order: 13
 ---
 
 The `serpent-io` crate reads Serpent's MATLAB-style output files, where every
-quantity is a `NAME = [...];` assignment. The browser binding parses the text
+quantity is a `NAME = [...];` assignment. The demo parses the text
 and returns a JSON summary of every variable with its kind and shape, plus a
 few headline values for results files.
 

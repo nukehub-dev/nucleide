@@ -1,6 +1,6 @@
 ---
 title: UQ sampling
-description: Draw seeded multivariate-normal samples over a caller-supplied covariance block and compare sample moments in the browser.
+description: Draw seeded multivariate-normal samples over a caller-supplied covariance block and compare sample moments.
 sidebar:
   order: 15
 ---
@@ -24,7 +24,7 @@ Set the mean, the row-major covariance, the draw count, and the seed, then
 press **Run sampling**. The defaults replay the synthetic block from
 `fixtures/uq/cov_2x2.json` (variances 0.25/0.16, covariance 0.10, seed
 20260913 — round numbers, no evaluated data). Draws are capped at 5000 to
-keep the browser slice cheap; identical inputs always yield identical
+keep the demo slice cheap; identical inputs always yield identical
 samples.
 
 LHS mode keeps the same inputs and result shape but swaps the normal source

@@ -158,10 +158,10 @@ export function DeterministicDemo() {
 
   return (
     <div className="rounded-xl border border-border/50 bg-background p-4 space-y-4">
-      {!ready && <p className="text-sm text-muted-foreground">Loading Nucleide WASM…</p>}
+      {!ready && <p className="text-sm text-muted-foreground">Loading the live demo…</p>}
       {displayError && (
         <div className="flex items-start justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          <span>WASM error: {displayError}</span>
+          <span>Demo error: {displayError}</span>
           <button
             onClick={clearError}
             className="font-bold leading-none"
@@ -228,7 +228,7 @@ export function DeterministicDemo() {
           )}
 
           <div className="space-y-2 border-t border-border/50 pt-4">
-            <p className="text-sm font-medium">RTFLUX fluxes (PARTISN renders in-browser below)</p>
+            <p className="text-sm font-medium">RTFLUX fluxes (PARTISN preview below)</p>
             <Textarea
               value={rtfluxText}
               onChange={(e) => {
@@ -300,7 +300,7 @@ export function DeterministicDemo() {
           </div>
 
           <div className="space-y-3 border-t border-border/50 pt-4">
-            <p className="text-sm font-medium">PARTISN writer (renders in-browser)</p>
+            <p className="text-sm font-medium">PARTISN writer (preview below)</p>
             <p className="text-xs text-muted-foreground">
               Structured deck dict with exact keys: <span className="font-mono">title</span>,{" "}
               <span className="font-mono">dim</span>, <span className="font-mono">zones</span> (each{" "}

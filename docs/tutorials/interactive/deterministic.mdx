@@ -1,6 +1,6 @@
 ---
 title: Deterministic transport
-description: Parse ISOTXS multigroup libraries in the browser; RTFLUX and PARTISN via Python.
+description: Parse ISOTXS multigroup libraries on this page; RTFLUX and PARTISN via Python.
 sidebar:
   order: 8
 ---
@@ -19,11 +19,11 @@ nuclide labels, ZAIDs, and total cross sections per group.
 
 ## Flux files and PARTISN decks
 
-RTFLUX/ATFLUX/RZFLUX point-flux files parse in the browser below
+RTFLUX/ATFLUX/RZFLUX point-flux files parse in the demo below
 (`parseRtflux` with the `rtflux`|`atflux`|`rzflux` kind-switch mirroring
 Python) and render a per-point flux profile as a chart (one grouped-bar
 trace per energy group, same as the ISOTXS totals chart below). PARTISN
-decks also render and validate in the browser (`partisnRender`,
+decks also render and validate in the demo (`partisnRender`,
 `partisnValidate`): the demo builds a structured deck dict with the exact
 keys `title`, `dim`, `zones` (each `id`, `material`, `isotxs_labels`,
 `density`), and optional `source` (mirroring the Python

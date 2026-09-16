@@ -357,10 +357,10 @@ export function ActivationDemo() {
 
   return (
     <div className="rounded-xl border border-border/50 bg-background p-4 space-y-4">
-      {!ready && <p className="text-sm text-muted-foreground">Loading Nucleide WASM…</p>}
+      {!ready && <p className="text-sm text-muted-foreground">Loading the live demo…</p>}
       {displayError && (
         <div className="flex items-start justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          <span>WASM error: {displayError}</span>
+          <span>Demo error: {displayError}</span>
           <button
             onClick={clearError}
             className="font-bold leading-none"
@@ -751,7 +751,7 @@ export function ActivationDemo() {
                 Zone totals map onto voxels of the native structured mesh: copy mode tags every
                 voxel with its zone total, split mode divides each zone total conservatively over
                 its voxels. Photon group spectra select `.photonSrc` rows by nuclide and cooling
-                time. Browser demo cap: {VOXEL_CAP} voxels.
+                time. Demo limit: {VOXEL_CAP} voxels.
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 <div className="space-y-1">

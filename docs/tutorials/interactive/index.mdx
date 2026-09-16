@@ -1,17 +1,16 @@
 ---
 title: Interactive tutorials
-description: Learn Nucleide feature by feature with live browser demos powered by WASM.
+description: Learn Nucleide feature by feature with live demos. No installation needed.
 sidebar:
   order: 2
 ---
 
-These pages run Nucleide directly in your browser through the WASM build. No
-Python or Rust installation is required—every example is live.
+These pages run Nucleide right here — no Python or Rust installation is
+required; every example is live.
 
 <Callout type="info" title="How it works">
-  The WASM module is produced by `wasm-pack` from `bindings/wasm`. It exposes
-  the same Rust code that powers the Python package through a small JavaScript
-  API.
+  Each demo runs the same Rust code that powers the Python package, compiled
+  to run on this page through a small JavaScript API.
 </Callout>
 
 ## Available interactive tutorials
@@ -38,8 +37,8 @@ Python or Rust installation is required—every example is live.
 - [Spectrum unfolding](unfold.mdx) — SAND-II iteration over detector measurements.
 - [Clearance screening](clearance.mdx) — sum-of-fractions classification against EU limits.
 
-## When WASM is not enough
+## When the live demos are not enough
 
-The WASM build is a teaching and exploration tool. For production work—large
+The live demos are a teaching and exploration tool. For production work—large
 chain files, full transport decks, batch processing — use the Rust crate API or
 the Python package.
