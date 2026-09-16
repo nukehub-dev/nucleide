@@ -13,6 +13,8 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-16
+
 ### Added
 
 - D/T fuel mixtures for the parametric tokamak plasma source
