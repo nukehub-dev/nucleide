@@ -69,7 +69,7 @@ impl FusionReaction {
     /// Returns 0 at `T = 0` and errors on negative/non-finite temperature.
     /// Outside the fit's validity domain the result is a loud
     /// [`Error::FitOutOfDomain`], never `NaN` (the D-D η factor goes
-    /// non-positive around 300–4700 keV, far above the published range).
+    /// non-positive on roughly 965–2720 keV, far above the published range).
     pub fn reactivity_m3_per_s(self, ti_kev: f64) -> Result<f64> {
         if !ti_kev.is_finite() {
             return Err(Error::NonFinite("ion temperature"));
@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn dd_reactivity_is_loud_outside_the_fit_domain() {
-        // The D-D η factor goes non-positive around 300–4700 keV (far above
+        // The D-D η factor goes non-positive on roughly 965–2720 keV (far above
         // the published fit range); the old code returned Ok(NaN) there.
         match FusionReaction::Dd.reactivity_m3_per_s(1000.0) {
             Err(Error::FitOutOfDomain { reaction, ti_kev }) => {

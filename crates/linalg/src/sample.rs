@@ -10,7 +10,7 @@
 //! Engine difference (verified against the SANDY 1.1.0 wheel): SANDY's
 //! `CategoryCov.draw_sample` factorises with SVD ("better than QR or
 //! cholesky") behind `numpy.random.default_rng`; this module factorises
-//! with Cholesky plus an eigen-clipping fallback behind a ChaCha8
+//! with Cholesky plus an eigen-clipping fallback behind a ChaCha12
 //! `StdRng`. Same target distribution, different streams — draws are not
 //! interchangeable across implementations. What agrees exactly (oracle-check
 //! gate at 1e-9) are the moment estimators: [`sample_mean`](crate::sample::sample_mean) is the

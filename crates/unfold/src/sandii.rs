@@ -40,7 +40,8 @@
 //! measurement contribute no weight; a group no detector responds to keeps
 //! the guess (factor 1, exactly); a zero measurement pins its groups to
 //! zero. Only the guess is required to be strictly positive — the update is
-//! multiplicative, so it stays positive.
+//! multiplicative, so the spectrum stays non-negative (strictly positive
+//! when all measured rates are positive).
 
 use crate::error::{Error, Result};
 

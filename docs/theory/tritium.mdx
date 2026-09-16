@@ -196,7 +196,9 @@ algebraic, tolerance `1e-12`).
 For `K_j c_m ≫ 1`, `c_{t,j} → N_j`: traps sit full, the mobile steady state
 is G1, and the trapped load follows the isotherm pointwise. Pinned in
 `fixtures/tritium/g3b_saturated.json` with the exact trapped inventory
-`2L(1 − ln 2)` (algebraic, tolerance `1e-12`).
+`2L(1 − ln 2)` (algebraic, tolerance `1e-12`) — evaluated at `Kc = 1` at
+`x = 0` (occupancy 0.5 falling to 0), so the gate pins the full-isotherm
+integral with the saturated asymptote `N·L` as its limiting interpretation.
 
 ### G3c — Irreversible limit
 
@@ -420,7 +422,7 @@ With `D = 1e-9 m²/s`, `L = 1e-3 m`, `c0 = 1.0`, `cL = 0.0 mol/m³`, (G1)
 gives `c = [1.0, 0.75, 0.5, 0.25, 0.0]` at `x/L = [0, 0.25, 0.5, 0.75, 1]`,
 `J_ss = 1e-6 mol/m²/s`, and `I = 5e-4 mol/m²`. The same slab switched to
 the G2 transient breaks through at `t_lag = L²/6D ≈ 166.67 s`: the outlet
-flux is still `≈3e-3 J_ss` at `t = 31.6 s` and reaches `0.9999 J_ss` by
+flux is still `≈2.3e-3 J_ss` at `t = 31.6 s` and reaches `0.9999 J_ss` by
 `t = 1000 s`, exactly the `fixtures/tritium/g2_timelag.json` vector.
 
 ## Assumptions and limitations

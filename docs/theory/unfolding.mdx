@@ -126,7 +126,9 @@ One adjustment per iteration: the new spectrum is the old one times a weighted
 geometric mean of the per-detector correction factors `N_i / c_i`, weighted
 by the S2 rate shares. Three properties follow directly:
 
-- **Positivity**: a strictly positive guess stays strictly positive.
+- **Positivity**: a strictly positive guess stays non-negative — and stays
+  strictly positive when all measured rates are positive (a zero measurement
+  pins its groups to exactly zero).
 - **Fixed point**: a guess that already reproduces the rates is unchanged
   (every correction factor is 1).
 - **Unseen groups keep the guess**: a group no detector responds to has
@@ -139,11 +141,11 @@ adjustments are not weighted by detector uncertainty<Citation id="mcelroy-1967" 
 ### Underdetermined systems
 
 With fewer detectors than energy groups the system has infinitely many
-solutions. The adjustment moves only the components the response matrix can
-see: the part of the guess error lying in directions no detector responds to
-— in linear-algebra terms, the response matrix's *null space* — survives
-iteration exactly. In the U4 check (6 detectors, 24 groups) the rates are
-reproduced to `1e-6` and the total guess error is cut by more than half
+solutions. Groups no detector responds to (zero-response columns) keep the
+guess exactly, but otherwise the adjustment is nonlinear — its weights depend
+on the current spectrum — so a general unseen direction is not preserved the
+way a linear least-squares null space would be. In the U4 check (6 detectors,
+24 groups) the rates are reproduced to `1e-6` and the total guess error is cut by more than half
 (measured at about 2.5x): the recoverable bias converges while the unseen
 bias keeps the guess.
 

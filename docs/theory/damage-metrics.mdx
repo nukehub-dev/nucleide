@@ -135,7 +135,7 @@ $$
 with `Z_R, A_R` the recoil nuclide and `Z_L, A_L` the lattice nuclide (damage physics
 sees only `Z` and `A` — the metastable state index of a nuclide key is ignored).
 
-- `P → 1` as `T → 0` (only logarithmically — the `ε^{1/6}` term still costs ~0.6% at
+- `P → 1` as `T → 0` (only logarithmically — the `ε^{1/6}` term still costs ~0.7% at
   1 µeV for iron) and `P → 0` as `T → ∞`; the damage energy saturates at `E_L/k_L`
   and never exceeds `T`.
 - The constants follow Griffin §3.2, which also documents the NJOY manual's `k_L`
@@ -384,7 +384,7 @@ Hand verification:
   `618.6508909 × 0.3204081 = 198.2208`; at the junction `ξ(100 eV) = 1` exactly.
 - The fold hand sum is `7×10¹⁴` barns·n/cm²/s, giving
   `dpa = 2×10⁻²⁴×7×10¹⁴ = 1.4×10⁻⁹` and `appm = 2×10⁻¹⁸×7×10¹⁴ = 1.4×10⁻³`; the
-  ratio is exactly the per-atom→ppm factor, `1.0×10⁶ appm/dpa`. Regridding the bounds
+  ratio is the per-atom→ppm factor, `1.0×10⁶ appm/dpa` to floating rounding. Regridding the bounds
   changes nothing — the bounds document the grid and never enter the sum. With the
   first and third groups dead, the fold equals the literal hand product
   `1e-24 * (2e12 * 200.0)` exactly (`True` on the equality check).

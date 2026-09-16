@@ -1,6 +1,6 @@
 {
-  "description": "G3b single-trap saturated oracle: at Kc>>1 traps sit full and the mobile steady state is G1 with uniform-tending trapped load.",
-  "provenance": "Params are hand-picked (D=1e-9 m^2/s, L=1e-3 m, K=1.0 m^3/mol, N=2.0 mol/m^3) with the G1 mobile profile (c0=1.0, cL=0.0 mol/m^3, Kc=10>>1 at x=0). Trapped profile c_t(x)=N*K*c(x)/(1+K*c(x)) (G3b) evaluated in float64 at five nodes; occupancies theta=Kc/(1+Kc). Trapped inventory integrates in closed form to 2L(1-ln2)=0.0006137056388801095 mol/m^2; mobile inventory 5e-4 mol/m^2 as in G1. Algebraic gate tolerance 1e-12.",
+  "description": "G3b single-trap oracle: trapped load follows the full Langmuir isotherm pointwise over the G1 mobile profile (Kc=1 at x=0, occupancy 0.5 to 0); the pinned inventory is the intermediate-isotherm integral 2L(1-ln2), with the saturated asymptote N*L as its limiting interpretation.",
+  "provenance": "Params are hand-picked (D=1e-9 m^2/s, L=1e-3 m, K=1.0 m^3/mol, N=2.0 mol/m^3) with the G1 mobile profile (c0=1.0, cL=0.0 mol/m^3, Kc=1 at x=0, occupancy 0.5 at x=0 falling to 0 at x=L). Trapped profile c_t(x)=N*K*c(x)/(1+K*c(x)) (G3b) evaluated in float64 at five nodes; occupancies theta=Kc/(1+Kc). Trapped inventory integrates in closed form to 2L(1-ln2)=0.0006137056388801095 mol/m^2; mobile inventory 5e-4 mol/m^2 as in G1. Algebraic gate tolerance 1e-12.",
   "equation": "G3b",
   "params": {
     "D": 1e-09,

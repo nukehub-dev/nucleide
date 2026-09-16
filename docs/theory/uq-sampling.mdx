@@ -70,7 +70,7 @@ $C \in \mathbb{R}^{p \times p}$, the kernel draws $n$ reproducible samples
 $x \sim N(\mu, C)$, checks the sample moments recover the inputs, and
 optionally applies the draws as relative/absolute/log-normal perturbations
 to decay data. A log-normal entry point draws $x \sim N(\mu_{\log}, C_{\log})$
-in log space and returns $y = \exp(x)$. Seeds pin the ChaCha8 stream, so identical inputs give bit-identical
+in log space and returns $y = \exp(x)$. Seeds pin the ChaCha12 stream, so identical inputs give bit-identical
 samples.
 
 ## Mathematical details
@@ -183,7 +183,7 @@ $$
 
 Per dimension $j$, one jittered uniform per stratum: $\pi_j$ is a
 Fisher–Yates permutation of $0..n-1$ and $w_{j,i} \sim U(0,1)$, both from
-the seeded `StdRng` (ChaCha8); $\Phi^{-1}$ is the hand-rolled
+the seeded `StdRng` (ChaCha12); $\Phi^{-1}$ is the hand-rolled
 inverse-normal CDF on `f64` (Acklam/Beasley-Springer-Moro
 rational-approximation class — same arithmetic class as the Box–Muller
 closure<Citation id="box-muller-1958" />); then the shared factor path

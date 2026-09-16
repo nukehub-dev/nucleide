@@ -173,7 +173,7 @@ growth), which the parametric sampler relies on at cold separatrix temperatures;
 the crate returns exactly 0 at $T = 0$. The D-D row is the published D-D fit —
 the neutron-relevant D(d,n)³He branch shares it to the precision of the
 coefficients. Where the fit leaves its validity domain (the D-D $\eta$ goes
-non-positive around 300–4700 keV, far above the published range) the crate
+non-positive on roughly 965–2720 keV, far above the published range) the crate
 raises a clear out-of-domain error instead of returning NaN.
 
 ### S3 — Miller flux-surface map and volume element
@@ -215,7 +215,9 @@ $$
 
 the cross-section area is $\pi\kappa a^2$, and the torus volume is
 $2\pi^2\kappa a^2 R_0$ for any $\mathrm{esh}$ — the Shafranov terms integrate
-out, so the shift moves surfaces outboard without changing the volume. The map
+out, so the shift moves surfaces outboard without changing the volume. (The
+$|J| = J$ step needs $J > 0$ everywhere, which the crate's
+$|\mathrm{esh}| < a_\text{minor}/2$ validation guarantees.) The map
 is up-down symmetric and the vertical extent is $\max|Z| = \kappa\,a_\text{minor}$.
 
 <SvgFigure
@@ -390,8 +392,8 @@ byte-identically through `nucleide.mcnp.parse_sdef` (the typed `SDEF` reader).
   a clear error instead of sampling nothing.
 - **Published fit domains.** The Ballabio and Bosch–Hale fits are used within
   their published ranges. Negative or non-finite ion temperatures raise a clear
-  error, and the D-D reactivity's correction factor goes non-positive around
-  300–4700 keV, where the crate raises a clear out-of-domain error rather than
+  error, and the D-D reactivity's correction factor goes non-positive on
+  roughly 965–2720 keV, where the crate raises a clear out-of-domain error rather than
   returning NaN.
 - **Cards carry marginals, not correlations.** A product-form card cannot
   represent the correlated $(r, z)$ birth joint or the position–energy

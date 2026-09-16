@@ -1477,7 +1477,7 @@ mod tests {
         // linearized about the steady face value c_s: λ₁ = D y₁²/L² with
         // y₁ the first positive root of y·cos y + (2·K_r·c_s·L/D)·sin y = 0
         // (here 2·K_r·c_s·L/D = 1.236, y₁ ≈ 2.10, τ₁ = 1/λ₁ ≈ 1.4·t_lag),
-        // so t = 60·t_lag ≈ 44·τ₁ leaves e⁻⁴⁴ ≈ 3e-20 of the slowest mode
+        // so t = 60·t_lag ≈ 44·τ₁ leaves e⁻⁴⁴ ≈ 8e-20 of the slowest mode
         // and the 1e-6 gate is a pure asymptote check. The steps are kept
         // resolved (dt_max = 1) because the t = 0 corner kink excites
         // Crank–Nicolson fine-mode ringing that only damps as |g| → 1 on
