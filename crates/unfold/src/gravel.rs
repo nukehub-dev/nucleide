@@ -1,92 +1,103 @@
-//! SAND-II iterative spectral adjustment (McElroy et al., AFWL-TR-67-41, 1967).
+//! GRAVEL iterative spectral adjustment (Matzke, PTB-N-19, 1994).
 //!
-//! The forward problem folds a spectrum `phi` (one value per energy group)
-//! through a response matrix `R` (one row per detector/reaction) into
-//! calculated rates `c` (S1); unfolding adjusts a caller-supplied guess
-//! spectrum against the measured rates `N` until the fold reproduces them.
-//! SAND-II applies one multiplicative adjustment per iteration (S2–S3), each
-//! a positivity-preserving weighted geometric mean of per-detector
-//! correction factors, so the spectrum stays positive and a guess that
-//! already fits is a fixed point:
+//! The third landed method in this crate, beside [`crate::sandii`] and
+//! [`crate::staysl`]. GRAVEL is the uncertainty-aware sibling of SAND-II:
+//! the same positivity-preserving multiplicative adjustment, but each
+//! detector's correction is weighted by its measurement precision, so
+//! precisely measured rates pull harder than sloppy ones. The pinned
+//! equation set:
 //!
 //! ```text
-//! c_i   = Σ_j R_ij · φ_j                                (S1 fold)
-//! W_ji  = R_ij · φ_j / c_i                              (S2 detector-i rate share from group j)
-//! φ_j  ← φ_j · exp( Σ_i W_ji · ln(N_i / c_i) / Σ_i W_ji )   (S3 adjustment)
+//! c_i   = Σ_j R_ij · φ_j                                              (G1 fold)
+//! W_ji  = (R_ij · φ_j / c_i) · (N_i² / σ_i²)                           (G2 chi-square weights)
+//! φ_j  ← φ_j · exp( Σ_i W_ji · ln(N_i / c_i) / Σ_i W_ji )                 (G3 adjustment)
 //! ```
 //!
-//! `W_ij` is the canonical base SAND-II weight; the original
-//! implementation's optional per-detector statistics factor (`N_i²/σ_i`)
-//! is not applied, so adjustments are not Poisson-weighted by detector
-//! uncertainty.
+//! (G2) is the SAND-II base rate share times the measurement-weight factor
+//! `N_i²/σ_i²`: a detector measured precisely (small `σ_i` against its rate
+//! `N_i`) dominates the groups it responds to, a sloppy one barely pulls.
+//! At a fixed point every `N_i/c_i` is 1, so the weights are irrelevant
+//! there — a SAND-II fixed point is a GRAVEL fixed point and vice versa,
+//! and both consume the same fold (G1 == S1 == T1).
 //!
-//! Clean-room from the public-domain report (US government work); the
-//! adjustment form is the one reproduced across the open unfolding
-//! literature. Detector/detector-reaction labelling, energy-group bounds,
-//! and every response value are caller-supplied: evaluated libraries
+//! Clean-room from the published iteration; no gated code is consulted.
+//! Detector/reaction labelling, energy-group bounds, and every response
+//! value, measured rate, and sigma are caller-supplied: evaluated libraries
 //! (IRDFF and friends) are IAEA-copyright and are never vendored — the
-//! IRDFF-II v1 pack ships as a runtime download (`nucleide.data.fetch_irdff`
-//! plus `parse_irdff_g725`).
+//! IRDFF-II v1 pack ships as a runtime download
+//! (`nucleide.data.fetch_irdff` plus `parse_irdff_g725`).
 //!
 //! Convergence contract: after each adjustment the largest per-group
 //! relative change `max_j |φ_new − φ_old| / φ_old` is compared against
 //! `tolerance`; the run converges when it drops strictly below it. The
 //! adjustment cap (`max_iterations`) is explicit; exhausting it raises
 //! [`Error::NotConverged`] — a hard fail, never a silent partial spectrum
-//! (the `tritium` face-Newton precedent). Degenerate-input policy, all
-//! named: a detector with a zero fold against a nonzero measurement makes
-//! the rates unreachable ([`Error::RatesUnreachable`], detected up front
-//! for zero response rows and mid-iteration if zero rates pin away a
-//! detector's whole support); detectors folding to zero with zero
-//! measurement contribute no weight; a group no detector responds to keeps
-//! the guess (factor 1, exactly); a zero measurement pins its groups to
-//! zero. Only the guess is required to be strictly positive — the update is
-//! multiplicative, so the spectrum stays non-negative (strictly positive
-//! when all measured rates are positive).
+//! (the `tritium` face-Newton precedent, same as [`crate::sandii`] and
+//! [`crate::staysl`]).
+//!
+//! Degenerate-input policy, all named: a detector with a zero response row
+//! against a nonzero measurement makes the rates unreachable
+//! ([`Error::RatesUnreachable`], detected up front); detectors folding to
+//! zero carry zero weight (skipped); a group no positively weighted
+//! detector responds to keeps the guess (factor 1, exactly). Only the guess
+//! is required to be strictly positive — the update is multiplicative, so
+//! the spectrum stays strictly positive.
+//!
+//! Divergences from [`crate::sandii`], pinned: caller sigmas weight the
+//! detectors (one finite positive sigma per detector — zero, non-finite, or
+//! missing sigmas are loud errors, never silent uniform weighting — via the
+//! `N_i²/σ_i²` factor); zero measurements carry zero weight, so unlike
+//! SAND-II they do not pin their groups to zero — a detector reading zero
+//! is simply not fitted, and an all-zero measurement set returns the guess
+//! unchanged after one confirming no-op. What both methods share: the
+//! caller-supplied response matrix, the per-group relative-change
+//! convergence contract, and the loud named errors.
 
 use crate::error::{Error, Result};
 
 /// Default per-group relative-change convergence tolerance.
 ///
-/// This is a library default, not a value from the report (the original
-/// code exposed the criterion as a user knob).
+/// Library default mirroring [`crate::sandii::DEFAULT_TOLERANCE`]; the
+/// original codes exposed the criterion as a user knob.
 pub const DEFAULT_TOLERANCE: f64 = 1e-3;
 
 /// Default adjustment cap (iterations).
 ///
-/// Library default; the report's cap was likewise a user knob.
+/// Library default mirroring [`crate::sandii::DEFAULT_MAX_ITERATIONS`].
 pub const DEFAULT_MAX_ITERATIONS: usize = 200;
 
-/// One SAND-II adjustment step as yielded by the [`SandII`] iterator: the
-/// post-adjustment spectrum together with its convergence diagnostics.
+/// One GRAVEL adjustment step as yielded by the [`Gravel`] iterator: the
+/// post-adjustment spectrum together with its convergence diagnostics. Same
+/// shape as [`crate::sandii::Iteration`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Iteration {
     /// 1-based adjustment number (the first adjustment is `1`).
     pub index: usize,
     /// Spectrum after this adjustment (one value per energy group).
     pub spectrum: Vec<f64>,
-    /// Rates folded from the post-adjustment spectrum (S1).
+    /// Rates folded from the post-adjustment spectrum (G1).
     pub rates: Vec<f64>,
     /// Measured-rate over folded-rate ratios per detector at this state;
-    /// all ones at a fixed point, and 0.0 for a pinned detector (zero
-    /// measurement folding to zero — the 0/0 factor spelled as 0.0).
+    /// all ones at a fixed point, and 0.0 for a detector folding to zero
+    /// (the 0/0 factor spelled as 0.0).
     pub rate_factors: Vec<f64>,
     /// Largest per-group relative change this adjustment produced,
     /// `max_j |φ_new − φ_old| / φ_old`.
     pub max_rel_change: f64,
 }
 
-/// SAND-II unfolding iterator: owns the working spectrum and yields one
+/// GRAVEL unfolding iterator: owns the working spectrum and yields one
 /// [`Iteration`] per adjustment until the run converges, the adjustment cap
-/// is exhausted, or the measurements prove unreachable (see [`SandII::halt`]).
+/// is exhausted, or the measurements prove unreachable (see [`Gravel::halt`]).
 ///
-/// Construction validates the full input set once
-/// ([`SandII::new`]); borrowing keeps the crate usable without allocations
-/// beyond the working vectors.
+/// Construction validates the full input set once ([`Gravel::new`]);
+/// borrowing keeps the crate usable without allocations beyond the working
+/// vectors.
 #[derive(Debug)]
-pub struct SandII<'a> {
+pub struct Gravel<'a> {
     response: &'a [Vec<f64>],
     rates: &'a [f64],
+    meas_weight: Vec<f64>,
     spectrum: Vec<f64>,
     tolerance: f64,
     max_iterations: usize,
@@ -95,17 +106,20 @@ pub struct SandII<'a> {
     halt: Option<Error>,
 }
 
-impl<'a> SandII<'a> {
+impl<'a> Gravel<'a> {
     /// Validate the inputs and seed the iterator with the guess spectrum.
     ///
     /// `response` holds one row per detector (all rows one value per energy
     /// group, non-negative finite), `rates` one measured rate per detector
-    /// (non-negative finite), and `guess` one strictly positive finite value
-    /// per energy group. `tolerance` must be finite and positive and
+    /// (non-negative finite), `sigmas` one strictly positive finite
+    /// measurement sigma per detector (the per-detector weight factor is
+    /// `N_i²/σ_i²`), and `guess` one strictly positive finite value per
+    /// energy group. `tolerance` must be finite and positive and
     /// `max_iterations` at least 1.
     pub fn new(
         response: &'a [Vec<f64>],
         rates: &'a [f64],
+        sigmas: &'a [f64],
         guess: &[f64],
         tolerance: f64,
         max_iterations: usize,
@@ -129,6 +143,27 @@ impl<'a> SandII<'a> {
                 return Err(Error::RatesUnreachable { detector: i });
             }
         }
+        if sigmas.len() != rates.len() {
+            return Err(Error::BadShape {
+                what: "sigmas",
+                expected: rates.len(),
+                got: sigmas.len(),
+            });
+        }
+        let mut meas_weight = Vec::with_capacity(rates.len());
+        for (&rate, &sigma) in rates.iter().zip(sigmas.iter()) {
+            if !sigma.is_finite() {
+                return Err(Error::BadRates("non-finite sigma"));
+            }
+            if sigma <= 0.0 {
+                return Err(Error::BadRates("sigma must be > 0"));
+            }
+            let factor = (rate / sigma) * (rate / sigma);
+            if !factor.is_finite() {
+                return Err(Error::BadRates("sigma is out of weight range"));
+            }
+            meas_weight.push(factor);
+        }
         crate::validate_spectrum("guess", guess, n, true, Error::BadGuess)?;
         if !tolerance.is_finite() || tolerance <= 0.0 {
             return Err(Error::BadOption("tolerance must be finite and > 0"));
@@ -139,6 +174,7 @@ impl<'a> SandII<'a> {
         Ok(Self {
             response,
             rates,
+            meas_weight,
             spectrum: guess.to_vec(),
             tolerance,
             max_iterations,
@@ -170,26 +206,30 @@ impl<'a> SandII<'a> {
     }
 }
 
-impl Iterator for SandII<'_> {
+impl Iterator for Gravel<'_> {
     type Item = Iteration;
 
     fn next(&mut self) -> Option<Iteration> {
         if self.converged || self.halt.is_some() || self.completed >= self.max_iterations {
             return None;
         }
-        // (S1) fold of the current spectrum.
+        // (G1) fold of the current spectrum.
         let folds = crate::fold(self.response, &self.spectrum);
         for (i, (&c, &n)) in folds.iter().zip(self.rates.iter()).enumerate() {
             if n > 0.0 && c <= 0.0 {
-                // A positive measurement whose whole support was pinned to
-                // zero by other (zero) measurements: unreachable.
+                // A positive measurement whose whole support folds to zero:
+                // unreachable.
                 self.halt = Some(Error::RatesUnreachable { detector: i });
                 return None;
             }
         }
-        // (S2)/(S3) per-group weighted geometric mean of the correction
-        // factors. Detectors folding to zero carry zero weight (skipped);
-        // groups no active detector responds to keep the guess.
+        // (G2)/(G3) per-group chi-square-weighted geometric mean of the
+        // correction factors. Detectors folding to zero carry zero weight
+        // (skipped); zero-measurement detectors carry a zero `N²/σ²` factor
+        // and are skipped the same way, so they never pin groups to zero;
+        // groups no positively weighted detector responds to keep the guess.
+        // Skipping zero weights before the logarithm also avoids the
+        // 0 * ln(0) = NaN hazard from zero-rate detectors.
         let mut new_spectrum = Vec::with_capacity(self.spectrum.len());
         for (j, &phi) in self.spectrum.iter().enumerate() {
             let mut weighted_log = 0.0f64;
@@ -199,10 +239,8 @@ impl Iterator for SandII<'_> {
                 if c <= 0.0 {
                     continue;
                 }
-                let w = row[j] * phi / c;
+                let w = row[j] * phi / c * self.meas_weight[i];
                 if w == 0.0 {
-                    // Zero response in this group: skipping also avoids the
-                    // 0 * ln(0) = NaN hazard from zero-rate detectors.
                     continue;
                 }
                 weighted_log += w * (self.rates[i] / c).ln();
@@ -227,8 +265,8 @@ impl Iterator for SandII<'_> {
         }
         // Diagnostics from the post-adjustment state.
         let rates = crate::fold(self.response, &self.spectrum);
-        // A pinned detector (zero measurement, support pinned to zero) folds
-        // to zero; spell its factor as 0.0 instead of the 0/0 NaN.
+        // A detector folding to zero spells its factor as 0.0 instead of the
+        // 0/0 NaN.
         let rate_factors = self
             .rates
             .iter()
@@ -245,16 +283,17 @@ impl Iterator for SandII<'_> {
     }
 }
 
-/// Converged SAND-II solution with its convergence diagnostics.
+/// Converged GRAVEL solution with its convergence diagnostics. Same shape as
+/// [`crate::sandii::Solution`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Solution {
     /// Adjusted spectrum (one value per energy group).
     pub spectrum: Vec<f64>,
-    /// Rates folded from the adjusted spectrum (S1).
+    /// Rates folded from the adjusted spectrum (G1).
     pub rates: Vec<f64>,
     /// Measured-rate over folded-rate ratios per detector; all ones at a
-    /// fixed point, and 0.0 for a pinned detector (zero measurement folding
-    /// to zero — the 0/0 factor spelled as 0.0).
+    /// fixed point, and 0.0 for a detector folding to zero (the 0/0 factor
+    /// spelled as 0.0).
     pub rate_factors: Vec<f64>,
     /// Number of adjustments applied.
     pub iterations: usize,
@@ -264,19 +303,20 @@ pub struct Solution {
     pub max_rel_change: f64,
 }
 
-/// Drive a [`SandII`] iterator to convergence and return the solution.
+/// Drive a [`Gravel`] iterator to convergence and return the solution.
 ///
 /// Non-convergence is a hard [`Error::NotConverged`] — no partial spectrum is
 /// returned (the `tritium` face-Newton precedent). Inputs and options are
-/// validated up front exactly as by [`SandII::new`].
+/// validated up front exactly as by [`Gravel::new`].
 pub fn unfold(
     response: &[Vec<f64>],
     rates: &[f64],
+    sigmas: &[f64],
     guess: &[f64],
     tolerance: f64,
     max_iterations: usize,
 ) -> Result<Solution> {
-    let mut run = SandII::new(response, rates, guess, tolerance, max_iterations)?;
+    let mut run = Gravel::new(response, rates, sigmas, guess, tolerance, max_iterations)?;
     let mut last: Option<Iteration> = None;
     for iteration in &mut run {
         last = Some(iteration);
@@ -344,15 +384,8 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn forward_fold_matches_hand_matvec() {
-        let response = synthetic_response(3, 4, 1.5);
-        let spectrum = vec![1.0, 2.0, 3.0, 4.0];
-        let rates = crate::forward_fold(&response, &spectrum).unwrap();
-        for (i, row) in response.iter().enumerate() {
-            let hand: f64 = row.iter().zip(&spectrum).map(|(r, p)| r * p).sum();
-            assert_eq!(rates[i], hand);
-        }
+    fn unit_sigmas(n: usize) -> Vec<f64> {
+        vec![1.0; n]
     }
 
     #[test]
@@ -361,9 +394,11 @@ mod tests {
         let midpoints = log_midpoints(12, 1e-6, 10.0);
         let truth = maxwellian_plus_inv_e(&midpoints, 2.53e-5);
         let rates = crate::forward_fold(&response, &truth).unwrap();
+        let sigmas = unit_sigmas(rates.len());
         let sol = unfold(
             &response,
             &rates,
+            &sigmas,
             &truth,
             DEFAULT_TOLERANCE,
             DEFAULT_MAX_ITERATIONS,
@@ -386,8 +421,9 @@ mod tests {
         let midpoints = log_midpoints(6, 1e-6, 10.0);
         let truth = maxwellian_plus_inv_e(&midpoints, 2.53e-5);
         let rates = crate::forward_fold(&response, &truth).unwrap();
+        let sigmas = unit_sigmas(rates.len());
         let guess: Vec<f64> = truth.iter().map(|p| 3.0 * p).collect();
-        let sol = unfold(&response, &rates, &guess, 1e-12, 10_000)
+        let sol = unfold(&response, &rates, &sigmas, &guess, 1e-12, 10_000)
             .expect("determined system must converge");
         assert!(sol.max_rel_change < 1e-12);
         for (rec, want) in sol.spectrum.iter().zip(truth.iter()) {
@@ -400,24 +436,49 @@ mod tests {
     }
 
     #[test]
+    fn caller_sigmas_are_the_weights() {
+        // Two redundant readings of the same group, one precise (2.0 ± 0.01)
+        // and one sloppy (2.2 ± 1.0): the `N²/σ²` factors (40000 vs 4.84)
+        // must follow the precise detector, not the average.
+        let response = vec![vec![1.0, 0.0], vec![1.0, 0.0]];
+        let rates = vec![2.0, 2.2];
+        let sigmas = vec![0.01, 1.0];
+        let guess = vec![1.5, 7.0];
+        let sol = unfold(&response, &rates, &sigmas, &guess, 1e-12, 100).unwrap();
+        assert!(
+            (sol.spectrum[0] - 2.0).abs() < 0.02,
+            "precise detector must dominate, got {}",
+            sol.spectrum[0]
+        );
+        // The unseen second group keeps the guess exactly.
+        assert_eq!(sol.spectrum[1], 7.0);
+    }
+
+    #[test]
     fn reduces_error_and_reproduces_rates_when_underdetermined() {
         // The realistic case: fewer detectors than groups. The rates are
         // reproduced exactly and the recovered spectrum is strictly closer
-        // to the truth than the guess was.
+        // to the truth than the guess was. Sigmas follow the
+        // counting-statistics model (σ² = N, weights = N): genuinely
+        // non-uniform weights spanning the rates' three decades, so this
+        // exercises the chi-square machinery rather than cloning the
+        // SAND-II trajectory.
         let n_groups = 24;
         let response = synthetic_response(6, n_groups, 3.0);
         let midpoints = log_midpoints(n_groups, 1e-6, 12.0);
         let truth = maxwellian_plus_inv_e(&midpoints, 2.53e-5);
         let rates = crate::forward_fold(&response, &truth).unwrap();
+        let sigmas: Vec<f64> = rates.iter().map(|r| r.sqrt()).collect();
         // Non-uniform bias: part of it lies in the response null space and
-        // must keep the guess; the recoverable part must still converge
-        // (deterministic residual: guess error 1.0 -> ~0.40, a 2.5x cut).
+        // must keep the guess; the recoverable part must still converge.
+        // Calibrated: converges in ~41k adjustments, rates to ~1e-9, guess
+        // error 1.0 -> ~0.77.
         let guess: Vec<f64> = truth
             .iter()
             .enumerate()
             .map(|(j, p)| p * (1.3 + 0.7 * (j % 5) as f64 / 4.0))
             .collect();
-        let sol = unfold(&response, &rates, &guess, 1e-9, 50_000)
+        let sol = unfold(&response, &rates, &sigmas, &guess, 1e-9, 50_000)
             .expect("underdetermined round trip must converge");
         let rate_err = sol
             .rate_factors
@@ -432,8 +493,8 @@ mod tests {
                 .fold(0.0f64, f64::max)
         };
         assert!(
-            err(&sol.spectrum, &truth) < err(&guess, &truth) / 2.0,
-            "unfolding must cut the guess error by 2x"
+            err(&sol.spectrum, &truth) < err(&guess, &truth),
+            "unfolding must improve on the guess"
         );
         assert!(sol.spectrum.iter().all(|p| p.is_finite() && *p > 0.0));
     }
@@ -462,8 +523,9 @@ mod tests {
         for (name, shape) in [("thermal", thermal), ("1/E", inv_e), ("25keV", fusion)] {
             let response = synthetic_response(8, n_groups, 2.5);
             let rates = crate::forward_fold(&response, &shape).unwrap();
+            let sigmas = unit_sigmas(rates.len());
             let guess: Vec<f64> = shape.iter().map(|p| 5.0 * p).collect();
-            let sol = unfold(&response, &rates, &guess, 1e-10, 50_000)
+            let sol = unfold(&response, &rates, &sigmas, &guess, 1e-10, 50_000)
                 .unwrap_or_else(|e| panic!("IRDFF-II {name} probe must converge: {e}"));
             let rate_err = sol
                 .rate_factors
@@ -474,8 +536,16 @@ mod tests {
             // Determined probe: 8 detectors over a nearly-diagonal response.
             let det_response = synthetic_response(n_groups, n_groups, 0.8);
             let det_rates = crate::forward_fold(&det_response, &shape).unwrap();
-            let det_sol = unfold(&det_response, &det_rates, &guess, 1e-11, 100_000)
-                .expect("determined IRDFF probe must converge");
+            let det_sigmas = unit_sigmas(det_rates.len());
+            let det_sol = unfold(
+                &det_response,
+                &det_rates,
+                &det_sigmas,
+                &guess,
+                1e-11,
+                100_000,
+            )
+            .expect("determined IRDFF probe must converge");
             let worst = det_sol
                 .spectrum
                 .iter()
@@ -487,13 +557,112 @@ mod tests {
     }
 
     #[test]
+    fn sandii_fixed_point_is_a_gravel_fixed_point() {
+        // Both methods consume the same fold (G1 == S1): once SAND-II has
+        // converged (rate factors pinned to 1, every ln factor zero), the
+        // chi-square-weighted cycle (G3) about that spectrum is a no-op
+        // regardless of the weights — a SAND-II fixed point is a GRAVEL
+        // fixed point too.
+        let response = synthetic_response(6, 6, 1.0);
+        let midpoints = log_midpoints(6, 1e-6, 10.0);
+        let truth = maxwellian_plus_inv_e(&midpoints, 2.53e-5);
+        let rates = crate::forward_fold(&response, &truth).unwrap();
+        let guess: Vec<f64> = truth.iter().map(|p| 2.5 * p).collect();
+        let sandii_sol = crate::sandii::unfold(&response, &rates, &guess, 1e-12, 100_000)
+            .expect("SAND-II must converge");
+        let sigmas = unit_sigmas(rates.len());
+        let sol = unfold(&response, &rates, &sigmas, &sandii_sol.spectrum, 1e-4, 100)
+            .expect("GRAVEL step at a SAND-II fixed point must be a no-op");
+        assert_eq!(sol.iterations, 1, "one confirming no-op adjustment");
+        assert!(
+            sol.max_rel_change < 1e-4,
+            "no-op step, got change {}",
+            sol.max_rel_change
+        );
+        for (rec, want) in sol.spectrum.iter().zip(sandii_sol.spectrum.iter()) {
+            assert!(
+                ((rec - want) / want).abs() < 1e-5,
+                "GRAVEL must hold the SAND-II fixed point"
+            );
+        }
+    }
+
+    #[test]
+    fn gravel_fixed_point_is_a_sandii_fixed_point() {
+        // The weights are irrelevant at a fixed point in either direction:
+        // GRAVEL reproduces the rates exactly (multiplicative family), so a
+        // SAND-II cycle about the GRAVEL spectrum is a no-op too.
+        let response = synthetic_response(6, 6, 1.0);
+        let midpoints = log_midpoints(6, 1e-6, 10.0);
+        let truth = maxwellian_plus_inv_e(&midpoints, 2.53e-5);
+        let rates = crate::forward_fold(&response, &truth).unwrap();
+        let sigmas = unit_sigmas(rates.len());
+        let guess: Vec<f64> = truth.iter().map(|p| 2.5 * p).collect();
+        let gravel_sol = unfold(&response, &rates, &sigmas, &guess, 1e-12, 100_000)
+            .expect("GRAVEL must converge");
+        let sol = crate::sandii::unfold(&response, &rates, &gravel_sol.spectrum, 1e-4, 100)
+            .expect("SAND-II step at a GRAVEL fixed point must be a no-op");
+        assert_eq!(sol.iterations, 1, "one confirming no-op adjustment");
+        assert!(
+            sol.max_rel_change < 1e-4,
+            "no-op step, got change {}",
+            sol.max_rel_change
+        );
+        for (rec, want) in sol.spectrum.iter().zip(gravel_sol.spectrum.iter()) {
+            assert!(
+                ((rec - want) / want).abs() < 1e-5,
+                "SAND-II must hold the GRAVEL fixed point"
+            );
+        }
+    }
+
+    #[test]
+    fn gravel_fixed_point_is_a_least_squares_fixed_point() {
+        // GRAVEL reproduces the rates exactly, so the anchored
+        // least-squares cycle (T3) about the GRAVEL spectrum as the anchor
+        // sees a ~zero residual and is a no-op — mirroring the SAND-II
+        // cross-check in `staysl`.
+        let response = synthetic_response(6, 6, 1.0);
+        let midpoints = log_midpoints(6, 1e-6, 10.0);
+        let truth = maxwellian_plus_inv_e(&midpoints, 2.53e-5);
+        let rates = crate::forward_fold(&response, &truth).unwrap();
+        let sigmas = unit_sigmas(rates.len());
+        let guess: Vec<f64> = truth.iter().map(|p| 2.5 * p).collect();
+        let gravel_sol = unfold(&response, &rates, &sigmas, &guess, 1e-12, 100_000)
+            .expect("GRAVEL must converge");
+        let sol = crate::staysl::unfold(
+            &response,
+            &rates,
+            &sigmas,
+            &gravel_sol.spectrum,
+            1e-4,
+            100,
+            1e-6,
+        )
+        .expect("least-squares step at a GRAVEL fixed point must be a no-op");
+        assert_eq!(sol.iterations, 1, "one confirming no-op solve");
+        assert!(
+            sol.max_rel_change < 1e-4,
+            "no-op step, got change {}",
+            sol.max_rel_change
+        );
+        for (rec, want) in sol.spectrum.iter().zip(gravel_sol.spectrum.iter()) {
+            assert!(
+                ((rec - want) / want).abs() < 1e-5,
+                "least-squares solve must hold the GRAVEL fixed point"
+            );
+        }
+    }
+
+    #[test]
     fn unconstrained_group_keeps_guess_exactly() {
         // Detector 0 responds only to group 0; groups 1..4 see nothing and
         // must keep the guess values bit-for-bit.
         let response = vec![vec![1.0, 0.0, 0.0, 0.0, 0.0]];
         let rates = vec![4.0];
+        let sigmas = vec![0.5];
         let guess = vec![2.0, 7.0, 3.0, 9.0, 5.0];
-        let sol = unfold(&response, &rates, &guess, 1e-12, 100).unwrap();
+        let sol = unfold(&response, &rates, &sigmas, &guess, 1e-12, 100).unwrap();
         assert_eq!(sol.spectrum[0], 4.0);
         assert_eq!(&sol.spectrum[1..], &guess[1..]);
         // First adjustment moves group 0 (change 1.0); the confirming one is
@@ -503,49 +672,33 @@ mod tests {
     }
 
     #[test]
-    fn zero_measurement_pins_its_groups_to_zero() {
+    fn zero_measurement_detectors_carry_no_weight() {
+        // Pinned divergence from SAND-II: the `N²/σ²` factor of a zero
+        // measurement is zero, so the detector is skipped rather than
+        // pinning its groups to zero — the guess survives untouched.
         let response = vec![vec![1.0, 1.0]];
         let rates = vec![0.0];
+        let sigmas = vec![1.0];
         let guess = vec![2.0, 3.0];
-        let sol = unfold(&response, &rates, &guess, 1e-12, 100).unwrap();
-        assert_eq!(sol.spectrum, vec![0.0, 0.0]);
-        // The pinned detector folds to zero against its zero measurement;
-        // its diagnostics factor is spelled 0.0, never the 0/0 NaN.
-        assert_eq!(sol.rate_factors, vec![0.0]);
+        let sol = unfold(&response, &rates, &sigmas, &guess, 1e-12, 100).unwrap();
+        assert_eq!(sol.spectrum, guess);
+        assert_eq!(sol.iterations, 1, "one confirming no-op adjustment");
+        assert_eq!(sol.max_rel_change, 0.0);
+        // The unfitted detector folds to nonzero against its zero
+        // measurement; its diagnostics factor is spelled 0.0 only when the
+        // fold itself is zero.
         assert!(sol.rate_factors.iter().all(|f| f.is_finite()));
-    }
-
-    #[test]
-    fn zero_response_row_with_zero_rate_is_skipped() {
-        let response = vec![vec![1.0, 0.5], vec![0.0, 0.0]];
-        let rates = vec![3.0, 0.0];
-        let guess = vec![2.0, 2.0];
-        let sol = unfold(&response, &rates, &guess, 1e-12, 100).unwrap();
-        assert!((sol.rate_factors[0] - 1.0).abs() < 1e-12);
-        assert!(sol.spectrum.iter().all(|p| p.is_finite() && *p > 0.0));
     }
 
     #[test]
     fn zero_response_row_with_nonzero_rate_is_unreachable() {
         let response = vec![vec![0.0, 0.0]];
         let rates = vec![1.0];
+        let sigmas = vec![1.0];
         let guess = vec![2.0, 2.0];
         assert_eq!(
-            unfold(&response, &rates, &guess, 1e-6, 100),
+            unfold(&response, &rates, &sigmas, &guess, 1e-6, 100),
             Err(Error::RatesUnreachable { detector: 0 })
-        );
-    }
-
-    #[test]
-    fn inconsistent_rates_halt_mid_iteration() {
-        // Detector 0 (rate 0) pins group 0 to zero; detector 1 then has a
-        // zero fold against a nonzero rate -> unreachable, named, hard fail.
-        let response = vec![vec![1.0, 0.0], vec![1.0, 0.0]];
-        let rates = vec![0.0, 1.0];
-        let guess = vec![2.0, 2.0];
-        assert_eq!(
-            unfold(&response, &rates, &guess, 1e-6, 100),
-            Err(Error::RatesUnreachable { detector: 1 })
         );
     }
 
@@ -555,9 +708,10 @@ mod tests {
         let midpoints = log_midpoints(8, 1e-6, 10.0);
         let truth = maxwellian_plus_inv_e(&midpoints, 2.53e-5);
         let rates = crate::forward_fold(&response, &truth).unwrap();
+        let sigmas = unit_sigmas(rates.len());
         let guess: Vec<f64> = truth.iter().map(|p| 2.0 * p).collect();
         assert_eq!(
-            unfold(&response, &rates, &guess, 1e-12, 1),
+            unfold(&response, &rates, &sigmas, &guess, 1e-12, 1),
             Err(Error::NotConverged)
         );
     }
@@ -568,28 +722,24 @@ mod tests {
         let midpoints = log_midpoints(6, 1e-6, 10.0);
         let truth = maxwellian_plus_inv_e(&midpoints, 2.53e-5);
         let rates = crate::forward_fold(&response, &truth).unwrap();
+        let sigmas = unit_sigmas(rates.len());
         let guess: Vec<f64> = truth.iter().map(|p| 2.0 * p).collect();
-        let mut run = SandII::new(&response, &rates, &guess, 1e-9, 1000).unwrap();
+        let mut run = Gravel::new(&response, &rates, &sigmas, &guess, 1e-9, 1000).unwrap();
         let mut seen = 0usize;
-        let mut last_change = f64::INFINITY;
         for it in &mut run {
             seen += 1;
             assert_eq!(it.index, seen);
             assert_eq!(it.spectrum.len(), 6);
             assert_eq!(it.rates.len(), 3);
             assert_eq!(it.rate_factors.len(), 3);
-            assert!(
-                it.max_rel_change <= last_change,
-                "changes must not increase"
-            );
-            last_change = it.max_rel_change;
-            if seen > 200 {
+            assert!(it.spectrum.iter().all(|p| p.is_finite() && *p > 0.0));
+            assert!(it.rate_factors.iter().all(|f| f.is_finite()));
+            if seen > 5000 {
                 break;
             }
         }
         assert!(run.converged());
         assert!(seen > 1, "a biased guess needs more than one adjustment");
-        assert!(last_change < 1e-9);
         // A converged iterator is exhausted.
         assert!(run.next().is_none());
         assert!(run.halt.is_none());
@@ -599,49 +749,64 @@ mod tests {
     fn validation_names_the_offending_input() {
         let ok_response = synthetic_response(2, 3, 1.0);
         let ok_rates = vec![1.0, 2.0];
+        let ok_sigmas = vec![1.0, 1.0];
         let ok_guess = vec![1.0, 1.0, 1.0];
         assert!(matches!(
-            SandII::new(&[], &ok_rates, &ok_guess, 1e-3, 10),
+            Gravel::new(&[], &ok_rates, &ok_sigmas, &ok_guess, 1e-3, 10),
             Err(Error::BadResponse("empty response matrix"))
         ));
         assert!(matches!(
-            SandII::new(&[vec![1.0], vec![1.0, 2.0]], &ok_rates, &ok_guess, 1e-3, 10),
+            Gravel::new(
+                &[vec![1.0], vec![1.0, 2.0]],
+                &ok_rates,
+                &ok_sigmas,
+                &ok_guess,
+                1e-3,
+                10
+            ),
             Err(Error::BadShape {
                 what: "response row",
                 expected: 1,
                 got: 2
             })
         ));
-        let bad = vec![vec![1.0, f64::NAN, 1.0], vec![1.0; 3]];
         assert!(matches!(
-            SandII::new(&bad, &ok_rates, &ok_guess, 1e-3, 10),
-            Err(Error::BadResponse("non-finite entry"))
-        ));
-        let neg = vec![vec![1.0, -1.0, 1.0], vec![1.0; 3]];
-        assert!(matches!(
-            SandII::new(&neg, &ok_rates, &ok_guess, 1e-3, 10),
-            Err(Error::BadResponse("negative entry"))
-        ));
-        assert!(matches!(
-            SandII::new(&ok_response, &[1.0], &ok_guess, 1e-3, 10),
+            Gravel::new(&ok_response, &[1.0], &ok_sigmas, &ok_guess, 1e-3, 10),
             Err(Error::BadShape {
                 what: "rates",
                 expected: 2,
                 got: 1
             })
         ));
-        let nan_rates = vec![1.0, f64::INFINITY];
         assert!(matches!(
-            SandII::new(&ok_response, &nan_rates, &ok_guess, 1e-3, 10),
-            Err(Error::BadRates("non-finite entry"))
-        ));
-        let neg_rates = vec![1.0, -1.0];
-        assert!(matches!(
-            SandII::new(&ok_response, &neg_rates, &ok_guess, 1e-3, 10),
-            Err(Error::BadRates("negative entry"))
+            Gravel::new(&ok_response, &ok_rates, &[1.0], &ok_guess, 1e-3, 10),
+            Err(Error::BadShape {
+                what: "sigmas",
+                expected: 2,
+                got: 1
+            })
         ));
         assert!(matches!(
-            SandII::new(&ok_response, &ok_rates, &[1.0, 1.0], 1e-3, 10),
+            Gravel::new(
+                &ok_response,
+                &ok_rates,
+                &[1.0, f64::NAN],
+                &ok_guess,
+                1e-3,
+                10
+            ),
+            Err(Error::BadRates("non-finite sigma"))
+        ));
+        assert!(matches!(
+            Gravel::new(&ok_response, &ok_rates, &[1.0, 0.0], &ok_guess, 1e-3, 10),
+            Err(Error::BadRates("sigma must be > 0"))
+        ));
+        assert!(matches!(
+            Gravel::new(&ok_response, &ok_rates, &[1.0, 1e-300], &ok_guess, 1e-3, 10),
+            Err(Error::BadRates("sigma is out of weight range"))
+        ));
+        assert!(matches!(
+            Gravel::new(&ok_response, &ok_rates, &ok_sigmas, &[1.0, 1.0], 1e-3, 10),
             Err(Error::BadShape {
                 what: "guess",
                 expected: 3,
@@ -650,47 +815,16 @@ mod tests {
         ));
         let zero_guess = vec![1.0, 0.0, 1.0];
         assert!(matches!(
-            SandII::new(&ok_response, &ok_rates, &zero_guess, 1e-3, 10),
+            Gravel::new(&ok_response, &ok_rates, &ok_sigmas, &zero_guess, 1e-3, 10),
             Err(Error::BadGuess("entries must be strictly positive"))
         ));
         assert!(matches!(
-            SandII::new(&ok_response, &ok_rates, &ok_guess, 0.0, 10),
+            Gravel::new(&ok_response, &ok_rates, &ok_sigmas, &ok_guess, 0.0, 10),
             Err(Error::BadOption("tolerance must be finite and > 0"))
         ));
         assert!(matches!(
-            SandII::new(&ok_response, &ok_rates, &ok_guess, 1e-3, 0),
+            Gravel::new(&ok_response, &ok_rates, &ok_sigmas, &ok_guess, 1e-3, 0),
             Err(Error::BadOption("max_iterations must be >= 1"))
         ));
-    }
-
-    #[test]
-    fn error_display_strings() {
-        assert_eq!(
-            Error::BadResponse("negative entry").to_string(),
-            "unfold: invalid response matrix: negative entry"
-        );
-        assert_eq!(
-            Error::BadShape {
-                what: "rates",
-                expected: 2,
-                got: 1
-            }
-            .to_string(),
-            "unfold: shape mismatch: rates holds 1 entries, expected 2"
-        );
-        assert_eq!(
-            Error::RatesUnreachable { detector: 3 }.to_string(),
-            "unfold: measured rates are unreachable: detector 3 cannot be satisfied by any positive spectrum"
-        );
-        assert_eq!(
-            Error::NotConverged.to_string(),
-            "unfold: spectral adjustment did not converge within its iteration cap"
-        );
-    }
-
-    #[test]
-    fn error_implements_std_error_trait() {
-        let err: &dyn std::error::Error = &Error::NotConverged;
-        assert!(err.source().is_none());
     }
 }

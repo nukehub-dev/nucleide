@@ -4802,6 +4802,66 @@ fn fgr15_age_index(age: &str) -> PyResult<usize> {
         })
 }
 
+/// Parse IRDFF-II g725 member text into the foil-activation response pack.
+///
+/// Thin wrapper over `nucleide_nuclei::irdff::parse_g725`: parses the
+/// `MF=3` sections of the named v1 foil reactions from `IRDFF-II.g725`
+/// text (fetched and hash-pinned by `nucleide.data.fetch_irdff`) into
+/// caller-ready response rows over the SAND-II 725-group structure.
+/// `reactions` selects a subset of registry names (`au197_ng`,
+/// `in115_ng`, `u235_nf`, `u238_nf`, `fe56_np`, `ni58_np`, `al27_na`,
+/// `na23_n2n`); `None` parses the full v1 pack (a full-range row must be
+/// included to anchor the group structure). Returns
+/// `{"groups": [726 eV bounds], "reactions": [name], "response":
+/// [[sigma per group]]}` — the response rows feed `unfold_sandii`
+/// unchanged. Structural problems, missing/duplicate sections,
+/// off-structure energies, and row-shape violations are loud errors.
+/// Nothing is vendored: the text comes from the runtime-fetched,
+/// SHA-256-pinned official IAEA zip.
+#[pyfunction]
+#[pyo3(signature = (text, reactions=None))]
+fn parse_irdff_g725<'py>(
+    py: Python<'py>,
+    text: &str,
+    reactions: Option<Vec<String>>,
+) -> PyResult<pyo3::Bound<'py, pyo3::types::PyDict>> {
+    use nucleide_nuclei::irdff::{parse_g725, V1_REACTIONS};
+    let wanted: Vec<nucleide_nuclei::irdff::IrdffReaction> = match &reactions {
+        None => V1_REACTIONS.to_vec(),
+        Some(names) => {
+            let mut out = Vec::with_capacity(names.len());
+            for name in names {
+                match V1_REACTIONS.iter().find(|r| r.name == name) {
+                    Some(r) => out.push(*r),
+                    None => {
+                        let supported = V1_REACTIONS
+                            .iter()
+                            .map(|r| r.name)
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        return Err(PyValueError::new_err(format!(
+                            "unknown IRDFF-II reaction `{name}` (supported: {supported})"
+                        )));
+                    }
+                }
+            }
+            out
+        }
+    };
+    let pack = parse_g725(text, &wanted).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let out = pyo3::types::PyDict::new(py);
+    out.set_item("groups", pack.bounds().to_vec())?;
+    out.set_item(
+        "reactions",
+        pack.rows()
+            .iter()
+            .map(|r| r.reaction().name)
+            .collect::<Vec<_>>(),
+    )?;
+    out.set_item("response", pack.response())?;
+    Ok(out)
+}
+
 /// Total dose per gram of a composition dict ({nuclide name: grams}).
 ///
 /// Thin wrapper over `Material::total_dose_per_g` (Ame2020 masses,
@@ -6620,6 +6680,104 @@ fn unfold_sandii(
     Ok(out.into_any().unbind())
 }
 
+/// STAYSL-class damped least-squares spectral adjustment (Perey, ORNL/TM-6062,
+/// 1977).
+///
+/// Thin wrapper over `nucleide_unfold::staysl::unfold`: `response` holds one
+/// row per detector/reaction (all rows one value per energy group), `rates`
+/// the measured rate per detector, `sigmas` one strictly positive measurement
+/// sigma per detector (the weight is `1/σ²`), and `guess` one strictly
+/// positive value per energy group (the prior the damping pulls toward).
+/// `tolerance` is the largest per-group relative change between successive
+/// solves the run converges under (strictly below); `max_iterations` is the
+/// explicit cycle cap and `damping` the Tikhonov pull toward the guess —
+/// exhausting the cap raises a `ValueError` (non-convergence is a hard fail,
+/// never a silent partial spectrum). Groups the solve drives non-positive are
+/// pinned to zero and the system is re-solved on the reduced set. Returns a
+/// dict with `spectrum`, the folded `rates`, per-detector `rate_factors`
+/// (measured/folded), `iterations`, the echo of `tolerance`, and the final
+/// `max_rel_change`.
+#[pyfunction]
+#[pyo3(signature = (response, rates, sigmas, guess, tolerance=1e-3, max_iterations=200, damping=1e-3))]
+#[allow(clippy::too_many_arguments)]
+fn unfold_staysl(
+    py: Python<'_>,
+    response: Vec<Vec<f64>>,
+    rates: Vec<f64>,
+    sigmas: Vec<f64>,
+    guess: Vec<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    damping: f64,
+) -> PyResult<Py<PyAny>> {
+    let sol = nucleide_unfold::staysl::unfold(
+        &response,
+        &rates,
+        &sigmas,
+        &guess,
+        tolerance,
+        max_iterations,
+        damping,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    out.set_item("spectrum", &sol.spectrum).ok();
+    out.set_item("rates", &sol.rates).ok();
+    out.set_item("rate_factors", &sol.rate_factors).ok();
+    out.set_item("iterations", sol.iterations).ok();
+    out.set_item("tolerance", sol.tolerance).ok();
+    out.set_item("max_rel_change", sol.max_rel_change).ok();
+    Ok(out.into_any().unbind())
+}
+
+/// GRAVEL chi-square-weighted spectral adjustment (Matzke, PTB-N-19, 1994).
+///
+/// Thin wrapper over `nucleide_unfold::gravel::unfold`: `response` holds one
+/// row per detector/reaction (all rows one value per energy group), `rates`
+/// the measured rate per detector, `sigmas` one strictly positive measurement
+/// sigma per detector (the per-detector weight factor is `N_i²/σ_i²`, so a
+/// precisely measured rate pulls harder than a sloppy one), and `guess` one
+/// strictly positive value per energy group. `tolerance` is the largest
+/// per-group relative change between successive adjustments the run converges
+/// under (strictly below); `max_iterations` is the explicit adjustment cap —
+/// exhausting it raises a `ValueError` (non-convergence is a hard fail, never
+/// a silent partial spectrum). Zero measurements carry zero weight and are
+/// simply not fitted (unlike SAND-II they pin nothing to zero). Returns a
+/// dict with `spectrum`, the folded `rates`, per-detector `rate_factors`
+/// (measured/folded), `iterations`, the echo of `tolerance`, and the final
+/// `max_rel_change`.
+#[pyfunction]
+#[pyo3(signature = (response, rates, sigmas, guess, tolerance=1e-3, max_iterations=200))]
+fn unfold_gravel(
+    py: Python<'_>,
+    response: Vec<Vec<f64>>,
+    rates: Vec<f64>,
+    sigmas: Vec<f64>,
+    guess: Vec<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+) -> PyResult<Py<PyAny>> {
+    let sol = nucleide_unfold::gravel::unfold(
+        &response,
+        &rates,
+        &sigmas,
+        &guess,
+        tolerance,
+        max_iterations,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    out.set_item("spectrum", &sol.spectrum).ok();
+    out.set_item("rates", &sol.rates).ok();
+    out.set_item("rate_factors", &sol.rate_factors).ok();
+    out.set_item("iterations", sol.iterations).ok();
+    out.set_item("tolerance", sol.tolerance).ok();
+    out.set_item("max_rel_change", sol.max_rel_change).ok();
+    Ok(out.into_any().unbind())
+}
+
 /// Forward operator: fold a spectrum through a response matrix (one rate per
 /// detector row). This is the map the unfolding adjusts against — also the
 /// natural way to synthesize round-trip rates from a known spectrum.
@@ -6728,10 +6886,14 @@ fn parse_plasma_basic_spec(
 /// `ion_density_{centre,peaking_factor,pedestal,separatrix}` parameters
 /// (m⁻³ and dimensionless), and the
 /// `ion_temperature_{centre,peaking_factor,beta,pedestal,separatrix}`
-/// parameters (keV and dimensionless). Profiles are caller inputs. Fuel
-/// mixtures (`fuel` dict) and toroidal sectors (`start_angle`/
-/// `rotation_angle`) are the documented loud boundary — Eriksson-weighted
-/// reactant distributions are not implemented.
+/// parameters (keV and dimensionless). Profiles are caller inputs.
+///
+/// Fuel: the `reaction` key (`"dt"`/`"dd"`) selects the landed single-fuel
+/// kernels, or the `fuel` dict `{"D": f_D, "T": f_T}` (openmc-plasma-source
+/// spelling) selects the two-branch D/T mixture at a shared ion
+/// temperature — then `reaction` is optional and unused. Non-finite,
+/// negative, or non-summing fractions are loud errors. Toroidal sectors
+/// (`start_angle`/`rotation_angle`) are the documented loud boundary.
 fn parse_plasma_parametric_spec(
     spec: &BTreeMap<String, Py<PyAny>>,
     py: Python<'_>,
@@ -6743,15 +6905,41 @@ fn parse_plasma_parametric_spec(
             .extract::<f64>(py)
             .map_err(|_| PyValueError::new_err(format!("`{key}` must be a number")))
     };
-    for key in ["fuel", "start_angle", "rotation_angle"] {
+    for key in ["start_angle", "rotation_angle"] {
         if spec.contains_key(key) {
             return Err(PyValueError::new_err(format!(
-                "plasma-source: not yet supported: `{key}` (fuel mixtures are \
-                 Eriksson-weighted reactant distributions; sectors need a \
-                 toroidal-angle distribution — both outside the parametric model)"
+                "plasma-source: not yet supported: `{key}` (sectors need a \
+                 toroidal-angle distribution — outside the parametric model)"
             )));
         }
     }
+    // Fuel mixture dict, upstream spelling: fuel={"D": f_D, "T": f_T}. Both
+    // keys are required; FuelMixture::new carries the loud fraction errors.
+    let fuel_mixture = match spec.get("fuel") {
+        Some(value) => {
+            let fractions: BTreeMap<String, f64> = value.extract(py).map_err(|_| {
+                PyValueError::new_err(
+                    "`fuel` must be a dict of fractions like {\"D\": 0.7, \"T\": 0.3}",
+                )
+            })?;
+            for key in fractions.keys() {
+                if !matches!(key.as_str(), "D" | "T") {
+                    return Err(PyValueError::new_err(format!(
+                        "unsupported fuel fraction `{key}` (supported keys: D, T)"
+                    )));
+                }
+            }
+            let missing = |key: &str| {
+                PyValueError::new_err(format!(
+                    "`fuel` dict needs both `D` and `T` fractions (missing `{key}`)"
+                ))
+            };
+            let f_d = fractions.get("D").copied().ok_or_else(|| missing("D"))?;
+            let f_t = fractions.get("T").copied().ok_or_else(|| missing("T"))?;
+            Some(ps::FuelMixture::new(f_d, f_t).map_err(|e| PyValueError::new_err(e.to_string()))?)
+        }
+        None => None,
+    };
     let mode = ps::ProfileMode::parse(&get_str(
         spec,
         py,
@@ -6759,12 +6947,20 @@ fn parse_plasma_parametric_spec(
         "parametric spec missing `mode`",
     )?)
     .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let fuel = parse_plasma_reaction(&get_str(
-        spec,
-        py,
-        "reaction",
-        "parametric spec missing `reaction`",
-    )?)?;
+    // `reaction` stays required for single-fuel specs; a fuel dict fully
+    // determines the model, so it becomes an optional (unused) placeholder.
+    let fuel = match spec.get("reaction") {
+        Some(_) => parse_plasma_reaction(&get_str(
+            spec,
+            py,
+            "reaction",
+            "parametric spec missing `reaction`",
+        )?)?,
+        None if fuel_mixture.is_some() => ps::FusionReaction::Dt,
+        None => {
+            return Err(PyValueError::new_err("parametric spec missing `reaction`"));
+        }
+    };
     let mut config = ps::ParametricPlasmaConfig {
         geometry: ps::MillerGeometry {
             major_radius_cm: num("major_radius")?,
@@ -6789,6 +6985,7 @@ fn parse_plasma_parametric_spec(
         },
         pedestal_radius_cm: num("pedestal_radius")?,
         fuel,
+        fuel_mixture,
         weight: 1.0,
     };
     if let Some(weight) = spec.get("weight") {
@@ -6966,14 +7163,14 @@ fn plasma_source_emit_cards(
                 .map_err(|e| PyValueError::new_err(e.to_string()))?;
             let serpent = ps::emit_serpent_parametric(config, bins)
                 .map_err(|e| PyValueError::new_err(e.to_string()))?;
-            // Magnetic-axis spectrum summary (the profile peak).
-            let (mean, sigma) = config
-                .fuel
-                .moments_mev(config.temperature_kev(0.0))
+            // Magnetic-axis spectrum summary (the profile peak); for a fuel
+            // mixture this is the two-branch Gaussian-mixture summary.
+            let (nominal, mean, sigma) = config
+                .axis_spectrum_summary()
                 .map_err(|e| PyValueError::new_err(e.to_string()))?;
             out.set_item("sdef", emit(sdef)?)?;
             out.set_item("serpent", emit(serpent)?)?;
-            (config.fuel.nominal_energy_mev(), mean, sigma, sigma == 0.0)
+            (nominal, mean, sigma, sigma == 0.0)
         }
     };
     let spec_out = PyDict::new(py);
@@ -7227,6 +7424,59 @@ fn damage_fold_uq(
     out.set_item("seed", s.seed)?;
     out.set_item("passed", s.passed)?;
     Ok(out.into_any().unbind())
+}
+
+/// Vendored SPECTER Table VII displacement cross sections (barns) for one
+/// spectrum, keyed by element symbol.
+///
+/// Transcribed from Greenwood & Smither, ANL/FPP/TM-197 Table VII (US-gov
+/// PD): spectrum-averaged damage-energy cross sections converted with the
+/// vendored Table II `E_d` via the report's `0.8/2E_d` rule. `spectrum` is
+/// one of `"thermal"`, `"fission"`, `"14mev"`, `"hfir"`, `"ebr2"`,
+/// `"fftf"`, `"fusion"`. Opt-in fallback only — the fold kernels never
+/// consult this table implicitly.
+#[pyfunction]
+#[pyo3(signature = (spectrum,))]
+fn damage_specter_table(spectrum: &str) -> PyResult<BTreeMap<String, f64>> {
+    let spectrum = nucleide_damage::SpecterSpectrum::parse(spectrum)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(nucleide_damage::SpecterTable::for_spectrum(spectrum)
+        .iter()
+        .map(|(element, entry)| (element.clone(), entry.dpa_xs_barns()))
+        .collect())
+}
+
+/// Verbatim vendored SPECTER Table VII damage-energy cross sections
+/// (keV-b, as printed) for one spectrum, keyed by element symbol.
+///
+/// Same transcription and `spectrum` spellings as `damage_specter_table`,
+/// without the `0.8/2E_d` conversion.
+#[pyfunction]
+#[pyo3(signature = (spectrum,))]
+fn damage_specter_damage_energy(spectrum: &str) -> PyResult<BTreeMap<String, f64>> {
+    let spectrum = nucleide_damage::SpecterSpectrum::parse(spectrum)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(nucleide_damage::SpecterTable::for_spectrum(spectrum)
+        .iter()
+        .map(|(element, entry)| (element.clone(), entry.damage_energy_kev_b))
+        .collect())
+}
+
+/// Vendored SPECTER Table II `E_d` (eV) for an element symbol
+/// (e.g. `"Fe"`; `"Ag"` is natural silver, `"W"` natural tungsten).
+#[pyfunction]
+#[pyo3(signature = (element,))]
+fn damage_specter_ed(element: &str) -> PyResult<f64> {
+    nucleide_damage::specter_ed_ev(element).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Canonical spectrum names of the vendored SPECTER Table VII fallback.
+#[pyfunction]
+fn damage_specter_spectra() -> Vec<String> {
+    nucleide_damage::SpecterSpectrum::ALL
+        .iter()
+        .map(|s| s.name().to_string())
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -7510,13 +7760,14 @@ fn tritium_recombination_rate(kr0: f64, e_r: f64, temp: f64) -> PyResult<f64> {
 
 /// Parse a layer-spec dict into the core [`nucleide_tritium::LayerSpec`].
 ///
-/// Keys: `thickness` [m], `cells`, `D` [m²/s], `solubility` `K_S`
-/// [mol/m³/Pa¹ᐟ²] (required); `E_D` [J/mol] (optional, default 0 = constant
-/// diffusivity); `traps` (optional list of trap-spec dicts, default none),
-/// `temperature` (optional, default [500]), `source` (optional). Internal
-/// interfaces between consecutive layers are Sieverts conditions in v1
-/// (`c/K_S` continuous, flux continuous); Henry/recombination interface
-/// laws are loud core errors, not expressible here.
+/// Keys: `thickness` [m], `cells`, `D` [m²/s], `solubility` (required) —
+/// the layer's interface constant `K` (`K_S` [mol/m³/Pa¹ᐟ²] under a Sieverts
+/// law, `K_H` [mol/m³/Pa] under a Henry law, per the adjacent interface's
+/// law); `E_D` [J/mol] (optional, default 0 = constant diffusivity); `traps`
+/// (optional list of trap-spec dicts, default none), `temperature`
+/// (optional, default [500]), `source` (optional). The interface law itself
+/// is selected by the `interfaces` argument of the layered solves (see
+/// [`parse_tritium_interfaces`]).
 fn parse_tritium_layer(
     spec: &BTreeMap<String, Py<PyAny>>,
     py: Python<'_>,
@@ -7574,36 +7825,79 @@ fn parse_tritium_layer(
     .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+/// Parse the optional `interfaces` argument of the layered solves into one
+/// core [`nucleide_tritium::Interface`] per gap between consecutive layers.
+///
+/// `None` (the default) selects Sieverts at every gap, so existing
+/// single-slab and Sieverts-stack calls keep their behavior. `Some(list)`
+/// must name exactly one law per gap: `"sieverts"` or `"henry"` (linear
+/// laws — `c/K` continuous with continuous flux, folding into the θ-step
+/// matrix identically); `"recombination"` maps to the core variant and is
+/// rejected loudly at stack construction. Unknown spellings are a
+/// `ValueError`.
+fn parse_tritium_interfaces(
+    specs: Option<Vec<String>>,
+    n_layers: usize,
+) -> PyResult<Vec<nucleide_tritium::Interface>> {
+    use nucleide_tritium::Interface as I;
+    match specs {
+        None => Ok(vec![I::Sieverts; n_layers.saturating_sub(1)]),
+        Some(list) => {
+            if list.len() + 1 != n_layers {
+                return Err(PyValueError::new_err(format!(
+                    "need exactly one interface per gap ({n_layers} layers -> {} interfaces, got {})",
+                    n_layers.saturating_sub(1),
+                    list.len()
+                )));
+            }
+            list.iter()
+                .map(|s| match s.to_ascii_lowercase().as_str() {
+                    "sieverts" => Ok(I::Sieverts),
+                    "henry" => Ok(I::Henry),
+                    "recombination" => Ok(I::Recombination),
+                    other => Err(PyValueError::new_err(format!(
+                        "unknown tritium interface kind `{other}` (supported: sieverts, henry; recombination interfaces are not supported)"
+                    ))),
+                })
+                .collect()
+        }
+    }
+}
+
 fn tritium_layer_stack(
     py: Python<'_>,
     layers: Vec<BTreeMap<String, Py<PyAny>>>,
+    interfaces: Option<Vec<String>>,
 ) -> PyResult<nucleide_tritium::LayerStack> {
     let parsed: Vec<nucleide_tritium::LayerSpec> = layers
         .iter()
         .map(|s| parse_tritium_layer(s, py))
         .collect::<PyResult<_>>()?;
-    let interfaces = vec![nucleide_tritium::Interface::Sieverts; parsed.len().saturating_sub(1)];
+    let interfaces = parse_tritium_interfaces(interfaces, parsed.len())?;
     nucleide_tritium::LayerStack::new(parsed, interfaces)
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-/// Trap-free-style steady state of a multi-layer series stack (G7).
+/// Trap-free-style steady state of a multi-layer series stack (G7/G9).
 ///
 /// Thin wrapper over `nucleide_tritium::steady_layers`: `layers` holds one
-/// spec dict per layer (see `parse_tritium_layer`; internal interfaces are
-/// Sieverts conditions in v1) and `left`/`right` are boundary-spec dicts
-/// (see `parse_tritium_boundary`). A one-layer stack reproduces
-/// `tritium_steady` exactly. Returns a dict with `centres`, `mobile`,
-/// `trapped` (`[cell][trap]`), `flux_left`, `flux_right`,
-/// `inventory_mobile`, and `inventory_trapped`.
+/// spec dict per layer (see `parse_tritium_layer`) and `left`/`right` are
+/// boundary-spec dicts (see `parse_tritium_boundary`). `interfaces`
+/// optionally names one internal-interface law per gap — `"sieverts"`
+/// (default) or `"henry"` (G9); `"recombination"` is rejected loudly by the
+/// core. A one-layer stack reproduces `tritium_steady` exactly. Returns a
+/// dict with `centres`, `mobile`, `trapped` (`[cell][trap]`), `flux_left`,
+/// `flux_right`, `inventory_mobile`, and `inventory_trapped`.
 #[pyfunction]
+#[pyo3(signature = (layers, left, right, interfaces=None))]
 fn tritium_layers_steady(
     py: Python<'_>,
     layers: Vec<BTreeMap<String, Py<PyAny>>>,
     left: BTreeMap<String, Py<PyAny>>,
     right: BTreeMap<String, Py<PyAny>>,
+    interfaces: Option<Vec<String>>,
 ) -> PyResult<Py<PyAny>> {
-    let stack = tritium_layer_stack(py, layers)?;
+    let stack = tritium_layer_stack(py, layers, interfaces)?;
     let left = parse_tritium_boundary(&left, py)?;
     let right = parse_tritium_boundary(&right, py)?;
     let s = nucleide_tritium::steady_layers(&stack, &left, &right)
@@ -7623,15 +7917,16 @@ fn tritium_layers_steady(
 /// Solve the multi-layer (T1–T2) transient over the output grid `t` (G8).
 ///
 /// Thin wrapper over `nucleide_tritium::solve_layers` with the same layer
-/// stack and boundary arguments as `tritium_layers_steady` plus the output
-/// times `t` [s], the optional initial profiles (`mobile0` per cell,
-/// `trapped0` as `[cell][trap]` matching each layer's trap count; both
-/// default to zero), and the solver options (`method` is
-/// `"crank_nicolson"` (default) or `"backward_euler"`). Returns a dict with
-/// `times`, `mobile` (`[time][cell]`), `trapped` (`[time][cell][trap]`),
-/// `flux_left`, and `flux_right`.
+/// stack and boundary arguments as `tritium_layers_steady` (including the
+/// optional `interfaces` law per gap) plus the output times `t` [s], the
+/// optional initial profiles (`mobile0` per cell, `trapped0` as
+/// `[cell][trap]` matching each layer's trap count; both default to zero),
+/// and the solver options (`method` is `"crank_nicolson"` (default) or
+/// `"backward_euler"`). Returns a dict with `times`, `mobile`
+/// (`[time][cell]`), `trapped` (`[time][cell][trap]`), `flux_left`, and
+/// `flux_right`.
 #[pyfunction]
-#[pyo3(signature = (layers, left, right, t, mobile0=None, trapped0=None, method="crank_nicolson", rtol=1e-9, atol=1e-12, dt_min=1e-14, dt_max=None, max_steps=1000000))]
+#[pyo3(signature = (layers, left, right, t, mobile0=None, trapped0=None, method="crank_nicolson", rtol=1e-9, atol=1e-12, dt_min=1e-14, dt_max=None, max_steps=1000000, interfaces=None))]
 #[allow(clippy::too_many_arguments)]
 fn tritium_layers_transient(
     py: Python<'_>,
@@ -7647,9 +7942,10 @@ fn tritium_layers_transient(
     dt_min: f64,
     dt_max: Option<f64>,
     max_steps: usize,
+    interfaces: Option<Vec<String>>,
 ) -> PyResult<Py<PyAny>> {
     use nucleide_tritium::{SolverOptions, Theta};
-    let stack = tritium_layer_stack(py, layers)?;
+    let stack = tritium_layer_stack(py, layers, interfaces)?;
     let left = parse_tritium_boundary(&left, py)?;
     let right = parse_tritium_boundary(&right, py)?;
     let grid =
@@ -8575,6 +8871,52 @@ fn alara_clearance_eu_table() -> BTreeMap<String, f64> {
         .collect()
 }
 
+/// Vendored Spanish CSN conditional NORM clearance levels for landfill
+/// disposal (draft technical opinion CSN/PDT/AICD/TGE/2503/02, TGE/VAR/2025/1,
+/// hosted on csn.es, accessed 2026-09-16; RD 1029/2022 and RD 1217/2024
+/// (RINR), both transposing Directive 2013/59/Euratom).
+///
+/// `landfill` selects the source table: `"inert"` (Tabla 1), `"non_hazardous"`
+/// (Tabla 2), or `"hazardous"` (Tabla 3). `material` selects the source
+/// column: `"rocks"` (ROCAS), `"ashes"` (CENIZAS), `"sands"` (ARENAS),
+/// `"slags"` (ESCORIAS), or `"oil_gas"` (GAS/PETROLEO). Returns a dict mapping
+/// nuclide names (Serpent spelling) to activity-concentration clearance
+/// levels in Bq/g, with the source Tabla 4 chain keys expanded to per-member
+/// entries at the parent value. The caller selects the table explicitly — no
+/// cross-table logic; screening arithmetic only, never a compliance decision.
+#[pyfunction]
+fn alara_clearance_es_table(landfill: &str, material: &str) -> PyResult<BTreeMap<String, f64>> {
+    use nucleide_alara_io::EsNormMaterial;
+    let material = match material {
+        "rocks" => EsNormMaterial::Rocks,
+        "ashes" => EsNormMaterial::Ashes,
+        "sands" => EsNormMaterial::Sands,
+        "slags" => EsNormMaterial::Slags,
+        "oil_gas" => EsNormMaterial::OilGas,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "bad material `{other}` (expected one of: rocks, ashes, sands, slags, oil_gas)"
+            )));
+        }
+    };
+    let table = match landfill {
+        "inert" => nucleide_alara_io::ClearanceTable::es_conditional_inert(material),
+        "non_hazardous" => {
+            nucleide_alara_io::ClearanceTable::es_conditional_non_hazardous(material)
+        }
+        "hazardous" => nucleide_alara_io::ClearanceTable::es_conditional_hazardous(material),
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "bad landfill `{other}` (expected one of: inert, non_hazardous, hazardous)"
+            )));
+        }
+    };
+    Ok(table
+        .iter()
+        .map(|(nuc, limit)| (nucleide_nuclei::dialects::serpent(nuc), limit))
+        .collect())
+}
+
 /// Resolve a caller-supplied inventory/limits dict key to a `NuclideId`.
 fn clearance_key(key: &str) -> PyResult<NuclideId> {
     nucleide_nuclei::dialects::normalize_nuclide_name(key)
@@ -9031,6 +9373,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dose_per_g, m)?)?;
     m.add_function(wrap_pyfunction!(parse_fgr15_table, m)?)?;
     m.add_function(wrap_pyfunction!(fgr15_age_index, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_irdff_g725, m)?)?;
     m.add_function(wrap_pyfunction!(mix_by_mass, m)?)?;
     m.add_function(wrap_pyfunction!(mix_by_volume, m)?)?;
     m.add_function(wrap_pyfunction!(specific_activity, m)?)?;
@@ -9069,6 +9412,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(alara_photon_total_strength, m)?)?;
     m.add_function(wrap_pyfunction!(alara_schedule_total_time, m)?)?;
     m.add_function(wrap_pyfunction!(alara_clearance_eu_table, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_clearance_es_table, m)?)?;
     m.add_function(wrap_pyfunction!(alara_clearance_index, m)?)?;
     m.add_function(wrap_pyfunction!(alara_sum_of_fractions, m)?)?;
     m.add_function(wrap_pyfunction!(isotxs_parse, m)?)?;
@@ -9106,6 +9450,8 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(kinetics_prompt_jump, m)?)?;
     m.add_function(wrap_pyfunction!(kinetics_from_ifp, m)?)?;
     m.add_function(wrap_pyfunction!(unfold_sandii, m)?)?;
+    m.add_function(wrap_pyfunction!(unfold_staysl, m)?)?;
+    m.add_function(wrap_pyfunction!(unfold_gravel, m)?)?;
     m.add_function(wrap_pyfunction!(unfold_forward_fold, m)?)?;
     m.add_function(wrap_pyfunction!(plasma_source_particles, m)?)?;
     m.add_function(wrap_pyfunction!(plasma_source_emit_cards, m)?)?;
@@ -9121,6 +9467,10 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(damage_arc_efficiency, m)?)?;
     m.add_function(wrap_pyfunction!(damage_arc_displacements, m)?)?;
     m.add_function(wrap_pyfunction!(damage_fold_uq, m)?)?;
+    m.add_function(wrap_pyfunction!(damage_specter_table, m)?)?;
+    m.add_function(wrap_pyfunction!(damage_specter_damage_energy, m)?)?;
+    m.add_function(wrap_pyfunction!(damage_specter_ed, m)?)?;
+    m.add_function(wrap_pyfunction!(damage_specter_spectra, m)?)?;
     m.add_function(wrap_pyfunction!(tritium_steady, m)?)?;
     m.add_function(wrap_pyfunction!(tritium_transient, m)?)?;
     m.add_function(wrap_pyfunction!(tritium_time_lag, m)?)?;

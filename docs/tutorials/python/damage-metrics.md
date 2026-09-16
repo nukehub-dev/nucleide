@@ -239,3 +239,7 @@ as above, never a silent clip.
   reuses.
 - The repo validation harness folds published SPECTER report values for
   comparison (`validation/damage_vs_specter.py`).
+- No damage-data pipeline of your own? `nucleide.damage.specter_table`
+  serves the vendored SPECTER Table VII fallback (one spectrum-averaged
+  cross section per element for seven named spectra) as an explicit
+  one-group response.

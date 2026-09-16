@@ -265,7 +265,21 @@ $$
 
 $f_\text{fuel} = 1/4$ for equimolar D-T ($n_D = n_T = n_i/2$) and $1/2$ for pure
 D-D — the ½ avoids double-counting identical reactant pairs and follows the
-Fausser/`openmc-plasma-source` strength convention. Birth positions weight
+Fausser/`openmc-plasma-source` strength convention. A D/T fuel mixture with
+fractions $f_D + f_T = 1$ instead weights both branches of the rate:
+
+$$
+S(r) = n_i(r)^2 \left[ f_D f_T\, \langle\sigma v\rangle_{DT}\bigl(T_i(r)\bigr)
+      + \frac{f_D^2}{2}\, \langle\sigma v\rangle_{DD}\bigl(T_i(r)\bigr) \right],
+\tag{S5-M}
+$$
+
+the standard $n_a n_b \langle\sigma v\rangle$ rate with the $1/(1+\delta_{ab})$
+same-species guard (the DRESS rate construction of Eriksson et al., and the
+form upstream `openmc-plasma-source` implements). At $f_D = f_T = 1/2$ the first
+term reproduces the equimolar factor $1/4$ exactly, and at $f_D = 1$ the second
+term reproduces the pure D-D factor $1/2$; birth energies draw from the local
+mixture of the two Ballabio lines, branch by branch. Birth positions weight
 $S \cdot R \cdot |J|$, the volume element of (S3-V); the total relative
 strength is its toroidal integral,
 $S_\text{tot} = 2\pi \int_0^a\!\int_0^{2\pi} S\,R\,|J|\,d\theta\,dr$ — arbitrary
@@ -377,11 +391,14 @@ byte-identically through `nucleide.mcnp.parse_sdef` (the typed `SDEF` reader).
 
 - **Full torus only.** Toroidal sectors (partial-azimuth limits) are not yet
   supported and raise a clear error at every entry point — never a silent guess.
-- **Maxwellian fuel, two choices.** Reactants are Maxwellian at a common $T_i$;
-  the fuel is equimolar D-T (strength factor $1/4$) or pure D-D ($1/2$).
-  Arbitrary fuel mixtures — the Eriksson et al. reactant-distribution
-  weighting<Citation id="eriksson-2016" /> — are not yet supported; adding them
-  later requires a documented normalization convention first.
+- **Maxwellian fuel, three choices.** Reactants are Maxwellian at a common $T_i$;
+  the fuel is equimolar D-T (strength factor $1/4$), pure D-D ($1/2$), or a D/T
+  mixture `{"D": f_D, "T": f_T}` weighted by the two-branch rate (S5-M) — the
+  equimolar and pure limits recover the single-fuel kernels exactly. Fuel
+  fractions that are negative, non-finite, or do not sum to 1 raise a clear
+  error. The full Eriksson et al. reactant-distribution
+  weighting<Citation id="eriksson-2016" /> — per-species ion temperatures or
+  non-Maxwellian reactants — is not yet supported.
 - **Neutron branch only.** The D(d,p)T proton branch is out of scope for a
   neutron source crate.
 - **Profiles are caller inputs.** Nothing computes or fits profiles and no
@@ -436,12 +453,13 @@ byte-identically through `nucleide.mcnp.parse_sdef` (the typed `SDEF` reader).
 ## Related work beyond Nucleide
 
 Adjacent capabilities Nucleide does not implement: the Eriksson et al.
-generalization to arbitrary (non-Maxwellian or non-equimolar) reactant
-distributions, which covers beam-target and mixed-fuel spectra (the documented
-"not yet supported" boundary above)<Citation id="eriksson-2016" />; adaptive
-Monte Carlo source iteration in the spirit of KDSource (GPL-licensed, not
-integrated); OpenMC's arbitrary mesh- and CAD-based spatial sources — OpenMC's
-fusion-specific sources themselves ship in the separate `openmc-plasma-source`
-package, which the validation harness cross-checks against at runtime; and
+generalization beyond Maxwellian D/T mixtures at a shared ion temperature —
+non-Maxwellian or per-species-temperature reactant distributions, which covers
+beam-target and mixed-temperature spectra (the documented "not yet supported"
+boundary above)<Citation id="eriksson-2016" />; adaptive Monte Carlo source
+iteration in the spirit of KDSource (GPL-licensed, not integrated); OpenMC's
+arbitrary mesh- and CAD-based spatial sources — OpenMC's fusion-specific sources
+themselves ship in the separate `openmc-plasma-source` package, which the
+validation harness cross-checks against at runtime; and
 synthetic diagnostic responses beyond the source description itself, the
 territory of NeSST.

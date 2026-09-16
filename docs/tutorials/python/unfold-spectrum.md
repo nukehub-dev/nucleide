@@ -4,16 +4,24 @@ sidebar:
   order: 20
 ---
 
-Nucleide unfolds neutron spectra from activation-detector measurements with the
-SAND-II iterative adjustment (McElroy et al., AFWL-TR-67-41, 1967): a
+Nucleide unfolds neutron spectra from activation-detector measurements with
+three adjustment methods sharing one convergence contract: the SAND-II
+iterative adjustment (McElroy et al., AFWL-TR-67-41, 1967), a damped
+least-squares adjustment, and the GRAVEL chi-square-weighted iteration. A
 caller-supplied guess spectrum is adjusted until folding it through the
 detector response matrix reproduces the measured rates. This tutorial covers
-the Python API; the implementation lives in `crates/unfold`. For the
-fold/update equations (S1–S3) and the pinned correctness checks (U1–U8), see
+the SAND-II Python API; `staysl` and `gravel` take the same response/rates/
+guess inputs (plus caller measurement sigmas) and are documented in the
+[Python API reference](../../reference/python-api.mdx#nucleideunfold). The
+implementation lives in `crates/unfold`. For the
+fold/update equations (S1–S3) and the pinned correctness checks (U1–U18), see
 the [Neutron spectrum unfolding theory](../../theory/unfolding.mdx) page.
 
 Every input is caller data — the response matrix, the measured rates, the
-guess, and the energy-group bounds. No detector-response library is vendored.
+guess, and the energy-group bounds. Response rows can be hand-built as below
+or produced at runtime from the IRDFF-II response pack
+(`nucleide.data.fetch_irdff` + `parse_irdff_g725`); no detector-response
+library is vendored.
 
 ## The forward problem
 
@@ -181,7 +189,7 @@ except ValueError as exc:
 ```
 
 ```text
-unfold: SAND-II adjustment did not converge within its iteration cap
+unfold: spectral adjustment did not converge within its iteration cap
 ```
 
 Likewise, a set of rates no positive spectrum can produce (a detector with a

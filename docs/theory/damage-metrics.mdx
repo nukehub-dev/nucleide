@@ -435,12 +435,16 @@ the external correctness check for the folds in the repo validation harness: a
 handful of transcribed spectrum-averaged dpa and gas-production cross sections are
 folded one-group at report print precision (five significant digits, 10⁻⁴ relative
 tolerance) and matched against the report's printed dpa, GAS(APPM), and Fe He/dpa
-values. SPECTER is a correctness-check source only — no SPECTER table is implemented
-in or vendored by Nucleide, and when the report text is unavailable the check is
-recorded as skipped, never a silent pass. ASTM E693/E521 are the paywalled
-displacement-dose standards of record, referenced by designation only.
+values. SPECTER is a correctness-check source and the source of one opt-in
+fallback table — the Table VII spectrum-averaged damage-energy cross
+sections for 24 elements (plus the Table II threshold energies), exposed
+through `nucleide.damage` for callers with no damage-data pipeline of their
+own and never consulted implicitly — and when the report text is
+unavailable the check is recorded as skipped, never a silent pass. ASTM
+E693/E521 are the paywalled displacement-dose standards of record,
+referenced by designation only.
 
 Adjacent capabilities Nucleide does not implement: PKA-spectrum solving (the
-GPL-licensed fispact-org PKA evaluator was never read), transport solving, and
-displacement-table vendoring — building per-group responses from an evaluated
-library with an NJOY/SPECTER-class pipeline remains the caller's job.
+GPL-licensed fispact-org PKA evaluator was never read), transport solving,
+and per-group displacement tables built from an evaluated library — that
+NJOY/SPECTER-class pipeline remains the caller's job.

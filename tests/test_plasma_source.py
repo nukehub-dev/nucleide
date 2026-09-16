@@ -186,12 +186,64 @@ def test_validation_errors_are_loud() -> None:
             seed=0,
         )
     # Ring/point specs ignore parametric-only keys; a parametric spec keeps
-    # the loud boundary for mixtures and sectors.
+    # the loud boundary for toroidal sectors and for bad fuel fractions.
     ps.particles(dict(RING_SPEC, elongation=1.8), 4, seed=0)
     with pytest.raises(ValueError, match="not yet supported"):
-        ps.particles(dict(PARAMETRIC_SPEC, fuel={"D": 0.5, "T": 0.5}), 4, seed=0)
-    with pytest.raises(ValueError, match="not yet supported"):
         ps.particles(dict(PARAMETRIC_SPEC, rotation_angle=1.57), 4, seed=0)
+    with pytest.raises(ValueError, match="not yet supported"):
+        ps.particles(dict(PARAMETRIC_SPEC, start_angle=0.78), 4, seed=0)
+
+
+def test_parametric_fuel_mixture_fractions_are_loud() -> None:
+    bad_specs = [
+        dict(PARAMETRIC_SPEC, fuel={"D": 0.7}),  # missing T
+        dict(PARAMETRIC_SPEC, fuel={"D": 0.7, "T": 0.4}),  # non-summing
+        dict(PARAMETRIC_SPEC, fuel={"D": -0.1, "T": 1.1}),  # negative
+        dict(PARAMETRIC_SPEC, fuel={"D": 0.7, "T": float("nan")}),  # non-finite
+        dict(PARAMETRIC_SPEC, fuel={"H": 1.0, "T": 0.0}),  # unknown key
+        dict(PARAMETRIC_SPEC, fuel={"D": 0.7, "T": 0.3, "He3": 0.1}),  # extra key
+        dict(PARAMETRIC_SPEC, fuel=0.7),  # not a dict
+    ]
+    for spec in bad_specs:
+        with pytest.raises(ValueError):
+            ps.particles(spec, 4, seed=0)
+
+
+def test_parametric_fuel_mixture_sampling_fires_both_branches() -> None:
+    # 70/30 D/T blend: the D-D line (2.45 MeV) carries ~p_dd ≈ 0.7% of the
+    # births at these temperatures, and the mean sits just below the D-T
+    # line — the two-branch rate rule, not either single-fuel kernel.
+    spec = dict(PARAMETRIC_SPEC, fuel={"D": 0.7, "T": 0.3})
+    n = 200_000
+    out = ps.particles(spec, n, seed=11)
+    frac_dd = float((out["energy"] < 10.0).mean())
+    assert 0.002 < frac_dd < 0.015
+    mean_e = float(out["energy"].mean())
+    assert 13.9 < mean_e < 14.1
+    assert float(out["energy"].std()) > 0.4
+    # Deterministic per seed, and the dict spelling needs no `reaction` key.
+    again = ps.particles(spec, 128, seed=11)
+    assert bool((again["energy"] == out["energy"][:128]).all())
+
+
+def test_parametric_fuel_mixture_emits_cards_with_mixture_summary() -> None:
+    # The equimolar dict exercises the recovery anchor end to end (the
+    # bit-for-bit gates live in the crate); here: cards stay well-formed and
+    # the spectrum summary carries between-branch variance.
+    spec = dict(PARAMETRIC_SPEC, fuel={"D": 0.5, "T": 0.5})
+    out = ps.emit_source_cards(spec, bins=15)
+    card = out["sdef"]["card"]
+    parsed = mcnp.parse_sdef(card)
+    assert parsed["card"] == card
+    assert parsed["rad"] == "D1"
+    assert parsed["ext"] == "D2"
+    assert parsed["erg"] == "D3"
+    assert out["sdef"]["drift"][0]["reparsed"] is True
+    assert out["spectrum"]["mean_mev"] == pytest.approx(14.0, abs=0.15)
+    assert out["spectrum"]["sigma_mev"] > 0.4
+    assert out["spectrum"]["mono"] is False
+    lines = out["serpent"]["card"].splitlines()
+    assert lines[3] == "src 1 erg d3"
     with pytest.raises(ValueError, match="minor radius"):
         ps.particles(dict(PARAMETRIC_SPEC, minor_radius=-1.0), 4, seed=0)
     with pytest.raises(ValueError, match="triangularity"):

@@ -1,0 +1,30 @@
+# Spanish CSN natural decay-chain definitions (Tabla 4) for the conditional
+# NORM landfill clearance levels (Tables 1-3).
+# Source: Consejo de Seguridad Nuclear (CSN), "Propuesta de dictamen tecnico
+#         para el informe favorable de niveles de desclasificacion para la
+#         gestion en vertedero de material radiactivo de origen natural
+#         (NORM)", CSN/PDT/AICD/TGE/2503/02, TGE/VAR/2025/1 (hosted on
+#         csn.es; draft technical opinion under RD 1029/2022 and RD 1217/2024
+#         (RINR), both transposing Directive 2013/59/Euratom). Official
+#         regulatory document transcribed with attribution; accessed
+#         2026-09-16. Plain published facts (nuclide names).
+# Columns: `chain key<TAB>member1,member2,...` (members in source order).
+# Source branching annotations (Pa-234 (0.3%), U-235 (4.6%), Th-231 (4.6%),
+# Th-227 (98.6%), Fr-223 (1.4%), Po-211 (0.3%), Po-212 (64.1%), Tl-208
+# (35.9%)) are secular-equilibrium composition notes, not part of the names;
+# every listed isotope is a member. Rows: 15.
+U-238sec	U-238,Th-234,Pa-234m,Pa-234,U-234,Th-230,Ra-226,Rn-222,Po-218,Pb-214,Bi-214,Po-214,Pb-210,Bi-210,Po-210
+U-nat	U-238,Th-234,Pa-234m,Pa-234,U-234,U-235,Th-231
+Th-230	Th-230
+Ra-226+	Ra-226,Rn-222,Po-218,Pb-214,Bi-214,Po-214
+Pb-210+	Pb-210,Bi-210
+Po-210	Po-210
+U-235sec	U-235,Th-231,Pa-231,Ac-227,Th-227,Fr-223,Ra-223,Rn-219,Po-215,Pb-211,Bi-211,Tl-207,Po-211
+U-235+	U-235,Th-231
+Pa-231	Pa-231
+Ac-227+	Ac-227,Th-227,Fr-223,Ra-223,Rn-219,Po-215,Pb-211,Bi-211,Tl-207,Po-211
+Th-232sec	Th-232,Ra-228,Ac-228,Th-228,Ra-224,Rn-220,Po-216,Pb-212,Bi-212,Po-212,Tl-208
+Th-232	Th-232
+Ra-228+	Ra-228,Ac-228
+Th-228+	Th-228,Ra-224,Rn-220,Po-216,Pb-212,Bi-212,Po-212,Tl-208
+K-40	K-40

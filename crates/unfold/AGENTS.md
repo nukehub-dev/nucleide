@@ -9,22 +9,26 @@ reproduces them. Inverse-problem iteration, not a transport solve.
 
 ## Ownership
 
-Owns `crates/unfold/src/` (`sandii.rs` SAND-II iterator + driver +
-`lib.rs` forward operator + `error.rs`), the Python surface
+Owns `crates/unfold/src/` (`sandii.rs` SAND-II iterator, `staysl.rs`
+STAYSL-class iterator, `gravel.rs` GRAVEL iterator, `lib.rs` forward
+operator + `error.rs`), the Python surface
 (`nucleide.unfold`, `unfold_*` in `_internal`), `tests/test_unfold.py`,
 and the `validation/unfold_vs_analytic.py` oracle.
 
 ## Local Contracts
 
-- Equation set (S1–S3) is pinned: forward fold, detector rate-share
-  weights, multiplicative weighted-geometric-mean adjustment. Derivations
-  live in the crate-level rustdoc (`src/sandii.rs` module docs); code
-  comments cite equation labels, never external paths.
-- One method per cycle: this crate ships SAND-II only (McElroy et al.,
-  AFWL-TR-67-41, 1967 — US government work, clean-room from the report).
-  STAYSL-class → GRAVEL → MAXED land in later cycles, each in its own
-  module with the same iterator + diagnostics shape; do not add a second
-  method to `sandii.rs`.
+- Equation sets are pinned: SAND-II (S1–S3: forward fold, detector
+  rate-share weights, multiplicative weighted-geometric-mean adjustment),
+  STAYSL-class (T1–T4: fold, anchored-damped objective, increment form,
+  clip + active-set pin), GRAVEL (G1–G3: fold, chi-square weights,
+  adjustment). Derivations live in the crate-level rustdoc (one module doc
+  per method); code comments cite equation labels, never external paths.
+- One method per cycle: this crate ships SAND-II (McElroy et al.,
+  AFWL-TR-67-41, 1967 — US government work, clean-room from the report),
+  STAYSL-class (Perey, ORNL/TM-6062, 1977), and GRAVEL (Matzke, PTB-N-19,
+  1994), each in its own module with the same iterator + diagnostics
+  shape; do not add a second method to `sandii.rs`. MAXED lands in a later
+  cycle the same way.
 - Convergence contract: per-group relative change `|Δφ|/φ` strictly below
   an explicit tolerance, with an explicit iteration cap. Exhausting the
   cap is `Error::NotConverged` — a hard fail, never a silent partial
@@ -32,13 +36,17 @@ and the `validation/unfold_vs_analytic.py` oracle.
 - Degenerate-input policy (all named): zero response row against a nonzero
   rate, or a rate whose support was pinned to zero mid-iteration, is
   `Error::RatesUnreachable`; detectors folding to zero contribute no
-  weight; unconstrained groups keep the guess exactly (factor 1); zero
-  measured rates pin their groups to zero; only the guess must be
-  strictly positive (the update is multiplicative).
+  weight; unconstrained groups keep the guess exactly (factor 1). Pinned
+  divergences: SAND-II zero measurements pin their groups to zero and only
+  the guess must be strictly positive (the update is multiplicative);
+  GRAVEL zero measurements carry zero weight and are not fitted; STAYSL-class
+  clips non-positive groups to zero and pins them (active set).
 - Caller constants only: response matrix, measured rates, guess spectrum,
   and energy-group bounds are inputs. IRDFF and other IAEA-copyright
-  libraries are never vendored; a runtime-download pack stays a later
-  decision under the FGR-15 precedent. The IRDFF-II analytical
+  libraries are never vendored; the IRDFF-II v1 pack ships as a runtime
+  hash-pinned download (`nucleide.data.fetch_irdff` plus
+  `parse_irdff_g725`, owned by `nucleide-nuclei`), parsed into caller-ready
+  response rows. The IRDFF-II analytical
   benchmark-field shapes (Trkov et al., Nucl. Data Sheets 163 (2020) 1)
   are published facts and may be re-derived as test inputs with citation;
   the tabulated IAEA group spectra are never used.
@@ -49,8 +57,7 @@ and the `validation/unfold_vs_analytic.py` oracle.
   spectra with recorded provenance; never evaluated-library data.
 - Out of scope (do not expand here): uncertainty propagation beyond the
   landed UQ-lite conventions, outlier-foil rejection (the original code's
-  σ-discard feature), cover-material corrections, a response-library
-  download pack.
+  σ-discard feature), cover-material corrections, MAXED maximum entropy.
 
 ## Work Guidance
 
@@ -58,8 +65,8 @@ and the `validation/unfold_vs_analytic.py` oracle.
   (bindings thin, no logic).
 - Keep the layering: this crate depends on `nucleide-linalg` only among
   workspace crates; bindings depend on it, never the reverse.
-- No external unfolding oracle exists (PyNE/OpenMC ship no SAND-II
-  counterpart), so the validation oracle is analytic-only: synthetic
+- No external unfolding oracle exists (PyNE/OpenMC ship no SAND-II/STAYSL/
+  GRAVEL counterpart), so the validation oracle is analytic-only: synthetic
   round-trips plus IRDFF-II analytical shapes, always run, nothing can
   SKIP.
 

@@ -4,12 +4,14 @@
 
 `nucleide-nuclei`: canonical nucid representation, element/naming tables,
 name dialects, particle and reaction-name registries, and static nuclear
-reference data (`src/data/`) — plus the runtime-parsed EPA FGR 15
-external-dosimetry tables (`src/fgr15.rs`).
+reference data (`src/data/`) — plus two runtime-parsed packs: the EPA FGR 15
+external-dosimetry tables (`src/fgr15.rs`) and the IAEA IRDFF-II v1
+foil-response pack (`src/irdff.rs`).
 
 ## Ownership
 
-This file owns the FGR 15 module's distribution and parsing contracts.
+This file owns the FGR 15 and IRDFF-II modules' distribution and parsing
+contracts.
 Nucid conventions, dialects, and the vendored TSV tables stay documented in
 `src/lib.rs`, `src/dialects.rs`, and `src/data.rs` (change those docs with
 the code).
@@ -36,6 +38,17 @@ the code).
   `Sb-124n`) is the module's public name dialect.
 - **Screening-level only** — not for safety decisions (EPA screening
   context; say so in user-facing docs and docstrings).
+- **Nothing from the IAEA IRDFF-II files is committed to the repository**
+  (same distribution contract as FGR 15): the `IRDFF-II_g725.zip` is fetched
+  at runtime by `python/nucleide/data.py::fetch_irdff`, pinned to the
+  SHA-256 in `python/nucleide/data.py` (`IRDFF_SHA256`), and member text is
+  passed to `irdff::parse_g725` (no network or HTTP in this crate). The v1
+  pack covers the eight named foil reactions (`V1_REACTIONS`, `MF=3`
+  sections only) over the SAND-II 725-group structure; rows feed
+  `unfold.sandii`/`staysl`/`gravel` unchanged.
+- **IRDFF tests use synthetic hand-built sections only** (see `irdff.rs`
+  tests), in the exact `MF=3` layout. Never copy real IAEA content into a
+  test.
 
 ## Work Guidance
 
@@ -50,7 +63,8 @@ the code).
 
 ## Verification
 
-- `cargo test -p nucleide-nuclei` (synthetic fgr15 tests live in-module).
+- `cargo test -p nucleide-nuclei` (synthetic fgr15/irdff tests live
+  in-module).
 - `ruff format --check`, `ruff check`, and `mypy` clean for the Python
   facade (`python/nucleide/nuclei.py`, `python/nucleide/data.py`) and
   `tests/test_fgr15.py`.

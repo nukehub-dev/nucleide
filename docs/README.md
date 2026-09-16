@@ -96,8 +96,8 @@ status, and license.
 | [Run tritium](tutorials/python/run-tritium.md) | Solve steady-state and transient 1D tritium permeation with traps and recombination boundaries |
 | [Damage metrics](tutorials/python/damage-metrics.md) | Fold multigroup fluxes into dpa and gas production, and propagate uncertainty through the fold |
 | [Fusion sources](tutorials/python/fusion-sources.md) | Build ring, point, and parametric tokamak neutron sources and emit MCNP/Serpent source cards |
-| [Unfold a spectrum](tutorials/python/unfold-spectrum.md) | Recover a neutron spectrum from activation detector measurements with SAND-II iteration |
-| [Clearance screening](tutorials/python/clearance-screening.md) | Classify parsed activation inventories against clearance limits |
+| [Unfold a spectrum](tutorials/python/unfold-spectrum.md) | Recover a neutron spectrum from activation detector measurements with SAND-II, least-squares, or GRAVEL adjustment, including an IRDFF response pack |
+| [Clearance screening](tutorials/python/clearance-screening.md) | Classify parsed activation inventories against EU or Spanish clearance tables |
 | [Interactive tutorials](tutorials/interactive/index.mdx) | Run Nucleide in the browser through the WASM build |
 | [Interactive — nuclides](tutorials/interactive/nuclides.mdx) | Nuclide identifiers and nuclear data |
 | [Interactive — materials](tutorials/interactive/materials.mdx) | Formulas, fractions, mixing, and XML export |
@@ -118,8 +118,8 @@ status, and license.
 | [Interactive — MCPL particle lists](tutorials/interactive/mcpl-io.mdx) | Read and write MCPL particle lists |
 | [Interactive — damage metrics](tutorials/interactive/damage.mdx) | Fold a multigroup flux into dpa and gas production |
 | [Interactive — fusion sources](tutorials/interactive/fusion-sources.mdx) | Sample D-D/D-T ring sources and emit SDEF cards |
-| [Interactive — spectrum unfolding](tutorials/interactive/unfold.mdx) | SAND-II iteration over detector measurements |
-| [Interactive — clearance screening](tutorials/interactive/clearance.mdx) | Sum-of-fractions classification against EU limits |
+| [Interactive — spectrum unfolding](tutorials/interactive/unfold.mdx) | SAND-II, least-squares, and GRAVEL adjustment over detector measurements |
+| [Interactive — clearance screening](tutorials/interactive/clearance.mdx) | Sum-of-fractions classification against EU or Spanish limits |
 
 ### Theory
 
@@ -131,13 +131,13 @@ status, and license.
 | [Variance reduction](theory/variance-reduction.mdx) | MAGIC weight windows, OpenMC/Serpent weight-window emission, and alias-table source sampling |
 | [Nuclear data](theory/nuclear-data.mdx) | Nuclide IDs, name dialects, masses, half-lives, and screening data |
 | [Point kinetics](theory/kinetics.mdx) | Prescribed-reactivity PKE system, inhour relation, prompt jump, and the stiff-aware solver |
-| [Tritium transport](theory/tritium.mdx) | 1D diffusion-trapping equations, McNabb–Foster traps, surface taxonomy, multi-layer series stacks with Sieverts interfaces, and the closed-form permeation checks |
+| [Tritium transport](theory/tritium.mdx) | 1D diffusion-trapping equations, McNabb–Foster traps, surface taxonomy, multi-layer series stacks with Sieverts or Henry interfaces, and the closed-form permeation checks |
 | [Gamma-ray spectroscopy](theory/spectroscopy.mdx) | Smoothing, peak counting, energy/efficiency calibration, X-ray lines, and SPE readers |
 | [UQ-lite sampling](theory/uq-sampling.mdx) | Seeded MVN, log-normal, and LHS sampling over caller-supplied covariance blocks, SANDY-compatible estimators, and the decay perturbation consumer |
 | [Damage metrics](theory/damage-metrics.mdx) | NRT/arc-dpa displacement functions, the Lindhard partition, and spectral folding conventions |
-| [Fusion neutron sources](theory/fusion-sources.mdx) | Ballabio fusion spectra, Bosch–Hale reactivity, and the Miller-geometry parametric plasma map |
-| [Neutron spectrum unfolding](theory/unfolding.mdx) | SAND-II iterative adjustment, convergence, and underdetermined systems |
-| [Clearance screening](theory/clearance-screening.mdx) | Clearance index, the sum-of-fractions rule, and clearance tables |
+| [Fusion neutron sources](theory/fusion-sources.mdx) | Ballabio fusion spectra, Bosch–Hale reactivity, the Miller-geometry parametric plasma map, and D-T/D-D fuel mixtures |
+| [Neutron spectrum unfolding](theory/unfolding.mdx) | SAND-II, least-squares, and GRAVEL adjustment, convergence, and underdetermined systems |
+| [Clearance screening](theory/clearance-screening.mdx) | Clearance index, the sum-of-fractions rule, and the EU and Spanish clearance tables |
 
 ### Reference
 

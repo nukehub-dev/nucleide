@@ -5,14 +5,18 @@ Two parts:
 
 1. Analytic gates (always run): P1-P4 on the synthetic ring spec
    (closed-form ring/spectrum moments, sampler determinism, card emission),
-   and P5-P7 on a parametric Miller-geometry plasma (flat-profile Jacobian
+   P5-P7 on a parametric Miller-geometry plasma (flat-profile Jacobian
    closed forms at zero triangularity, Bosch–Hale reactivity transcription,
-   sampled birth moments vs independent fine quadrature of S·R·|J|).
+   sampled birth moments vs independent fine quadrature of S·R·|J|), and P8
+   on a pinned 70/30 D/T fuel blend (mixture-rule sampled moments and the
+   D-D branch share vs in-script mixture quadrature).
 2. openmc-plasma-source cross-check (container oracle): O1-O3 on the
    ring/point legs (Ballabio helpers, D-D energy moments, ring geometry),
-   and O4-O7 on the parametric leg (Miller map, L/H profiles, reactivity vs
-   NeSST, sampled moments vs quadrature built from the upstream functions).
-   The upstream package is an optional oracle dependency: if it cannot be
+   O4-O7 on the parametric leg (Miller map, L/H profiles, reactivity vs
+   NeSST, sampled moments vs quadrature built from the upstream functions),
+   and O8 on the pinned 70/30 blend (mixture moments vs quadrature over the
+   upstream map/profiles with the NeSST D-T and D-D reactivities). The
+   upstream package is an optional oracle dependency: if it cannot be
    imported, the oracle checks are reported as SKIP with their reason (never
    silently).
 
@@ -214,6 +218,37 @@ def _quadrature_moments(spec: dict, n_r: int = 400, n_t: int = 400) -> dict[str,
     return {"<r^2>": num_r2 / den, "mean_e": num_e / den}
 
 
+def _quadrature_moments_mixture(
+    spec: dict, f_d: float, f_t: float, n_r: int = 400, n_t: int = 400
+) -> dict[str, float]:
+    """Fine-quadrature reference under the pinned mixture rule
+    S = n^2·[f_D·f_T·<sv>_DT + (f_D^2/2)·<sv>_DD]: strength-weighted <r^2>,
+    branch-weighted mean birth energy, and the total D-D branch share."""
+    am = spec["minor_radius"]
+    dr = am / n_r
+    dt = 2.0 * math.pi / n_t
+    num_r2 = den = num_e = num_dd = 0.0
+    for i in range(n_r):
+        r = (i + 0.5) * dr
+        n_cm3 = _profile_density(spec, r) * 1e-6
+        ti = _profile_temperature(spec, r)
+        sv_dt = _reactivity_m3_s("dt", ti) * 1e6
+        sv_dd = _reactivity_m3_s("dd", ti) * 1e6
+        w_dt = f_d * f_t * sv_dt
+        w_dd = f_d * f_d / 2.0 * sv_dd
+        mu_dt, _ = _ballabio_moments("dt", ti)
+        mu_dd, _ = _ballabio_moments("dd", ti)
+        p_dd = w_dd / (w_dt + w_dd) if w_dt + w_dd > 0.0 else 0.0
+        for j in range(n_t):
+            theta = (j + 0.5) * dt
+            w = n_cm3 * n_cm3 * (w_dt + w_dd) * _volume_element(spec, r, theta) * dr * dt
+            den += w
+            num_r2 += w * r * r
+            num_e += w * (p_dd * mu_dd + (1.0 - p_dd) * mu_dt)
+            num_dd += w * p_dd
+    return {"<r^2>": num_r2 / den, "mean_e": num_e / den, "p_dd": num_dd / den}
+
+
 def analytic_gates() -> tuple[list[list[str]], list[str]]:
     """P1-P4 on the synthetic ring spec; returns (gate rows, prose notes)."""
     rows: list[list[str]] = []
@@ -370,6 +405,38 @@ def parametric_gates() -> tuple[list[list[str]], list[str]]:
     notes.append(
         f"P7 H-mode sampled moments vs fine quadrature of S·R·|J| "
         f"(in-script Fausser/Bosch-Hale transcription), n={N}."
+    )
+
+    # P8: pinned 70/30 D/T blend — sampled moments vs the in-script mixture
+    # quadrature, plus the D-D branch share of the stream (the upstream
+    # `fuel`-dict spelling; always run).
+    f_d, f_t = 0.7, 0.3
+    blend = dict(PARAMETRIC_SPEC, fuel={"D": f_d, "T": f_t})
+    out = ps.particles(blend, N, seed=101)
+    quad = _quadrature_moments_mixture(PARAMETRIC_SPEC, f_d, f_t)
+    err_e = rel_diff(float(np.mean(out["energy"])), quad["mean_e"])
+    rows.append(
+        ["P8 mixture mean birth energy", fmt(err_e), "< 1e-2", _check(err_e < 1e-2, "P8 E")]
+    )
+    major = np.hypot(out["x"], out["y"])
+    r = _recover_minor_radius(PARAMETRIC_SPEC, major, out["z"])
+    err_r2 = rel_diff(float(np.mean(r**2)), quad["<r^2>"])
+    rows.append(["P8 mixture birth <r^2>", fmt(err_r2), "< 1e-2", _check(err_r2 < 1e-2, "P8 r2")])
+    frac_dd = float(np.mean(out["energy"] < 10.0))
+    se_dd = math.sqrt(quad["p_dd"] * (1.0 - quad["p_dd"]) / N)
+    rows.append(
+        [
+            "P8 D-D branch share",
+            fmt(frac_dd - quad["p_dd"]),
+            "< 8 sigma",
+            _check(abs(frac_dd - quad["p_dd"]) < 8.0 * se_dd, "P8 share"),
+        ]
+    )
+    notes.append(
+        f"P8 70/30 D/T blend (fuel dict) vs in-script mixture quadrature "
+        f"(S = n^2·[f_D·f_T·<sv>_DT + (f_D^2/2)·<sv>_DD], Eriksson/DRESS rate "
+        f"rule), n={N}; the D-D branch share gate proves both Ballabio lines "
+        f"fire in the sampled stream."
     )
     return rows, notes
 
@@ -615,7 +682,98 @@ def oracle_check_openmc_plasma_source() -> tuple[list[list[str]], list[str], boo
         f"O7 end-to-end parametric moments vs quadrature over the upstream "
         f"map/profiles with the NeSST D-T reactivity, n={N}."
     )
+
+    # O8: pinned 70/30 D/T blend vs quadrature over the upstream
+    # map/profiles with the NeSST D-T and D-D reactivities under the pinned
+    # mixture rule. Upstream's tokamak_source additionally models T-T for a
+    # D+T blend; Nucleide has no T-T branch, so the reference integrates the
+    # two shared branches only (the O7 precedent).
+    f_d, f_t = 0.7, 0.3
+    blend = dict(PARAMETRIC_SPEC, fuel={"D": f_d, "T": f_t})
+    ours = ps.particles(blend, N, seed=78)
+    quad = _quadrature_upstream_mixture(
+        g, tokamak_ion_density, tokamak_ion_temperature, reac_DT, reac_DD, f_d, f_t
+    )
+    err_e = rel_diff(float(np.mean(ours["energy"])), quad["mean_e"])
+    rows.append(
+        ["O8 mixture mean birth energy", fmt(err_e), "< 1e-2", _check(err_e < 1e-2, "O8 E")]
+    )
+    major = np.hypot(ours["x"], ours["y"])
+    r = _recover_minor_radius(g, major, ours["z"])
+    err_r2 = rel_diff(float(np.mean(r**2)), quad["<r^2>"])
+    rows.append(["O8 mixture birth <r^2>", fmt(err_r2), "< 1e-2", _check(err_r2 < 1e-2, "O8 r2")])
+    notes.append(
+        f"O8 70/30 D/T blend vs quadrature over the upstream map/profiles "
+        f"with NeSST reac_DT + reac_DD under the mixture rule, n={N} "
+        f"(upstream T-T branch excluded — no T-T reaction in Nucleide)."
+    )
     return rows, notes, False
+
+
+def _quadrature_upstream_mixture(
+    g: dict,
+    density_fn,
+    temperature_fn,
+    reac_dt,
+    reac_dd,
+    f_d: float,
+    f_t: float,
+    n_r: int = 400,
+    n_t: int = 400,
+) -> dict[str, float]:
+    """Quadrature of n^2·[f_D·f_T·reac_DT + (f_D^2/2)·reac_DD]·R·|J| using the
+    upstream profile functions and NeSST reactivities; the volume element
+    uses the in-script Miller transcription (its agreement with the upstream
+    map is gate O4)."""
+    am = g["minor_radius"]
+    dr = am / n_r
+    dt = 2.0 * math.pi / n_t
+    num_r2 = den = num_e = 0.0
+    for i in range(n_r):
+        r = (i + 0.5) * dr
+        n_m3 = float(
+            density_fn(
+                mode=g["mode"],
+                ion_density_centre=g["ion_density_centre"],
+                ion_density_peaking_factor=g["ion_density_peaking_factor"],
+                ion_density_pedestal=g["ion_density_pedestal"],
+                minor_radius=am,
+                pedestal_radius=g["pedestal_radius"],
+                ion_density_separatrix=g["ion_density_separatrix"],
+                r=r,
+            )
+        )
+        t_kev = (
+            float(
+                temperature_fn(
+                    r=r,
+                    mode=g["mode"],
+                    pedestal_radius=g["pedestal_radius"],
+                    ion_temperature_pedestal=g["ion_temperature_pedestal"],
+                    ion_temperature_centre=g["ion_temperature_centre"],
+                    ion_temperature_beta=g["ion_temperature_beta"],
+                    ion_temperature_peaking_factor=g["ion_temperature_peaking_factor"],
+                    ion_temperature_separatrix=g["ion_temperature_separatrix"],
+                    minor_radius=am,
+                )
+            )
+            / 1e3
+        )
+        sv_dt = float(reac_dt(t_kev * 1e3)) * 1e6  # m^3/s -> cm^3/s
+        sv_dd = float(reac_dd(t_kev * 1e3)) * 1e6
+        w_dt = f_d * f_t * sv_dt
+        w_dd = f_d * f_d / 2.0 * sv_dd
+        mu_dt, _ = _ballabio_moments("dt", t_kev)
+        mu_dd, _ = _ballabio_moments("dd", t_kev)
+        p_dd = w_dd / (w_dt + w_dd) if w_dt + w_dd > 0.0 else 0.0
+        strength = n_m3 * n_m3 * 1e-12 * (w_dt + w_dd)  # (n·1e-6)^2 = n^2·1e-12
+        for j in range(n_t):
+            theta = (j + 0.5) * dt
+            w = strength * _volume_element(g, r, theta) * dr * dt
+            den += w
+            num_r2 += w * r * r
+            num_e += w * (p_dd * mu_dd + (1.0 - p_dd) * mu_dt)
+    return {"<r^2>": num_r2 / den, "mean_e": num_e / den}
 
 
 def _quadrature_upstream(
@@ -680,13 +838,15 @@ def main() -> int:
     report.prose(
         "Two-part oracle for `nucleide.plasma_source`: analytic gates P1-P4 on "
         "the synthetic ring spec (closed-form ring/spectrum moments, sampler "
-        "determinism, card emission) and P5-P7 on a parametric Miller-geometry "
+        "determinism, card emission), P5-P7 on a parametric Miller-geometry "
         "plasma (flat-profile Jacobian closed forms, Bosch-Hale reactivity "
-        "transcription, sampled moments vs fine quadrature) — always run — "
-        "plus container-only cross-checks O1-O7 against the upstream "
+        "transcription, sampled moments vs fine quadrature), and P8 on a "
+        "pinned 70/30 D/T fuel blend (mixture-rule moments and the D-D "
+        "branch share vs in-script mixture quadrature) — always run — plus "
+        "container-only cross-checks O1-O8 against the upstream "
         "openmc-plasma-source package and NeSST (Ballabio helpers, sampled "
-        "ring/point sources, Miller map, Fausser profiles, reactivities, and "
-        "end-to-end parametric moments)."
+        "ring/point sources, Miller map, Fausser profiles, reactivities, "
+        "end-to-end parametric moments, and the pinned 70/30 blend)."
     )
     rows1, notes1 = analytic_gates()
     for note in notes1:
@@ -702,7 +862,7 @@ def main() -> int:
     if skipped:
         skip_rows = [
             [f"{gate}", "SKIP (openmc-plasma-source unavailable)"]
-            for gate in ("O1", "O2", "O3", "O4", "O5", "O6", "O7")
+            for gate in ("O1", "O2", "O3", "O4", "O5", "O6", "O7", "O8")
         ]
         report.table(["Gate", "Status"], skip_rows)
     else:

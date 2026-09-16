@@ -5533,6 +5533,7 @@ fn parametric_config(
         },
         pedestal_radius_cm: parsed.pedestal_radius_cm,
         fuel: parse_fusion_reaction(&parsed.fuel)?,
+        fuel_mixture: None,
         weight: 1.0,
     })
 }

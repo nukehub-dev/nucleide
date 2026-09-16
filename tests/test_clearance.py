@@ -35,6 +35,109 @@ class TestEuTable:
         assert all(limit > 0.0 for limit in table.values())
 
 
+class TestEsCsnTables:
+    """Spanish CSN conditional NORM landfill tables (Tablas 1-3).
+
+    Spots are hand-read from CSN/PDT/AICD/TGE/2503/02 (TGE/VAR/2025/1),
+    flattened per the documented chain-expansion rule (last claiming key
+    wins, so subchain levels surface on their members).
+    """
+
+    def test_entry_counts_and_positive_limits(self) -> None:
+        for landfill in ("inert", "non_hazardous", "hazardous"):
+            table = nucleide.alara.alara_clearance_es_table(landfill, "rocks")
+            assert len(table) == 40
+            assert all(limit > 0.0 for limit in table.values())
+
+    def test_inert_rocks_spots(self) -> None:
+        table = nucleide.alara.alara_clearance_es_table("inert", "rocks")
+        assert table["U-238"] == 10.0  # U-nat
+        assert table["Pa-234m"] == 10.0  # U-nat
+        assert table["Th-230"] == 10.0
+        assert table["Ra-226"] == 10.0  # Ra-226+
+        assert table["Bi-214"] == 10.0  # Ra-226+
+        assert table["Pb-210"] == 10.0  # Pb-210+
+        assert table["Po-210"] == 5.0
+        assert table["Ac-227"] == 5.0  # Ac-227+
+        assert table["Tl-207"] == 5.0  # Ac-227+
+        assert table["Th-232"] == 5.0
+        assert table["Ra-228"] == 10.0  # Ra-228+
+        assert table["Th-228"] == 5.0  # Th-228+
+        assert table["K-40"] == 10.0
+
+    def test_material_columns_differ(self) -> None:
+        inert_rocks = nucleide.alara.alara_clearance_es_table("inert", "rocks")
+        inert_gas = nucleide.alara.alara_clearance_es_table("inert", "oil_gas")
+        assert inert_gas["U-238"] == 500.0
+        assert inert_gas["Ra-226"] == 50.0
+        assert inert_gas["Pb-210"] == 100.0
+        assert inert_gas["Th-232"] == 100.0
+        assert inert_gas["K-40"] == 100.0
+        assert inert_rocks["U-238"] != inert_gas["U-238"]
+
+    def test_landfill_types_differ(self) -> None:
+        rocks = {
+            landfill: nucleide.alara.alara_clearance_es_table(landfill, "rocks")
+            for landfill in ("inert", "non_hazardous", "hazardous")
+        }
+        assert rocks["inert"]["Po-210"] == 5.0
+        assert rocks["non_hazardous"]["Po-210"] == 10.0
+        assert rocks["hazardous"]["Po-210"] == 100.0
+        assert rocks["hazardous"]["K-40"] == 50.0
+        assert rocks["hazardous"]["U-238"] == 10.0
+        haz_gas = nucleide.alara.alara_clearance_es_table("hazardous", "oil_gas")
+        assert haz_gas["U-238"] == 500.0
+        assert haz_gas["Po-210"] == 500.0
+        assert haz_gas["K-40"] == 500.0
+
+    def test_chain_expansion_parent_value_on_every_member(self) -> None:
+        # Tabla 4 subchains whose members no later key claims keep the parent
+        # value on every member (inert landfill, rocks column).
+        table = nucleide.alara.alara_clearance_es_table("inert", "rocks")
+        for member in ("Ra-226", "Rn-222", "Po-218", "Pb-214", "Bi-214", "Po-214"):
+            assert table[member] == 10.0  # Ra-226+
+        for member in ("Pb-210", "Bi-210"):
+            assert table[member] == 10.0  # Pb-210+
+        for member in ("Ac-227", "Th-227", "Fr-223", "Ra-223", "Rn-219", "Po-215"):
+            assert table[member] == 5.0  # Ac-227+
+        for member in ("Th-228", "Ra-224", "Rn-220", "Po-216", "Pb-212", "Bi-212"):
+            assert table[member] == 5.0  # Th-228+
+        assert table["Tl-208"] == 5.0
+        assert table["Po-212"] == 5.0
+        assert table["K-40"] == 10.0
+
+    def test_hand_computed_screening_vectors_exact(self) -> None:
+        inert_rocks = nucleide.alara.alara_clearance_es_table("inert", "rocks")
+        assert (
+            nucleide.alara.alara_clearance_index(
+                {"U-238": 5.0, "Th-230": 5.0, "Po-210": 2.5, "K-40": 5.0}, inert_rocks
+            )
+            == 2.0
+        )
+        non_haz_sands = nucleide.alara.alara_clearance_es_table("non_hazardous", "sands")
+        assert (
+            nucleide.alara.alara_clearance_index(
+                {"Pb-210": 5.0, "Bi-210": 5.0, "K-40": 5.0, "Ra-228": 10.0},
+                non_haz_sands,
+            )
+            == 2.5
+        )
+        haz_gas = nucleide.alara.alara_clearance_es_table("hazardous", "oil_gas")
+        assert (
+            nucleide.alara.alara_clearance_index(
+                {"U-238": 250.0, "Ra-226": 25.0, "Po-210": 250.0, "K-40": 250.0},
+                haz_gas,
+            )
+            == 2.0
+        )
+
+    def test_bad_selector_is_loud(self) -> None:
+        with pytest.raises(ValueError, match="landfill"):
+            nucleide.alara.alara_clearance_es_table("bogus", "rocks")  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="material"):
+            nucleide.alara.alara_clearance_es_table("inert", "lava")  # type: ignore[arg-type]
+
+
 class TestClearanceIndex:
     def test_hand_computed_vectors_exact(self) -> None:
         assert nucleide.alara.alara_clearance_index({"Co60": 10.0}, TOY_LIMITS) == 1.0

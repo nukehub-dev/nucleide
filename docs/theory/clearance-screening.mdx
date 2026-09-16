@@ -134,6 +134,36 @@ checks:
 | Th-232 | 1 |
 | K-40 | 10 |
 
+### The Spanish CSN conditional NORM tables
+
+`ClearanceTable::es_conditional_inert/non_hazardous/hazardous` (Rust) /
+`alara_clearance_es_table` (Python) serve the Spanish Consejo de Seguridad
+Nuclear draft technical opinion `CSN/PDT/AICD/TGE/2503/02` (`TGE/VAR/2025/1`,
+hosted on csn.es, accessed 2026-09-16 — the RD 1029/2022 and RD 1217/2024
+transposition of Directive 2013/59/Euratom): conditional clearance levels in
+Bq/g for NORM landfill disposal, one table per landfill type (Tablas 1–3:
+inert, non-hazardous, hazardous) with one column per NORM material nature
+(rocks, ashes, sands, slags, oil & gas). The Tabla 4 natural decay-chain
+keys expand to per-member entries at the parent value through the shared
+dialect machinery (the EU Part-2 precedent above), with the last claiming
+key supplying a shared member's level. The caller selects the table and the
+material column explicitly — there is no cross-table logic and no "most
+permissive wins"; the EU Annex VII table stays the default. Screening
+arithmetic only, never a compliance decision. Spot values used by the
+correctness checks (C6: transcription spots, chain-expansion members, and a
+hand-computed screening vector at exact equality):
+
+| Table / column | Nuclide | CL (Bq/g) |
+| --- | --- | --- |
+| Inert, rocks | U-238 | 10 |
+| Inert, rocks | Ra-226 | 10 |
+| Inert, rocks | Po-210 | 5 |
+| Inert, rocks | Th-232 | 5 |
+| Inert, rocks | K-40 | 10 |
+| Hazardous, oil & gas | U-238 | 500 |
+| Hazardous, oil & gas | Po-210 | 500 |
+| Hazardous, oil & gas | K-40 | 500 |
+
 ### The FISPACT-II clearance column
 
 In the wide `HAZARDS` + `CLEAR` inventory table, FISPACT-II prints a
@@ -255,10 +285,10 @@ one float-ulp above as exceeded.
 - **Time and stability conventions.** FISPACT-II step times convert with
   `y = 365 d`; `Stable` half-lives store as `-1.0`.
 - **Correctness checks.** The arithmetic is pinned by hand-computed vectors
-  at exact equality (CI values, boundary probes both sides, EU spot values)
-  and by an end-to-end parse of the synthetic fixture in the real
-  FISPACT-II grammar, in `tests/test_clearance.py` and
-  `validation/clearance_vs_pypact.py`.
+  at exact equality (CI values, boundary probes both sides, EU and ES spot
+  values, ES chain-expansion members) and by an end-to-end parse of the
+  synthetic fixture in the real FISPACT-II grammar, in
+  `tests/test_clearance.py` and `validation/clearance_vs_pypact.py`.
 
 ## Related work beyond Nucleide
 

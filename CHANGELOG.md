@@ -13,6 +13,158 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Added
+
+- D/T fuel mixtures for the parametric tokamak plasma source
+  (`nucleide-plasma-source`, `nucleide.plasma_source`): a `fuel` dict
+  `{"D": f_D, "T": f_T}` on the parametric source spec (the
+  openmc-plasma-source spelling; then `reaction` is optional and unused)
+  switches the emission model to the Eriksson et al., Comput. Phys. Commun.
+  199 (2016) 40 mixture rate at the shared profile ion temperature,
+  `S = n²·[f_D·f_T·⟨σv⟩_DT + (f_D²/2)·⟨σv⟩_DD]` — the standard
+  `n_a·n_b·⟨σv⟩` rate with the `1/(1+δ_ab)` same-species guard, the DRESS
+  rate construction upstream `openmc-plasma-source` implements. Birth
+  energies run a per-particle branch roulette between the two Ballabio
+  lines; emitted cards carry the same product-form marginals, and the
+  magnetic-axis spectrum summary reports the two-branch Gaussian-mixture
+  moments. The equimolar (`f_D = f_T = 1/2`) and pure-D-D (`f_D = 1`)
+  limits reproduce the landed single-fuel kernels bit-for-bit (regression
+  gates), and non-finite, negative, or non-summing fractions are loud named
+  errors. Toroidal sectors stay out of scope. `validation/plasma_source_vs_openmc.py`
+  adds always-run analytic gates P8 (pinned 70/30 blend: sampled moments vs
+  in-script mixture quadrature, D-D branch share) and a container-only O8
+  cross-check against the upstream map/profiles with the NeSST D-T and D-D
+  reactivities.
+
+- Spanish CSN conditional-clearance tables for NORM landfill disposal in
+  `nucleide-alara-io` (exposed through `nucleide.alara` as
+  `alara_clearance_es_table`). The Consejo de Seguridad Nuclear draft
+  technical opinion CSN/PDT/AICD/TGE/2503/02 (TGE/VAR/2025/1, hosted on
+  csn.es, accessed 2026-09-16 — RD 1029/2022 and RD 1217/2024 (RINR), both
+  transposing Directive 2013/59/Euratom) publishes Tables 1-3, per-landfill
+  type (inert / non-hazardous / hazardous) clearance levels in Bq/g for each
+  NORM material nature (rocks / ashes / sands / slags / oil & gas), keyed by
+  the Table 4 natural decay-chain keys. All three tables are vendored as
+  attributed embedded TSVs in the EU-table pattern (`try_` + cache split,
+  row-count-pinned tests); the Table 4 chain keys expand to per-member
+  entries at the parent value through the `nuclei` dialect machinery (EU
+  Part-2 precedent), with the last claiming key supplying a shared member's
+  level, as the source lists each secular-equilibrium chain before its
+  subchains. The caller selects the table and material column explicitly —
+  no cross-table logic, no "most permissive wins"; the EU Annex VII table
+  stays the vendored default. Screening arithmetic only, never a compliance
+  decision. `validation/clearance_vs_pypact.py` gains always-run C6 gates
+  (transcription spots, chain-expansion members, hand-computed screening
+  vector at exact equality).
+
+- Henry internal interfaces for multi-layer tritium stacks in
+  `nucleide-tritium` (exposed through `nucleide.tritium`): `LayerStack::new`
+  now accepts `Interface::Henry` alongside `Interface::Sieverts`. The
+  linear Henry law (`c/K_H` continuous, flux continuous) shares the
+  Sieverts resistance form — face flux `J = (c_i/K_i − c_{i+1}/K_{i+1})/R_f`
+  with `R_f` the two half-cell resistances `dx/(2·D·K)` and the layer
+  `solubility` playing `K_H` — so it folds into the same tridiagonal
+  θ-step matrix with no new solver machinery; recombination internal
+  interfaces stay loud `UnsupportedInterface` errors (recorded limitation,
+  deferred to its own spike cycle). Gates G9a/G9b (in-crate unit tests,
+  synthetic stacks with hand-derived series-resistance closed forms, no
+  `fixtures/tritium/` changes): a 2-layer all-Henry stack against the
+  series-resistance closed form at `1e-12` relative on the fluxes (`1e-18`
+  absolute floor) with interface flux continuity and half-cell-corrected
+  interface potentials to roundoff, and a 3-layer mixed Sieverts/Henry
+  stack holding flux continuity across both interface laws against the
+  same closed form; the G7c one-layer recovery anchor is unchanged. The
+  Python `steady_layers`/`transient_layers` facades gain an additive
+  `interfaces` keyword (`"sieverts"` per gap by default, `"henry"`
+  supported, `"recombination"` fails with a clear error); single-slab and
+  default-stack signatures are unchanged.
+
+- Vendored SPECTER Table VII fallback in `nucleide-damage` (exposed
+  through `nucleide.damage` as `specter_table` / `specter_damage_energy` /
+  `specter_ed` / `specter_spectra`): spectrum-averaged damage-energy cross
+  sections in keV-b for 24 elements (Be through Pb) across the report's 7
+  spectra (thermal / fission / 14 MeV / HFIR / EBR-II / FFTF / fusion),
+  transcribed from Greenwood & Smither, ANL/FPP/TM-197 (January 1985,
+  US-government public domain — OSTI `purl/6022143`, the same hash-pinned
+  PDF the validation oracle downloads) by reading the scan pages directly,
+  plus the Table II `E_d` column (eV) per element. Displacement cross
+  sections in barns follow the report's own `0.8/2E_d` rule with the
+  vendored `E_d` (or a caller-chosen value). Scope is displacement XS only
+  (no gas columns); the group-wise Appendix A printouts are image-only
+  pages in the scan and stay untranscribed, so the table covers the 24
+  Table VII elements rather than the 41 Table I entries. The table is an
+  opt-in caller input only — the fold kernels are unchanged and never
+  consult it implicitly; the `try_` + cache constructor split, row-count
+  pin (24), and spot tests follow the EU-table pattern. The HFIR column
+  reproduces the oracle's Table VI Fe/Ti/Cu spots at Table VII print
+  precision (3 significant figures, 5e-3 relative); the oracle script
+  itself is untouched and keeps passing.
+
+- STAYSL-class damped least-squares spectral adjustment in
+  `nucleide-unfold` (exposed as `nucleide.unfold.staysl`, second method in
+  the one-method-per-cycle order after SAND-II): the Perey ORNL/TM-6062
+  (1977) anchored-damped objective
+  `φ† = argmin_φ Σ_i (c_i(φ) − N_i)²/σ_i² + λ·Σ_j (φ_j − φ_guess,j)²`,
+  re-solved each cycle as one weighted least-squares system through the
+  shared `linalg::lstsq` kernel (no second least-squares implementation)
+  on the current active set, with non-positive groups clipped to zero and
+  pinned NNLS-style. Sigmas are caller-supplied, one finite positive value
+  per detector (`w_i = 1/σ_i²`); zero, non-finite, or missing sigmas are
+  loud named errors. Damping `λ` is absolute Tikhonov damping on the
+  distance to the guess; convergence is the shared contract (per-group
+  relative-change tolerance with an explicit iteration cap; exhausting the
+  cap is a hard `NotConverged`, reusing the landed variant). Gates are
+  synthetic forward-fold-then-recover round-trips at pinned tolerances
+  (determined recovery, sigma-weighted precise-reading dominance,
+  underdetermined rate reproduction, IRDFF-II analytical benchmark-field
+  shapes) plus the cross-method fixed-point check (a SAND-II fixed point
+  is a least-squares fixed point) and the named-contract errors; the
+  always-run `validation/unfold_vs_analytic.py` oracle gains gates U9-U13
+  in the same `unfold` report (no `SECTION_ORDER` change).
+
+- GRAVEL chi-square-weighted spectral adjustment in `nucleide-unfold`
+  (exposed as `nucleide.unfold.gravel`, third method in the
+  one-method-per-cycle order after SAND-II and STAYSL-class): the Matzke
+  PTB-N-19 (1994) multiplicative iteration
+  `φ_j ← φ_j·exp(Σ_i W_ij·ln(N_i/c_i) / Σ_i W_ij)` with
+  `W_ij = (R_ij·φ_j / c_i)·(N_i²/σ_i²)` — the SAND-II base rate share
+  times the caller-sigma measurement-weight factor — as an iterator with
+  the same diagnostics shape (`spectrum`/`rates`/`rate_factors`/
+  `iterations`/`tolerance`/`max_rel_change`). Sigmas are caller-supplied,
+  one finite positive value per detector; zero, non-finite, or missing
+  sigmas are loud named errors, never silent uniform weighting.
+  Convergence is the shared contract (per-group relative-change tolerance
+  with an explicit iteration cap; exhausting the cap is a hard
+  `NotConverged`, reusing the landed variant). Pinned divergences from
+  SAND-II: zero measurements carry zero weight and are simply not fitted
+  (they pin nothing to zero); at a fixed point every rate ratio is 1, so
+  the weights are irrelevant and SAND-II, STAYSL-class, and GRAVEL fixed
+  points coincide where the formulations agree (cross-checked both
+  directions). Gates are synthetic forward-fold-then-recover round-trips
+  at pinned tolerances (determined recovery, counting-statistics-sigma
+  underdetermined rate reproduction plus error reduction) plus the
+  IRDFF-II analytical benchmark-field shapes (Trkov et al., Nucl. Data
+  Sheets 163 (2020) 1 — published facts used with citation, not vendored
+  data); the always-run `validation/unfold_vs_analytic.py` oracle gains
+  gates U14-U18 in the same `unfold` report (no `SECTION_ORDER` change).
+  MAXED stays recorded for a later cycle.
+
+- IRDFF-II runtime-download response pack in `nucleide-nuclei`
+  (`nucleide.data.fetch_irdff` + `nucleide._internal.parse_irdff_g725`):
+  the official IAEA `IRDFF-II_g725.zip` distribution is fetched at runtime
+  and hash-pinned (SHA-256 recorded in `nucleide.data`, FGR-15 precedent —
+  nothing IAEA-copyright is vendored), and the `IRDFF-II.g725` member text
+  is parsed into caller-ready response rows over the SAND-II 725-group
+  structure (`groups` 726 eV bounds plus one cross-section vector per
+  named reaction) for the v1 foil-activation subset (`au197_ng`,
+  `in115_ng`, `u235_nf`, `u238_nf`, `fe56_np`, `ni58_np`, `al27_na`,
+  `na23_n2n`; MF=3 sections only — the pointwise MF=10 isomer reactions
+  stay out). The rows feed `unfold.sandii`/`staysl`/`gravel` unchanged;
+  structural problems, missing/duplicate sections, off-structure
+  energies, and row-shape violations are loud errors. Offline or
+  hash-mismatch fetches are loud `RuntimeError`s naming the URL or both
+  digests.
+
 ## [0.12.0] - 2026-09-16
 
 ### Added

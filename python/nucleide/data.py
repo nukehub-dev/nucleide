@@ -32,14 +32,33 @@ FGR15_URL = "https://www.epa.gov/system/files/other-files/2025-07/fgr15_data_202
 #: file after this Nucleide version was pinned.
 FGR15_SHA256 = "71314b3f1d73c197da8b589e74c450f61befce48c66ace6ac1f6e0597560bd91"
 
+#: IAEA IRDFF-II dosimetry cross sections, pre-grouped in the SAND-II
+#: 725-group structure (release of January 2020, files updated 2020-12-09;
+#: Trkov et al., Nucl. Data Sheets 163 (2020) 1). IAEA copyright —
+#: permission-based reproduction — so nothing is vendored; users download
+#: directly from the IAEA at runtime and the pinned SHA-256 guards against
+#: silent revisions.
+IRDFF_URL = "https://www-nds.iaea.org/IRDFF/IRDFF-II_g725.zip"
+
+#: SHA-256 of the published IRDFF-II_g725.zip; a mismatch means the IAEA
+#: revised the file after this Nucleide version was pinned.
+IRDFF_SHA256 = "6ec2b33c0f67bed46d46be062a24ccedaa5ffea9bbba919958da4b1349f48c85"
+
+#: Name of the data member inside the IRDFF-II_g725 zip.
+IRDFF_MEMBER = "IRDFF-II.g725"
+
 __all__ = [
     "COMPENDIUM_PATH",
     "FGR15_SHA256",
     "FGR15_URL",
+    "IRDFF_MEMBER",
+    "IRDFF_SHA256",
+    "IRDFF_URL",
     "default_ref",
     "fetch",
     "fetch_compendium",
     "fetch_fgr15",
+    "fetch_irdff",
 ]
 
 
@@ -140,6 +159,54 @@ def fetch_fgr15(*, dest: str | Path | None = None, url: str | None = None) -> st
     except (urllib.error.URLError, OSError) as exc:
         raise RuntimeError(
             f"failed to download the FGR 15 data zip from {url!r}: {exc}. "
+            f"No usable cached copy exists at {out}."
+        ) from exc
+    try:
+        return verify(out)
+    except RuntimeError:
+        out.unlink(missing_ok=True)
+        raise
+
+
+def fetch_irdff(*, dest: str | Path | None = None, url: str | None = None) -> str:
+    """Download the IAEA IRDFF-II g725 zip (hash-pinned) and return its path.
+
+    IRDFF-II (Trkov et al., Nucl. Data Sheets 163 (2020) 1) dosimetry cross
+    sections are IAEA copyright and never vendored: this fetches the official
+    IAEA zip — by default into the per-user platform cache (same layout as
+    :func:`fetch_fgr15`) — and verifies its SHA-256 against the pinned
+    ``IRDFF_SHA256``. A verified cached file is reused as-is (no
+    re-download); a hash mismatch raises loudly naming both digests, and a
+    download failure with no usable cache raises a clear error. Pass ``url=``
+    to fetch from a mirror or a local ``file://`` copy (tests); the pinned
+    hash is always enforced. Parse the ``IRDFF_MEMBER`` member text with
+    ``nucleide._internal.parse_irdff_g725`` into caller-ready response rows
+    for the ``unfold`` iterators.
+    """
+    url = url or IRDFF_URL
+    dest_dir = Path(dest) if dest is not None else _default_cache_dir()
+    out = dest_dir / Path(url).name
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    def verify(path: Path) -> str:
+        actual = _sha256(path)
+        if actual != IRDFF_SHA256:
+            raise RuntimeError(
+                f"sha256 mismatch for {path.name}: expected {IRDFF_SHA256}, got {actual}. "
+                "IAEA may have revised the IRDFF-II g725 file after this Nucleide version was "
+                "pinned; update Nucleide (or pass url= pointing at a verified copy of the "
+                "January 2020 release)."
+            )
+        return str(path)
+
+    if out.exists():
+        return verify(out)
+    try:
+        with urllib.request.urlopen(url) as response:
+            out.write_bytes(response.read())
+    except (urllib.error.URLError, OSError) as exc:
+        raise RuntimeError(
+            f"failed to download the IRDFF-II data zip from {url!r}: {exc}. "
             f"No usable cached copy exists at {out}."
         ) from exc
     try:

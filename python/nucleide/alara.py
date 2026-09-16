@@ -15,10 +15,18 @@ an optional ``{nuclide: limit}`` dict (None = the vendored EU 2013/59/Euratom
 Annex VII Table A default, Bq/g). Nuclide names accept any shared-dialect
 spelling; activities and limits must share one unit basis. Screening
 arithmetic only, never a compliance decision.
+
+The vendored limit tables are selectable explicitly:
+:func:`alara_clearance_eu_table` (EU Annex VII Table A) and
+:func:`alara_clearance_es_table` (Spanish CSN conditional NORM landfill
+levels, Tables 1-3 per landfill type and NORM material nature, with the
+Tabla 4 chain keys expanded to per-member entries at the parent value). No
+cross-table logic: the caller picks the governing table.
 """
 
 from nucleide._internal import (
     alara_check_block,
+    alara_clearance_es_table,
     alara_clearance_eu_table,
     alara_clearance_index,
     alara_expand_schedule,
@@ -49,6 +57,7 @@ __all__ = [
     "alara_photon_total_strength",
     "alara_schedule_total_time",
     "alara_clearance_eu_table",
+    "alara_clearance_es_table",
     "alara_clearance_index",
     "alara_sum_of_fractions",
 ]

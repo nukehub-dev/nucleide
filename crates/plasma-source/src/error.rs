@@ -8,10 +8,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Errors raised while validating source configurations, tabulating spectra,
 /// or rendering source cards.
 ///
-/// Everything outside the v1 scope (parametric Miller-geometry plasma
-/// profiles, pedestal modes, mixed-fuel spectra, toroidal sectors, the
-/// D(d,p)T proton branch) is reported through [`Error::NotYetSupported`] —
-/// a loud named error, never a panic or a silent fallback.
+/// Out-of-scope requests (toroidal sectors, the T-T and D(d,p)T branches,
+/// reactant distributions beyond the shared-temperature Maxwellian mixture)
+/// are reported through [`Error::NotYetSupported`] — a loud named error,
+/// never a panic or a silent fallback. Invalid fuel-mixture fractions carry
+/// their own named errors ([`Error::NonFinite`], [`Error::InvalidFuelMixture`]).
+
 #[derive(Debug, Clone, PartialEq, Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -49,6 +51,10 @@ pub enum Error {
     /// A profile parameter fails its documented range check: `{0}`.
     #[error("plasma-source: invalid plasma profile: {0}")]
     InvalidProfile(&'static str),
+    /// A fuel-mixture fraction is negative, or the pair does not sum to 1
+    /// (within the documented 1e-12 tolerance): `{0}`.
+    #[error("plasma-source: invalid fuel mixture: {0}")]
+    InvalidFuelMixture(&'static str),
     /// The emitted card failed to re-parse through the typed `SDEF` reader
     /// (an internal emission invariant; surfaced loudly rather than
     /// delivered unverified).

@@ -39,7 +39,7 @@ pub mod schedule;
 
 pub use clearance::{
     clearance_index, inventory_from_frame, sum_of_fractions, ClearanceClass, ClearanceTable,
-    SumOfFractions,
+    EsNormMaterial, SumOfFractions,
 };
 pub use deck::{AlaraDeck, KNOWN_BLOCKS};
 pub use error::{Error, Result};

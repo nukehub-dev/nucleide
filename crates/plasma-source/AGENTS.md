@@ -4,9 +4,10 @@
 
 Tokamak fusion-neutron source creation: ring and point sources plus a
 parametric Miller-geometry plasma, over the D-D (2.45 MeV) and D-T
-(14.1 MeV) reactions with ion-temperature-broadened Gaussian spectra, a
-seeded sampler to particle vectors, and MCNP `SDEF` + Serpent `src` card
-emission with a drift report.
+(14.1 MeV) reactions — singly or as arbitrary D/T fuel mixtures at a shared
+ion temperature — with ion-temperature-broadened Gaussian spectra, a seeded
+sampler to particle vectors, and MCNP `SDEF` + Serpent `src` card emission
+with a drift report.
 
 ## Ownership
 
@@ -40,17 +41,26 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
 - Parametric model: profiles are caller inputs (never computed, no
   equilibrium); emission strength is `f_fuel·n²·⟨σv⟩` with equimolar D-T
   (`f=1/4`) or pure D-D (`f=1/2`, the Fausser/openmc-plasma-source
-  convention); birth positions weight `S·R·|J|` (the `R` toroidal factor
-  is mandatory — without it the core is over-represented). Card emission
-  for parametric sources is product-form: radial/vertical/energy
+  convention), or — via `FuelMixture` on the config / a `fuel={"D": f_D,
+  "T": f_T}` dict in the Python spec — the Eriksson/DRESS mixture rule
+  `S = n²·[f_D·f_T·⟨σv⟩_DT + (f_D²/2)·⟨σv⟩_DD]` at the shared profile `T_i`.
+  The normalization is pinned with hand vectors in the `parametric` module
+  rustdoc, and the recovery anchors are regression gates: `f_D=f_T=1/2`
+  reproduces the equimolar kernel's D-T branch bit-for-bit, `f_D=1`
+  reproduces pure D-D bit-for-bit; the landed single-fuel expression trees
+  are untouched. Birth positions weight `S·R·|J|` (the `R` toroidal factor
+  is mandatory — without it the core is over-represented); birth energies
+  run a per-particle branch roulette between the two Ballabio lines. Card
+  emission for parametric sources is product-form: radial/vertical/energy
   *marginals* as discrete histograms, and the drift report must carry the
   joint-correlation distance (half the L1 distance between the true
   `(r, z)` joint and the product of marginals).
 - Loud boundary (`Error::NotYetSupported` / `ValueError`, never a guess):
-  fuel mixtures (Eriksson et al., CPC 199 (2016) 40-weighted reactant
-  distributions), toroidal sectors (`start_angle`/`rotation_angle`), the
-  D(d,p)T proton branch, and profile self-consistency (zero total
-  strength).
+  toroidal sectors (`start_angle`/`rotation_angle`), the T-T and D(d,p)T
+  branches, per-species ion temperatures / non-Maxwellian reactants (the
+  full Eriksson generalization), and profile self-consistency (zero total
+  strength). Mixture fractions carry their own loud errors
+  (`Error::NonFinite`, `Error::InvalidFuelMixture`) at construction.
 - Units: cm, MeV, keV (card convention); profile density is m⁻³ (Fausser
   convention, converted internally); reactivity is exposed in m³/s. The
   validation oracle converts at the openmc-plasma-source boundary (m, eV).
@@ -67,17 +77,23 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   the strength ratio gates (`<σv>` scaling).
 - New emission dialects follow `emit_serpent.rs`: golden card tests plus
   drift rows (`reparsed` false when no reader exists).
-- Adding mixtures later requires a documented normalization (Eriksson
-  weighting) before the `NotYetSupported` boundary moves.
+- Fuel-model changes keep the convention-first rule: the normalization
+  (module rustdoc hand vectors) and the exact recovery anchors move before
+  any sampler change, and the single-fuel sampling stream must stay
+  bit-for-bit (no new RNG draws on the `fuel_mixture: None` path).
+- Generalizing the mixture model (per-species temperatures, T-T branch)
+  moves the `NotYetSupported` boundary only after its own pinned
+  normalization brief.
 
 ## Verification
 
 - `cargo test -p nucleide-plasma-source` (map/Jacobian closed forms,
   profile/reactivity goldens, sampler moment gates, golden cards, reader
-  round trips).
+  round trips, mixture hand vectors + exact recovery anchors + loud
+  fraction errors).
 - `pytest tests/test_plasma_source.py` after `maturin develop`.
 - `validation/plasma_source_vs_openmc.py` runs inside `run_all.sh`
-  (two-part: P1–P7 always, O1–O7 vs openmc-plasma-source/NeSST
+  (two-part: P1–P8 always, O1–O8 vs openmc-plasma-source/NeSST
   container-only with loud SKIP outside; the Containerfile layer installs
   `openmc-plasma-source` + `NeSST` and shims `scipy.integrate.cumtrapz`
   in the oracle process for scipy ≥ 1.14).

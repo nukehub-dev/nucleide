@@ -129,6 +129,67 @@ def synthetic_gates() -> tuple[list[list[str]], list[str], float]:
             _check(out["sum"] == 2.0 and out["class"] == "exceeded", "C5 e2e"),
         ]
     )
+
+    # C6: Spanish CSN conditional NORM landfill tables (Tablas 1-3,
+    # CSN/PDT/AICD/TGE/2503/02): transcription spots, chain expansion, and a
+    # hand-computed screening vector at exact equality.
+    es_inert = alara.alara_clearance_es_table("inert", "rocks")
+    es_haz_gas = alara.alara_clearance_es_table("hazardous", "oil_gas")
+    notes.append(
+        "Spanish CSN NORM landfill tables (draft technical opinion "
+        "CSN/PDT/AICD/TGE/2503/02, TGE/VAR/2025/1, csn.es, accessed "
+        "2026-09-16): Tablas 1-3 per landfill type and NORM material "
+        "nature, Tabla 4 chain keys expanded to members at the parent value."
+    )
+    es_spot = (
+        len(es_inert) == 40
+        and all(
+            es_inert[name] == value
+            for name, value in [
+                ("U-238", 10.0),  # U-nat
+                ("Ra-226", 10.0),  # Ra-226+
+                ("Pb-210", 10.0),  # Pb-210+
+                ("Po-210", 5.0),
+                ("Th-232", 5.0),
+                ("K-40", 10.0),
+            ]
+        )
+        and all(
+            es_haz_gas[name] == value
+            for name, value in [("U-238", 500.0), ("Po-210", 500.0), ("K-40", 500.0)]
+        )
+    )
+    rows.append(
+        [
+            "C6 ES CSN table spots",
+            f"{len(es_inert)} entries",
+            "exact",
+            _check(es_spot, "C6 spots"),
+        ]
+    )
+    es_expand = all(
+        es_inert[member] == 10.0
+        for member in ("Ra-226", "Rn-222", "Po-218", "Pb-214", "Bi-214", "Po-214")
+    ) and all(es_inert[member] == 5.0 for member in ("Ac-227", "Th-227", "Tl-207"))
+    rows.append(
+        [
+            "C6 chain expansion members",
+            "Ra-226+ / Ac-227+ members",
+            "parent value",
+            _check(es_expand, "C6 expand"),
+        ]
+    )
+    es_ci = alara.alara_clearance_index(
+        {"U-238": 250.0, "Ra-226": 25.0, "Po-210": 250.0, "K-40": 250.0}, es_haz_gas
+    )
+    rows.append(
+        [
+            "C6 ES screening vector",
+            fmt(es_ci),
+            "== 2",
+            _check(es_ci == 2.0, "C6 vector"),
+        ]
+    )
     return rows, notes, total_ci
 
 

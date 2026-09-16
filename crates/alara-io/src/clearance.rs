@@ -20,6 +20,13 @@
 //! [`ClearanceTable::eu_annex_vii`] for the provenance and limits of the
 //! vendored default.
 //!
+//! Two further vendored sets accompany the EU default: the Spanish CSN
+//! conditional-clearance tables for NORM landfill disposal (Tables 1–3 for
+//! inert / non-hazardous / hazardous landfills, per NORM material nature,
+//! with the Table 4 chain keys expanded to per-member entries — see
+//! [`ClearanceTable::es_conditional_inert`]). The caller selects the table
+//! explicitly; there is no cross-table logic and no "most permissive wins".
+//!
 //! Unit discipline is the caller's: `A_i` and `CL_i` must carry the same
 //! basis. The vendored [`ClearanceTable::eu_annex_vii`] table is an
 //! *activity-concentration* table (Bq/g), so inventories compared against it
@@ -48,6 +55,83 @@ use crate::output::{ResponseFrame, ResponseVar};
 /// `limit Bq/g`. Plain published facts (nuclide, number); never vendor IAEA
 /// tables (RS-G-1.7, GSG-17) — reference them by designation only.
 const EU_ANNEX_VII_A_TSV: &str = include_str!("data/eu_annex_vii_a.tsv");
+
+/// Vendored Spanish CSN natural decay-chain definitions (Tabla 4).
+///
+/// Transcribed from the Consejo de Seguridad Nuclear draft technical opinion
+/// `CSN/PDT/AICD/TGE/2503/02` (`TGE/VAR/2025/1`), "Propuesta de dictamen
+/// técnico para el informe favorable de niveles de desclasificación para la
+/// gestión en vertedero de material radiactivo de origen natural (NORM)",
+/// hosted on csn.es and accessed 2026-09-16; official regulatory text under
+/// RD 1029/2022 and RD 1217/2024 (RINR), both transposing Directive
+/// 2013/59/Euratom. Columns: `chain key`, `member1,member2,...` in source
+/// order. The source's branching annotations (e.g. `Pa-234 (0.3%)`) are
+/// secular-equilibrium composition notes, not part of the names; every
+/// listed isotope is a member.
+const ES_NORM_CHAINS_TSV: &str = include_str!("data/es_norm_chains.tsv");
+
+/// Vendored Spanish CSN conditional NORM clearance levels for a landfill of
+/// inert waste (Tabla 1, "Vertedero de residuos inertes"), Bq/g.
+///
+/// Same source as [`ES_NORM_CHAINS_TSV`] (its Tabla 1), transcribed with
+/// attribution. Columns: `chain key`, then the source columns in source
+/// order `rocas` (rocks), `cenizas` (ashes), `arenas` (sands), `escorias`
+/// (slags), `gas/petroleo` (oil & gas NORM waste). Chain keys expand per
+/// [`ES_NORM_CHAINS_TSV`]: the key's level applies to each member in secular
+/// equilibrium, the EU Part-2 precedent.
+const ES_CSN_INERT_TSV: &str = include_str!("data/es_csn_inert.tsv");
+
+/// Vendored Spanish CSN conditional NORM clearance levels for a landfill of
+/// non-hazardous waste (Tabla 2, "Vertedero de residuos no peligrosos"),
+/// Bq/g. Same shape and source as [`ES_CSN_INERT_TSV`] (its Tabla 2).
+const ES_CSN_NON_HAZARDOUS_TSV: &str = include_str!("data/es_csn_non_hazardous.tsv");
+
+/// Vendored Spanish CSN conditional NORM clearance levels for a landfill of
+/// hazardous waste (Tabla 3, "Vertedero de residuos peligrosos"), Bq/g.
+/// Same shape and source as [`ES_CSN_INERT_TSV`] (its Tabla 3).
+const ES_CSN_HAZARDOUS_TSV: &str = include_str!("data/es_csn_hazardous.tsv");
+
+/// NORM waste material natures of the Spanish CSN landfill clearance columns.
+///
+/// The CSN Tables 1–3 give one clearance level per chain key for each
+/// material nature a NORM waste can take; the caller picks the column that
+/// matches the waste under screening. Variant order matches the source
+/// column order (ROCAS, CENIZAS, ARENAS, ESCORIAS, GAS/PETROLEO).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EsNormMaterial {
+    /// `ROCAS` — rocks.
+    Rocks,
+    /// `CENIZAS` — ashes.
+    Ashes,
+    /// `ARENAS` — sands.
+    Sands,
+    /// `ESCORIAS` — slags.
+    Slags,
+    /// `GAS/PETROLEO` — oil & gas industry NORM waste.
+    OilGas,
+}
+
+impl EsNormMaterial {
+    /// All material natures in source column order (index == TSV column).
+    const ALL: [Self; 5] = [
+        Self::Rocks,
+        Self::Ashes,
+        Self::Sands,
+        Self::Slags,
+        Self::OilGas,
+    ];
+
+    /// Column index of this material nature in the embedded CSN table TSVs.
+    fn column(self) -> usize {
+        match self {
+            Self::Rocks => 0,
+            Self::Ashes => 1,
+            Self::Sands => 2,
+            Self::Slags => 3,
+            Self::OilGas => 4,
+        }
+    }
+}
 
 /// Per-nuclide clearance-level table used by [`clearance_index`] and
 /// [`sum_of_fractions`].
@@ -157,6 +241,188 @@ impl ClearanceTable {
             })?;
         }
         Ok(table)
+    }
+
+    /// Vendored Spanish CSN table for a landfill of **inert** waste
+    /// (Tabla 1), activity concentrations in Bq/g.
+    ///
+    /// Selects the per-chain-key levels for one NORM material nature
+    /// ([`EsNormMaterial`]) and expands the Table 4 chain keys to per-member
+    /// entries at the parent value. Provenance and flattening contract: see
+    /// [`Self::try_es_conditional_inert`]; same `try_` + cache split as
+    /// [`Self::eu_annex_vii`].
+    pub fn es_conditional_inert(material: EsNormMaterial) -> Self {
+        static TABLES: std::sync::OnceLock<[ClearanceTable; 5]> = std::sync::OnceLock::new();
+        TABLES.get_or_init(|| Self::parse_es_family(ES_CSN_INERT_TSV, "es_csn_inert.tsv"))
+            [material.column()]
+        .clone()
+    }
+
+    /// Fallible parse of the embedded inert-landfill table (Tabla 1).
+    ///
+    /// Same data as [`Self::es_conditional_inert`] without the lazy cache:
+    /// every malformed line (wrong field count, unknown chain key, bad
+    /// limit, unresolvable chain member) is a loud [`Error::Parse`] carrying
+    /// the 1-based TSV line number.
+    pub fn try_es_conditional_inert(material: EsNormMaterial) -> Result<Self> {
+        Self::try_es_table(ES_CSN_INERT_TSV, "es_csn_inert.tsv", material)
+    }
+
+    /// Vendored Spanish CSN table for a landfill of **non-hazardous** waste
+    /// (Tabla 2), activity concentrations in Bq/g.
+    ///
+    /// Same contract as [`Self::es_conditional_inert`].
+    pub fn es_conditional_non_hazardous(material: EsNormMaterial) -> Self {
+        static TABLES: std::sync::OnceLock<[ClearanceTable; 5]> = std::sync::OnceLock::new();
+        TABLES.get_or_init(|| {
+            Self::parse_es_family(ES_CSN_NON_HAZARDOUS_TSV, "es_csn_non_hazardous.tsv")
+        })[material.column()]
+        .clone()
+    }
+
+    /// Fallible parse of the embedded non-hazardous-landfill table (Tabla 2).
+    ///
+    /// Same contract as [`Self::try_es_conditional_inert`].
+    pub fn try_es_conditional_non_hazardous(material: EsNormMaterial) -> Result<Self> {
+        Self::try_es_table(
+            ES_CSN_NON_HAZARDOUS_TSV,
+            "es_csn_non_hazardous.tsv",
+            material,
+        )
+    }
+
+    /// Vendored Spanish CSN table for a landfill of **hazardous** waste
+    /// (Tabla 3), activity concentrations in Bq/g.
+    ///
+    /// Same contract as [`Self::es_conditional_inert`].
+    pub fn es_conditional_hazardous(material: EsNormMaterial) -> Self {
+        static TABLES: std::sync::OnceLock<[ClearanceTable; 5]> = std::sync::OnceLock::new();
+        TABLES.get_or_init(|| Self::parse_es_family(ES_CSN_HAZARDOUS_TSV, "es_csn_hazardous.tsv"))
+            [material.column()]
+        .clone()
+    }
+
+    /// Fallible parse of the embedded hazardous-landfill table (Tabla 3).
+    ///
+    /// Same contract as [`Self::try_es_conditional_inert`].
+    pub fn try_es_conditional_hazardous(material: EsNormMaterial) -> Result<Self> {
+        Self::try_es_table(ES_CSN_HAZARDOUS_TSV, "es_csn_hazardous.tsv", material)
+    }
+
+    /// Parse one embedded CSN landfill table TSV for one material nature.
+    ///
+    /// Rows are chain keys (validated against the Tabla 4 transcription) with
+    /// five per-material columns in source order; the selected column's level
+    /// expands to every chain member at the parent value (the EU Part-2
+    /// precedent). Rows apply in source order: a nuclide claimed by several
+    /// keys keeps the **last** claiming key's value, i.e. the most specific
+    /// subchain listed for it (the source lists each secular-equilibrium
+    /// chain before its subchains). Screening against an
+    /// equilibrium-chain characterization (CSN unit rule over chain
+    /// precursors) is a caller-side table build, not this flattening.
+    fn try_es_table(tsv: &str, file: &str, material: EsNormMaterial) -> Result<Self> {
+        const COLUMNS: usize = 5;
+        let chains = Self::parse_es_norm_chains()?;
+        let column = material.column();
+        let mut table = ClearanceTable::new();
+        let mut seen_keys = std::collections::BTreeSet::new();
+        for (index, line) in tsv.lines().enumerate() {
+            let line_no = index + 1;
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            let fields: Vec<&str> = trimmed.split('\t').collect();
+            if fields.len() != COLUMNS + 1 {
+                return Err(Error::Parse {
+                    line: line_no,
+                    msg: format!(
+                        "{file}: expected `chain key` plus {COLUMNS} material columns, found {} fields",
+                        fields.len()
+                    ),
+                });
+            }
+            let key = fields[0].trim();
+            if !seen_keys.insert(key.to_string()) {
+                return Err(Error::Parse {
+                    line: line_no,
+                    msg: format!("{file}: duplicate chain key `{key}`"),
+                });
+            }
+            let members = chains.get(key).ok_or_else(|| Error::Parse {
+                line: line_no,
+                msg: format!("{file}: unknown chain key `{key}`"),
+            })?;
+            let limit: f64 = fields[1 + column]
+                .trim()
+                .parse()
+                .map_err(|_| Error::Parse {
+                    line: line_no,
+                    msg: format!("{}: bad limit `{}`", file, fields[1 + column]),
+                })?;
+            for member in members {
+                table.insert(*member, limit).map_err(|e| Error::Parse {
+                    line: line_no,
+                    msg: format!("{file}: {e}"),
+                })?;
+            }
+        }
+        Ok(table)
+    }
+
+    /// Parse the embedded Tabla 4 transcription into chain key -> members.
+    ///
+    /// Members resolve through the shared [`nucleide_nuclei`] dialect
+    /// machinery (dashed spellings such as `Pa-234m` parse directly); a
+    /// member that does not resolve is a loud [`Error::Parse`] carrying the
+    /// 1-based TSV line number.
+    fn parse_es_norm_chains() -> Result<BTreeMap<String, Vec<NuclideId>>> {
+        let mut chains = BTreeMap::new();
+        for (index, line) in ES_NORM_CHAINS_TSV.lines().enumerate() {
+            let line_no = index + 1;
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            let (key, members_text) = trimmed.split_once('\t').ok_or_else(|| Error::Parse {
+                line: line_no,
+                msg: format!(
+                    "es_norm_chains.tsv: expected `chain key<TAB>members`, found `{trimmed}`"
+                ),
+            })?;
+            let mut members = Vec::new();
+            for name in members_text.split(',') {
+                let name = name.trim();
+                let nuclide = NuclideId::from_name(name).map_err(|_| Error::Parse {
+                    line: line_no,
+                    msg: format!("es_norm_chains.tsv: unknown chain member `{name}`"),
+                })?;
+                members.push(nuclide);
+            }
+            if members.is_empty() {
+                return Err(Error::Parse {
+                    line: line_no,
+                    msg: format!("es_norm_chains.tsv: chain key `{key}` has no members"),
+                });
+            }
+            if chains.insert(key.to_string(), members).is_some() {
+                return Err(Error::Parse {
+                    line: line_no,
+                    msg: format!("es_norm_chains.tsv: duplicate chain key `{key}`"),
+                });
+            }
+        }
+        Ok(chains)
+    }
+
+    /// Parse all five material columns of one CSN landfill table (cached
+    /// constructor backend; panics with the offending line on a corrupt
+    /// transcription, unreachable-in-practice per the row-count tests).
+    fn parse_es_family(tsv: &'static str, file: &'static str) -> [ClearanceTable; 5] {
+        std::array::from_fn(|column| {
+            let material = EsNormMaterial::ALL[column];
+            Self::try_es_table(tsv, file, material).unwrap_or_else(|e| panic!("{file}: {e}"))
+        })
     }
 }
 
@@ -502,5 +768,262 @@ mod tests {
         // All entries positive; canonical-keyed.
         assert!(table.iter().all(|(_, limit)| limit > 0.0));
         assert_eq!(table, ClearanceTable::eu_annex_vii());
+    }
+
+    /// Data rows (non-comment, non-blank) of an embedded TSV.
+    fn tsv_data_rows(tsv: &str) -> usize {
+        tsv.lines()
+            .filter(|line| {
+                let trimmed = line.trim();
+                !trimmed.is_empty() && !trimmed.starts_with('#')
+            })
+            .count()
+    }
+
+    #[test]
+    fn es_chains_transcribed_with_pinned_row_count_and_members() {
+        // Pins the committed Tabla 4 transcription (15 chain keys).
+        assert_eq!(tsv_data_rows(ES_NORM_CHAINS_TSV), 15);
+        let chains = ClearanceTable::parse_es_norm_chains().unwrap();
+        assert_eq!(chains.len(), 15);
+        // Member counts straight from the source table.
+        assert_eq!(chains["U-238sec"].len(), 15);
+        assert_eq!(chains["U-nat"].len(), 7);
+        assert_eq!(chains["Ra-226+"].len(), 6);
+        assert_eq!(chains["U-235sec"].len(), 13);
+        assert_eq!(chains["Ac-227+"].len(), 10);
+        assert_eq!(chains["Th-232sec"].len(), 11);
+        assert_eq!(chains["Th-228+"].len(), 8);
+        assert_eq!(chains["K-40"].len(), 1);
+        // Metastable and short-lived members resolve through the shared
+        // dialect machinery (dashed source spellings).
+        for name in ["Pa-234m", "Rn-222", "Po-218", "Fr-223", "Tl-207", "Po-211"] {
+            let nuc = NuclideId::from_name(name).unwrap();
+            assert!(
+                chains.values().flatten().any(|member| *member == nuc),
+                "{name} should appear as a chain member"
+            );
+        }
+    }
+
+    #[test]
+    fn es_tables_load_with_pinned_entry_counts() {
+        // Each table TSV pins 15 chain-key rows; the flattened union of the
+        // Tabla 4 members is 40 nuclides for every landfill type/material.
+        assert_eq!(tsv_data_rows(ES_CSN_INERT_TSV), 15);
+        assert_eq!(tsv_data_rows(ES_CSN_NON_HAZARDOUS_TSV), 15);
+        assert_eq!(tsv_data_rows(ES_CSN_HAZARDOUS_TSV), 15);
+        for table in [
+            ClearanceTable::try_es_conditional_inert(EsNormMaterial::Rocks).unwrap(),
+            ClearanceTable::try_es_conditional_non_hazardous(EsNormMaterial::Ashes).unwrap(),
+            ClearanceTable::try_es_conditional_hazardous(EsNormMaterial::OilGas).unwrap(),
+        ] {
+            assert_eq!(table.len(), 40);
+            assert!(table.iter().all(|(_, limit)| limit > 0.0));
+        }
+        // Cached constructors agree with the fallible ones.
+        for material in EsNormMaterial::ALL {
+            assert_eq!(
+                ClearanceTable::es_conditional_inert(material),
+                ClearanceTable::try_es_conditional_inert(material).unwrap()
+            );
+            assert_eq!(
+                ClearanceTable::es_conditional_non_hazardous(material),
+                ClearanceTable::try_es_conditional_non_hazardous(material).unwrap()
+            );
+            assert_eq!(
+                ClearanceTable::es_conditional_hazardous(material),
+                ClearanceTable::try_es_conditional_hazardous(material).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn es_table_rejects_non_positive_limits_and_duplicate_keys() {
+        // A negative or non-finite limit must fail loudly at parse (never a
+        // silent screening depression); a duplicated chain-key row is
+        // transcription corruption, not the documented last-wins overlap
+        // across distinct keys.
+        let base = ES_CSN_INERT_TSV
+            .lines()
+            .find(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
+            .unwrap();
+        let neg = ES_CSN_INERT_TSV.replacen(base, "K-40\t-1\t-1\t-1\t-1\t-1", 1);
+        assert!(ClearanceTable::try_es_table(&neg, "es_neg.tsv", EsNormMaterial::Rocks).is_err());
+        let dup = format!("{ES_CSN_INERT_TSV}\n{base}\n");
+        assert!(ClearanceTable::try_es_table(&dup, "es_dup.tsv", EsNormMaterial::Rocks).is_err());
+    }
+
+    #[test]
+    fn es_transcription_spots_per_table_and_material() {
+        // Hand-read from the CSN PDF (Tablas 1-3), flattened with the
+        // documented last-claiming-key rule; every value below is a cell of
+        // the source matrix reached through chain expansion.
+        let inert_rocas = ClearanceTable::es_conditional_inert(EsNormMaterial::Rocks);
+        for (name, expected) in [
+            ("U-238", 10.0),   // U-nat
+            ("Pa-234m", 10.0), // U-nat
+            ("U-234", 10.0),   // U-nat
+            ("Th-230", 10.0),  // Th-230
+            ("Ra-226", 10.0),  // Ra-226+
+            ("Bi-214", 10.0),  // Ra-226+
+            ("Pb-210", 10.0),  // Pb-210+
+            ("Bi-210", 10.0),  // Pb-210+
+            ("Po-210", 5.0),   // Po-210
+            ("U-235", 10.0),   // U-235+
+            ("Th-231", 10.0),  // U-235+
+            ("Pa-231", 10.0),  // Pa-231
+            ("Ac-227", 5.0),   // Ac-227+
+            ("Tl-207", 5.0),   // Ac-227+
+            ("Th-232", 5.0),   // Th-232
+            ("Ra-228", 10.0),  // Ra-228+
+            ("Ac-228", 10.0),  // Ra-228+
+            ("Th-228", 5.0),   // Th-228+
+            ("Tl-208", 5.0),   // Th-228+
+            ("K-40", 10.0),    // K-40
+        ] {
+            let nuc = NuclideId::from_name(name).unwrap();
+            assert_eq!(inert_rocas.get(nuc), Some(expected), "inert/rocas {name}");
+        }
+
+        // Column differentiation: the GAS/PETROLEO column of the same table.
+        let inert_gas = ClearanceTable::es_conditional_inert(EsNormMaterial::OilGas);
+        for (name, expected) in [
+            ("U-238", 500.0),
+            ("U-234", 500.0),
+            ("Th-230", 500.0),
+            ("Ra-226", 50.0),
+            ("Pb-210", 100.0),
+            ("Po-210", 50.0),
+            ("U-235", 100.0),
+            ("Pa-231", 500.0),
+            ("Ac-227", 50.0),
+            ("Th-232", 100.0),
+            ("Ra-228", 50.0),
+            ("Th-228", 10.0),
+            ("K-40", 100.0),
+        ] {
+            let nuc = NuclideId::from_name(name).unwrap();
+            assert_eq!(inert_gas.get(nuc), Some(expected), "inert/gas {name}");
+        }
+
+        // Landfill differentiation on shared material columns.
+        let non_haz_rocas = ClearanceTable::es_conditional_non_hazardous(EsNormMaterial::Rocks);
+        assert_eq!(
+            non_haz_rocas.get(NuclideId::from_name("Po-210").unwrap()),
+            Some(10.0)
+        );
+        assert_eq!(
+            non_haz_rocas.get(NuclideId::from_name("Pb-210").unwrap()),
+            Some(10.0)
+        );
+        let non_haz_gas = ClearanceTable::es_conditional_non_hazardous(EsNormMaterial::OilGas);
+        assert_eq!(
+            non_haz_gas.get(NuclideId::from_name("Pb-210").unwrap()),
+            Some(500.0)
+        );
+        assert_eq!(
+            non_haz_gas.get(NuclideId::from_name("Po-210").unwrap()),
+            Some(100.0)
+        );
+        let haz_rocas = ClearanceTable::es_conditional_hazardous(EsNormMaterial::Rocks);
+        assert_eq!(
+            haz_rocas.get(NuclideId::from_name("Po-210").unwrap()),
+            Some(100.0)
+        );
+        assert_eq!(
+            haz_rocas.get(NuclideId::from_name("K-40").unwrap()),
+            Some(50.0)
+        );
+        let haz_cenizas = ClearanceTable::es_conditional_hazardous(EsNormMaterial::Ashes);
+        assert_eq!(
+            haz_cenizas.get(NuclideId::from_name("Po-210").unwrap()),
+            Some(50.0)
+        );
+        let haz_gas = ClearanceTable::es_conditional_hazardous(EsNormMaterial::OilGas);
+        for (name, expected) in [("U-238", 500.0), ("Po-210", 500.0), ("K-40", 500.0)] {
+            let nuc = NuclideId::from_name(name).unwrap();
+            assert_eq!(haz_gas.get(nuc), Some(expected), "hazardous/gas {name}");
+        }
+    }
+
+    #[test]
+    fn es_chain_expansion_places_parent_value_on_every_member() {
+        // Replays the committed TSVs row by row and asserts the flattened
+        // table equals the documented expansion: each chain key's level on
+        // each of its members, last claiming key winning.
+        let chains = ClearanceTable::parse_es_norm_chains().unwrap();
+        for (tsv, file) in [
+            (ES_CSN_INERT_TSV, "es_csn_inert.tsv"),
+            (ES_CSN_NON_HAZARDOUS_TSV, "es_csn_non_hazardous.tsv"),
+            (ES_CSN_HAZARDOUS_TSV, "es_csn_hazardous.tsv"),
+        ] {
+            for material in EsNormMaterial::ALL {
+                let table = ClearanceTable::try_es_table(tsv, file, material).unwrap();
+                let mut expected: BTreeMap<NuclideId, f64> = BTreeMap::new();
+                for line in tsv.lines().filter(|l| !l.trim().starts_with('#')) {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    let fields: Vec<&str> = trimmed.split('\t').collect();
+                    let limit: f64 = fields[1 + material.column()].parse().unwrap();
+                    for member in &chains[fields[0].trim()] {
+                        expected.insert(*member, limit);
+                    }
+                }
+                assert_eq!(
+                    table.iter().collect::<Vec<_>>(),
+                    expected.iter().map(|(n, v)| (*n, *v)).collect::<Vec<_>>(),
+                    "{file} column {} mismatch",
+                    material.column()
+                );
+                // Every member of every chain key carries its key's level
+                // unless a later-listed key claims it (checked above).
+                assert_eq!(expected.len(), 40, "{file}: union of Tabla 4 members");
+            }
+        }
+    }
+
+    #[test]
+    fn es_hand_computed_screening_vectors_at_exact_equality() {
+        // Inert landfill, rocks: 5/10 + 5/10 + 2.5/5 + 5/10 == 2 exactly.
+        let table = ClearanceTable::es_conditional_inert(EsNormMaterial::Rocks);
+        let inv = [
+            (NuclideId::from_name("U-238").unwrap(), 5.0),
+            (NuclideId::from_name("Th-230").unwrap(), 5.0),
+            (NuclideId::from_name("Po-210").unwrap(), 2.5),
+            (NuclideId::from_name("K-40").unwrap(), 5.0),
+        ];
+        assert_eq!(clearance_index(&inv, &table).unwrap(), 2.0);
+        // Non-hazardous landfill, sands: 5/10 + 5/10 + 5/10 + 10/10 == 2.5.
+        let table = ClearanceTable::es_conditional_non_hazardous(EsNormMaterial::Sands);
+        let inv = [
+            (NuclideId::from_name("Pb-210").unwrap(), 5.0),
+            (NuclideId::from_name("Bi-210").unwrap(), 5.0),
+            (NuclideId::from_name("K-40").unwrap(), 5.0),
+            (NuclideId::from_name("Ra-228").unwrap(), 10.0),
+        ];
+        assert_eq!(clearance_index(&inv, &table).unwrap(), 2.5);
+        // Hazardous landfill, oil & gas: 250/500 + 25/50 + 250/500 + 250/500
+        // == 2 exactly.
+        let table = ClearanceTable::es_conditional_hazardous(EsNormMaterial::OilGas);
+        let inv = [
+            (NuclideId::from_name("U-238").unwrap(), 250.0),
+            (NuclideId::from_name("Ra-226").unwrap(), 25.0),
+            (NuclideId::from_name("Po-210").unwrap(), 250.0),
+            (NuclideId::from_name("K-40").unwrap(), 250.0),
+        ];
+        assert_eq!(clearance_index(&inv, &table).unwrap(), 2.0);
+        // Sum-of-fractions shares the arithmetic: half the inert vector.
+        let table = ClearanceTable::es_conditional_inert(EsNormMaterial::Rocks);
+        let inv = [(NuclideId::from_name("Po-210").unwrap(), 2.5)];
+        let out = sum_of_fractions(&inv, &table).unwrap();
+        assert_eq!(out.sum, 0.5);
+        assert_eq!(out.class, ClearanceClass::Satisfied);
+        assert_eq!(
+            out.max_nuclide,
+            Some(NuclideId::from_name("Po-210").unwrap())
+        );
     }
 }

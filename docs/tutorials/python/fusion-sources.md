@@ -190,15 +190,13 @@ magnetic-axis moments (the centre temperature), not the birth-weighted mean.
 
 ## Not yet supported
 
-The parametric model covers equimolar D-T and pure D-D on the full torus.
-Fuel mixtures and toroidal sectors are not yet supported and raise a clear
-error instead of guessing:
+The parametric model covers equimolar D-T, pure D-D, and arbitrary D/T fuel
+mixtures on the full torus. Toroidal sectors are not yet supported and raise
+a clear error instead of guessing:
 
 ```python
-try:
-    ps.particles(dict(parametric, fuel={"D": 0.5, "T": 0.5}), 4, seed=0)
-except ValueError as e:
-    print("fuel:", e)
+mixture = dict(parametric, fuel={"D": 0.7, "T": 0.3})
+print(ps.particles(mixture, 4, seed=0)["energy"][:2])
 
 try:
     ps.particles(dict(parametric, rotation_angle=1.57), 4, seed=0)
@@ -207,8 +205,8 @@ except ValueError as e:
 ```
 
 ```text
-fuel: plasma-source: not yet supported: `fuel` (fuel mixtures are Eriksson-weighted reactant distributions; sectors need a toroidal-angle distribution — both outside the parametric model)
-sector: plasma-source: not yet supported: `rotation_angle` (fuel mixtures are Eriksson-weighted reactant distributions; sectors need a toroidal-angle distribution — both outside the parametric model)
+[14.62170927 14.07200675]
+sector: plasma-source: not yet supported: `rotation_angle` (sectors need a toroidal-angle distribution — outside the parametric model)
 ```
 
 Malformed inputs raise a clear error at every entry point — for example a

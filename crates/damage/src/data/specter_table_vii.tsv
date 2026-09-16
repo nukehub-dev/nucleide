@@ -1,0 +1,52 @@
+# SPECTER Table VII transcription: selected displacement-damage (damage-energy)
+# cross sections in keV-barns for 7 spectra, plus the Table II Ed column (eV).
+# Source: Greenwood & Smither, "SPECTER: Neutron Damage Calculations for
+#   Materials Irradiations", ANL/FPP/TM-197 (January 1985), a US-government
+#   work in the public domain.
+#   Retrieved via OSTI https://www.osti.gov/servlets/purl/6022143 (the same
+#   hash-pinned PDF the validation oracle downloads; SHA-256
+#   489bca1482ffb33c160329283c0bbb2245841d2808458749ff431caf8d89ce44).
+#   Transcribed 2026-09-16 by reading the report scan pages directly
+#   (report p. -31- for Table VII, report p. -14- for the Table II Ed
+#   column); the scan's embedded OCR text layer was not trusted for values.
+# Columns 2-8 are Table VII as printed (keV-b). The printed "140."-style
+#   trailing-point integers are written with an explicit ".0" (value-identical).
+#   thermal: (n,gamma) damage only, equals TGAM (Table II) x sigma0 (2200 m/s).
+#   fission: 235U fission spectrum average. mev14: average of the SPECTER
+#   energy group from 14-15 MeV. hfir/ebr2/fftf/fusion: whole-spectrum
+#   averages for HFIR (ORNL, PTP position), EBR-II (ANL-W, Row 2), FFTF
+#   (HEDL, MOTA), and the UWMAK first-wall fusion spectrum. Every value is an
+#   average over the entire spectrum named.
+# Column 9 (ed_ev) is the Table II Ed Lindhard cutoff (eV) for the element.
+#   Ag is natural silver (both Table II isotopes, 107Ag and 109Ag, list
+#   Ed = 60 eV); W is natural tungsten (all four Table II isotopes list
+#   Ed = 90 eV). Displacement cross sections in barns follow the report's own
+#   rule: barns = keV-b x 0.8 / (2 x Ed[keV]), Ed from this column or a value
+#   of the caller's choice. Gas-production columns are out of scope (v1 is
+#   displacement only); the group-wise Appendix A printouts are image-only in
+#   the scan and are not transcribed here.
+# Rows follow the report order (increasing Z). 24 data rows expected.
+Be	0.010	35.3	23.1	11.1	36.1	28.9	27.5	31
+C	0.002	52.0	39.0	14.6	46.8	34.1	36.1	31
+Na	0.328	97.1	140.0	24.1	67.2	42.3	74.1	25
+Mg	0.029	92.8	160.0	24.4	73.7	52.3	81.5	25
+Al	0.156	96.3	177.0	23.2	65.1	41.5	83.2	27
+Si	0.097	96.0	191.0	22.7	64.4	38.8	85.0	25
+K	0.733	89.3	257.0	19.2	44.4	24.1	95.1	40
+Ca	0.167	95.4	273.0	20.2	47.2	25.5	101.8	40
+Ti	2.44	92.8	244.0	21.9	47.8	30.4	93.7	40
+V	2.27	101.0	270.0	24.5	58.2	37.3	105.5	40
+Cr	1.70	94.8	278.0	21.6	52.0	30.6	104.0	40
+Mn	5.25	94.6	260.0	23.8	54.2	34.6	101.4	40
+Fe	1.01	84.4	290.0	19.1	46.3	27.3	101.8	40
+Co	13.38	81.7	294.0	24.1	49.0	30.4	102.9	40
+Ni	2.20	85.0	300.0	20.6	51.0	32.2	109.4	40
+Cu	1.38	79.2	296.0	18.6	46.6	28.5	103.8	40
+Zr	0.026	86.0	259.0	20.1	54.3	32.9	98.3	40
+Nb	0.128	79.5	271.0	18.5	49.9	29.8	96.9	40
+Mo	0.268	83.5	259.0	20.6	53.6	35.4	100.1	60
+Ag	10.06	71.1	230.0	23.0	42.0	24.9	83.0	60
+Ta	0.401	53.5	216.0	12.4	29.5	16.9	72.5	53
+W	0.275	50.8	197.0	11.6	28.6	16.5	68.0	90
+Au	6.51	50.2	218.0	15.8	27.7	16.4	72.5	30
+Pb	0.021	59.6	203.0	13.0	31.3	18.1	71.4	25

@@ -4,7 +4,9 @@ The constants of the Lindhard partition (Robinson fit) and the NRT/arc-dpa
 piecewise forms are transcribed again, independently, in this file — the
 same two-spelling discipline as the plasma-source Ballabio checks. Inputs
 are synthetic hand-picked values throughout; the SPECTER report spots live
-in the validation harness, not here.
+in the validation harness, not here — except the vendored-Table-VII checks
+at the end, which pin the committed transcription (same stance as the EU
+Annex VII table tests), not the report.
 """
 
 import math
@@ -205,3 +207,82 @@ def test_error_paths_name_their_cause() -> None:
         dmg.arc_efficiency(100.0, ED_EV, -0.5, 1.2)
     with pytest.raises(ValueError):
         dmg.nrt_displacements(100.0, ED_EV, 999_999_999)
+
+
+def test_specter_table_row_count_and_spectra() -> None:
+    # The committed Table VII transcription pins 24 element rows; the
+    # spectrum vocabulary is the seven report columns.
+    assert dmg.specter_spectra() == [
+        "thermal",
+        "fission",
+        "14mev",
+        "hfir",
+        "ebr2",
+        "fftf",
+        "fusion",
+    ]
+    for spectrum in dmg.specter_spectra():
+        table = dmg.specter_table(spectrum)
+        assert len(table) == 24
+        assert len(dmg.specter_damage_energy(spectrum)) == 24
+
+
+def test_specter_transcription_spots() -> None:
+    # Hand-read from the report scan (Table VII p. -31-, Table II p. -14-).
+    hfir = dmg.specter_table("hfir")
+    assert hfir["Fe"] == pytest.approx(19.1 * 0.8 / (2.0 * 0.040), rel=1e-15)
+    assert hfir["Ti"] == pytest.approx(21.9 * 0.8 / (2.0 * 0.040), rel=1e-15)
+    assert hfir["Cu"] == pytest.approx(18.6 * 0.8 / (2.0 * 0.040), rel=1e-15)
+    energy = dmg.specter_damage_energy("hfir")
+    assert energy["Fe"] == 19.1
+    fusion = dmg.specter_damage_energy("fusion")
+    assert fusion["Ni"] == 109.4
+    assert fusion["W"] == 68.0
+    assert dmg.specter_damage_energy("14mev")["Ni"] == 300.0
+    assert dmg.specter_damage_energy("thermal")["Co"] == 13.38
+    assert dmg.specter_damage_energy("fission")["V"] == 101.0
+    # Table II E_d spots (eV).
+    for element, expected in [
+        ("Be", 31.0),
+        ("Al", 27.0),
+        ("Fe", 40.0),
+        ("Mo", 60.0),
+        ("Ag", 60.0),
+        ("Ta", 53.0),
+        ("W", 90.0),
+        ("Au", 30.0),
+    ]:
+        assert dmg.specter_ed(element) == expected
+
+
+def test_specter_hfir_reproduces_oracle_spots_at_table_print_precision() -> None:
+    # Table VII prints 3 significant figures, so the vendored HFIR column
+    # reproduces the validation harness's 5-digit Table VI spots
+    # (Fe 191.18, Ti 218.73, Cu 186.49 barns) at 5e-3 relative — the
+    # finest agreement the transcribed inputs allow.
+    hfir = dmg.specter_table("hfir")
+    for element, printed in [("Fe", 191.18), ("Ti", 218.73), ("Cu", 186.49)]:
+        assert hfir[element] == pytest.approx(printed, rel=5e-3)
+    # Same through the one-group fluence fold the oracle runs.
+    fluence, bounds = [4.78373e22], [0.0, 20.0]
+    for element, printed_dpa in [("Fe", 9.1455), ("Ti", 10.464), ("Cu", 8.9212)]:
+        got = dmg.nrt_dpa(fluence, [hfir[element]], bounds, 1.0)
+        assert got == pytest.approx(printed_dpa, rel=5e-3)
+
+
+def test_specter_fold_equals_caller_slice_fold() -> None:
+    # The table is just another caller input: identical floats fold
+    # identically, matching the hand product.
+    xs = dmg.specter_table("fusion")["Fe"]
+    assert dmg.nrt_dpa([3.0e14], [xs], [0.0, 20.0], 1.0) == pytest.approx(
+        1.0e-24 * 3.0e14 * xs, rel=1e-15
+    )
+
+
+def test_specter_unknown_keys_are_loud_errors() -> None:
+    with pytest.raises(ValueError, match="unknown SPECTER table spectrum"):
+        dmg.specter_table("pwr")
+    with pytest.raises(ValueError, match="unknown SPECTER table element"):
+        dmg.specter_ed("U")
+    with pytest.raises(ValueError, match="unknown SPECTER table spectrum"):
+        dmg.specter_damage_energy("HFIR-CTR32")

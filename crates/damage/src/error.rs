@@ -8,8 +8,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Errors raised while evaluating damage functions or folding spectra.
 ///
 /// Every rejection names its cause; out-of-scope capabilities (PKA-spectra
-/// solving, vendored displacement tables, UQ on nonlinear ratios) report
-/// through [`Error::NotYetSupported`] — a loud named error, never a panic or
+/// solving, further displacement tables beyond the vendored SPECTER Table
+/// VII fallback, UQ on nonlinear ratios) report through
+/// [`Error::NotYetSupported`] — a loud named error, never a panic or
 /// a silent fallback.
 #[derive(Debug, Clone, PartialEq, Error)]
 #[non_exhaustive]
@@ -68,6 +69,33 @@ pub enum Error {
     /// `vr-tools` `magic`.
     #[error("damage: He/dpa ratio at zero dpa is undefined (zero flux or zero damage response)")]
     ZeroDpa,
+    /// A line of an embedded data transcription does not parse: TSV line
+    /// `line` reads `{msg}`. The committed transcriptions are pinned by
+    /// row-count tests, so this fires only on a corrupt edit.
+    #[error("damage: TSV line {line}: {msg}")]
+    Parse {
+        /// 1-based TSV line number of the offending line.
+        line: usize,
+        /// What was wrong with the line.
+        msg: String,
+    },
+    /// An element symbol outside the vendored SPECTER Table VII set:
+    /// `{element}` (the table covers 24 elements, Be through Pb).
+    #[error(
+        "damage: unknown SPECTER table element `{element}` (vendored Table VII covers 24 elements)"
+    )]
+    UnknownSpecterElement {
+        /// The unrecognized element symbol.
+        element: String,
+    },
+    /// A spectrum name outside the vendored SPECTER Table VII set:
+    /// `{spectrum}` (one of `thermal`, `fission`, `14mev`, `hfir`,
+    /// `ebr2`, `fftf`, `fusion`).
+    #[error("damage: unknown SPECTER table spectrum `{spectrum}` (expected one of thermal, fission, 14mev, hfir, ebr2, fftf, fusion)")]
+    UnknownSpecterSpectrum {
+        /// The unrecognized spectrum name.
+        spectrum: String,
+    },
     /// The requested capability is outside the v1 scope: `{0}`.
     #[error("damage: not yet supported: {0}")]
     NotYetSupported(&'static str),

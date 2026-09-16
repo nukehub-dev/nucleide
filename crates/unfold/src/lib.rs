@@ -7,19 +7,21 @@
 //! transport solve (the kinetics θ-method precedent).
 //!
 //! One method lands per cycle, each in its own module behind the same
-//! iteration shape; this cycle ships SAND-II ([`sandii`], McElroy et al.,
+//! iteration shape. Shipped so far: SAND-II ([`sandii`], McElroy et al.,
 //! AFWL-TR-67-41, 1967 — US government work, public domain, clean-room
-//! from the report). Recorded for later cycles, in landing order:
-//! STAYSL-class least-squares adjustment (Perey, ORNL/TM-6062, 1977) on
-//! the shared [`nucleide_linalg::lstsq`] kernel, GRAVEL (Matzke, PTB-N-19,
-//! 1994 — the SAND-II update with measurement-error weights), and MAXED
+//! from the report), STAYSL-class damped least-squares ([`staysl`],
+//! Perey, ORNL/TM-6062, 1977 — US government work, clean-room) with
+//! caller-supplied per-detector sigmas as weights, every solve routed
+//! through the shared [`nucleide_linalg::lstsq`] kernel, and GRAVEL
+//! ([`gravel`], Matzke, PTB-N-19, 1994 — the SAND-II update with
+//! measurement-error weights). Recorded for a later cycle: MAXED
 //! (Reginatto & Goldhagen, Health Phys. 77 (1999) 579) maximum entropy.
 //!
 //! Data provenance is pinned: every response value, measured rate, guess
 //! entry, and energy-group bound is caller-supplied. Evaluated libraries
-//! (IRDFF and other IAEA-copyright data) are never vendored; a
-//! runtime-download pack stays a later decision under the FGR-15
-//! precedent. Test gates are synthetic forward-fold-then-recover
+//! (IRDFF and other IAEA-copyright data) are never vendored; the IRDFF-II
+//! v1 pack ships as a runtime download (`nucleide.data.fetch_irdff` plus
+//! `parse_irdff_g725`, parsed into caller-ready response rows). Test gates are synthetic forward-fold-then-recover
 //! round-trips plus the IRDFF-II analytical benchmark-field *shapes*
 //! (Trkov et al., Nucl. Data Sheets 163 (2020) 1), which are plain
 //! published facts used with citation.
@@ -30,12 +32,19 @@
 //! face-Newton precedent).
 //!
 //! Modules: [`error`] (named error set), [`sandii`] (SAND-II adjustment
+//! iterator + driver), [`staysl`] (STAYSL-class damped least-squares
+//! iterator + driver), [`gravel`] (GRAVEL chi-square-weighted adjustment
 //! iterator + driver). [`forward_fold`] is the shared forward operator.
+//! [`staysl`] and [`gravel`] keep their `Iteration`/`Solution` types
+//! module-scoped: the names intentionally mirror [`sandii`]'s, which stay
+//! re-exported at the crate root for compatibility.
 
 #![warn(missing_docs)]
 
 pub mod error;
+pub mod gravel;
 pub mod sandii;
+pub mod staysl;
 
 pub use error::{Error, Result};
 pub use sandii::{Iteration, SandII, Solution, DEFAULT_MAX_ITERATIONS, DEFAULT_TOLERANCE};

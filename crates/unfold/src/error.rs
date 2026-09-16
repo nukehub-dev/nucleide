@@ -5,9 +5,11 @@ use thiserror::Error;
 /// Result alias for the `unfold` crate.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Errors raised while validating response matrices, measured rates, guess
-/// spectra, or solver options — and when the SAND-II adjustment fails to
-/// converge within its iteration cap.
+/// Errors raised while validating response matrices, measured rates, sigma
+/// vectors, guess spectra, or solver options — while adjusting a spectrum
+/// (a measured rate becoming unreachable mid-run, the shared least-squares
+/// kernel failing), and when an adjustment fails to converge within its
+/// iteration cap.
 #[derive(Debug, Clone, PartialEq, Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -35,17 +37,26 @@ pub enum Error {
     BadOption(&'static str),
     /// No strictly positive spectrum can fold to the measured rates: detector
     /// `{detector}` either carries a zero response row against a nonzero
-    /// measurement (rejected up front) or was left with a zero fold because
+    /// measurement (rejected up front), was left with a zero fold because
     /// every group it responds to was pinned to zero by other measurements
-    /// (detected mid-iteration).
+    /// (detected mid-iteration), or saw every group it responds to pinned to
+    /// zero by the least-squares active set (STAYSL-class).
     #[error("unfold: measured rates are unreachable: detector {detector} cannot be satisfied by any positive spectrum")]
     RatesUnreachable {
         /// Index of the offending detector (response row).
         detector: usize,
     },
-    /// The SAND-II adjustment exhausted its iteration cap without meeting the
-    /// per-group relative-change tolerance. Hard fail — never a silent partial
-    /// spectrum (the `tritium` face-Newton precedent).
-    #[error("unfold: SAND-II adjustment did not converge within its iteration cap")]
+    /// The shared least-squares kernel
+    /// ([`nucleide_linalg::lstsq::weighted_lstsq`]) rejected or failed a
+    /// solve: `{0}`. Surfaced by the STAYSL-class method; the augmented
+    /// damping rows make every input validated up front, so a failure here
+    /// is numerical, not a caller mistake.
+    #[error("unfold: least-squares solve failed: {0}")]
+    Lstsq(String),
+    /// The spectral adjustment exhausted its iteration cap without meeting
+    /// the per-group relative-change tolerance. Hard fail — never a silent
+    /// partial spectrum (the `tritium` face-Newton precedent). Shared by the
+    /// SAND-II, STAYSL-class, and GRAVEL iterators.
+    #[error("unfold: spectral adjustment did not converge within its iteration cap")]
     NotConverged,
 }

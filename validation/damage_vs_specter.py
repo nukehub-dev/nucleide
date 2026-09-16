@@ -22,7 +22,10 @@ Two parts:
    result at report print precision (5 significant digits; tolerance
    1e-4 relative ~ 2 half-ulp of the print). SPECTER is an oracle only:
    no table is vendored. Outside the container (no download, no
-   ``pdftotext``) the check is a recorded SKIP, never a silent pass.
+   ``pdftotext``) the check is a recorded SKIP, never a silent pass. SPECTER
+   stays the oracle for this script; the crate's opt-in Table VII fallback
+   (`nucleide.damage.specter_table`) is a separate caller input the folds
+   never consult implicitly.
 
 Units: fluence in n/cm², cross sections in barns (gas spots in millibarns as
 printed), energies in MeV bounds / eV damage functions, exposure in seconds.
@@ -351,7 +354,8 @@ def oracle_check_specter() -> tuple[list[list[str]], list[str], bool]:
         "Table V spectral-averaged gas production cross sections (mb) and GAS(APPM). "
         "One-group fluence folds (seconds=1); bounds are documentation-only. Tolerance "
         "1e-4 relative = 2 half-ulp of the 5-digit print, the finest agreement "
-        "transcribed inputs allow. No SPECTER table is vendored."
+        "transcribed inputs allow. SPECTER stays this script's oracle; the "
+        "crate's opt-in Table VII fallback is a separate caller input."
     )
     notes.append(
         "Fe He/dpa uses the He production cross section printed in the Fe row "

@@ -92,6 +92,27 @@ Cs-137 at 0.2 Bq/g against a 0.1 Bq/g limit). Nuclide keys accept any
 shared-dialect spelling (`"Co60"`, `"Co-60"`, and `"co-60"` resolve to the
 same nuclide); results report the canonical spelling.
 
+## Spanish conditional tables
+
+For Spanish conditional NORM landfill screening, `alara_clearance_es_table`
+selects one of the three CSN Tables 1–3 explicitly by landfill type; the
+caller picks the governing table and there is no cross-table logic:
+
+```python
+from nucleide.alara import alara_clearance_es_table, alara_sum_of_fractions
+
+es = alara_clearance_es_table("non_hazardous", "slags")
+print(len(es))
+
+inventory = {"Ra-226": 0.2, "K-40": 5.0}  # Bq/g
+print(alara_sum_of_fractions(inventory, es)["class"])
+```
+
+```text
+40
+satisfied
+```
+
 ## The class boundary
 
 The boundary sits exactly at `sum == 1` and belongs to the satisfied side: an
@@ -164,7 +185,8 @@ These helpers are screening arithmetic, not a compliance decision. Real
 clearance calls for the governing regulatory table for the material and
 pathway, complete material bookkeeping, and the national transposition of the
 underlying directive. The vendored EU table is a transcription of one
-directive's annex for solid materials, and a sum below 1 marks an inventory as
+directive's annex for solid materials, and the Spanish tables transcribe the
+CSN conditional NORM landfill levels; a sum below 1 marks an inventory as
 passing this arithmetic check — not as cleared for release.
 
 ## See also

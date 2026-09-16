@@ -44,6 +44,11 @@ Canonical nuclide identification. Owns:
 - EPA FGR 15 external-dosimetry coefficients: the runtime-download `fgr15`
   module parses the seven `Table_4_*.DAT` scenario tables (fetched and
   hash-pinned by `nucleide.data.fetch_fgr15`; nothing vendored).
+- IRDFF-II v1 foil-response pack: the runtime-download `irdff` module parses
+  the `MF=3` sections of the named v1 reactions from `IRDFF-II.g725` text
+  (fetched and hash-pinned by `nucleide.data.fetch_irdff`; nothing
+  vendored) into caller-ready response rows over the SAND-II 725-group
+  structure for spectrum unfolding.
 
 ## Capability crates
 
@@ -108,7 +113,8 @@ ALARA activation-code interop: input-deck, group-flux, material/element/WDR
 library, activation-output, photon-source, and schedule-expansion glue, plus
 clearance / waste-classification analytics (clearance index and the
 sum-of-fractions rule over parsed inventories, with the EU 2013/59/Euratom
-Annex VII Table A vendored as the default limit table). Depends
+Annex VII Table A vendored as the default limit table and the Spanish CSN
+conditional NORM landfill tables as opt-in tables). Depends
 on `nucleide-nuclei` only among workspace crates; the solver stays inside ALARA.
 
 ### `nucleide-enrichment`
@@ -147,15 +153,18 @@ search/fit, activities, and plotting stay out. Depends on
 
 Neutron spectrum unfolding from activation-type measurements: the SAND-II
 iterative spectral adjustment (McElroy et al., AFWL-TR-67-41, 1967 — US
-government work, clean-room from the report) as an iterator over the
+government work, clean-room from the report), the STAYSL-class damped
+least-squares adjustment (Perey, ORNL/TM-6062, 1977) on the shared
+`linalg::lstsq` kernel, and the GRAVEL chi-square-weighted adjustment
+(Matzke, PTB-N-19, 1994) — one method per cycle, each an iterator over the
 caller-supplied response matrix, measured rates, and guess spectrum, with
 per-group relative-change convergence diagnostics and a hard
 `NotConverged` past the explicit iteration cap (never a silent partial
-spectrum). STAYSL-class (on the shared `linalg::lstsq` kernel), GRAVEL, and
-MAXED are recorded for later one-method-per-cycle landings. Every response
-value and group bound is caller-supplied: IRDFF and other IAEA-copyright
-libraries are never vendored (a runtime-download pack stays a later
-decision under the FGR-15 precedent). Depends on `nucleide-linalg` only
+spectrum). MAXED stays recorded for a later one-method-per-cycle landing.
+Every response value and group bound is caller-supplied: IRDFF and other
+IAEA-copyright libraries are never vendored (the IRDFF-II v1 pack ships as
+a runtime hash-pinned download, parsed into caller-ready rows). Depends on
+`nucleide-linalg` only
 among workspace crates; bindings depend on it, never the reverse.
 
 ### `nucleide-vr-tools`
@@ -210,9 +219,10 @@ implicit theta-stepping through the shared `linalg::tridiag` Thomas solver.
 Owns the Dirichlet/Sieverts/Henry/zero-flux surface taxonomy plus
 recombination ends (`J = K_r c²`, closed in steady state and transient by
 the face-response construction, G5/G6), and multi-layer series stacks with
-Sieverts internal interface conditions (`c/K_S` and flux continuous; the
-linear interface flux folds into the tridiagonal step matrix — G7/G8).
-Henry/recombination internal interface laws are loud v1 errors; multi-D/FEM,
+Sieverts or Henry internal interface conditions (`c/K` and flux continuous;
+the linear interface flux folds into the tridiagonal step matrix —
+G7/G8/G9). Recombination internal interfaces stay loud unsupported-interface
+errors (recorded limitation); multi-D/FEM,
 heat coupling, and vendored property tables stay out. Depends on
 `nucleide-linalg` only among workspace crates; bindings depend on it, never
 the reverse.
@@ -233,11 +243,15 @@ parametric cards carry the radial/vertical/energy marginals as histograms
 and the drift report quantifies the tabulation truncation and the
 joint-correlation distance a product-form card cannot carry; Serpent rows
 are analytic by design. Profiles are caller inputs — nothing computes them.
-Out of scope (loud `NotYetSupported`): fuel mixtures
-(Eriksson-weighted reactant distributions), toroidal sectors, the D(d,p)T
-proton branch. MCPL projection stays caller-side (`vr-tools` KDE layering
-rule). Depends on `nucleide-mcnp-io` and `nucleide-nuclei`; never on
-`mcpl-io`, never on bindings.
+Fuel is equimolar D-T, pure D-D, or a D/T mixture at the shared profile
+ion temperature (`S = n²·[f_D·f_T·⟨σv⟩_DT + (f_D²/2)·⟨σv⟩_DD]`, the
+Eriksson/DRESS rate rule; exact equimolar/pure recovery anchors are
+regression gates). Out of scope (loud `NotYetSupported`): reactant
+distributions beyond the shared-temperature Maxwellian mixture (the full
+Eriksson generalization), toroidal sectors, the T-T and D(d,p)T branches.
+MCPL projection stays caller-side (`vr-tools` KDE layering rule). Depends on
+`nucleide-mcnp-io` and `nucleide-nuclei`; never on `mcpl-io`, never on
+bindings.
 
 ### `nucleide-damage`
 
@@ -250,11 +264,15 @@ production in appm and He/dpa ratios from piecewise-constant-per-group
 folds of caller `(flux, response, bounds)` slices; UQ on the folds over
 caller MVN blocks through `linalg::sample` (pinned-seed, k-SE gates).
 Zero-flux groups contribute exactly 0; the He/dpa ratio at zero dpa is a
-named error, never `inf`. No displacement tables are vendored: ASTM
-E693/E521 are designation-only, SPECTER (ANL/FPP/TM-197, US-gov PD) is the
-validation oracle only, and PKA-spectra solving stays out (the fispact-org
-PKA evaluator is GPL-3.0, never read). Depends on `nucleide-linalg` and
-`nucleide-nuclei`; bindings depend on it, never the reverse.
+named error, never `inf`. Caller-supplied response functions stay the core;
+the one opt-in exception is the vendored SPECTER Table VII fallback
+(spectrum-averaged damage-energy cross sections for 24 elements plus the
+Table II `E_d` column, displacement XS only — never consulted implicitly).
+ASTM E693/E521 are designation-only, SPECTER (ANL/FPP/TM-197, US-gov PD) is
+the validation oracle behind that fallback, and PKA-spectra solving stays
+out (the fispact-org PKA evaluator is GPL-3.0, never read). Depends on
+`nucleide-linalg` and `nucleide-nuclei`; bindings depend on it, never the
+reverse.
 
 ### `nucleide-emit`
 

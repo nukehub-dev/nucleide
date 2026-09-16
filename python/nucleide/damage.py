@@ -13,10 +13,15 @@ cross sections with their own nuclear-data pipeline; the folds themselves
 are piecewise-constant per group and never re-weight within a group.
 Uncertainty propagation (:func:`fold_uq`) reuses the seeded MVN machinery
 over caller blocks (the ``nucleide.uq`` engine) with pinned-seed,
-``k``-standard-error gates. No displacement tables are vendored: ASTM
-E693/E521 are referenced by designation only, and the SPECTER report
-(ANL/FPP/TM-197, US-gov PD) serves as the validation oracle in the repo
-harness, nothing more.
+``k``-standard-error gates. Caller-supplied response functions stay the
+core: the one opt-in exception is the vendored SPECTER Table VII fallback
+(:func:`specter_table`, :func:`specter_damage_energy`, :func:`specter_ed`),
+spectrum-averaged displacement cross sections transcribed from Greenwood &
+Smither, ANL/FPP/TM-197 (US-gov public domain) for callers with no
+NJOY/SPECTER-class pipeline of their own — selected explicitly per
+spectrum, never consulted implicitly. ASTM E693/E521 are referenced by
+designation only, and the SPECTER report doubles as the validation oracle
+in the repo harness.
 """
 
 from typing import Any
@@ -32,6 +37,10 @@ from nucleide._internal import (
     damage_lindhard_partition,
     damage_nrt_displacements,
     damage_nrt_dpa,
+    damage_specter_damage_energy,
+    damage_specter_ed,
+    damage_specter_spectra,
+    damage_specter_table,
 )
 
 __all__ = [
@@ -45,6 +54,10 @@ __all__ = [
     "arc_efficiency",
     "arc_displacements",
     "fold_uq",
+    "specter_table",
+    "specter_damage_energy",
+    "specter_ed",
+    "specter_spectra",
 ]
 
 
@@ -157,3 +170,40 @@ def fold_uq(
     samplers.
     """
     return damage_fold_uq(metric, flux, response, bounds, seconds, mean, cov, n, seed, k)
+
+
+def specter_spectra() -> list[str]:
+    """Canonical spectrum names of the vendored SPECTER Table VII fallback:
+    ``thermal``, ``fission``, ``14mev``, ``hfir``, ``ebr2``, ``fftf``,
+    ``fusion``."""
+    return damage_specter_spectra()
+
+
+def specter_table(spectrum: str) -> dict[str, float]:
+    """Vendored SPECTER Table VII displacement cross sections in barns for
+    one spectrum, keyed by element symbol (``"Fe"``; ``"Ag"`` is natural
+    silver, ``"W"`` natural tungsten).
+
+    Spectrum-averaged damage-energy cross sections (keV-b, Greenwood &
+    Smither, ANL/FPP/TM-197, US-gov public domain) converted with the
+    vendored Table II ``E_d`` via the report's ``0.8/2E_d`` rule — an
+    opt-in fallback response for callers with no NJOY/SPECTER-class
+    pipeline of their own. The values are whole-spectrum averages, so each
+    is a one-group response for its spectrum (fold with a one-group
+    fluence, ``seconds=1``). Unknown spectra raise a clear error.
+    """
+    return damage_specter_table(spectrum)
+
+
+def specter_damage_energy(spectrum: str) -> dict[str, float]:
+    """Verbatim vendored SPECTER Table VII damage-energy cross sections in
+    keV-b (as printed) for one spectrum, keyed by element symbol — same
+    transcription and spectrum spellings as :func:`specter_table` without
+    the ``0.8/2E_d`` conversion."""
+    return damage_specter_damage_energy(spectrum)
+
+
+def specter_ed(element: str) -> float:
+    """Vendored SPECTER Table II ``E_d`` (eV) for an element symbol
+    (e.g. ``"Fe"``). Unknown elements raise a clear error."""
+    return damage_specter_ed(element)

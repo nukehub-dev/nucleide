@@ -1,4 +1,4 @@
-//! Multi-layer series stacks with Sieverts interface conditions (G7/G8).
+//! Multi-layer series stacks with linear interface conditions (G7–G9).
 //!
 //! A [`LayerStack`] chains `N ≥ 1` slabs — e.g. a W/Cu/CuCrZr first-wall
 //! stack — each with its own thickness, diffusivity, solubility, trap
@@ -6,16 +6,18 @@
 //! (T1) and the McNabb–Foster kinetics (T2) hold with the layer's own
 //! coefficients; temperature stays caller-supplied per layer (no heat solve).
 //!
-//! Internal interfaces carry the Sieverts condition (v1): the Sieverts
-//! potential `u = c_m / K_S` \[Pa¹ᐟ²\] and the flux `J = −D ∂c_m/∂x` are
-//! continuous. Henry and recombination internal interface laws exist in the
-//! [`Interface`] taxonomy but are loud [`Error::UnsupportedInterface`] errors
-//! in v1. Because the condition is linear in the mobile concentration, every
-//! interior face flux
+//! Internal interfaces carry a linear local-equilibrium law: the Sieverts
+//! potential `u = c_m / K_S` \[Pa¹ᐟ²\] or the Henry potential `u = c_m / K_H`
+//! \[Pa\] (the layer's [`LayerSpec::solubility`] plays whichever constant the
+//! adjacent interface's [`Interface`] law declares) and the flux
+//! `J = −D ∂c_m/∂x` are continuous. Recombination internal interface laws
+//! remain loud [`Error::UnsupportedInterface`] errors (recorded limitation).
+//! Because both supported conditions are linear in the mobile concentration,
+//! every interior face flux
 //!
 //! ```text
 //! J_f = (c_i / K_i − c_{i+1} / K_{i+1}) / R_f,
-//! R_f = dx_i / (2 Φ_i) + dx_{i+1} / (2 Φ_{i+1}),   Φ = D · K_S,
+//! R_f = dx_i / (2 Φ_i) + dx_{i+1} / (2 Φ_{i+1}),   Φ = D · K,
 //! ```
 //!
 //! folds directly into the tridiagonal θ-step matrix — the interface needs
@@ -35,35 +37,37 @@ use crate::solve::{
     SolverOptions, TimeGrid, G5_ATOL, G5_RTOL, MAX_PICARD,
 };
 
-/// Internal interface condition between adjacent layers (v1: Sieverts only).
+/// Internal interface condition between adjacent layers.
 ///
-/// The taxonomy mirrors [`crate::bc::Boundary`], but only [`Sieverts`] is
-/// implemented: the local-equilibrium condition `u = c_m / K_S` continuous
-/// with continuous flux. [`Henry`] and [`Recombination`] internal interfaces
-/// are rejected loudly by [`LayerStack::new`] with
-/// [`Error::UnsupportedInterface`] (recorded v1 limitation, not a silent
-/// pass).
+/// The taxonomy mirrors [`crate::bc::Boundary`]. The linear laws
+/// [`Sieverts`] and [`Henry`] are supported: the local-equilibrium condition
+/// `u = c_m / K` continuous (Sieverts potential with `K = K_S`, Henry
+/// potential with `K = K_H`; the layer [`LayerSpec::solubility`] carries the
+/// matching constant) with continuous flux. [`Recombination`] internal
+/// interfaces are rejected loudly by [`LayerStack::new`] with
+/// [`Error::UnsupportedInterface`] (recorded limitation, not a silent pass).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Interface {
     /// Sieverts local equilibrium: `c_m / K_S` continuous, flux continuous.
     Sieverts,
-    /// Linear (Henry) interface law — not supported in v1 (loud error).
+    /// Linear (Henry) local equilibrium: `c_m / K_H` continuous, flux
+    /// continuous. Shares the Sieverts resistance form (the layer
+    /// [`LayerSpec::solubility`] plays `K_H`), so it folds into the
+    /// θ-step matrix exactly like [`Interface::Sieverts`].
     Henry,
-    /// Recombination interface law `J = K_r c²` — not supported in v1 (loud
-    /// error).
+    /// Recombination interface law `J = K_r c²` — not supported (loud
+    /// error): the nonlinear face would need an unproven per-interface
+    /// Newton construction (recorded for a later cycle).
     Recombination,
 }
 
 impl Interface {
-    /// v1 support check; non-Sieverts laws fail loudly.
+    /// Support check: the linear laws pass; recombination fails loudly.
     fn validate(&self) -> Result<(), Error> {
         match self {
-            Interface::Sieverts => Ok(()),
-            Interface::Henry => Err(Error::UnsupportedInterface(
-                "internal Henry interfaces are not supported in v1 (Sieverts only)",
-            )),
+            Interface::Sieverts | Interface::Henry => Ok(()),
             Interface::Recombination => Err(Error::UnsupportedInterface(
-                "internal recombination interfaces are not supported in v1 (Sieverts only)",
+                "internal recombination interfaces are not supported (Sieverts and Henry only)",
             )),
         }
     }
@@ -87,8 +91,11 @@ pub struct LayerSpec {
     pub d0: f64,
     /// Diffusivity activation energy `E_D` \[J/mol\] (`>= 0`).
     pub e_d: f64,
-    /// Sieverts solubility `K_S` \[mol/m³/Pa¹ᐟ²\] (`> 0`): the layer's
-    /// potential `u = c_m / K_S` at internal interfaces.
+    /// Sieverts solubility `K_S` \[mol/m³/Pa¹ᐟ²\] or Henry constant `K_H`
+    /// \[mol/m³/Pa\] (`> 0`), per the law declared at the adjacent internal
+    /// interfaces: the layer's potential `u = c_m / K` (Sieverts potential
+    /// under [`Interface::Sieverts`], Henry potential under
+    /// [`Interface::Henry`]) at internal interfaces.
     pub solubility: f64,
     /// Trap species of this layer (possibly empty: pure Fickian diffusion).
     pub traps: Vec<TrapSpec>,
@@ -163,13 +170,14 @@ impl LayerSpec {
 ///
 /// Cell indices run across the whole stack (layer 0 first); per-layer
 /// coefficients expand to per-cell arrays on demand. Construction validates
-/// every layer and rejects non-Sieverts interfaces loudly (v1).
+/// every layer and rejects recombination interfaces loudly (see
+/// [`Interface`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayerStack {
     /// Layers from the left (`x = 0`) face to the right (`x = L`) face.
     pub layers: Vec<LayerSpec>,
     /// Interface condition between `layers[k]` and `layers[k + 1]`
-    /// (length `layers.len() − 1`; Sieverts in v1).
+    /// (length `layers.len() − 1`; Sieverts or Henry — see [`Interface`]).
     pub interfaces: Vec<Interface>,
     /// Cached first-cell index of each layer (length `layers.len()`).
     /// Derived from `layers` at construction so per-cell queries stay
@@ -302,8 +310,10 @@ impl LayerStack {
             .collect()
     }
 
-    /// Sieverts solubility `K_S` at cell `i` \[mol/m³/Pa¹ᐟ²\]. A cell index
-    /// outside the stack is a loud [`Error::BadCellIndex`].
+    /// The layer's interface constant `K` at cell `i` — `K_S`
+    /// \[mol/m³/Pa¹ᐟ²\] under a Sieverts law, `K_H` \[mol/m³/Pa\] under a
+    /// Henry law (see [`Interface`]). A cell index outside the stack is a
+    /// loud [`Error::BadCellIndex`].
     pub fn solubility_at(&self, i: usize) -> Result<f64, Error> {
         Ok(self.layers[self.layer_of(i).ok_or_else(|| self.bad_index(i))?].solubility)
     }
@@ -482,10 +492,12 @@ impl LayeredSystem {
 
 /// Assemble the layered cell-centred finite-volume diffusion operator.
 ///
-/// Interior faces carry the Sieverts interface flux (also *within* one
-/// layer, where it reduces to the landed arithmetic-mean face for uniform
-/// `D`): `J_f = (c_i/K_i − c_{i+1}/K_{i+1})/R_f`. Boundary faces reuse the
-/// landed half-cell conductance `2 D_cell/dx` against the equilibrium face
+/// Interior faces carry the linear interface flux — Sieverts or Henry, the
+/// same resistance form with the layer [`LayerSpec::solubility`] playing
+/// `K_S` or `K_H` per the adjacent [`Interface`] (also *within* one layer,
+/// where it reduces to the landed arithmetic-mean face for uniform `D`):
+/// `J_f = (c_i/K_i − c_{i+1}/K_{i+1})/R_f`. Boundary faces reuse the landed
+/// half-cell conductance `2 D_cell/dx` against the equilibrium face
 /// concentration. The mobile concentration stays the unknown, so the face
 /// fluxes are linear and the matrix tridiagonal.
 fn assemble_layers(
@@ -749,8 +761,8 @@ pub fn steady_layers(
 ///
 /// The θ-stepper mirrors [`solve::solve`]: diffusion implicit through the
 /// shared `linalg::tridiag` Thomas solve, traps by the exact per-cell
-/// backward-Euler map with Picard coupling to `rtol`/`atol`. The Sieverts
-/// interface fluxes are linear, so they sit inside the step matrix and no
+/// backward-Euler map with Picard coupling to `rtol`/`atol`. The linear
+/// interface fluxes (Sieverts/Henry) sit inside the step matrix and no
 /// interface iteration exists; recombination outer ends (G6 machinery) close
 /// per step through the affine face-response construction on the layered
 /// matrix, fused into the same Picard loop. A one-layer stack dispatches to
@@ -1769,18 +1781,156 @@ mod tests {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Gates: Henry internal interfaces (G9)
+    // -----------------------------------------------------------------------
+    //
+    // Provenance: synthetic stacks with hand-derived series-resistance
+    // oracles — the same resistance form as G7/G8, with the layer
+    // `solubility` playing `K_H` (Henry gap) or `K_S` (Sieverts gap) per the
+    // adjacent interface's law. No evaluated-library data, consistent with
+    // the analytic-gate stance.
+
+    /// Henry gate stack (2-layer): L₁ = L₂ = 4e-4 m, D₁ = 2e-9,
+    /// D₂ = 5e-10 m²/s, K_H₁ = 1.5, K_H₂ = 0.75 mol/m³/Pa, 96 + 96 cells,
+    /// 500 K. Φ₁ = 3e-9, Φ₂ = 3.75e-10 mol/m/s/Pa.
+    fn gate_stack_henry() -> LayerStack {
+        LayerStack::new(
+            vec![
+                LayerSpec::new(4e-4, 96, 2e-9, 0.0, 1.5, vec![], vec![500.0], vec![]).unwrap(),
+                LayerSpec::new(4e-4, 96, 5e-10, 0.0, 0.75, vec![], vec![500.0], vec![]).unwrap(),
+            ],
+            vec![Interface::Henry],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn g9a_henry_series_resistance_steady() {
+        // G9a: 2-layer stack joined by a Henry interface, Dirichlet(1.2)|
+        // Dirichlet(0.2). Closed form u₀ = 1.2/1.5 = 0.8, u_L = 0.2/0.75,
+        // R = 1.2e6 → J = 4.4444...e-7; interface potential
+        // u₁ = u₀ − J·L₁/Φ₁ = 0.7407...; the same (L2) series-resistance
+        // form as G7a with K_H in place of K_S, pinned at G5-class
+        // tolerances.
+        let stack = gate_stack_henry();
+        let left = Boundary::dirichlet(1.2).unwrap();
+        let right = Boundary::dirichlet(0.2).unwrap();
+        let s = steady_layers(&stack, &left, &right).unwrap();
+        let j = series_flux(&stack, 1.2, 0.2, &left, &right);
+        assert!(
+            (s.flux_right - j).abs() <= 1e-12 * j + 1e-18,
+            "{} vs {j}",
+            s.flux_right
+        );
+        assert!((s.flux_left + j).abs() <= 1e-12 * j + 1e-18);
+        // Interface flux continuity: every interior face — including the
+        // Henry gap — carries the same J to roundoff (the resistance form
+        // is law-agnostic, so the G7a pin carries over unchanged).
+        for (k, jf) in interior_face_fluxes(&stack, &s).iter().enumerate() {
+            assert!(
+                (jf - j).abs() <= 1e-12 * j + 1e-18,
+                "face {}: {jf} vs {j}",
+                k + 1
+            );
+        }
+        // Profile: piecewise-linear Henry-potential u(x) at the cell centres.
+        let u0 = 1.2 / 1.5;
+        let u1 = u0 - j * 4e-4 / (2e-9 * 1.5);
+        for (i, &c) in s.mobile.iter().enumerate() {
+            let x = s.centres[i];
+            let u_exact = if x <= 4e-4 {
+                u0 - j * x / (2e-9 * 1.5)
+            } else {
+                u1 - j * (x - 4e-4) / (5e-10 * 0.75)
+            };
+            let c_exact = if x <= 4e-4 {
+                1.5 * u_exact
+            } else {
+                0.75 * u_exact
+            };
+            assert!((c - c_exact).abs() <= 1e-12, "cell {i}: {c} vs {c_exact}");
+        }
+        // Henry interface condition: the potential u = c/K_H at the
+        // interface from each side (half-cell-corrected) is continuous
+        // across the jump in c and hits the closed-form interface potential.
+        let (u_left, u_right) = interface_u_sides(&stack, &s, 0, j);
+        assert!((u_left - u_right).abs() <= 1e-12, "{u_left} vs {u_right}");
+        assert!((u_left - u1).abs() <= 1e-12);
+        assert!(s.mobile.iter().all(|&c| c >= 0.0));
+    }
+
+    /// Mixed-law gate stack (3-layer): L = 3e-4 m each, D = 1e-9 / 4e-10 /
+    /// 2.5e-10 m²/s, K = 1.0 / 0.8 / 0.6 (K_S at the Sieverts gap, K_H at
+    /// the Henry gap), 64 cells per layer. Φ = 1e-9, 3.2e-10, 1.5e-10
+    /// mol/m/s/Pa.
+    fn gate_stack_mixed() -> LayerStack {
+        LayerStack::new(
+            vec![
+                LayerSpec::new(3e-4, 64, 1e-9, 0.0, 1.0, vec![], vec![500.0], vec![]).unwrap(),
+                LayerSpec::new(3e-4, 64, 4e-10, 0.0, 0.8, vec![], vec![500.0], vec![]).unwrap(),
+                LayerSpec::new(3e-4, 64, 2.5e-10, 0.0, 0.6, vec![], vec![500.0], vec![]).unwrap(),
+            ],
+            vec![Interface::Sieverts, Interface::Henry],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn g9b_mixed_interface_laws_flux_continuity() {
+        // G9b: one interface of each law on the same stack. Both are linear
+        // local-equilibrium conditions with the same resistance form, so the
+        // (L2) closed form holds over the mixed stack and every interior
+        // face — across the Sieverts gap *and* the Henry gap — carries the
+        // same flux to roundoff.
+        let stack = gate_stack_mixed();
+        let left = Boundary::dirichlet(1.0).unwrap();
+        let right = Boundary::dirichlet(0.0).unwrap();
+        let s = steady_layers(&stack, &left, &right).unwrap();
+        let j = series_flux(&stack, 1.0, 0.0, &left, &right);
+        assert!(
+            (s.flux_right - j).abs() <= 1e-12 * j + 1e-18,
+            "{} vs {j}",
+            s.flux_right
+        );
+        assert!((s.flux_left + j).abs() <= 1e-12 * j + 1e-18);
+        for (k, jf) in interior_face_fluxes(&stack, &s).iter().enumerate() {
+            assert!(
+                (jf - j).abs() <= 1e-12 * j + 1e-18,
+                "face {}: {jf} vs {j}",
+                k + 1
+            );
+        }
+        // u continuity at both interfaces, from each side (half-cell
+        // corrected), vs the closed form u(xₖ) = u₀ − J·Σ_{j≤k} L_j/Φ_j —
+        // the potential law switches with the interface, the resistance
+        // form does not.
+        let u0 = 1.0_f64;
+        let u1 = u0 - j * 3e-4 / (1e-9 * 1.0);
+        let u2 = u1 - j * 3e-4 / (4e-10 * 0.8);
+        for (iface, want) in [(0_usize, u1), (1, u2)] {
+            let (ul, ur) = interface_u_sides(&stack, &s, iface, j);
+            assert!((ul - ur).abs() <= 1e-12, "interface {iface}: {ul} vs {ur}");
+            assert!(
+                (ul - want).abs() <= 1e-12,
+                "interface {iface}: {ul} vs {want}"
+            );
+        }
+        assert!(s.mobile.iter().all(|&c| c >= 0.0));
+    }
+
     #[test]
     fn loud_errors_and_validation() {
-        // Non-Sieverts internal interfaces are loud named errors (v1).
+        // Recombination internal interfaces stay loud named errors; the
+        // linear Henry law constructs fine (G9).
         let layer = |d: f64, s: f64| {
             LayerSpec::new(5e-4, 8, d, 0.0, s, vec![], vec![500.0], vec![]).unwrap()
         };
-        let err = LayerStack::new(
+        assert!(LayerStack::new(
             vec![layer(1e-9, 1.0), layer(1e-9, 1.0)],
-            vec![Interface::Henry],
+            vec![Interface::Henry]
         )
-        .unwrap_err();
-        assert!(matches!(err, Error::UnsupportedInterface(_)), "{err}");
+        .is_ok());
         let err = LayerStack::new(
             vec![layer(1e-9, 1.0), layer(1e-9, 1.0)],
             vec![Interface::Recombination],

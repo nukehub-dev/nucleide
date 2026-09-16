@@ -12,10 +12,11 @@
 //! reactivity-weighted emission (Bosch & Hale, Nucl. Fusion **32** (1992)
 //! 611) and Ballabio-broadened spectra. Profiles are caller inputs — nothing
 //! computes profiles and no equilibrium is solved. What stays out (loud
-//! [`Error::NotYetSupported`], never a guess): arbitrary non-equimolar
-//! reactant distributions (the Eriksson et al., Comput. Phys. Commun.
-//! **199** (2016) 40 generalization), toroidal sectors, and the D(d,p)T
-//! proton branch.
+//! [`Error::NotYetSupported`], never a guess): reactant distributions beyond
+//! the shared-temperature Maxwellian D/T mixture ([`parametric`] — the
+//! per-species-temperature Eriksson et al., Comput. Phys. Commun. **199**
+//! (2016) 40 generalization), the T-T and D(d,p)T branches, and toroidal
+//! sectors.
 //!
 //! # Physics
 //!
@@ -92,7 +93,7 @@ pub use emit_serpent::{emit_serpent, emit_serpent_parametric};
 pub use error::{Error, Result};
 pub use miller::MillerGeometry;
 pub use parametric::{
-    BinnedDistribution, EmissionHistograms, ParametricPlasmaConfig, ParametricSampler,
+    BinnedDistribution, EmissionHistograms, FuelMixture, ParametricPlasmaConfig, ParametricSampler,
 };
 pub use profile::{DensityProfile, ProfileMode, TemperatureProfile};
 pub use reaction::FusionReaction;

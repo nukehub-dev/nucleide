@@ -1,0 +1,30 @@
+# Spanish CSN conditional NORM clearance levels for a landfill of
+# NON-HAZARDOUS waste (Tabla 2, "Vertedero de residuos no peligrosos"), Bq/g.
+# Source: Consejo de Seguridad Nuclear (CSN), "Propuesta de dictamen tecnico
+#         para el informe favorable de niveles de desclasificacion para la
+#         gestion en vertedero de material radiactivo de origen natural
+#         (NORM)", CSN/PDT/AICD/TGE/2503/02, TGE/VAR/2025/1, Tabla 2
+#         (hosted on csn.es; draft technical opinion under RD 1029/2022 and
+#         RD 1217/2024 (RINR), both transposing Directive 2013/59/Euratom).
+#         Official regulatory document transcribed with attribution; accessed
+#         2026-09-16. Plain published facts (nuclide, number).
+# Columns: `chain key<TAB>rocas<TAB>cenizas<TAB>arenas<TAB>escorias<TAB>gas/petroleo`
+# (source column order: ROCAS, CENIZAS, ARENAS, ESCORIAS, GAS/PETROLEO).
+# Chain keys expand per es_norm_chains.tsv (Tabla 4): the key's level applies
+# to each member in secular equilibrium (EU Part-2 precedent; see module
+# docs). Rows: 15.
+U-238sec	1	1	1	1	10
+U-nat	10	10	10	10	500
+Th-230	10	10	10	10	500
+Ra-226+	10	10	10	10	50
+Pb-210+	10	10	10	10	500
+Po-210	10	10	10	10	100
+U-235sec	1	1	1	1	10
+U-235+	10	10	10	10	100
+Pa-231	10	10	10	10	500
+Ac-227+	5	5	5	5	50
+Th-232sec	5	5	5	5	10
+Th-232	5	5	5	5	100
+Ra-228+	10	10	10	10	50
+Th-228+	5	5	5	5	10
+K-40	10	10	10	10	100

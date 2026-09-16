@@ -50,6 +50,7 @@ and assumes you have already installed the project (see
 19. [Fusion sources](fusion-sources.md) — build ring, point, and parametric
     tokamak neutron sources and emit MCNP/Serpent source cards.
 20. [Unfold a spectrum](unfold-spectrum.md) — recover a neutron spectrum from
-    activation detector measurements with SAND-II iteration.
+    activation detector measurements with SAND-II, least-squares, or GRAVEL
+    adjustment, including the IRDFF response pack.
 21. [Clearance screening](clearance-screening.md) — classify parsed activation
-    inventories against clearance limits.
+    inventories against the EU or Spanish clearance tables.

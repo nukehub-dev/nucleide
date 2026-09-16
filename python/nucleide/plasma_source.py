@@ -14,7 +14,13 @@ dimensionless), ``mode`` (``"L"``/``"H"``/``"A"``), ``pedestal_radius`` (cm),
 ``ion_density_{centre,peaking_factor,pedestal,separatrix}`` (m⁻³ and
 dimensionless), and ``ion_temperature_{centre,peaking_factor,beta,pedestal,
 separatrix}`` (keV and dimensionless). Emission is reactivity-weighted
-(Bosch & Hale 1992). Fuel mixtures and toroidal sectors are not yet
+(Bosch & Hale 1992). Fuel is the single-fuel ``reaction`` key (``"dt"`` —
+equimolar D-T, or ``"dd"`` — pure D-D) or the ``fuel`` dict
+``{"D": f_D, "T": f_T}`` (openmc-plasma-source spelling) for a D/T mixture
+at the shared profile ion temperature: ``S = n²·[f_D·f_T·⟨σv⟩_DT +
+(f_D²/2)·⟨σv⟩_DD]`` with the ``1/(1+δ_ab)`` same-species guard (Eriksson
+et al. 2016, the DRESS rate construction). With a ``fuel`` dict the
+``reaction`` key is optional and unused. Toroidal sectors are not yet
 supported. Lengths are centimetres, energies MeV, ion temperature keV. MCPL
 projection stays caller-side: write particle vectors with ``nucleide.mcpl``
 when a file is wanted.
@@ -45,10 +51,11 @@ def particles(spec: dict[str, Any], n: int, seed: int) -> dict[str, Any]:
     ``radius`` [cm] and ``height`` [cm]; both take ``reaction``
     (``"dt"``/``"dd"``), ``ion_temperature_kev`` (0 for the monoenergetic
     nominal line), and optional ``weight`` (default 1.0). Parametric sources
-    take the Miller-geometry and profile keys from the module docstring.
-    Returns ``x``/``y``/``z`` [cm], direction cosines ``u``/``v``/``w`` (unit
-    vectors), ``energy`` [MeV], and ``weight``. The same ``seed`` reproduces
-    the same stream.
+    take the Miller-geometry and profile keys from the module docstring,
+    plus either ``reaction`` (single fuel) or the ``fuel`` fraction dict
+    (mixture; then ``reaction`` is optional and unused). Returns ``x``/``y``/
+    ``z`` [cm], direction cosines ``u``/``v``/``w`` (unit vectors), ``energy``
+    [MeV], and ``weight``. The same ``seed`` reproduces the same stream.
     """
     return plasma_source_particles(spec, n, seed)
 
@@ -62,7 +69,8 @@ def emit_source_cards(spec: dict[str, Any], bins: int = 21) -> dict[str, Any]:
     (rows carry ``quantity``, ``accounted``, ``rel_drift``, ``reparsed``,
     ``note``), plus ``spectrum`` moments (``nominal_mev``, ``mean_mev``,
     ``sigma_mev``, ``mono`` — for a parametric source, the magnetic-axis
-    moments). The SDEF card round-trips through ``nucleide.mcnp.parse_sdef``
+    moments; for a fuel mixture, the two-branch Gaussian-mixture summary).
+    The SDEF card round-trips through ``nucleide.mcnp.parse_sdef``
     byte-identically; Serpent drift rows are analytic by design. Parametric
     cards carry the radial/vertical/energy *marginals* as histograms; the
     drift rows quantify the tabulation truncation and the joint-correlation

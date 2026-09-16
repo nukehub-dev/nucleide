@@ -24,8 +24,9 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   glue (solver out of scope), plus clearance / waste-classification
   analytics: clearance index CI = Σ Aᵢ/CLᵢ and sum-of-fractions screening
   over parsed inventories, caller-supplied limit tables with the EU
-  2013/59/Euratom Annex VII Table A vendored default (screening arithmetic,
-  never a compliance decision).
+  2013/59/Euratom Annex VII Table A vendored default, plus the Spanish CSN
+  conditional NORM landfill tables as explicit opt-in tables (screening
+  arithmetic, never a compliance decision).
 - CRAM depletion solver and chain XML parsing (`depletion`).
 - Multicomponent enrichment cascade solver (`enrichment`).
 - MAGIC weight windows with OpenMC (`settings.xml`) and Serpent (WWINP
@@ -79,7 +80,7 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 - Tritium 1D diffusion-trapping kernel (`tritium`): T1–T2 mobile/trap
   transport with the full surface taxonomy; recombination ends closed in
   steady state and transient (G5/G6); multi-layer series stacks with
-  Sieverts internal interfaces (G7/G8).
+  Sieverts or Henry internal interfaces (G7/G8/G9).
 - Scoped MCNP→OpenMC/Serpent/PHITS/GDML CSG translation (`csg-xlate`): surfaces,
   cells, nested universes, and rectangular `LAT=1` lattices with per-item
   drift reports (GDML lattices expand to per-element placements).
@@ -98,21 +99,26 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 - Parametric tokamak plasma source (`plasma-source`): Miller-geometry flux
   surfaces (Fausser 2012) with caller-supplied L/H/A-mode profiles,
   reactivity-weighted emission (Bosch–Hale 1992), Miller-Jacobian volume
-  gates, and marginal-histogram source cards with joint-correlation drift
-  (fuel mixtures and sectors stay loud errors).
+  gates, and marginal-histogram source cards with joint-correlation drift.
+  Fuel is equimolar D-T, pure D-D, or a D/T mixture at the shared ion
+  temperature (Eriksson/DRESS two-branch rate); toroidal sectors stay loud
+  errors.
 - Damage and gas-production metrics (`damage`): NRT-dpa and arc-dpa
   displacement functions (NRT 1975; Nordlund 2018), He/H appm and He/dpa
   ratios by spectral folding of caller flux with caller response functions,
   and UQ on the folds over caller MVN blocks; the SPECTER report
-  (ANL/FPP/TM-197, US-gov PD) is the validation oracle, never vendored
+  (ANL/FPP/TM-197, US-gov PD) is the validation oracle behind an opt-in
+  vendored Table VII fallback for callers with no damage-data pipeline
   (ASTM E693/E521 stay designation-only; PKA-spectrum solving stays out).
 - Neutron spectrum unfolding (`unfold`): SAND-II iterative spectral
-  adjustment (McElroy et al., AFWL-TR-67-41, 1967) of a caller-supplied guess
-  spectrum against measured activation rates over a caller-supplied response
+  adjustment (McElroy et al., AFWL-TR-67-41, 1967), STAYSL-class damped
+  least-squares (Perey, ORNL/TM-6062, 1977), and GRAVEL chi-square-weighted
+  adjustment (Matzke, PTB-N-19, 1994) of a caller-supplied guess spectrum
+  against measured activation rates over a caller-supplied response
   matrix, with per-group relative-change convergence diagnostics and a hard
-  `NotConverged` past the explicit iteration cap (STAYSL-class on the shared
-  `lstsq` kernel, GRAVEL, and MAXED are recorded for later cycles; response
-  libraries such as IRDFF are caller-supplied, never vendored).
+  `NotConverged` past the explicit iteration cap (MAXED is recorded for a
+  later cycle); the IRDFF-II v1 response pack ships as a runtime
+  hash-pinned download, never vendored.
 
 ## Upcoming priorities
 

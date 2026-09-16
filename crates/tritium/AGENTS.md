@@ -6,10 +6,11 @@
 to N extrinsic McNabb–Foster trap species (T2) on a slab with
 caller-supplied temperature, plus the Dirichlet/Sieverts/Henry/zero-flux
 surface taxonomy. Multi-layer series stacks (e.g. W/Cu/CuCrZr first-wall
-stacks) extend the same kernel per layer with Sieverts internal interface
-conditions (v1; Henry/recombination interfaces are loud
-unsupported-interface errors). Pure 1D finite-volume PDE; no multi-D, no
-FEM, no heat solve, no property tables.
+stacks) extend the same kernel per layer with linear internal interface
+conditions — Sieverts (`u = c_m/K_S`) or Henry (`u = c_m/K_H`), both
+folding into the tridiagonal θ-step matrix; recombination interfaces are
+loud unsupported-interface errors (recorded limitation). Pure 1D
+finite-volume PDE; no multi-D, no FEM, no heat solve, no property tables.
 
 ## Ownership
 
@@ -33,14 +34,18 @@ facade, the `TritiumBreakthrough` demo, and
   transient by the per-step face Newton sharing the affine face-response
   construction (G6a–G6e) — never a silent pass. The same taxonomy governs
   the outer ends of multi-layer stacks (`layers.rs`).
-- Multi-layer contract (G7/G8, `layers.rs`): a `LayerStack` chains `N ≥ 1`
-  caller-specified layers (thickness, cells, Arrhenius `D`, solubility
-  `K_S`, per-layer traps/temperature/source). Internal interfaces are
-  Sieverts-only in v1: `u = c_m / K_S` continuous, flux continuous; the
-  `Interface` taxonomy carries Henry/recombination variants that
-  `LayerStack::new` rejects loudly with `Error::UnsupportedInterface`.
-  The face flux `J = (c_i/K_i − c_{i+1}/K_{i+1})/R_f`, `R_f` the sum of the
-  two half-cell resistances `dx/(2·D·K_S)`, is linear in the cell values
+- Multi-layer contract (G7/G8/G9, `layers.rs`): a `LayerStack` chains
+  `N ≥ 1` caller-specified layers (thickness, cells, Arrhenius `D`,
+  solubility `K`, per-layer traps/temperature/source). Internal interfaces
+  are linear local-equilibrium laws: Sieverts (`u = c_m / K_S` continuous)
+  or Henry (`u = c_m / K_H` continuous), flux continuous in both; the layer
+  `solubility` carries `K_S` or `K_H` per the adjacent interface's law.
+  `Interface::Recombination` is rejected loudly by `LayerStack::new` with
+  `Error::UnsupportedInterface` (recorded limitation, not a silent pass).
+  Both supported laws share the face flux
+  `J = (c_i/K_i − c_{i+1}/K_{i+1})/R_f` with `R_f` the sum of the two
+  half-cell resistances `dx/(2·D·K)` (`K_S` or `K_H` per the adjacent
+  law); the flux is linear in the cell values
   and folds directly into the tridiagonal θ-step matrix — no interface
   Newton (the spike outcome; the nonlinear G5/G6 face machinery is needed
   only for recombination *outer ends*, reused unchanged on the layered
@@ -83,12 +88,20 @@ facade, the `TritiumBreakthrough` demo, and
   bands as G6d (measured ≈2.0 CN / ≈1.0 BE), G8b layered steady asymptote
   at 1e-6 relative on fluxes and 1e-9 on the profile (Dirichlet and
   recombination outlets), G8c layered discrete mass balance at 1e-12
-  relative.
+  relative. G9 Henry/mixed-interface gates (synthetic stacks, in-test
+  closed forms, same resistance form with `K_H` in place of `K_S`):
+  G9a 2-layer all-Henry stack series-resistance flux at 1e-12 relative
+  with a 1e-18 absolute floor, interface flux continuity and half-cell-
+  corrected interface potentials to roundoff (1e-12), profile the exact
+  piecewise-linear Henry potential at the nodes; G9b 3-layer mixed
+  Sieverts/Henry stack flux continuity across both interface laws to
+  roundoff against the same closed form.
 - Out of scope (do not expand here): multi-D/FEM, heat coupling,
   plasma-facing implantation models, TBR coupling, FESTIM-file I/O, any
-  dolfinx linkage, vendored D/K_S tables (caller-supplied only);
-  Henry/recombination internal interface laws (recorded v1 limitation —
-  they are loud `UnsupportedInterface` errors, not silently approximated).
+  dolfinx linkage, vendored D/K tables (caller-supplied only);
+  recombination internal interface laws (recorded limitation — a loud
+  `UnsupportedInterface` error, not silently approximated; the nonlinear
+  per-interface Newton is its own spike cycle).
 - WASM/tutorial surface (owned): `tritiumBreakthrough` in `bindings/wasm`
   (trap-free permeation solve returning the `J/J_ss` series plus `t_lag`
   and `J_ss`; thin facade, fixed 200-cell grid), the

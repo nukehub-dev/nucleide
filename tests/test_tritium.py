@@ -404,3 +404,77 @@ def test_layered_input_errors() -> None:
         tri.transient_layers(LAYERS_2, DIR_IN, DIR_OUT, [1.0], mobile0=[0.0] * 5)
     with pytest.raises(ValueError):
         tri.transient_layers(LAYERS_2, DIR_IN, DIR_OUT, [1.0], method="rk4")
+
+
+# G9: Henry internal interfaces + mixed Sieverts/Henry stacks — same
+# analytic stance (synthetic stacks, series-resistance closed forms).
+
+# 2-layer Henry gate stack: L = 4e-4 m each, D = 2e-9 / 5e-10 m^2/s,
+# K_H = 1.5 / 0.75 mol/m^3/Pa. R = L1/(D1*K1) + L2/(D2*K2) = 1.2e6.
+LAYERS_H = [
+    {"thickness": 4e-4, "cells": 64, "D": 2e-9, "solubility": 1.5},
+    {"thickness": 4e-4, "cells": 64, "D": 5e-10, "solubility": 0.75},
+]
+HENRY_R = 4e-4 / (2e-9 * 1.5) + 4e-4 / (5e-10 * 0.75)
+
+
+def test_g9a_henry_interface_series_resistance_steady() -> None:
+    out = tri.steady_layers(
+        LAYERS_H,
+        {"kind": "dirichlet", "value": 1.2},
+        {"kind": "dirichlet", "value": 0.2},
+        interfaces=["henry"],
+    )
+    j = (1.2 / 1.5 - 0.2 / 0.75) / HENRY_R
+    assert out["flux_right"] == pytest.approx(j, rel=1e-12, abs=1e-18)
+    assert out["flux_left"] == pytest.approx(-j, rel=1e-12, abs=1e-18)
+    for jf in _face_fluxes(LAYERS_H, out["mobile"]):
+        assert jf == pytest.approx(j, rel=1e-12, abs=1e-18)
+    # Piecewise-linear Henry-potential profile at the cell centres.
+    u0 = 1.2 / 1.5
+    u1 = u0 - j * 4e-4 / (2e-9 * 1.5)
+    n1 = LAYERS_H[0]["cells"]
+    for i, (x, c) in enumerate(zip(out["centres"], out["mobile"], strict=True)):
+        if i < n1:
+            u = u0 - j * x / (2e-9 * 1.5)
+            assert c == pytest.approx(1.5 * u, abs=1e-12)
+        else:
+            u = u1 - j * (x - 4e-4) / (5e-10 * 0.75)
+            assert c == pytest.approx(0.75 * u, abs=1e-12)
+    assert all(c >= 0.0 for c in out["mobile"])
+
+
+def test_g9b_mixed_interface_laws_flux_continuity() -> None:
+    layers: list[dict[str, Any]] = [
+        {"thickness": 3e-4, "cells": 32, "D": 1e-9, "solubility": 1.0},
+        {"thickness": 3e-4, "cells": 32, "D": 4e-10, "solubility": 0.8},
+        {"thickness": 3e-4, "cells": 32, "D": 2.5e-10, "solubility": 0.6},
+    ]
+    out = tri.steady_layers(layers, DIR_IN, DIR_OUT, interfaces=["sieverts", "henry"])
+    r = 3e-4 / (1e-9 * 1.0) + 3e-4 / (4e-10 * 0.8) + 3e-4 / (2.5e-10 * 0.6)
+    j = 1.0 / r
+    assert out["flux_right"] == pytest.approx(j, rel=1e-12, abs=1e-18)
+    assert out["flux_left"] == pytest.approx(-j, rel=1e-12, abs=1e-18)
+    # Flux continuity across the Sieverts gap *and* the Henry gap.
+    for jf in _face_fluxes(layers, out["mobile"]):
+        assert jf == pytest.approx(j, rel=1e-12, abs=1e-18)
+    assert all(c >= 0.0 for c in out["mobile"])
+    # The transient path accepts the same interface list (smoke: positivity
+    # on the mixed stack).
+    sol = tri.transient_layers(
+        layers, DIR_IN, DIR_OUT, [10.0, 100.0], interfaces=["sieverts", "henry"], dt_max=1.0
+    )
+    assert all(c >= 0.0 for row in sol["mobile"] for c in row)
+
+
+def test_layered_interfaces_kwarg_errors() -> None:
+    # Exactly one entry per gap; unknown spellings are rejected;
+    # recombination interfaces are rejected by the core with a clear error.
+    with pytest.raises(ValueError):
+        tri.steady_layers(LAYERS_2, DIR_IN, DIR_OUT, interfaces=["henry", "henry"])
+    with pytest.raises(ValueError):
+        tri.steady_layers(LAYERS_2, DIR_IN, DIR_OUT, interfaces=["nope"])
+    with pytest.raises(ValueError):
+        tri.steady_layers(LAYERS_2, DIR_IN, DIR_OUT, interfaces=["recombination"])
+    with pytest.raises(ValueError):
+        tri.transient_layers(LAYERS_2, DIR_IN, DIR_OUT, [1.0], interfaces=["henry", "henry"])
