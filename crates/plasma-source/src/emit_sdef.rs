@@ -166,10 +166,13 @@ pub(crate) fn drift_report(
 /// The card carries the source's *marginals* as discrete histograms —
 /// `RAD=D1` (birth minor-radius profile), `EXT=D2` (birth Z profile), and
 /// `ERG=D3` (global marginal energy spectrum) — which is the strongest
-/// product-form representation the discrete `SI`/`SP` card subset allows.
-/// The drift report quantifies the truncation and the joint-correlation
-/// information the card cannot carry (see [`crate::parametric`]); the card
-/// still round-trips byte-identically through the typed reader.
+/// product-form representation the discrete `SI`/`SP` card subset allows. A
+/// partial toroidal sector adds `PHI=D4` (uniform toroidal-angle bins over
+/// `[start, start + rotation)` radians); a full rotation (or no sector)
+/// keeps the landed three-marginal card bit-for-bit. The drift report
+/// quantifies the truncation and the joint-correlation information the card
+/// cannot carry (see [`crate::parametric`]); the card still round-trips
+/// byte-identically through the typed reader.
 pub fn emit_sdef_parametric(
     config: &ParametricPlasmaConfig,
     version: u32,
@@ -187,7 +190,12 @@ pub fn emit_sdef_parametric(
         sb: None,
         line: 0,
     };
-    let card = SdefCard {
+    let mut dists = vec![
+        dist(1, &hist.radial),
+        dist(2, &hist.vertical),
+        dist(3, &hist.energy),
+    ];
+    let mut card = SdefCard {
         pos: Some(SdefRef::Literal([0.0, 0.0, 0.0])),
         axs: Some(SdefRef::Literal([0.0, 0.0, 1.0])),
         rad: Some(SdefRef::Dist(1)),
@@ -197,15 +205,11 @@ pub fn emit_sdef_parametric(
         par: Some(SdefRef::Literal(par.to_string())),
         ..SdefCard::default()
     };
-    let text = SdefProblem {
-        card,
-        dists: vec![
-            dist(1, &hist.radial),
-            dist(2, &hist.vertical),
-            dist(3, &hist.energy),
-        ],
+    if let Some(angle) = &hist.toroidal {
+        dists.push(dist(4, angle));
+        card.phi = Some(SdefRef::Dist(4));
     }
-    .emit();
+    let text = SdefProblem { card, dists }.emit();
 
     let mut report = DriftReport::new();
     report.push(DriftRow::new(
@@ -232,6 +236,22 @@ pub fn emit_sdef_parametric(
         "product-form card: half the L1 distance between the true (r, z) birth \
          joint and the product of its marginals is lost (0 = independent)",
     ));
+    if let (Some(sector), Some(angle)) = (&config.sector, &hist.toroidal) {
+        report.push(DriftRow::new(
+            "toroidal sector",
+            1.0,
+            true,
+            format!(
+                "toroidal births uniform over [{:.6}, {:.6}) rad preserved as {} \
+                 uniform angle bins (PHI=D4); emission totals scale by \
+                 rotation/2π = {:.6}",
+                sector.start_angle,
+                sector.start_angle + sector.rotation_angle,
+                angle.centers.len(),
+                sector.fraction(),
+            ),
+        ));
+    }
     Ok(EmittedCard {
         text,
         drift: report,
@@ -380,5 +400,54 @@ mod tests {
         let mut bad = config;
         bad.ion_temperature.centre_kev = -1.0;
         assert!(emit_sdef_parametric(&bad, 5, 15).is_err());
+    }
+
+    #[test]
+    fn parametric_sector_card_carries_phi_marginal_and_round_trips() {
+        use crate::parametric::ToroidalSector;
+        use std::f64::consts::PI;
+        let mut config = crate::parametric::tests::iter_h_mode();
+        config.sector = Some(ToroidalSector::new(0.5, PI).unwrap());
+        let card = emit_sdef_parametric(&config, 5, 15).unwrap();
+        let head = "SDEF POS=0 0 0\n     AXS=0 0 1\n     RAD=D1\n     EXT=D2\n     PHI=D4\n     ERG=D3\n     WGT=1\n     PAR=n";
+        assert!(card.text.starts_with(head), "card head:\n{}", card.text);
+        assert!(card.text.contains("\nSI4 L "));
+        assert!(card.text.contains("\nSP4 D "));
+        for line in card.text.lines() {
+            assert!(line.len() <= 80, "line over 80 columns: {line:?}");
+        }
+        card.verify_round_trip().unwrap();
+        // Four drift rows: truncation, marginals, joint correlation, sector.
+        assert_eq!(card.drift.rows.len(), 4);
+        let sector = &card.drift.rows[3];
+        assert_eq!(sector.quantity, "toroidal sector");
+        assert_eq!(sector.accounted, 1.0);
+        assert!(sector.reparsed);
+        assert!(sector.note.contains("rotation/2π = 0.5"));
+        // Re-parse: the angle marginal survived at card precision (15
+        // uniform bins over [0.5, 0.5 + π)).
+        let parsed = nucleide_mcnp_io::sdef::parse_sdef_text(&card.text).unwrap();
+        assert_eq!(parsed.dists.len(), 4);
+        assert_eq!(
+            parsed.card.phi,
+            Some(nucleide_mcnp_io::sdef::SdefRef::Dist(4))
+        );
+        let sp4: f64 = parsed.dists[3].sp.as_ref().unwrap().iter().sum();
+        assert!((sp4 - 1.0).abs() < 1e-4, "angle masses {sp4}");
+        assert_eq!(parsed.dists[3].si.len(), 15);
+        assert!((parsed.dists[3].si[0] - (0.5 + PI / 15.0 / 2.0)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn parametric_full_rotation_card_matches_full_torus_bit_for_bit() {
+        use crate::parametric::ToroidalSector;
+        use std::f64::consts::PI;
+        let full = crate::parametric::tests::iter_h_mode();
+        let mut sector = full;
+        sector.sector = Some(ToroidalSector::new(0.0, 2.0 * PI).unwrap());
+        let a = emit_sdef_parametric(&full, 5, 15).unwrap();
+        let b = emit_sdef_parametric(&sector, 5, 15).unwrap();
+        assert_eq!(a.text, b.text);
+        assert_eq!(a.drift, b.drift);
     }
 }

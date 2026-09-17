@@ -159,7 +159,10 @@ impl<'a> Gravel<'a> {
                 return Err(Error::BadRates("sigma must be > 0"));
             }
             let factor = (rate / sigma) * (rate / sigma);
-            if !factor.is_finite() {
+            // A zero rate carries zero weight by design (pinned divergence);
+            // a nonzero rate weighting to exactly zero means sigma overflowed
+            // out of range and must be loud, never a silent skip.
+            if !factor.is_finite() || (factor == 0.0 && rate != 0.0) {
                 return Err(Error::BadRates("sigma is out of weight range"));
             }
             meas_weight.push(factor);

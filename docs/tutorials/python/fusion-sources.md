@@ -188,26 +188,36 @@ correlation between radius and height, so the parametric drift report adds a
 "joint correlation" row quantifying that loss; `spectrum` reports the
 magnetic-axis moments (the centre temperature), not the birth-weighted mean.
 
-## Not yet supported
+## Beyond the full torus
 
 The parametric model covers equimolar D-T, pure D-D, and arbitrary D/T fuel
-mixtures on the full torus. Toroidal sectors are not yet supported and raise
-a clear error instead of guessing:
+mixtures — including per-species ion temperatures — on the full torus or a
+toroidal sector. A half-torus sector samples birth angles over half the
+azimuth:
 
 ```python
-mixture = dict(parametric, fuel={"D": 0.7, "T": 0.3})
-print(ps.particles(mixture, 4, seed=0)["energy"][:2])
+sector = dict(parametric, start_angle=0.0, rotation_angle=3.141592653589793)
+print(ps.particles(sector, 4, seed=0)["energy"][:2])
 
-try:
-    ps.particles(dict(parametric, rotation_angle=1.57), 4, seed=0)
-except ValueError as e:
-    print("sector:", e)
+per_species = dict(
+    parametric,
+    fuel={"D": 0.7, "T": 0.3},
+    species_temperatures={"D": 20.0, "T": 30.0},
+)
+print(ps.particles(per_species, 2, seed=0)["energy"][:2])
+
+print(ps.proton_accounting(dict(parametric, fuel={"D": 1.0, "T": 0.0})))
 ```
 
 ```text
-[14.62170927 14.07200675]
-sector: plasma-source: not yet supported: `rotation_angle` (sectors need a toroidal-angle distribution — outside the parametric model)
+[14.0354892  13.72427193]
+[14.67928853 14.07698386]
+{'proton_per_neutron': 1.0, 'neutron_total': 1.04538109404429e+19, 'proton_total': 1.04538109404429e+19, 'note': 'D(d,p)T proton rate = D-D neutron-branch rate (pinned 50/50 convention); sampler and cards stay neutron-only, proton transport out of scope'}
 ```
+
+Out-of-range angles, negative temperatures, and pure-tritium mixtures raise
+a clear error instead of guessing. The sampler and the emitted cards stay
+neutron-only; proton transport is out of scope.
 
 Malformed inputs raise a clear error at every entry point — for example a
 zero ring radius (`ring radius must be > 0 cm`) or a two-entry point

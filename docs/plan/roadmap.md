@@ -80,7 +80,8 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 - Tritium 1D diffusion-trapping kernel (`tritium`): T1–T2 mobile/trap
   transport with the full surface taxonomy; recombination ends closed in
   steady state and transient (G5/G6); multi-layer series stacks with
-  Sieverts or Henry internal interfaces (G7/G8/G9).
+  Sieverts or Henry internal interfaces (G7/G8/G9) plus vented-sink
+  recombination gaps (G10/G11).
 - Scoped MCNP→OpenMC/Serpent/PHITS/GDML CSG translation (`csg-xlate`): surfaces,
   cells, nested universes, and rectangular `LAT=1` lattices with per-item
   drift reports (GDML lattices expand to per-element placements).
@@ -112,13 +113,15 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   (ASTM E693/E521 stay designation-only; PKA-spectrum solving stays out).
 - Neutron spectrum unfolding (`unfold`): SAND-II iterative spectral
   adjustment (McElroy et al., AFWL-TR-67-41, 1967), STAYSL-class damped
-  least-squares (Perey, ORNL/TM-6062, 1977), and GRAVEL chi-square-weighted
-  adjustment (Matzke, PTB-N-19, 1994) of a caller-supplied guess spectrum
-  against measured activation rates over a caller-supplied response
-  matrix, with per-group relative-change convergence diagnostics and a hard
-  `NotConverged` past the explicit iteration cap (MAXED is recorded for a
-  later cycle); the IRDFF-II v1 response pack ships as a runtime
-  hash-pinned download, never vendored.
+  least-squares (Perey, ORNL/TM-6062, 1977), GRAVEL chi-square-weighted
+  adjustment (Matzke, PTB-N-19, 1994), and MAXED maximum-entropy adjustment
+  (Reginatto & Goldhagen, Health Phys. 77 (1999) 579 — journal equations
+  only, the closed UMG package never touched) of a caller-supplied guess
+  spectrum against measured activation rates over a caller-supplied
+  response matrix, with per-group relative-change convergence diagnostics
+  and a hard `NotConverged` past the explicit iteration cap (MAXED adds a
+  caller chi-square target to the acceptance leg); the IRDFF-II response
+  pack (v1 foil subset + v2 extension) ships as a runtime hash-pinned download, never vendored.
 
 ## Upcoming priorities
 

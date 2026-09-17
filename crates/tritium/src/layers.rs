@@ -6,26 +6,36 @@
 //! (T1) and the McNabb–Foster kinetics (T2) hold with the layer's own
 //! coefficients; temperature stays caller-supplied per layer (no heat solve).
 //!
-//! Internal interfaces carry a linear local-equilibrium law: the Sieverts
-//! potential `u = c_m / K_S` \[Pa¹ᐟ²\] or the Henry potential `u = c_m / K_H`
-//! \[Pa\] (the layer's [`LayerSpec::solubility`] plays whichever constant the
-//! adjacent interface's [`Interface`] law declares) and the flux
-//! `J = −D ∂c_m/∂x` are continuous. Recombination internal interface laws
-//! remain loud [`Error::UnsupportedInterface`] errors (recorded limitation).
-//! Because both supported conditions are linear in the mobile concentration,
-//! every interior face flux
+//! Internal interfaces carry either a linear local-equilibrium law — the
+//! Sieverts potential `u = c_m / K_S` \[Pa¹ᐟ²\] or the Henry potential
+//! `u = c_m / K_H` \[Pa\] (the layer's [`LayerSpec::solubility`] plays
+//! whichever constant the adjacent interface's [`Interface`] law declares)
+//! — or the vented-sink recombination law (R-S, G10/G11): a single face
+//! concentration `x ≥ 0` with half-cell fluxes `J_L = g_L (c_L − x)` and
+//! `J_R = g_R (x − c_R)` (`g = 2D/dx` per side, no solubility involved) and
+//! the desorption sink `K_r x²` venting from the face, so
+//! `J_L − J_R = K_r x²`. The flux-continuous product law (`J = K_r x₀x₁`)
+//! stays permanently rejected (spike outcome: spurious insulated root,
+//! symmetry breaking, blocked transient) — there is no spelling for it, so
+//! it cannot be constructed.
+//! Because the supported linear conditions are linear in the mobile
+//! concentration, every linear interior face flux
 //!
 //! ```text
 //! J_f = (c_i / K_i − c_{i+1} / K_{i+1}) / R_f,
 //! R_f = dx_i / (2 Φ_i) + dx_{i+1} / (2 Φ_{i+1}),   Φ = D · K,
 //! ```
 //!
-//! folds directly into the tridiagonal θ-step matrix — the interface needs
-//! no Newton machinery of its own (strictly simpler than the recombination
-//! faces of G5/G6, which are nonlinear in the face value). The outer ends
-//! reuse the landed [`Boundary`] taxonomy unchanged, including recombination
-//! ends through the same affine face-response construction (G5/G6), here
-//! built on the layered step matrix. A one-layer stack dispatches to the
+//! folds directly into the tridiagonal θ-step matrix — the linear interfaces
+//! need no Newton machinery of their own (strictly simpler than the
+//! recombination faces of G5/G6, which are nonlinear in the face value). A
+//! vented-sink gap instead CUTs the matrix (block-diagonal; each block sees
+//! a Dirichlet cut face): the adjacent-cell values stay affine in the face
+//! value, so the scalar residual `R(x) = P − Q·x − K_r·x² = 0` closes in
+//! closed form (`x = 2P/(√(Q²+4K_rP)+Q)`; `P > 0` required, a loud error
+//! otherwise). The outer ends reuse the landed [`Boundary`] taxonomy
+//! unchanged, including recombination ends through the same affine
+//! face-response construction (G5/G6), here built on the layered step matrix. A one-layer stack dispatches to the
 //! landed single-slab kernel, so `N = 1` reproduces it exactly (G7c).
 
 use crate::bc::Boundary;
@@ -34,7 +44,7 @@ use crate::params::{arrhenius, TransportParams, TrapSpec};
 use crate::solve::{
     self, apply_faces, close_faces, face_closed_single, face_concentration, face_from_adjacent,
     face_newton_pair, linear_steady, outward_flux, trap_update, DiffusionSystem, InitialState,
-    SolverOptions, TimeGrid, G5_ATOL, G5_RTOL, MAX_PICARD,
+    SolverOptions, TimeGrid, G5_ATOL, G5_NEWTON_MAX, G5_RTOL, MAX_PICARD,
 };
 
 /// Internal interface condition between adjacent layers.
@@ -43,10 +53,15 @@ use crate::solve::{
 /// [`Sieverts`] and [`Henry`] are supported: the local-equilibrium condition
 /// `u = c_m / K` continuous (Sieverts potential with `K = K_S`, Henry
 /// potential with `K = K_H`; the layer [`LayerSpec::solubility`] carries the
-/// matching constant) with continuous flux. [`Recombination`] internal
-/// interfaces are rejected loudly by [`LayerStack::new`] with
-/// [`Error::UnsupportedInterface`] (recorded limitation, not a silent pass).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// matching constant) with continuous flux. [`Recombination`] is the
+/// vented-sink law (R-S, G10/G11): a single face concentration `x ≥ 0` with
+/// half-cell fluxes `J_L = g_L·(c_L − x)`, `J_R = g_R·(x − c_R)` (rightward
+/// positive, `g = 2D/dx` per side) and the desorption sink `K_r·x²` venting
+/// from the face, closing `J_L − J_R = K_r·x²` in closed form on the CUT
+/// (block-diagonal) matrix. The `K_r → 0` limit is a continuous-concentration
+/// joint, not a Sieverts law (no `K` ratio enters); a non-positive permeation
+/// drive `P ≤ 0` has no nonnegative root and fails loudly at solve time.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Interface {
     /// Sieverts local equilibrium: `c_m / K_S` continuous, flux continuous.
     Sieverts,
@@ -55,20 +70,40 @@ pub enum Interface {
     /// [`LayerSpec::solubility`] plays `K_H`), so it folds into the
     /// θ-step matrix exactly like [`Interface::Sieverts`].
     Henry,
-    /// Recombination interface law `J = K_r c²` — not supported (loud
-    /// error): the nonlinear face would need an unproven per-interface
-    /// Newton construction (recorded for a later cycle).
-    Recombination,
+    /// Vented-sink recombination law (R-S): the gap desorbs `K_r·x²`
+    /// \[mol/m²/s\] from the single face concentration `x` \[mol/m³\].
+    Recombination {
+        /// Desorption rate `K_r` \[m⁴/mol/s\] (`> 0`, finite).
+        rate: f64,
+    },
 }
 
 impl Interface {
-    /// Support check: the linear laws pass; recombination fails loudly.
+    /// Build a vented-sink recombination interface (finite, positive rate).
+    pub fn recombination(rate: f64) -> Result<Self, Error> {
+        if !rate.is_finite() || rate <= 0.0 {
+            return Err(Error::BadData(
+                "recombination interface rate must be finite and > 0",
+            ));
+        }
+        Ok(Interface::Recombination { rate })
+    }
+
+    /// Desorption rate `K_r` for a recombination interface; `None` for the
+    /// linear laws.
+    pub fn recombination_rate(&self) -> Option<f64> {
+        match self {
+            Interface::Recombination { rate } => Some(*rate),
+            _ => None,
+        }
+    }
+
+    /// Support check: every law passes once its data validates (the rate
+    /// check above for recombination).
     fn validate(&self) -> Result<(), Error> {
         match self {
             Interface::Sieverts | Interface::Henry => Ok(()),
-            Interface::Recombination => Err(Error::UnsupportedInterface(
-                "internal recombination interfaces are not supported (Sieverts and Henry only)",
-            )),
+            Interface::Recombination { rate } => Self::recombination(*rate).map(|_| ()),
         }
     }
 }
@@ -170,14 +205,14 @@ impl LayerSpec {
 ///
 /// Cell indices run across the whole stack (layer 0 first); per-layer
 /// coefficients expand to per-cell arrays on demand. Construction validates
-/// every layer and rejects recombination interfaces loudly (see
-/// [`Interface`]).
+/// every layer and every interface rate (see [`Interface`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayerStack {
     /// Layers from the left (`x = 0`) face to the right (`x = L`) face.
     pub layers: Vec<LayerSpec>,
     /// Interface condition between `layers[k]` and `layers[k + 1]`
-    /// (length `layers.len() − 1`; Sieverts or Henry — see [`Interface`]).
+    /// (length `layers.len() − 1`; Sieverts, Henry, or vented-sink
+    /// recombination — see [`Interface`]).
     pub interfaces: Vec<Interface>,
     /// Cached first-cell index of each layer (length `layers.len()`).
     /// Derived from `layers` at construction so per-cell queries stay
@@ -187,7 +222,7 @@ pub struct LayerStack {
 
 impl LayerStack {
     /// Validate a stack: at least one layer, one interface per gap, every
-    /// interface supported, and a total cell count that fits in `usize`.
+    /// interface rate valid, and a total cell count that fits in `usize`.
     pub fn new(layers: Vec<LayerSpec>, interfaces: Vec<Interface>) -> Result<Self, Error> {
         if layers.is_empty() {
             return Err(Error::BadGrid("a layer stack needs at least one layer"));
@@ -405,6 +440,9 @@ pub struct LayeredSteadyState {
     pub inventory_mobile: f64,
     /// Trapped inventory per unit area \[mol/m²\].
     pub inventory_trapped: f64,
+    /// Vented-sink face concentration per stack gap \[mol/m³\]: `Some(x)`
+    /// at recombination gaps, `None` at linear (Sieverts/Henry) gaps.
+    pub interface_faces: Vec<Option<f64>>,
 }
 
 /// Full transient of a [`LayerStack`]: one mobile/trapped row plus outward
@@ -426,6 +464,10 @@ pub struct LayeredSolution {
     pub dx: Vec<f64>,
     /// The `t = 0` state.
     pub initial: InitialState,
+    /// Vented-sink face concentration per output time per stack gap
+    /// (`[time][gap]`, `Some(x)` at recombination gaps, `None` at linear
+    /// gaps) for closing the discrete balance with the desorption term.
+    pub interface_faces: Vec<Vec<Option<f64>>>,
 }
 
 impl LayeredSolution {
@@ -480,11 +522,18 @@ struct LayeredSystem {
 impl LayeredSystem {
     /// Borrow the tridiagonal rate system alone (for [`linear_steady`]).
     fn rate_system(&self) -> DiffusionSystem {
+        self.rate_system_with(self.rhs.clone())
+    }
+
+    /// Borrow the tridiagonal rate system with a replacement right-hand
+    /// side (for the vented-sink sensitivity columns, which share the CUT
+    /// matrix with a unit face source).
+    fn rate_system_with(&self, rhs: Vec<f64>) -> DiffusionSystem {
         DiffusionSystem {
             sub: self.sub.clone(),
             diag: self.diag.clone(),
             sup: self.sup.clone(),
-            rhs: self.rhs.clone(),
+            rhs,
             face_d: self.d_cell.clone(),
         }
     }
@@ -500,12 +549,19 @@ impl LayeredSystem {
 /// half-cell conductance `2 D_cell/dx` against the equilibrium face
 /// concentration. The mobile concentration stays the unknown, so the face
 /// fluxes are linear and the matrix tridiagonal.
-fn assemble_layers(
+///
+/// Faces flagged in `cut` (vented-sink recombination gaps) are CUT instead:
+/// the cross-coupling drops out (block-diagonal) and each side keeps only
+/// its half-cell conductance `g = 2 D_cell/dx` on the diagonal — the face
+/// source re-enters through the sensitivity columns, never through `rhs`.
+fn assemble_layers_inner(
     stack: &LayerStack,
     left: &Boundary,
     right: &Boundary,
+    cut: &[bool],
 ) -> Result<LayeredSystem, Error> {
     let n = stack.total_cells();
+    debug_assert_eq!(cut.len(), n + 1);
     let dx = stack.cell_widths();
     let d_cell = stack.diffusivities()?;
     let sol: Vec<f64> = (0..n)
@@ -523,8 +579,11 @@ fn assemble_layers(
     let mut sup = vec![0.0; n.saturating_sub(1)];
     let mut rhs = vec![0.0; n];
     for i in 0..n {
-        // West coupling: interior face (Sieverts form) or landed boundary.
-        if i > 0 {
+        // West coupling: CUT face (vented-sink Dirichlet cut), interior
+        // face (Sieverts form), or landed boundary.
+        if i > 0 && cut[i] {
+            diag[i] -= 2.0 * d_cell[i] / (dx[i] * dx[i]);
+        } else if i > 0 {
             let rw = face_r[i];
             diag[i] -= 1.0 / (rw * dx[i] * sol[i]);
             sub[i - 1] = 1.0 / (rw * dx[i] * sol[i - 1]);
@@ -533,7 +592,9 @@ fn assemble_layers(
             rhs[i] += 2.0 * d_cell[i] * cf / (dx[i] * dx[i]);
         }
         // East coupling.
-        if i + 1 < n {
+        if i + 1 < n && cut[i + 1] {
+            diag[i] -= 2.0 * d_cell[i] / (dx[i] * dx[i]);
+        } else if i + 1 < n {
             let re = face_r[i + 1];
             diag[i] -= 1.0 / (re * dx[i] * sol[i]);
             sup[i] = 1.0 / (re * dx[i] * sol[i + 1]);
@@ -553,6 +614,16 @@ fn assemble_layers(
     })
 }
 
+/// Assemble the layered cell-centred finite-volume diffusion operator (no
+/// CUT faces; see [`assemble_layers_inner`]).
+fn assemble_layers(
+    stack: &LayerStack,
+    left: &Boundary,
+    right: &Boundary,
+) -> Result<LayeredSystem, Error> {
+    assemble_layers_inner(stack, left, right, &vec![false; stack.total_cells() + 1])
+}
+
 /// Layered steady bundle: Langmuir trapped loads on each layer's isotherm
 /// plus inventories for a converged mobile profile.
 fn finish_layered_steady(
@@ -561,6 +632,7 @@ fn finish_layered_steady(
     mobile: Vec<f64>,
     flux_left: f64,
     flux_right: f64,
+    interface_faces: Vec<Option<f64>>,
 ) -> Result<LayeredSteadyState, Error> {
     let n = stack.total_cells();
     let mut trapped = Vec::with_capacity(n);
@@ -589,6 +661,7 @@ fn finish_layered_steady(
         flux_right,
         inventory_mobile,
         inventory_trapped,
+        interface_faces,
     })
 }
 
@@ -709,17 +782,20 @@ fn steady_layers_recombination(
         || outward_flux(right, mobile[n - 1], sys.d_cell[n - 1], sys.dx[n - 1]),
         |kr| kr * face[1] * face[1],
     );
-    finish_layered_steady(stack, &sys, mobile, flux_left, flux_right)
+    let gaps = stack.interfaces.len();
+    finish_layered_steady(stack, &sys, mobile, flux_left, flux_right, vec![None; gaps])
 }
 
-/// Trap-free-style steady state of a [`LayerStack`] (G7).
+/// Trap-free-style steady state of a [`LayerStack`] (G7/G10).
 ///
 /// Solves the layered linear system through [`nucleide_linalg::tridiag`] and
 /// evaluates each layer's Langmuir isotherm pointwise. A one-layer stack
 /// dispatches to [`solve::steady_state`] and reproduces it exactly (G7c);
 /// recombination outer ends close through the layered face-response
 /// construction ([`steady_layers_recombination`], the landed G5 machinery on
-/// the extended interface system).
+/// the extended interface system); stacks with vented-sink recombination
+/// internal interfaces close through the CUT-matrix construction
+/// ([`steady_layers_vented`], G10).
 pub fn steady_layers(
     stack: &LayerStack,
     left: &Boundary,
@@ -738,7 +814,11 @@ pub fn steady_layers(
             flux_right: s.flux_right,
             inventory_mobile: s.inventory_mobile,
             inventory_trapped: s.inventory_trapped,
+            interface_faces: vec![],
         });
+    }
+    if has_vent_gaps(stack) {
+        return steady_layers_vented(stack, left, right);
     }
     let kr_left = left.recombination_rate();
     let kr_right = right.recombination_rate();
@@ -750,7 +830,519 @@ pub fn steady_layers(
     let flux_left = outward_flux(left, mobile[0], sys.d_cell[0], sys.dx[0]);
     let n = stack.total_cells();
     let flux_right = outward_flux(right, mobile[n - 1], sys.d_cell[n - 1], sys.dx[n - 1]);
-    finish_layered_steady(stack, &sys, mobile, flux_left, flux_right)
+    let gaps = stack.interfaces.len();
+    finish_layered_steady(stack, &sys, mobile, flux_left, flux_right, vec![None; gaps])
+}
+
+// ---------------------------------------------------------------------------
+// Vented-sink recombination internal interfaces (G10/G11)
+// ---------------------------------------------------------------------------
+//
+// Law (R-S): one interface unknown `x ≥ 0` (single face concentration). The
+// bulk matrix is CUT at the gap (block-diagonal; each block sees a Dirichlet
+// cut face, so a single gap's cross-sensitivities are exactly zero).
+// Adjacent-cell values are affine (`cL = aL + bL·x`, `cR = aR + bR·x` from
+// one base plus one column solve per block); with half-cell conductances
+// `g = 2D/dx` per side (rightward positive) the residual
+// `R(x) = J_L − J_R − K_r·x² = P − Q·x − K_r·x² = 0`
+// (`P = g_L·a_L + g_R·a_R`, `Q = g_L·(1−b_L) + g_R·(1−b_R) > 0`) closes in
+// closed form `x = 2P/(√(Q²+4K_rP)+Q)`. Stacks with several vent faces (more
+// gaps, or recombination outer ends alongside) couple through shared blocks
+// and close by Newton iteration with the analytic Jacobian instead — the
+// same affine construction, the G5/G6 pair-Newton shape. The θ-stepper
+// coupling mirrors the G6 outer-end machinery with the faces moved interior:
+// per `dt` span the cut-matrix sensitivity columns, per step the explicit
+// vector carrying the old-face source plus the FULL time-independent
+// outer-face source, the close fused into the trap Picard loop in the same
+// slot as G6. `P ≤ 0` (reverse or zero drive) has no nonnegative root and
+// fails loudly; `K_r → 0` is a continuous-concentration joint (not
+// Sieverts — no solubility ratio enters the gap).
+
+/// Whether any stack gap carries the vented-sink recombination law.
+fn has_vent_gaps(stack: &LayerStack) -> bool {
+    stack
+        .interfaces
+        .iter()
+        .any(|i| i.recombination_rate().is_some())
+}
+
+/// One vented-sink internal gap: the two adjacent cells, their half-cell
+/// conductances, and the desorption rate.
+struct VentGap {
+    gap: usize,
+    left_cell: usize,
+    right_cell: usize,
+    g_left: f64,
+    g_right: f64,
+    kr: f64,
+}
+
+/// Collect the vented-sink gaps in gap order (non-empty on the vented path).
+fn collect_vent_gaps(stack: &LayerStack, dx: &[f64], d: &[f64]) -> Vec<VentGap> {
+    let mut gaps = Vec::new();
+    for (k, interface) in stack.interfaces.iter().enumerate() {
+        if let Interface::Recombination { rate } = interface {
+            let right_cell = stack.layer_start(k + 1);
+            let left_cell = right_cell - 1;
+            gaps.push(VentGap {
+                gap: k,
+                left_cell,
+                right_cell,
+                g_left: 2.0 * d[left_cell] / dx[left_cell],
+                g_right: 2.0 * d[right_cell] / dx[right_cell],
+                kr: *rate,
+            });
+        }
+    }
+    gaps
+}
+
+/// One unknown of the vented face system: a recombination outer end or an
+/// internal vented-sink gap. Order in `faces`: outer-left (if any), then the
+/// gaps in gap order, then outer-right (if any).
+enum VentFace {
+    OuterLeft {
+        kr: f64,
+        g: f64,
+    },
+    Gap {
+        gap: usize,
+        kr: f64,
+        g_left: f64,
+        g_right: f64,
+        left_cell: usize,
+        right_cell: usize,
+    },
+    OuterRight {
+        kr: f64,
+        g: f64,
+    },
+}
+
+impl VentFace {
+    fn kr(&self) -> f64 {
+        match self {
+            VentFace::OuterLeft { kr, .. }
+            | VentFace::Gap { kr, .. }
+            | VentFace::OuterRight { kr, .. } => *kr,
+        }
+    }
+
+    /// Operator source entries `(cell, g/dx)` coupling this face value into
+    /// the CUT system (the face source `Q·y`, scaled by `dt·θ` per step).
+    fn sources(&self, dx: &[f64], n: usize) -> Vec<(usize, f64)> {
+        match self {
+            VentFace::OuterLeft { g, .. } => vec![(0, g / dx[0])],
+            VentFace::Gap {
+                g_left,
+                g_right,
+                left_cell,
+                right_cell,
+                ..
+            } => vec![
+                (*left_cell, g_left / dx[*left_cell]),
+                (*right_cell, g_right / dx[*right_cell]),
+            ],
+            VentFace::OuterRight { g, .. } => vec![(n - 1, g / dx[n - 1])],
+        }
+    }
+}
+
+/// Adjacent-cell response of one vent face: each coupled side answers
+/// `c(y) = a + Σ_l b[l]·y_l` (outer faces couple one side, gaps two).
+struct VentResponse {
+    a: Vec<f64>,
+    b: Vec<Vec<f64>>,
+}
+
+/// CUT assembly shared by the vented steady state and transient: the faces,
+/// the CUT operator (recombination outer ends as Dirichlet(0) faces,
+/// vented gaps CUT), and the face positions of the outer ends.
+struct VentAssembly {
+    faces: Vec<VentFace>,
+    sys: LayeredSystem,
+    outer_left: Option<usize>,
+    outer_right: Option<usize>,
+}
+
+fn vent_assemble(
+    stack: &LayerStack,
+    left: &Boundary,
+    right: &Boundary,
+) -> Result<VentAssembly, Error> {
+    let n = stack.total_cells();
+    let dx = stack.cell_widths();
+    let d = stack.diffusivities()?;
+    let gaps = collect_vent_gaps(stack, &dx, &d);
+    debug_assert!(!gaps.is_empty());
+    let mut faces = Vec::new();
+    let mut outer_left = None;
+    let mut outer_right = None;
+    if let Some(kr) = left.recombination_rate() {
+        outer_left = Some(faces.len());
+        faces.push(VentFace::OuterLeft {
+            kr,
+            g: 2.0 * d[0] / dx[0],
+        });
+    }
+    for gap in &gaps {
+        faces.push(VentFace::Gap {
+            gap: gap.gap,
+            kr: gap.kr,
+            g_left: gap.g_left,
+            g_right: gap.g_right,
+            left_cell: gap.left_cell,
+            right_cell: gap.right_cell,
+        });
+    }
+    if let Some(kr) = right.recombination_rate() {
+        outer_right = Some(faces.len());
+        faces.push(VentFace::OuterRight {
+            kr,
+            g: 2.0 * d[n - 1] / dx[n - 1],
+        });
+    }
+    let bl0 = left
+        .recombination_rate()
+        .map_or_else(|| left.clone(), |_| Boundary::Dirichlet(0.0));
+    let br0 = right
+        .recombination_rate()
+        .map_or_else(|| right.clone(), |_| Boundary::Dirichlet(0.0));
+    let mut cut = vec![false; n + 1];
+    for gap in &gaps {
+        cut[stack.layer_start(gap.gap + 1)] = true;
+    }
+    let sys = assemble_layers_inner(stack, &bl0, &br0, &cut)?;
+    Ok(VentAssembly {
+        faces,
+        sys,
+        outer_left,
+        outer_right,
+    })
+}
+
+/// Adjacent-cell response rows for every vent face from a base profile and
+/// the sensitivity columns (`c = base + Σ col·y`).
+fn vent_responses(base: &[f64], cols: &[Vec<f64>], faces: &[VentFace]) -> Vec<VentResponse> {
+    faces
+        .iter()
+        .map(|face| match face {
+            VentFace::OuterLeft { .. } => VentResponse {
+                a: vec![base[0]],
+                b: vec![cols.iter().map(|col| col[0]).collect()],
+            },
+            VentFace::Gap {
+                left_cell,
+                right_cell,
+                ..
+            } => VentResponse {
+                a: vec![base[*left_cell], base[*right_cell]],
+                b: vec![
+                    cols.iter().map(|col| col[*left_cell]).collect(),
+                    cols.iter().map(|col| col[*right_cell]).collect(),
+                ],
+            },
+            VentFace::OuterRight { .. } => {
+                let last = base.len() - 1;
+                VentResponse {
+                    a: vec![base[last]],
+                    b: vec![cols.iter().map(|col| col[last]).collect()],
+                }
+            }
+        })
+        .collect()
+}
+
+/// Residual of vent face `j`: outer ends `K_r·y² − g·(c − y)`, gaps
+/// `g_L·(c_L − y) − g_R·(y − c_R) − K_r·y²`.
+fn vent_residual(face: &VentFace, resp: &VentResponse, y: &[f64], j: usize) -> f64 {
+    let c =
+        |side: usize| resp.a[side] + resp.b[side].iter().zip(y).map(|(b, v)| b * v).sum::<f64>();
+    match face {
+        VentFace::OuterLeft { kr, g } | VentFace::OuterRight { kr, g } => {
+            kr * y[j] * y[j] - g * (c(0) - y[j])
+        }
+        VentFace::Gap {
+            kr,
+            g_left,
+            g_right,
+            ..
+        } => g_left * (c(0) - y[j]) - g_right * (y[j] - c(1)) - kr * y[j] * y[j],
+    }
+}
+
+/// Analytic Jacobian entry `∂f_j/∂y_l` of the vent face system.
+fn vent_jacobian(face: &VentFace, resp: &VentResponse, y: &[f64], j: usize, l: usize) -> f64 {
+    let kron = f64::from(j == l);
+    match face {
+        VentFace::OuterLeft { kr, g } | VentFace::OuterRight { kr, g } => {
+            -g * (resp.b[0][l] - kron) + 2.0 * kr * y[j] * kron
+        }
+        VentFace::Gap {
+            kr,
+            g_left,
+            g_right,
+            ..
+        } => {
+            g_left * resp.b[0][l] + g_right * resp.b[1][l]
+                - (g_left + g_right) * kron
+                - 2.0 * kr * y[j] * kron
+        }
+    }
+}
+
+/// Closed form for a lone vent face (`R(y) = P − Q·y − K_r·y² = 0`,
+/// rationalized positive root). `P ≤ 0` has no nonnegative root and fails
+/// loudly — reverse or zero drive is not supported on vented gaps (steady
+/// construction; per-step transient closes use the clamped form below).
+fn vent_closed_single(face: &VentFace, resp: &VentResponse) -> Result<f64, Error> {
+    let (p, q) = vent_pq(face, resp, false);
+    if p <= 0.0 {
+        return Err(Error::BadData(
+            "vented-sink interface has non-positive permeation drive (no nonnegative face root without forward drive)",
+        ));
+    }
+    Ok(vent_closed_pq(face.kr(), p, q))
+}
+
+/// Closed form for a lone vent face on a transient step: the G6 clamping
+/// stance — negative adjacent responses (Crank–Nicolson ringing or
+/// intermediate Picard iterates, never a converged physical state) clamp
+/// to zero instead of failing the step, and zero drive closes at `x = 0`.
+fn vent_closed_single_step(face: &VentFace, resp: &VentResponse) -> f64 {
+    let (p, q) = vent_pq(face, resp, true);
+    vent_closed_pq(face.kr(), p, q)
+}
+
+/// Drive and slope of the lone-face residual `R(y) = P − Q·y − K_r·y²`,
+/// optionally clamping negative adjacents to zero first.
+fn vent_pq(face: &VentFace, resp: &VentResponse, clamp: bool) -> (f64, f64) {
+    let adj = |a: f64| if clamp { a.max(0.0) } else { a };
+    match face {
+        VentFace::OuterLeft { g, .. } | VentFace::OuterRight { g, .. } => {
+            (g * adj(resp.a[0]), g * (1.0 - resp.b[0][0]))
+        }
+        VentFace::Gap {
+            g_left, g_right, ..
+        } => (
+            g_left * adj(resp.a[0]) + g_right * adj(resp.a[1]),
+            g_left * (1.0 - resp.b[0][0]) + g_right * (1.0 - resp.b[1][0]),
+        ),
+    }
+}
+
+/// Rationalized positive root `2P/(√(Q²+4K_rP)+Q)` (`P = 0` closes at 0).
+fn vent_closed_pq(kr: f64, p: f64, q: f64) -> f64 {
+    let p = p.max(0.0);
+    let disc = q.mul_add(q, 4.0 * kr * p);
+    (2.0 * p / (disc.sqrt() + q)).max(0.0)
+}
+
+/// Newton iteration on the coupled vent face system with the analytic
+/// Jacobian from `start` (the G5 pair-Newton shape generalized), to `rtol` /
+/// `atol` on the flux residuals scaled by `|K_r·y²|`. Fails with
+/// [`Error::NotConverged`] when the cap is exhausted or the Jacobian goes
+/// singular/non-finite (hard fail, never a partial face).
+fn vent_newton(
+    faces: &[VentFace],
+    resps: &[VentResponse],
+    start: Vec<f64>,
+    rtol: f64,
+    atol: f64,
+) -> Result<Vec<f64>, Error> {
+    let m = faces.len();
+    let mut y: Vec<f64> = start.into_iter().map(|v| v.max(0.0)).collect();
+    for _ in 0..G5_NEWTON_MAX {
+        let f: Vec<f64> = faces
+            .iter()
+            .zip(resps)
+            .enumerate()
+            .map(|(j, (face, resp))| vent_residual(face, resp, &y, j))
+            .collect();
+        if faces
+            .iter()
+            .zip(&y)
+            .zip(&f)
+            .all(|((face, &yj), &fj)| fj.abs() <= atol + rtol * (face.kr() * yj * yj).abs())
+        {
+            return Ok(y);
+        }
+        let jac: Vec<Vec<f64>> = faces
+            .iter()
+            .zip(resps)
+            .enumerate()
+            .map(|(j, (face, resp))| {
+                (0..m)
+                    .map(|l| vent_jacobian(face, resp, &y, j, l))
+                    .collect()
+            })
+            .collect();
+        let Some(step) = solve_dense(&jac, &f) else {
+            break;
+        };
+        for (yj, &s) in y.iter_mut().zip(&step) {
+            *yj = (*yj - s).max(0.0);
+        }
+    }
+    Err(Error::NotConverged)
+}
+
+/// Small dense solve by Gaussian elimination with partial pivoting (`None`
+/// on a singular or non-finite pivot — the vent Newton treats it as a hard
+/// face failure).
+fn solve_dense(mat: &[Vec<f64>], rhs: &[f64]) -> Option<Vec<f64>> {
+    let m = rhs.len();
+    let mut a: Vec<Vec<f64>> = mat.to_vec();
+    let mut b: Vec<f64> = rhs.to_vec();
+    for col in 0..m {
+        let mut piv = col;
+        for row in col + 1..m {
+            if a[row][col].abs() > a[piv][col].abs() {
+                piv = row;
+            }
+        }
+        if !a[piv][col].is_finite() || a[piv][col] == 0.0 {
+            return None;
+        }
+        a.swap(col, piv);
+        b.swap(col, piv);
+        for row in col + 1..m {
+            let f = a[row][col] / a[col][col];
+            if !f.is_finite() {
+                return None;
+            }
+            // Clone the short pivot segment once (m is tiny) so the update
+            // reads through an iterator instead of a range loop.
+            let pivot: Vec<f64> = a[col][col..m].to_vec();
+            for (ark, ack) in a[row][col..m].iter_mut().zip(&pivot) {
+                *ark -= f * ack;
+            }
+            b[row] -= f * b[col];
+        }
+    }
+    let mut x = vec![0.0; m];
+    for row in (0..m).rev() {
+        let mut s = b[row];
+        for k in row + 1..m {
+            s -= a[row][k] * x[k];
+        }
+        if !a[row][row].is_finite() || a[row][row] == 0.0 {
+            return None;
+        }
+        x[row] = s / a[row][row];
+        if !x[row].is_finite() {
+            return None;
+        }
+    }
+    Some(x)
+}
+
+/// Close the vent faces for the steady state (G5 tolerances from zero; a
+/// lone gap closes in closed form with the loud non-positive-drive error).
+fn close_vent_faces_steady(
+    base: &[f64],
+    cols: &[Vec<f64>],
+    faces: &[VentFace],
+) -> Result<Vec<f64>, Error> {
+    let resps = vent_responses(base, cols, faces);
+    if faces.len() == 1 {
+        return Ok(vec![vent_closed_single(&faces[0], &resps[0])?]);
+    }
+    vent_newton(faces, &resps, vec![0.0; faces.len()], G5_RTOL, G5_ATOL)
+}
+
+/// Close the vent faces for one transient step (caller tolerances,
+/// warm-started; a lone gap closes in the clamped form, coupled faces by
+/// Newton — a non-converging face system is [`Error::NotConverged`]).
+fn close_vent_faces_step(
+    base: &[f64],
+    cols: &[Vec<f64>],
+    faces: &[VentFace],
+    start: Vec<f64>,
+    rtol: f64,
+    atol: f64,
+) -> Result<Vec<f64>, Error> {
+    let resps = vent_responses(base, cols, faces);
+    if faces.len() == 1 {
+        return Ok(vec![vent_closed_single_step(&faces[0], &resps[0])]);
+    }
+    vent_newton(faces, &resps, start, rtol, atol)
+}
+
+/// Vent-face profile update: `base + Σ col·y` (no extra Thomas solve).
+fn apply_vent_faces(mut base: Vec<f64>, cols: &[Vec<f64>], y: &[f64]) -> Vec<f64> {
+    for (col, &yj) in cols.iter().zip(y) {
+        for (row, &s) in base.iter_mut().zip(col.iter()) {
+            *row += s * yj;
+        }
+    }
+    base
+}
+
+/// Steady state of a [`LayerStack`] with vented-sink recombination gaps
+/// (G10).
+///
+/// The CUT operator is linear for frozen faces, so one basis profile plus
+/// one unit-source column per vent face pins the adjacent response exactly;
+/// a lone gap closes in closed form, coupled faces by the analytic-Jacobian
+/// Newton (G5 tolerances). Traps evaluate pointwise on the Langmuir
+/// isotherm afterwards, exactly like the linear steady path.
+fn steady_layers_vented(
+    stack: &LayerStack,
+    left: &Boundary,
+    right: &Boundary,
+) -> Result<LayeredSteadyState, Error> {
+    let n = stack.total_cells();
+    let asm = vent_assemble(stack, left, right)?;
+    let m = asm.faces.len();
+    let dx = asm.sys.dx.clone();
+    let base = linear_steady(&asm.sys.rate_system())?;
+    let mut cols = Vec::with_capacity(m);
+    for face in &asm.faces {
+        let mut rhs = vec![0.0; n];
+        for (cell, s) in face.sources(&dx, n) {
+            rhs[cell] += s;
+        }
+        cols.push(linear_steady(&asm.sys.rate_system_with(rhs))?);
+    }
+    let y = close_vent_faces_steady(&base, &cols, &asm.faces)?;
+    let mobile = apply_vent_faces(base, &cols, &y);
+    let kr_left = left.recombination_rate();
+    let kr_right = right.recombination_rate();
+    let flux_left = kr_left.map_or_else(
+        || outward_flux(left, mobile[0], asm.sys.d_cell[0], asm.sys.dx[0]),
+        |kr| kr * y[asm.outer_left.expect("rate present for a closed left face")].powi(2),
+    );
+    let flux_right = kr_right.map_or_else(
+        || {
+            outward_flux(
+                right,
+                mobile[n - 1],
+                asm.sys.d_cell[n - 1],
+                asm.sys.dx[n - 1],
+            )
+        },
+        |kr| {
+            kr * y[asm
+                .outer_right
+                .expect("rate present for a closed right face")]
+            .powi(2)
+        },
+    );
+    let mut interface_faces = vec![None; stack.interfaces.len()];
+    for (j, face) in asm.faces.iter().enumerate() {
+        if let VentFace::Gap { gap, .. } = face {
+            interface_faces[*gap] = Some(y[j]);
+        }
+    }
+    finish_layered_steady(
+        stack,
+        &asm.sys,
+        mobile,
+        flux_left,
+        flux_right,
+        interface_faces,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -765,7 +1357,9 @@ pub fn steady_layers(
 /// interface fluxes (Sieverts/Henry) sit inside the step matrix and no
 /// interface iteration exists; recombination outer ends (G6 machinery) close
 /// per step through the affine face-response construction on the layered
-/// matrix, fused into the same Picard loop. A one-layer stack dispatches to
+/// matrix, fused into the same Picard loop; stacks with vented-sink
+/// recombination gaps close per step through the CUT-matrix construction
+/// ([`solve_layers_vented`], G11). A one-layer stack dispatches to
 /// [`solve::solve`] exactly (G7c).
 pub fn solve_layers(
     stack: &LayerStack,
@@ -781,6 +1375,7 @@ pub fn solve_layers(
         let params = landed_params(&stack.layers[0])?;
         let sol = solve::solve(&params, left, right, grid, initial, opts)?;
         let n = stack.total_cells();
+        let rows = sol.times.len();
         return Ok(LayeredSolution {
             times: sol.times,
             mobile: sol.mobile,
@@ -789,7 +1384,11 @@ pub fn solve_layers(
             flux_right: sol.flux_right,
             dx: vec![sol.dx; n],
             initial: sol.initial,
+            interface_faces: vec![vec![]; rows],
         });
+    }
+    if has_vent_gaps(stack) {
+        return solve_layers_vented(stack, left, right, grid, initial, opts);
     }
     let kr_left = left.recombination_rate();
     let kr_right = right.recombination_rate();
@@ -921,6 +1520,7 @@ pub fn solve_layers(
         ));
     }
 
+    let gaps = stack.interfaces.len();
     Ok(LayeredSolution {
         times: grid.times.clone(),
         mobile: mobile_out,
@@ -929,6 +1529,7 @@ pub fn solve_layers(
         flux_right,
         dx: sys.dx.clone(),
         initial: initial.clone(),
+        interface_faces: vec![vec![None; gaps]; grid.times.len()],
     })
 }
 
@@ -1146,6 +1747,215 @@ fn solve_layers_recombination(
         flux_right,
         dx: sys.dx.clone(),
         initial: initial.clone(),
+        interface_faces: vec![vec![None; stack.interfaces.len()]; grid.times.len()],
+    })
+}
+
+/// Layered transient with vented-sink recombination gaps (G11).
+///
+/// Mirrors [`solve_layers_recombination`] with the faces moved interior: the
+/// CUT operator carries the half-cell conductance of every vent face (the
+/// face source re-enters through the sensitivity columns and the explicit
+/// old-face term), one sensitivity column `S = M⁻¹·dt·θ·q` per vent face is
+/// built per `dt` span, and the faces close per step in closed form (a lone
+/// gap) or by the analytic-Jacobian Newton (coupled faces, warm-started from
+/// the previous step), fused into the trap Picard loop with the shared
+/// `rtol`/`atol`. Outward fluxes on recombination ends report the converged
+/// `K_r·y²`; the discrete balance closes against the reported boundary
+/// fluxes *plus* the desorption sinks `Σ K_r·x²` from the recorded gap
+/// faces. Any face or Picard failure is [`Error::NotConverged`]; a
+/// non-positive step drive is the loud vent-drive error.
+#[allow(clippy::too_many_lines)]
+fn solve_layers_vented(
+    stack: &LayerStack,
+    left: &Boundary,
+    right: &Boundary,
+    grid: &TimeGrid,
+    initial: &InitialState,
+    opts: &SolverOptions,
+) -> Result<LayeredSolution, Error> {
+    let n = stack.total_cells();
+    let asm = vent_assemble(stack, left, right)?;
+    let m = asm.faces.len();
+    let theta = opts.theta.value();
+    let dx = asm.sys.dx.clone();
+    let sources: Vec<Vec<(usize, f64)>> =
+        asm.faces.iter().map(|face| face.sources(&dx, n)).collect();
+
+    let rates: Vec<Vec<(f64, f64)>> = (0..n)
+        .map(|i| stack.trap_rates_at(i))
+        .collect::<std::result::Result<Vec<_>, Error>>()?;
+    let any_traps = rates.iter().any(|r| !r.is_empty());
+
+    let mut c = initial.mobile.clone();
+    let mut ct = initial.trapped.clone();
+    let mut y = vec![0.0; m];
+
+    let mut mobile_out = Vec::with_capacity(grid.times.len());
+    let mut trapped_out = Vec::with_capacity(grid.times.len());
+    let mut flux_left = Vec::with_capacity(grid.times.len());
+    let mut flux_right = Vec::with_capacity(grid.times.len());
+    let mut faces_out: Vec<Vec<Option<f64>>> = Vec::with_capacity(grid.times.len());
+
+    let mut t_prev = 0.0_f64;
+    let mut steps = 0_usize;
+
+    for &t_out in &grid.times {
+        let span = t_out - t_prev;
+        let n_sub = ((span / opts.dt_max).ceil() as usize).max(1);
+        let dt = span / n_sub as f64;
+        if dt < opts.dt_min {
+            return Err(Error::BadOption("output spacing needs a step below dt_min"));
+        }
+        let m_sub: Vec<f64> = asm.sys.sub.iter().map(|v| -dt * theta * v).collect();
+        let m_diag: Vec<f64> = asm.sys.diag.iter().map(|v| 1.0 - dt * theta * v).collect();
+        let m_sup: Vec<f64> = asm.sys.sup.iter().map(|v| -dt * theta * v).collect();
+        let mut sens = Vec::with_capacity(m);
+        for src in &sources {
+            let mut v = vec![0.0; n];
+            for (cell, s) in src {
+                v[*cell] += dt * theta * s;
+            }
+            sens.push(
+                nucleide_linalg::tridiag::solve(&m_sub, &m_diag, &m_sup, &v)
+                    .map_err(crate::solve::tridiag_err)?,
+            );
+        }
+        for _ in 0..n_sub {
+            let mut e = vec![0.0; n];
+            for i in 0..n {
+                let mut a_c = asm.sys.diag[i] * c[i];
+                if i > 0 {
+                    a_c += asm.sys.sub[i - 1] * c[i - 1];
+                }
+                if i + 1 < n {
+                    a_c += asm.sys.sup[i] * c[i + 1];
+                }
+                e[i] = c[i] + dt * (1.0 - theta) * a_c + dt * asm.sys.rhs[i];
+            }
+            for (src, &yj) in sources.iter().zip(&y) {
+                for (cell, s) in src {
+                    e[*cell] += dt * (1.0 - theta) * s * yj;
+                }
+            }
+            if !any_traps {
+                let base = nucleide_linalg::tridiag::solve(&m_sub, &m_diag, &m_sup, &e)
+                    .map_err(crate::solve::tridiag_err)?;
+                y = close_vent_faces_step(&base, &sens, &asm.faces, y, opts.rtol, opts.atol)?;
+                c = apply_vent_faces(base, &sens, &y);
+            } else {
+                let mut c_iter = c.clone();
+                let mut ct_iter = ct.clone();
+                let mut y_iter = y.clone();
+                let mut converged = false;
+                for _ in 0..MAX_PICARD {
+                    let mut rhs = e.clone();
+                    for i in 0..n {
+                        let old_total: f64 = ct[i].iter().sum();
+                        let star_total: f64 = ct_iter[i].iter().sum();
+                        rhs[i] -= star_total - old_total;
+                    }
+                    let base = nucleide_linalg::tridiag::solve(&m_sub, &m_diag, &m_sup, &rhs)
+                        .map_err(crate::solve::tridiag_err)?;
+                    let y_next = close_vent_faces_step(
+                        &base,
+                        &sens,
+                        &asm.faces,
+                        y_iter.clone(),
+                        opts.rtol,
+                        opts.atol,
+                    )?;
+                    let c_next = apply_vent_faces(base, &sens, &y_next);
+                    let mut ct_next = ct.clone();
+                    for i in 0..n {
+                        for j in 0..ct_next[i].len() {
+                            let (k, p) = rates[i][j];
+                            ct_next[i][j] = trap_update(
+                                ct[i][j],
+                                c_next[i],
+                                k,
+                                p,
+                                stack.layers
+                                    [stack.layer_of(i).expect("i < total_cells by construction")]
+                                .traps[j]
+                                    .site_density,
+                                dt,
+                            );
+                        }
+                    }
+                    let mut err = 0.0_f64;
+                    for i in 0..n {
+                        let scale = opts.atol + opts.rtol * c_next[i].abs().max(c_iter[i].abs());
+                        err = err.max((c_next[i] - c_iter[i]).abs() / scale);
+                        for j in 0..ct_next[i].len() {
+                            let scale_t = opts.atol
+                                + opts.rtol * ct_next[i][j].abs().max(ct_iter[i][j].abs());
+                            err = err.max((ct_next[i][j] - ct_iter[i][j]).abs() / scale_t);
+                        }
+                    }
+                    for jj in 0..asm.faces.len() {
+                        let (nf, prev) = (y_next[jj], y_iter[jj]);
+                        let scale = opts.atol + opts.rtol * nf.abs().max(prev.abs());
+                        err = err.max((nf - prev).abs() / scale);
+                    }
+                    c_iter = c_next;
+                    ct_iter = ct_next;
+                    y_iter = y_next;
+                    if err <= 1.0 {
+                        converged = true;
+                        break;
+                    }
+                }
+                if !converged {
+                    return Err(Error::NotConverged);
+                }
+                c = c_iter;
+                ct = ct_iter;
+                y = y_iter;
+            }
+            steps += 1;
+            if steps > opts.max_steps {
+                return Err(Error::StepBudget(opts.max_steps));
+            }
+        }
+        t_prev = t_out;
+        mobile_out.push(c.clone());
+        trapped_out.push(ct.clone());
+        flux_left.push(asm.outer_left.map_or_else(
+            || outward_flux(left, c[0], asm.sys.d_cell[0], asm.sys.dx[0]),
+            |idx| {
+                left.recombination_rate()
+                    .expect("rate present for a closed left face")
+                    * y[idx].powi(2)
+            },
+        ));
+        flux_right.push(asm.outer_right.map_or_else(
+            || outward_flux(right, c[n - 1], asm.sys.d_cell[n - 1], asm.sys.dx[n - 1]),
+            |idx| {
+                right
+                    .recombination_rate()
+                    .expect("rate present for a closed right face")
+                    * y[idx].powi(2)
+            },
+        ));
+        let mut row = vec![None; stack.interfaces.len()];
+        for (j, face) in asm.faces.iter().enumerate() {
+            if let VentFace::Gap { gap, .. } = face {
+                row[*gap] = Some(y[j]);
+            }
+        }
+        faces_out.push(row);
+    }
+
+    Ok(LayeredSolution {
+        times: grid.times.clone(),
+        mobile: mobile_out,
+        trapped: trapped_out,
+        flux_left,
+        flux_right,
+        dx: asm.sys.dx.clone(),
+        initial: initial.clone(),
+        interface_faces: faces_out,
     })
 }
 
@@ -1921,8 +2731,8 @@ mod tests {
 
     #[test]
     fn loud_errors_and_validation() {
-        // Recombination internal interfaces stay loud named errors; the
-        // linear Henry law constructs fine (G9).
+        // The vented-sink recombination law constructs fine (G10); its rate
+        // validates like a recombination end (finite, positive).
         let layer = |d: f64, s: f64| {
             LayerSpec::new(5e-4, 8, d, 0.0, s, vec![], vec![500.0], vec![]).unwrap()
         };
@@ -1931,12 +2741,14 @@ mod tests {
             vec![Interface::Henry]
         )
         .is_ok());
-        let err = LayerStack::new(
+        assert!(LayerStack::new(
             vec![layer(1e-9, 1.0), layer(1e-9, 1.0)],
-            vec![Interface::Recombination],
+            vec![Interface::recombination(1e-7).unwrap()]
         )
-        .unwrap_err();
-        assert!(matches!(err, Error::UnsupportedInterface(_)), "{err}");
+        .is_ok());
+        assert!(Interface::recombination(0.0).is_err());
+        assert!(Interface::recombination(f64::INFINITY).is_err());
+        assert!(Interface::recombination(f64::NAN).is_err());
         // Shape errors.
         assert!(LayerStack::new(vec![], vec![]).is_err());
         assert!(LayerStack::new(vec![layer(1e-9, 1.0)], vec![Interface::Sieverts]).is_err());
@@ -2033,5 +2845,633 @@ mod tests {
         assert_eq!(stack.source_at(0).unwrap(), 1.0);
         assert_eq!(stack.source_at(8).unwrap(), 0.0);
         assert_eq!(stack.solubility_at(15).unwrap(), 2.0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Gates: vented-sink recombination internal interfaces (G10/G11)
+    // -----------------------------------------------------------------------
+    //
+    // Provenance: synthetic stacks with hand-derived closed forms. A
+    // trap-free Dirichlet-bounded block is nodally exact for linear profiles
+    // (the FV face fluxes reproduce `D·Δc/L` exactly), so the discrete vent
+    // residual is the continuum quadratic `R(x) = P − Q·x − K_r·x²` to
+    // roundoff and the face value below is a genuine hand oracle. No
+    // evaluated-library data, consistent with the analytic-gate stance.
+
+    /// Vented gate stack R (2-layer): L₁ = L₂ = 5e-4 m, D₁ = 1e-9,
+    /// D₂ = 5e-10 m²/s, K₁ = 2.0, K₂ = 0.5 (the solubilities play no role
+    /// at the vented gap — the face is a concentration, not a potential),
+    /// 64 + 64 cells, 500 K, one vented-sink gap.
+    fn gate_stack_rec(kr: f64) -> LayerStack {
+        LayerStack::new(
+            vec![
+                LayerSpec::new(5e-4, 64, 1e-9, 0.0, 2.0, vec![], vec![500.0], vec![]).unwrap(),
+                LayerSpec::new(5e-4, 64, 5e-10, 0.0, 0.5, vec![], vec![500.0], vec![]).unwrap(),
+            ],
+            vec![Interface::recombination(kr).unwrap()],
+        )
+        .unwrap()
+    }
+
+    /// Continuum vented-sink root for a 2-layer Dirichlet(c0)|Dirichlet(cN)
+    /// stack: `R(x) = D₁(c₀−x)/L₁ − D₂(x−cN)/L₂ − K_r·x² = 0`.
+    fn vent_closed_2layer(d1: f64, l1: f64, d2: f64, l2: f64, c0: f64, cn: f64, kr: f64) -> f64 {
+        let p = d1 * c0 / l1 + d2 * cn / l2;
+        let q = d1 / l1 + d2 / l2;
+        2.0 * p / ((q * q + 4.0 * kr * p).sqrt() + q)
+    }
+
+    /// Gap fluxes `(J_L, J_R)` (rightward positive) of a converged vented
+    /// steady profile from the reported face value.
+    fn vent_gap_fluxes(
+        stack: &LayerStack,
+        s: &LayeredSteadyState,
+        gap: usize,
+        x: f64,
+    ) -> (f64, f64) {
+        let ir = stack.layer_start(gap + 1);
+        let il = ir - 1;
+        let d = stack.diffusivities().unwrap();
+        let dx = stack.cell_widths();
+        let g_l = 2.0 * d[il] / dx[il];
+        let g_r = 2.0 * d[ir] / dx[ir];
+        (g_l * (s.mobile[il] - x), g_r * (x - s.mobile[ir]))
+    }
+
+    #[test]
+    fn g10a_two_layer_vented_sink_closed_form() {
+        // G10a: 2-layer stack with one vented gap, Dirichlet(1.0)|
+        // Dirichlet(0.0), K_r = 3e-7. The discrete profile is the exact
+        // block-linear continuum profile at the nodes, so the face value,
+        // fluxes, and profile pin at G5-class tolerances (1e-12 relative
+        // with a 1e-18 absolute floor).
+        let kr = 3e-7;
+        let stack = gate_stack_rec(kr);
+        let s = steady_layers(
+            &stack,
+            &Boundary::dirichlet(1.0).unwrap(),
+            &Boundary::dirichlet(0.0).unwrap(),
+        )
+        .unwrap();
+        let x_star = vent_closed_2layer(1e-9, 5e-4, 5e-10, 5e-4, 1.0, 0.0, kr);
+        let x = s.interface_faces[0].expect("vented gap reports its face");
+        assert!((x - x_star).abs() <= 1e-12 * x_star, "{x} vs {x_star}");
+        let j = 5e-10 * x_star / 5e-4;
+        assert!(
+            (s.flux_right - j).abs() <= 1e-12 * j + 1e-18,
+            "{} vs {j}",
+            s.flux_right
+        );
+        // Outer balance carries the desorption sink: F_L + F_R + K_r·x² = 0.
+        assert!((s.flux_left + s.flux_right + kr * x * x).abs() <= 1e-12 * j + 1e-18);
+        // Gap residual to the pinned tolerance.
+        let (jl, jr) = vent_gap_fluxes(&stack, &s, 0, x);
+        assert!(
+            (jl - jr - kr * x * x).abs() <= 1e-12 * j + 1e-18,
+            "{jl} vs {jr}"
+        );
+        // Block-linear profile at the cell centres.
+        for (i, &c) in s.mobile.iter().enumerate() {
+            let xc = s.centres[i];
+            let want = if xc <= 5e-4 {
+                1.0 + (x_star - 1.0) * xc / 5e-4
+            } else {
+                x_star * (1.0 - (xc - 5e-4) / 5e-4)
+            };
+            assert!((c - want).abs() <= 1e-12, "cell {i}: {c} vs {want}");
+        }
+        assert!(s.mobile.iter().all(|&c| c >= 0.0));
+    }
+
+    #[test]
+    fn g10b_vent_rate_limits() {
+        // K_r → ∞ pins the left block to its Dirichlet(0)-terminated
+        // profile (flux D₁·c₀/L₁ = 2e-6, pinned to 4 digits).
+        let s = steady_layers(
+            &gate_stack_rec(100.0),
+            &Boundary::dirichlet(1.0).unwrap(),
+            &Boundary::dirichlet(0.0).unwrap(),
+        )
+        .unwrap();
+        assert!((s.flux_left + 2e-6).abs() <= 1e-3 * 2e-6);
+        // K_r → 0 is the continuous-concentration joint: identical layers
+        // recover the uncut landed slab (not a Sieverts jump — there is no
+        // K ratio at a vented gap).
+        let tiny = LayerStack::new(
+            vec![
+                LayerSpec::new(5e-4, 32, 1e-9, 0.0, 1.0, vec![], vec![500.0], vec![]).unwrap(),
+                LayerSpec::new(5e-4, 32, 1e-9, 0.0, 1.0, vec![], vec![500.0], vec![]).unwrap(),
+            ],
+            vec![Interface::recombination(1e-24).unwrap()],
+        )
+        .unwrap();
+        let s = steady_layers(
+            &tiny,
+            &Boundary::dirichlet(1.0).unwrap(),
+            &Boundary::dirichlet(0.0).unwrap(),
+        )
+        .unwrap();
+        let slab = no_traps(1e-3, 64, 1e-9);
+        let landed = solve::steady_state(
+            &slab,
+            &Boundary::dirichlet(1.0).unwrap(),
+            &Boundary::dirichlet(0.0).unwrap(),
+        )
+        .unwrap();
+        assert!(max_diff(&s.mobile, &landed.mobile) <= 1e-12);
+        // Same limit on contrasting solubilities: c stays joint-continuous
+        // across the gap (the Sieverts stack jumps by ~0.67 there).
+        let s = steady_layers(
+            &gate_stack_rec(1e-24),
+            &Boundary::dirichlet(1.0).unwrap(),
+            &Boundary::dirichlet(0.0).unwrap(),
+        )
+        .unwrap();
+        assert!((s.mobile[63] - s.mobile[64]).abs() <= 1e-2);
+    }
+
+    /// Mixed-law gate stack (4-layer): L = 3e-4 m each,
+    /// D = 1e-9 / 4e-10 / 2.5e-10 / 1e-9 m²/s,
+    /// K = 1.0 / 0.8 / 0.6 / 1.2, 32 cells per layer, gaps
+    /// [Sieverts, Henry, vented-sink]. The CUT partitions the stack into a
+    /// linear 3-layer super-block (resistance R_L) and a 1-layer block
+    /// (R_R); with the face in concentration units the residual is the
+    /// scalar quadratic `R(x) = u₀/R_L − x/(K₂R_L) − x/(K₃R_R) − K_r·x²`.
+    fn gate_stack_mixed_vent(kr: f64) -> LayerStack {
+        LayerStack::new(
+            vec![
+                LayerSpec::new(3e-4, 32, 1e-9, 0.0, 1.0, vec![], vec![500.0], vec![]).unwrap(),
+                LayerSpec::new(3e-4, 32, 4e-10, 0.0, 0.8, vec![], vec![500.0], vec![]).unwrap(),
+                LayerSpec::new(3e-4, 32, 2.5e-10, 0.0, 0.6, vec![], vec![500.0], vec![]).unwrap(),
+                LayerSpec::new(3e-4, 32, 1e-9, 0.0, 1.2, vec![], vec![500.0], vec![]).unwrap(),
+            ],
+            vec![
+                Interface::Sieverts,
+                Interface::Henry,
+                Interface::recombination(kr).unwrap(),
+            ],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn g10c_mixed_law_stack_with_vented_gap() {
+        // G10c: one interface of each law on the same stack. The linear gaps
+        // hold flux continuity to roundoff; the vented gap closes the scalar
+        // quadratic against the super-block resistances at 1e-12.
+        let kr = 5e-7;
+        let stack = gate_stack_mixed_vent(kr);
+        let s = steady_layers(
+            &stack,
+            &Boundary::dirichlet(1.0).unwrap(),
+            &Boundary::dirichlet(0.0).unwrap(),
+        )
+        .unwrap();
+        let r_l = 3e-4 / (1e-9 * 1.0) + 3e-4 / (4e-10 * 0.8) + 3e-4 / (2.5e-10 * 0.6);
+        let r_r = 3e-4 / (1e-9 * 1.2);
+        let p = 1.0 / r_l;
+        let q = 1.0 / (0.6 * r_l) + 1.0 / (1.2 * r_r);
+        let x_star = 2.0 * p / ((q * q + 4.0 * kr * p).sqrt() + q);
+        let x = s.interface_faces[2].expect("vented gap reports its face");
+        assert!(s.interface_faces[0].is_none() && s.interface_faces[1].is_none());
+        assert!((x - x_star).abs() <= 1e-12 * x_star, "{x} vs {x_star}");
+        let jl = (1.0 - x_star / 0.6) / r_l;
+        let jr = (x_star / 1.2) / r_r;
+        assert!(
+            (s.flux_right - jr).abs() <= 1e-12 * jr + 1e-18,
+            "{} vs {jr}",
+            s.flux_right
+        );
+        assert!((s.flux_left + jl).abs() <= 1e-12 * jl + 1e-18);
+        assert!((s.flux_left + s.flux_right + kr * x * x).abs() <= 1e-12 * jl + 1e-18);
+        let (gl, gr) = vent_gap_fluxes(&stack, &s, 2, x);
+        assert!(
+            (gl - gr - kr * x * x).abs() <= 1e-12 * jl + 1e-18,
+            "{gl} vs {gr}"
+        );
+        // Flux continuity across the Sieverts gap *and* the Henry gap: every
+        // linear interior face carries its super-block flux to roundoff (the
+        // vented-gap face itself carries the jump, so it is skipped).
+        let rec_face = stack.layer_start(3);
+        for (k, jf) in interior_face_fluxes(&stack, &s).iter().enumerate() {
+            if k + 1 == rec_face {
+                continue;
+            }
+            let want = if k + 1 < rec_face { jl } else { jr };
+            assert!(
+                (jf - want).abs() <= 1e-12 * want.abs() + 1e-18,
+                "face {}: {jf} vs {want}",
+                k + 1
+            );
+        }
+        // Potential continuity at both linear gaps from each side.
+        let (u0l, u0r) = interface_u_sides(&stack, &s, 0, jl);
+        assert!((u0l - u0r).abs() <= 1e-12);
+        let (u1l, u1r) = interface_u_sides(&stack, &s, 1, jl);
+        assert!((u1l - u1r).abs() <= 1e-12);
+        assert!(s.mobile.iter().all(|&c| c >= 0.0));
+    }
+
+    #[test]
+    fn g10d_two_vented_gaps_coupled_newton() {
+        // G10d: two vented gaps share the middle block, so the faces couple
+        // and close by Newton (no scalar oracle — residual, outer balance
+        // with both desorption sinks, and positivity pin the solve).
+        let stack = LayerStack::new(
+            vec![
+                LayerSpec::new(5e-4, 32, 1e-9, 0.0, 2.0, vec![], vec![500.0], vec![]).unwrap(),
+                LayerSpec::new(5e-4, 32, 4e-10, 0.0, 0.8, vec![], vec![500.0], vec![]).unwrap(),
+                LayerSpec::new(5e-4, 32, 2.5e-10, 0.0, 0.6, vec![], vec![500.0], vec![]).unwrap(),
+            ],
+            vec![
+                Interface::recombination(3e-7).unwrap(),
+                Interface::recombination(5e-7).unwrap(),
+            ],
+        )
+        .unwrap();
+        let s = steady_layers(
+            &stack,
+            &Boundary::dirichlet(1.0).unwrap(),
+            &Boundary::dirichlet(0.0).unwrap(),
+        )
+        .unwrap();
+        let x0 = s.interface_faces[0].expect("gap 0 reports its face");
+        let x1 = s.interface_faces[1].expect("gap 1 reports its face");
+        assert!(x0 > 0.0 && x1 > 0.0);
+        // Faces order downhill with the drive.
+        assert!(x0 > x1);
+        // Residuals pin the Newton contract (G5_ATOL + G5_RTOL·K_r·x²,
+        // plus reassociation noise from this independent recompute); the
+        // outer balance then closes modulo the two residuals.
+        let scale = s.flux_right.abs().max(1e-300);
+        let mut res = 0.0_f64;
+        for (gap, &x, kr) in [(0_usize, &x0, 3e-7), (1_usize, &x1, 5e-7)] {
+            let (jl, jr) = vent_gap_fluxes(&stack, &s, gap, x);
+            let r = jl - jr - kr * x * x;
+            assert!(
+                r.abs() <= G5_ATOL + G5_RTOL * kr * x * x + 1e-16,
+                "gap {gap}: {jl} vs {jr}"
+            );
+            res += r.abs();
+        }
+        let desorb = 3e-7 * x0 * x0 + 5e-7 * x1 * x1;
+        assert!((s.flux_left + s.flux_right + desorb).abs() <= res + 1e-12 * scale + 1e-18);
+        assert!(s.mobile.iter().all(|&c| c >= 0.0));
+    }
+
+    #[test]
+    fn g10e_vented_gap_with_recombination_outer_end() {
+        // G10e: a vented gap plus a recombination outer end couple through
+        // the end block and close by Newton — the internal residual, the
+        // outer balance with the internal sink, and positivity pin it.
+        let stack = gate_stack_rec(3e-7);
+        let kr_out = 1e-6;
+        let s = steady_layers(
+            &stack,
+            &Boundary::dirichlet(1.0).unwrap(),
+            &Boundary::recombination(kr_out).unwrap(),
+        )
+        .unwrap();
+        let x = s.interface_faces[0].expect("vented gap reports its face");
+        assert!(x > 0.0);
+        let scale = s.flux_right.abs().max(1e-300);
+        let (jl, jr) = vent_gap_fluxes(&stack, &s, 0, x);
+        let r = jl - jr - 3e-7 * x * x;
+        assert!(
+            r.abs() <= G5_ATOL + G5_RTOL * 3e-7 * x * x + 1e-16,
+            "{jl} vs {jr}"
+        );
+        // The outer recombination face carries its own Newton contract
+        // (G5_ATOL + G5_RTOL·K_r·cf²), which joins the balance bound.
+        assert!(
+            (s.flux_left + s.flux_right + 3e-7 * x * x).abs()
+                <= r.abs() + G5_ATOL + G5_RTOL * s.flux_right.abs() + 1e-12 * scale + 1e-18
+        );
+        assert!(s.mobile.iter().all(|&c| c >= 0.0));
+    }
+
+    #[test]
+    fn g10f_vented_steady_with_traps_on_isotherm() {
+        // Traps evaluate on the owning layer's Langmuir isotherm behind the
+        // vented close, exactly like the linear steady path.
+        let stack = LayerStack::new(
+            vec![
+                LayerSpec::new(5e-4, 32, 1e-9, 0.0, 2.0, vec![], vec![500.0], vec![]).unwrap(),
+                LayerSpec::new(
+                    5e-4,
+                    32,
+                    5e-10,
+                    0.0,
+                    0.5,
+                    vec![TrapSpec::new(0.05, 0.0, 0.01, 0.0, 2.0).unwrap()],
+                    vec![500.0],
+                    vec![],
+                )
+                .unwrap(),
+            ],
+            vec![Interface::recombination(3e-7).unwrap()],
+        )
+        .unwrap();
+        let s = steady_layers(
+            &stack,
+            &Boundary::dirichlet(1.0).unwrap(),
+            &Boundary::dirichlet(0.0).unwrap(),
+        )
+        .unwrap();
+        for (i, (&c, row)) in s.mobile.iter().zip(&s.trapped).enumerate() {
+            let k = stack.layer_of(i).expect("cell owned");
+            for (j, &ct) in row.iter().enumerate() {
+                let trap = &stack.layers[k].traps[j];
+                let (kk, pp) = trap.rates(500.0).unwrap();
+                let want = solve::equilibrium_trapped(trap.site_density, kk / pp, c).unwrap();
+                assert!((ct - want).abs() <= 1e-12 * want.max(1e-300));
+            }
+        }
+        assert_eq!(s.trapped[0].len(), 0);
+        assert_eq!(s.trapped[32].len(), 1);
+        let x = s.interface_faces[0].expect("vented gap reports its face");
+        let (jl, jr) = vent_gap_fluxes(&stack, &s, 0, x);
+        let scale = s.flux_right.abs().max(1e-300);
+        assert!((jl - jr - 3e-7 * x * x).abs() <= 1e-12 * scale + 1e-18);
+    }
+
+    #[test]
+    fn g10g_nonpositive_drive_is_a_loud_error() {
+        // Zero drive (both ends at zero, no source) gives P = 0: no
+        // nonnegative vent root exists, so the steady state fails loudly
+        // instead of returning a silent zero. The transient from the zero
+        // state instead follows the G6 clamping stance per step and returns
+        // the zero trajectory.
+        let stack = gate_stack_rec(3e-7);
+        let zero = Boundary::dirichlet(0.0).unwrap();
+        let err = steady_layers(&stack, &zero, &zero).unwrap_err();
+        assert!(matches!(err, Error::BadData(_)), "{err}");
+        let grid = TimeGrid::new(vec![10.0]).unwrap();
+        let opts = SolverOptions::default();
+        let sol = solve_layers(&stack, &zero, &zero, &grid, &stack.zero_state(), &opts).unwrap();
+        assert!(sol.mobile[0].iter().all(|&c| c == 0.0));
+        assert_eq!(sol.flux_left, vec![0.0]);
+        assert_eq!(sol.flux_right, vec![0.0]);
+        assert_eq!(sol.interface_faces[0], vec![Some(0.0)]);
+    }
+
+    /// Vented gate stack, coarse (32 + 32 cells) for the transient gates.
+    fn gate_stack_rec_coarse(kr: f64) -> LayerStack {
+        LayerStack::new(
+            vec![
+                LayerSpec::new(5e-4, 32, 1e-9, 0.0, 2.0, vec![], vec![500.0], vec![]).unwrap(),
+                LayerSpec::new(5e-4, 32, 5e-10, 0.0, 0.5, vec![], vec![500.0], vec![]).unwrap(),
+            ],
+            vec![Interface::recombination(kr).unwrap()],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn g11a_theta_balance_with_desorption() {
+        // G11a: trap-free vented stack, one θ-step per output interval — the
+        // discrete balance Iᵏ − Iᵏ⁻¹ = dt·[θRᵏ + (1−θ)Rᵏ⁻¹] with
+        // R = −(F_L + F_R) − K_r·x² closes against the reported boundary
+        // fluxes plus the desorption sink to roundoff.
+        let kr = 3e-7;
+        let stack = gate_stack_rec_coarse(kr);
+        let dx = stack.cell_widths();
+        let left = Boundary::dirichlet(1.0).unwrap();
+        let right = Boundary::dirichlet(0.0).unwrap();
+        let opts = SolverOptions {
+            dt_max: 20.0,
+            rtol: 1e-10,
+            atol: 1e-14,
+            ..Default::default()
+        };
+        let sol = solve_layers(
+            &stack,
+            &left,
+            &right,
+            &TimeGrid::new(vec![20.0, 40.0]).unwrap(),
+            &stack.zero_state(),
+            &opts,
+        )
+        .unwrap();
+        let inv: Vec<f64> = sol
+            .mobile
+            .iter()
+            .map(|row| row.iter().zip(&dx).map(|(c, w)| c * w).sum::<f64>())
+            .collect();
+        let x: Vec<f64> = sol
+            .interface_faces
+            .iter()
+            .map(|row| row[0].unwrap())
+            .collect();
+        assert!(x.iter().all(|&v| v >= 0.0));
+        let r_now = |k: usize| -(sol.flux_left[k] + sol.flux_right[k]) - kr * x[k] * x[k];
+        // t = 0 from the zero state: F_L = −2D₁c₀/dx₀, F_R = 0, x = 0.
+        let (mut r_prev, mut i_prev) = (2.0 * 1e-9 * 1.0 / dx[0], 0.0_f64);
+        for (k, dt) in [20.0, 20.0].iter().enumerate() {
+            let want = i_prev + dt * (0.5 * r_prev + 0.5 * r_now(k));
+            assert!(
+                (inv[k] - want).abs() < 1e-12 * want.abs().max(1e-300),
+                "row {k}: {} vs {want}",
+                inv[k]
+            );
+            r_prev = r_now(k);
+            i_prev = inv[k];
+        }
+        for row in &sol.mobile {
+            assert!(row.iter().all(|&c| c >= 0.0));
+        }
+    }
+
+    /// Vented mobile profile at `t_end` with uniform steps of `dt_max`.
+    fn vent_profile(theta: crate::solve::Theta, dt_max: f64, t_end: f64) -> Vec<f64> {
+        let stack = gate_stack_rec(3e-7);
+        solve_layers(
+            &stack,
+            &Boundary::dirichlet(1.0).unwrap(),
+            &Boundary::dirichlet(0.0).unwrap(),
+            &TimeGrid::new(vec![t_end]).unwrap(),
+            &stack.zero_state(),
+            &SolverOptions {
+                theta,
+                dt_max,
+                rtol: 1e-12,
+                atol: 1e-15,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .mobile
+        .pop()
+        .expect("one output row")
+    }
+
+    #[test]
+    fn g11b_dt_halving_order_preserved() {
+        // G11b: dt-halving on the vented stack shows the θ-method order in
+        // the resolved band at t = 200 s. Crank–Nicolson pins the spike's
+        // (8, 4, 2) pair (measured 1.89): finer pairs compare a
+        // ringing-dominated solution against a ringing-free one (the G6d
+        // phenomenon — coarse-dt late-time errors are ringing, not
+        // truncation), so only the spike pair is gated. Backward Euler is
+        // L-stable and pins both pairs.
+        let t_end = 200.0;
+        let cn: Vec<Vec<f64>> = [8.0_f64, 4.0, 2.0]
+            .iter()
+            .map(|&dt| vent_profile(crate::solve::Theta::CrankNicolson, dt, t_end))
+            .collect();
+        let order = (max_diff(&cn[0], &cn[1]) / max_diff(&cn[1], &cn[2])).log2();
+        assert!((1.5..=2.5).contains(&order), "Crank–Nicolson order {order}");
+        let be: Vec<Vec<f64>> = [8.0_f64, 4.0, 2.0, 1.0]
+            .iter()
+            .map(|&dt| vent_profile(crate::solve::Theta::BackwardEuler, dt, t_end))
+            .collect();
+        for w in be.windows(3) {
+            let order = (max_diff(&w[0], &w[1]) / max_diff(&w[1], &w[2])).log2();
+            assert!((0.7..=1.3).contains(&order), "backward Euler order {order}");
+        }
+    }
+
+    #[test]
+    fn g11c_late_time_asymptote_to_vented_steady() {
+        // G11c: the vented transient from a clean slab lands on the vented
+        // steady state at t = 20000 s (the interface mode decays slower than
+        // the linear stack lag, so the run is ~240 linear lags).
+        let kr = 3e-7;
+        let stack = gate_stack_rec(kr);
+        let left = Boundary::dirichlet(1.0).unwrap();
+        let right = Boundary::dirichlet(0.0).unwrap();
+        let seg_a = solve_layers(
+            &stack,
+            &left,
+            &right,
+            &TimeGrid::new(vec![300.0]).unwrap(),
+            &stack.zero_state(),
+            &SolverOptions {
+                dt_max: 0.5,
+                rtol: 1e-10,
+                atol: 1e-14,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let init = InitialState {
+            mobile: seg_a.mobile[0].clone(),
+            trapped: seg_a.trapped[0].clone(),
+        };
+        let seg_b = solve_layers(
+            &stack,
+            &left,
+            &right,
+            &TimeGrid::new(vec![19700.0]).unwrap(),
+            &init,
+            &SolverOptions {
+                dt_max: 5.0,
+                rtol: 1e-10,
+                atol: 1e-14,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let steady = steady_layers(&stack, &left, &right).unwrap();
+        assert!((seg_b.flux_right[0] - steady.flux_right).abs() <= 1e-6 * steady.flux_right.abs());
+        let rate = seg_b.interface_faces[0][0].unwrap().powi(2) * kr;
+        assert!(
+            (seg_b.flux_left[0] + seg_b.flux_right[0] + rate).abs()
+                <= 1e-6 * steady.flux_right.abs()
+        );
+        assert!(max_diff(&seg_b.mobile[0], &steady.mobile) <= 1e-9);
+        assert!(seg_b.mobile[0].iter().all(|&c| c >= 0.0));
+    }
+
+    #[test]
+    fn g11d_trap_coupled_mass_balance_with_desorption() {
+        // G11d (build-cycle gate — the unprototyped Picard fusion): the
+        // trap-coupled vented transient closes the discrete balance over
+        // mobile + trapped inventory against the boundary fluxes plus the
+        // desorption sink. Traps sit in the driven layer so they engage on
+        // the gate interval, and the run is backward Euler: its explicit
+        // vector stays nonneg structurally, keeping the early-front regime
+        // out of the face clamp (Crank–Nicolson explicit wiggles near a
+        // steep front would trip it at O(1e-13)).
+        let kr = 3e-7;
+        let stack = LayerStack::new(
+            vec![
+                LayerSpec::new(
+                    5e-4,
+                    16,
+                    1e-9,
+                    0.0,
+                    2.0,
+                    vec![TrapSpec::new(0.05, 0.0, 0.01, 0.0, 2.0).unwrap()],
+                    vec![500.0],
+                    vec![],
+                )
+                .unwrap(),
+                LayerSpec::new(5e-4, 16, 5e-10, 0.0, 0.5, vec![], vec![500.0], vec![]).unwrap(),
+            ],
+            vec![Interface::recombination(kr).unwrap()],
+        )
+        .unwrap();
+        let dx = stack.cell_widths();
+        let left = Boundary::dirichlet(1.0).unwrap();
+        let right = Boundary::dirichlet(0.0).unwrap();
+        let opts = SolverOptions {
+            theta: crate::solve::Theta::BackwardEuler,
+            dt_max: 2.0,
+            rtol: 1e-10,
+            atol: 1e-14,
+            ..Default::default()
+        };
+        let sol = solve_layers(
+            &stack,
+            &left,
+            &right,
+            &TimeGrid::new(vec![2.0, 4.0]).unwrap(),
+            &stack.zero_state(),
+            &opts,
+        )
+        .unwrap();
+        let total: Vec<f64> = sol
+            .mobile
+            .iter()
+            .zip(&sol.trapped)
+            .map(|(mrow, trows)| {
+                mrow.iter().zip(&dx).map(|(c, w)| c * w).sum::<f64>()
+                    + trows
+                        .iter()
+                        .zip(&dx)
+                        .map(|(row, w)| row.iter().sum::<f64>() * w)
+                        .sum::<f64>()
+            })
+            .collect();
+        let x: Vec<f64> = sol
+            .interface_faces
+            .iter()
+            .map(|row| row[0].unwrap())
+            .collect();
+        let r_now = |k: usize| -(sol.flux_left[k] + sol.flux_right[k]) - kr * x[k] * x[k];
+        // Backward Euler: Iᵏ − Iᵏ⁻¹ = dt·Rᵏ.
+        let mut i_prev = 0.0_f64;
+        for (k, dt) in [2.0, 2.0].iter().enumerate() {
+            let want = i_prev + dt * r_now(k);
+            assert!(
+                (total[k] - want).abs() < 1e-9 * want.abs().max(1e-300),
+                "row {k}: {} vs {want}",
+                total[k]
+            );
+            i_prev = total[k];
+        }
+        for row in &sol.mobile {
+            assert!(row.iter().all(|&c| c >= 0.0));
+        }
+        // The driven-layer traps genuinely engaged (not a vacuous pass).
+        let mut ct_max = 0.0_f64;
+        for rows in &sol.trapped {
+            for row in rows.iter().take(16) {
+                assert!(row.iter().all(|&ct| (0.0..=2.0).contains(&ct)));
+                ct_max = ct_max.max(row[0]);
+            }
+        }
+        assert!(ct_max > 1e-6);
     }
 }

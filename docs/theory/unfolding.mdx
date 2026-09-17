@@ -1,6 +1,6 @@
 ---
 title: Neutron Spectrum Unfolding
-description: "SAND-II unfolding of activation-foil rates: fold, update, and underdetermined behavior."
+description: "Neutron spectrum unfolding from activation-foil rates: SAND-II, least-squares, GRAVEL, and MAXED adjustment."
 sidebar:
   order: 11
 references:
@@ -48,26 +48,38 @@ references:
     date: "2020"
     type: article
     doi: "10.1016/j.nds.2019.12.001"
+  - id: reginatto-1999
+    authors: ["M. Reginatto", "P. Goldhagen"]
+    source: Health Physics
+    journal: Health Physics
+    volume: "77"
+    pages: "579–589"
+    date: "1999"
+    type: article
 ---
 
 Nucleide implements neutron spectrum unfolding from activation-type
 measurements: a caller-supplied guess spectrum is adjusted until folding it
 through a caller-supplied response matrix reproduces the measured
-detector/reaction rates. Three methods share one iterator and diagnostics
+detector/reaction rates. Four methods share one iterator and diagnostics
 shape, landed one per cycle: SAND-II (Spectrum Analysis by Neutron
 Detectors II; McElroy et al., AFWL-TR-67-41, 1967)<Citation id="mcelroy-1967" />,
 written clean-room from the public-domain report — the adjustment form
 reproduced across the open unfolding literature; STAYSL-class damped
-least-squares (Perey, ORNL/TM-6062, 1977); and GRAVEL chi-square-weighted
-adjustment (Matzke, PTB-N-19, 1994). Every response value,
+least-squares (Perey, ORNL/TM-6062, 1977); GRAVEL chi-square-weighted
+adjustment (Matzke, PTB-N-19, 1994); and MAXED maximum entropy
+(Reginatto & Goldhagen, Health Phys. 77 (1999) 579)<Citation id="reginatto-1999" />,
+from the journal equations only — the closed UMG package is never touched.
+Every response value,
 measured rate, guess entry, and energy-group bound is caller-supplied data:
 evaluated libraries such as IRDFF are IAEA-copyright and are never vendored —
-the IRDFF-II v1 response pack below ships as a runtime download, parsed into
+the IRDFF-II response pack below ships as a runtime download, parsed into
 caller-ready rows. The IRDFF-II analytical benchmark-field shapes used in the
 correctness checks are re-derived from their published closed
 forms<Citation id="trkov-2020" /> — the library's tabulated group spectra are
 never read. The S1–S3 labels are the SAND-II pinned equations, T1–T4 the
-STAYSL-class set, G1–G3 the GRAVEL set; U1–U18 label the correctness checks.
+STAYSL-class set, G1–G3 the GRAVEL set, M1–M6 the MAXED set;
+U1–U23 label the correctness checks.
 
 ## Overview
 
@@ -82,13 +94,14 @@ the components the detectors can see. It is inverse-problem iteration, not a
 transport solve.
 
 The Python surface `nucleide.unfold` (a thin facade over the crate) exposes
-four entry points: `sandii(...)`, `staysl(...)`, and `gravel(...)`, which run
-their adjustment and return the converged spectrum with diagnostics, and
-`forward_fold(...)`, the shared forward operator.
+five entry points: `sandii(...)`, `staysl(...)`, `gravel(...)`, and
+`maxed(...)`, which run their adjustment and return the converged spectrum
+with diagnostics, and `forward_fold(...)`, the shared forward operator.
 
 <Callout type="info" title="Code shape">
-  The crate mirrors the other solver crates: `sandii.rs`, `staysl.rs`, and
-  `gravel.rs` hold one adjustment iterator each behind the `unfold` driver,
+  The crate mirrors the other solver crates: `sandii.rs`, `staysl.rs`,
+  `gravel.rs`, and `maxed.rs` hold one adjustment iterator each behind the
+  `unfold` driver,
   `lib.rs` holds the shared forward operator (`forward_fold`) and the input
   validation, and `error.rs` is a named error set (a `#[non_exhaustive]`
   enum with a `Result` alias).
@@ -220,6 +233,71 @@ measurement set returns the guess unchanged after one confirming no-op), and
 sigmas are required input (zero, non-finite, or missing sigmas raise a clear
 error, never silent uniform weighting).
 
+### M1–M6 — MAXED maximum entropy
+
+Where SAND-II, STAYSL-class, and GRAVEL spread each detector's correction
+across groups or fit the rates directly, MAXED maximizes the Shannon
+relative entropy against the guess-as-prior subject to the chi-square fit —
+among the spectra that reproduce the rates it keeps the one closest to the
+guess in the information sense:
+
+$$
+c_i = \sum_j R_{ij}\,\phi_j
+\tag{M1}
+$$
+
+$$
+S(\phi) = \sum_j \left(\phi_j - \phi^0_j
+  - \phi_j \ln(\phi_j / \phi^0_j)\right)
+\tag{M2}
+$$
+
+$$
+\chi^2(\phi) = \sum_i \left(\frac{c_i - N_i}{\sigma_i}\right)^2
+\tag{M3}
+$$
+
+(M2) is non-positive with equality only at the guess `φ⁰`. Its Lagrange
+stationary form under rate constraints is the exponential family in the
+per-detector multipliers `λ`:
+
+$$
+\phi_j(\lambda) = \phi^0_j \cdot
+  \exp\!\left(-\sum_i R_{ij}\,\lambda_i\right)
+\tag{M4}
+$$
+
+Each cycle linearizes the fold about the current multipliers
+(`∂c_i/∂λ_k = −J_ik`) and takes the dual step — one weighted
+least-squares solve through the shared `linalg` kernel over the fitted
+detectors only:
+
+$$
+J_{ik} = \sum_j R_{ij}\,\phi_j\,R_{kj}
+\tag{M5}
+$$
+
+$$
+\min_\delta \sum_{i} \frac{\left(\sum_k H_{ik}\,\delta_k - v_i\right)^2}{{\sigma'}_i^2}
+  + \mu\,\|\Delta\|^2,
+\qquad \Delta_k = \delta_k / q_k
+\tag{M6}
+$$
+
+(M6) equilibrates the solve (max-abs row/column scales, with the row scales
+compensated into the weights so the caller `1/σ_i²` weights and the fixed
+points survive bit-for-bit) plus an adaptive Levenberg-Marquardt damping
+term on the physical multiplier step, and accepts only a strictly better
+fit that moves no group by more than a factor of `e`. For consistent rates
+the multipliers converge to the maximum-entropy exact-fit spectrum; for
+inconsistent (redundant disagreeing) readings they converge to the
+minimum-chi-square member. The full derivation lives in the
+`nucleide-unfold` crate rustdoc (`maxed` module). Like GRAVEL, zero
+measurements carry zero weight and are simply not fitted; unlike the other
+three methods the run also takes a caller chi-square target (default: the
+detector count) — converging in relative change to a fit whose chi-square
+still exceeds the target is a hard error, never a partial spectrum.
+
 ### The IRDFF-II runtime response pack
 
 Response rows need not be hand-built: `nucleide.data.fetch_irdff` downloads
@@ -228,10 +306,13 @@ SHA-256 hash (a mismatch or offline run raises a clear error naming the URL
 or both digests), and `parse_irdff_g725` parses the `IRDFF-II.g725` member
 into caller-ready rows over the SAND-II 725-group structure for the v1
 foil-activation subset (Au-197 and In-115 capture, U-235 and U-238 fission,
-Fe-56 and Ni-58 (n,p), Al-27 (n,α), Na-23 (n,2n)). Nothing IAEA-copyright is
+Fe-56 and Ni-58 (n,p), Al-27 (n,α), Na-23 (n,2n)) plus the v2 extension of
+26 further dosimetry sections (threshold (n,p)/(n,a)/(n,2n) monitors,
+capture foils, fission chambers, high-threshold bismuth monitors).
+Nothing IAEA-copyright is
 vendored — the zip is fetched, never committed — and the rows feed
-`sandii`, `staysl`, and `gravel` unchanged. The pointwise isomer reactions
-stay out of the v1 pack.
+`sandii`, `staysl`, `gravel`, and `maxed` unchanged. The pointwise isomer reactions
+stay out of the pack.
 
 ### Underdetermined systems
 
@@ -249,7 +330,10 @@ bias keeps the guess.
 After each adjustment the largest per-group relative change
 `max_j |φ_new − φ_old| / φ_old` is compared against the tolerance; the run
 converges when it drops strictly below it. The defaults are `1e-3` and `200`
-iterations — library defaults, not values from the report. Each adjustment
+iterations — library defaults, not values from the report. MAXED
+additionally compares the chi-square against its target (default: the
+detector count, the chi-square expectation): the run converges only when the
+change is below tolerance *and* the fit sits at or below the target. Each adjustment
 also reports the refolded rates and the per-detector rate factors
 `N_i / c_i`: all ones at a fixed point, and `0.0` for a *pinned* detector (a
 zero measurement folding to zero — the `0/0` factor spelled as `0.0`, never
@@ -327,34 +411,38 @@ recorded.
   the IRDFF-II tabulated group spectra are never used — the benchmark
   shapes below are re-derived from published closed forms with
   citation<Citation id="trkov-2020" />. The one exception to hand-built
-  responses is the IRDFF-II v1 runtime pack above: fetched and hash-pinned
+  responses is the IRDFF-II runtime pack above: fetched and hash-pinned
   at runtime, never committed.
 - **Strictly positive guess required**; response entries and rates must be
   non-negative and finite. Every malformed input raises a clear error naming
   the cause.
 - **Detector-uncertainty weighting is the caller's choice of method**:
-  SAND-II applies no per-detector statistics factor (see S3); STAYSL-class
-  and GRAVEL consume caller-supplied sigmas as weights (see T2/G2).
+  SAND-II applies no per-detector statistics factor (see S3); STAYSL-class,
+  GRAVEL, and MAXED consume caller-supplied sigmas as weights (see T2/G2/M6:
+  `1/σ²`, `N²/σ²`, and `1/σ²` respectively).
 - **Underdetermination is real**. With fewer detectors than groups the result
   is not unique: the unseen component of the guess survives unchanged, so
   the unfolded spectrum depends on the guess there. Iteration reduces the
   error; it does not remove it.
-- **Zero measurements pin their groups to zero**, and a positive rate whose
-  support is pinned away fails with a clear error, up front or
-  mid-iteration.
+- **Zero measurements pin their groups to zero under SAND-II**, and a
+  positive rate whose support is pinned away fails with a clear error, up
+  front or mid-iteration. GRAVEL and MAXED instead skip zero measurements
+  (zero weight, never fitted).
 - **Non-convergence is a hard error**: exhausting the iteration cap raises
-  (a `ValueError` from Python), never returning a partial spectrum.
+  (a `ValueError` from Python), never returning a partial spectrum — and for
+  MAXED, so does converging in relative change to a fit whose chi-square
+  still exceeds the target.
 - **No outlier-foil rejection** (the original code's σ-discard feature) and
   no cover-material corrections — recorded as out of scope.
-- **Three methods, one at a time**: SAND-II, STAYSL-class, and GRAVEL share
-  the iterator and diagnostics shape but run separately — there is no hybrid
-  that mixes their updates within one run. MAXED maximum entropy stays
-  recorded for a later cycle.
+- **Four methods, one at a time**: SAND-II, STAYSL-class, GRAVEL, and MAXED
+  share the iterator and diagnostics shape but run separately — there is no
+  hybrid that mixes their updates within one run. MAXED closes the recorded
+  one-method-per-cycle order; no fifth method is scoped.
 
 ## Validation
 
-The crate and `validation/unfold_vs_analytic.py` replay eighteen pinned
-checks, U1–U18, all on synthetic forward-fold-then-recover round-trips — the
+The crate and `validation/unfold_vs_analytic.py` replay twenty-three pinned
+checks, U1–U23, all on synthetic forward-fold-then-recover round-trips — the
 response matrices are hand-built Gaussian bumps over log-spaced energy
 groups, never evaluated data:
 
@@ -389,15 +477,22 @@ groups, never evaluated data:
   shape recovery to `1e-5`, the cross-method fixed-point check in both
   directions (at a fixed point every rate ratio is 1, so the weights are
   irrelevant), and five named-contract error probes.
+- **U19–U23 (MAXED)**: the same shape — `1/σ²` chi-square weighting with
+  precise-wins, determined recovery to `1e-6`, underdetermined rate
+  reproduction to `1e-6` with spectrum error reduced under
+  counting-statistics sigmas, IRDFF-II shape recovery to `1e-5` with group
+  bounds bracketing each shape's support (the solve-based house rule), the
+  cross-method fixed-point check in both directions (at a fixed point the
+  dual residual is zero), and seven named-contract error probes — including
+  the chi-square-target hard fail on disagreeing redundant readings.
 
 No external reference implementation exists — PyNE and OpenMC ship no
-SAND-II/STAYSL/GRAVEL counterpart — so these analytic checks are the whole
-correctness story: they always run, and none can be skipped.
+SAND-II/STAYSL/GRAVEL/MAXED counterpart — so these analytic checks are the
+whole correctness story: they always run, and none can be skipped.
 
 ## Related work beyond Nucleide
 
-The remaining adjacent method recorded for a later cycle is MAXED
-(Reginatto & Goldhagen, Health Phys. 77 (1999) 579) maximum entropy, in its
-own module behind the same iterator and diagnostics shape. Because no
-external unfolding counterpart exists in PyNE or OpenMC, cross-code
-comparison is not available for this capability.
+No fifth unfolding method is scoped after MAXED, which closes the recorded
+one-method-per-cycle order. Because no external unfolding counterpart exists
+in PyNE or OpenMC, cross-code comparison is not available for this
+capability.

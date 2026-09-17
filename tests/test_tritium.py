@@ -468,8 +468,9 @@ def test_g9b_mixed_interface_laws_flux_continuity() -> None:
 
 
 def test_layered_interfaces_kwarg_errors() -> None:
-    # Exactly one entry per gap; unknown spellings are rejected;
-    # recombination interfaces are rejected by the core with a clear error.
+    # Exactly one entry per gap; unknown spellings are rejected; a bare
+    # "recombination" string is rejected because the rate has nowhere to go
+    # (pass {"kind": "recombination", "rate": Kr} instead).
     with pytest.raises(ValueError):
         tri.steady_layers(LAYERS_2, DIR_IN, DIR_OUT, interfaces=["henry", "henry"])
     with pytest.raises(ValueError):
@@ -478,3 +479,150 @@ def test_layered_interfaces_kwarg_errors() -> None:
         tri.steady_layers(LAYERS_2, DIR_IN, DIR_OUT, interfaces=["recombination"])
     with pytest.raises(ValueError):
         tri.transient_layers(LAYERS_2, DIR_IN, DIR_OUT, [1.0], interfaces=["henry", "henry"])
+
+
+# G10/G11: vented-sink recombination internal interfaces — synthetic stacks
+# with hand-derived closed forms (same analytic-gate stance as G7/G9).
+
+# 2-layer vented gate stack: L = 5e-4 m each, D = 1e-9 / 5e-10 m^2/s
+# (solubilities play no role at the vented gap).
+LAYERS_R = [
+    {"thickness": 5e-4, "cells": 64, "D": 1e-9, "solubility": 2.0},
+    {"thickness": 5e-4, "cells": 64, "D": 5e-10, "solubility": 0.5},
+]
+REC = {"kind": "recombination", "rate": 3e-7}
+
+
+def test_g10_vented_sink_closed_form() -> None:
+    # Continuum root R(x) = D1(1-x)/L1 - D2*x/L2 - Kr*x^2 = 0.
+    kr = 3e-7
+    p = 1e-9 / 5e-4
+    q = 1e-9 / 5e-4 + 5e-10 / 5e-4
+    x_star = 2.0 * p / ((q * q + 4.0 * kr * p) ** 0.5 + q)
+    j = 5e-10 * x_star / 5e-4
+    out = tri.steady_layers(LAYERS_R, DIR_IN, DIR_OUT, interfaces=[REC])
+    assert out["interface_faces"] == pytest.approx([x_star], rel=1e-12)
+    assert out["flux_right"] == pytest.approx(j, rel=1e-12, abs=1e-18)
+    x = out["interface_faces"][0]
+    assert x is not None
+    assert out["flux_left"] + out["flux_right"] + kr * x * x == pytest.approx(
+        0.0, abs=1e-12 * j + 1e-18
+    )
+    # Gap residual from the half-cell conductances.
+    dx1, dx2 = 5e-4 / 64, 5e-4 / 64
+    c_l, c_r = out["mobile"][63], out["mobile"][64]
+    jl = 2.0 * 1e-9 / dx1 * (c_l - x)
+    jr = 2.0 * 5e-10 / dx2 * (x - c_r)
+    assert jl - jr - kr * x * x == pytest.approx(0.0, abs=1e-12 * j + 1e-18)
+    assert all(c >= 0.0 for c in out["mobile"])
+
+
+def test_g10_vent_rate_limits() -> None:
+    # Kr -> infinity pins the left block (flux D1/L1 = 2e-6, 4 digits).
+    out = tri.steady_layers(
+        LAYERS_R, DIR_IN, DIR_OUT, interfaces=[{"kind": "recombination", "rate": 100.0}]
+    )
+    assert out["flux_left"] == pytest.approx(-2e-6, rel=1e-3)
+    # Kr -> 0 is the continuous joint: identical layers recover the slab.
+    tiny = [
+        {"thickness": 5e-4, "cells": 32, "D": 1e-9, "solubility": 1.0},
+        {"thickness": 5e-4, "cells": 32, "D": 1e-9, "solubility": 1.0},
+    ]
+    out = tri.steady_layers(
+        tiny, DIR_IN, DIR_OUT, interfaces=[{"kind": "recombination", "rate": 1e-24}]
+    )
+    ref = tri.steady(1e-3, 64, 1e-9, DIR_IN, DIR_OUT)
+    for c_got, c_want in zip(out["mobile"], ref["mobile"], strict=True):
+        assert c_got == pytest.approx(c_want, abs=1e-12)
+
+
+def test_g10_mixed_three_laws() -> None:
+    # One interface of each law: Sieverts + Henry + vented-sink.
+    layers: list[dict[str, Any]] = [
+        {"thickness": 3e-4, "cells": 32, "D": 1e-9, "solubility": 1.0},
+        {"thickness": 3e-4, "cells": 32, "D": 4e-10, "solubility": 0.8},
+        {"thickness": 3e-4, "cells": 32, "D": 2.5e-10, "solubility": 0.6},
+        {"thickness": 3e-4, "cells": 32, "D": 1e-9, "solubility": 1.2},
+    ]
+    kr = 5e-7
+    ifaces: list[Any] = ["sieverts", "henry", {"kind": "recombination", "rate": kr}]
+    out = tri.steady_layers(layers, DIR_IN, DIR_OUT, interfaces=ifaces)
+    r_l = 3e-4 / 1e-9 + 3e-4 / (4e-10 * 0.8) + 3e-4 / (2.5e-10 * 0.6)
+    r_r = 3e-4 / (1e-9 * 1.2)
+    p = 1.0 / r_l
+    q = 1.0 / (0.6 * r_l) + 1.0 / (1.2 * r_r)
+    x_star = 2.0 * p / ((q * q + 4.0 * kr * p) ** 0.5 + q)
+    assert out["interface_faces"][2] == pytest.approx(x_star, rel=1e-12)
+    assert out["interface_faces"][:2] == [None, None]
+    jl = (1.0 - x_star / 0.6) / r_l
+    jr = (x_star / 1.2) / r_r
+    assert out["flux_right"] == pytest.approx(jr, rel=1e-12, abs=1e-18)
+    assert out["flux_left"] == pytest.approx(-jl, rel=1e-12, abs=1e-18)
+    # Linear-gap flux continuity from each side of each linear gap.
+    faces = _face_fluxes(layers, out["mobile"])
+    for k, jf in enumerate(faces):
+        if k + 1 == 96:  # vented gap carries the desorption jump
+            continue
+        want = jl if k + 1 < 96 else jr
+        assert jf == pytest.approx(want, rel=1e-12, abs=1e-18)
+    assert all(c >= 0.0 for c in out["mobile"])
+
+
+def test_g10_vent_interface_errors() -> None:
+    # Missing/unknown kind, missing/bad rate, and zero drive are loud.
+    with pytest.raises(ValueError):
+        tri.steady_layers(LAYERS_R, DIR_IN, DIR_OUT, interfaces=[{"kind": "recombination"}])
+    with pytest.raises(ValueError):
+        tri.steady_layers(
+            LAYERS_R, DIR_IN, DIR_OUT, interfaces=[{"kind": "recombination", "rate": 0.0}]
+        )
+    with pytest.raises(ValueError):
+        tri.steady_layers(
+            LAYERS_R, DIR_IN, DIR_OUT, interfaces=[{"kind": "recombination", "rate": -1.0}]
+        )
+    with pytest.raises(ValueError):
+        tri.steady_layers(LAYERS_R, DIR_IN, DIR_OUT, interfaces=[{"nope": 1.0}])
+    with pytest.raises(ValueError):
+        tri.steady_layers(LAYERS_R, DIR_IN, DIR_OUT, interfaces=[[1.0]])
+    zero = {"kind": "dirichlet", "value": 0.0}
+    with pytest.raises(ValueError):
+        tri.steady_layers(LAYERS_R, zero, zero, interfaces=[REC])
+
+
+def test_g11_vented_transient_balance_and_asymptote() -> None:
+    # G11a-style discrete balance with the desorption sink (one step per
+    # output, Crank-Nicolson).
+    kr = 3e-7
+    ifaces = [{"kind": "recombination", "rate": kr}]
+    sol = tri.transient_layers(
+        LAYERS_R, DIR_IN, DIR_OUT, [20.0, 40.0], interfaces=ifaces, dt_max=20.0
+    )
+    dx = 5e-4 / 64
+    xs = [row[0] for row in sol["interface_faces"]]
+    assert all(x is not None and x >= 0.0 for x in xs)
+    inv = [sum(row) * dx for row in sol["mobile"]]
+    r_now = [
+        -(fl + fr) - kr * x * x
+        for fl, fr, x in zip(sol["flux_left"], sol["flux_right"], xs, strict=True)
+    ]
+    r_prev, i_prev = 2.0 * 1e-9 / dx, 0.0
+    for k, dt in enumerate([20.0, 20.0]):
+        assert inv[k] == pytest.approx(i_prev + dt * (0.5 * r_prev + 0.5 * r_now[k]), rel=1e-12)
+        r_prev, i_prev = r_now[k], inv[k]
+    # G11c-style asymptote: chained segments land on the steady state.
+    seg_a = tri.transient_layers(LAYERS_R, DIR_IN, DIR_OUT, [300.0], interfaces=ifaces, dt_max=0.5)
+    seg_b = tri.transient_layers(
+        LAYERS_R,
+        DIR_IN,
+        DIR_OUT,
+        [19700.0],
+        mobile0=seg_a["mobile"][0],
+        trapped0=seg_a["trapped"][0],
+        interfaces=ifaces,
+        dt_max=5.0,
+    )
+    steady = tri.steady_layers(LAYERS_R, DIR_IN, DIR_OUT, interfaces=ifaces)
+    assert seg_b["flux_right"][0] == pytest.approx(steady["flux_right"], rel=1e-6)
+    for c_got, c_want in zip(seg_b["mobile"][0], steady["mobile"], strict=True):
+        assert c_got == pytest.approx(c_want, abs=1e-9)
+    assert all(c >= 0.0 for row in seg_b["mobile"] for c in row)

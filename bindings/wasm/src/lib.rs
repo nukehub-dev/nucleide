@@ -5422,7 +5422,11 @@ struct FusionPointSpecJson {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct FusionParametricSpecJson {
+    // Unknown keys are rejected loudly: silently dropping a `fuel_mixture`,
+    // `species_temperatures`, or `sector` key would return full-torus
+    // single-fuel results for a caller that asked for something else.
     #[serde(rename = "majorRadiusCm", alias = "major_radius_cm")]
     major_radius_cm: f64,
     #[serde(rename = "minorRadiusCm", alias = "minor_radius_cm")]
@@ -5534,6 +5538,8 @@ fn parametric_config(
         pedestal_radius_cm: parsed.pedestal_radius_cm,
         fuel: parse_fusion_reaction(&parsed.fuel)?,
         fuel_mixture: None,
+        species_temperatures: None,
+        sector: None,
         weight: 1.0,
     })
 }

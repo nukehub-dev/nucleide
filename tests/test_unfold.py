@@ -421,3 +421,162 @@ def test_gravel_validation_errors_name_the_cause() -> None:
         unfold.gravel(response, rates, sigmas, guess, max_iterations=0)
     with pytest.raises(ValueError, match="unreachable"):
         unfold.gravel([[0.0, 0.0, 0.0]], [1.0], [1.0], guess)
+
+
+def test_maxed_exact_guess_is_a_fixed_point() -> None:
+    response = _synthetic_response(4, 12, 2.0)
+    midpoints = _log_midpoints(12, 1e-6, 10.0)
+    truth = _maxwellian_plus_inv_e(midpoints, 2.53e-5)
+    rates = unfold.forward_fold(response, truth)
+    sigmas = [1.0] * len(rates)
+    out = unfold.maxed(response, rates, sigmas, truth)
+    assert out["iterations"] == 1
+    assert out["max_rel_change"] == 0.0
+    assert out["spectrum"] == truth
+    assert out["rate_factors"] == pytest.approx([1.0] * len(rates), rel=1e-12)
+
+
+def test_maxed_recovers_determined_system_from_biased_guess() -> None:
+    response = _synthetic_response(N_GROUPS, N_GROUPS, 0.9)
+    midpoints = _log_midpoints(N_GROUPS, 1e-6, 10.0)
+    truth = _maxwellian_plus_inv_e(midpoints, 2.53e-5)
+    rates = unfold.forward_fold(response, truth)
+    sigmas = [1.0] * len(rates)
+    guess = [3.0 * p for p in truth]
+    out = unfold.maxed(response, rates, sigmas, guess, tolerance=1e-12, max_iterations=10_000)
+    assert out["spectrum"] == pytest.approx(truth, rel=1e-6)
+    assert out["rate_factors"] == pytest.approx([1.0] * N_GROUPS, rel=1e-9)
+
+
+def test_maxed_caller_sigmas_are_the_weights() -> None:
+    # Two redundant readings of the same group, one precise (2.0 +/- 0.01) and
+    # one sloppy (2.2 +/- 1.0): the 1/sigma^2 chi-square weights (10000 vs 1)
+    # must follow the precise detector, not the average.
+    response = [[1.0, 0.0], [1.0, 0.0]]
+    rates = [2.0, 2.2]
+    sigmas = [0.01, 1.0]
+    guess = [1.5, 7.0]
+    out = unfold.maxed(response, rates, sigmas, guess, tolerance=1e-12)
+    assert out["spectrum"][0] == pytest.approx(2.0, abs=0.02)
+    # The unseen second group keeps the guess exactly.
+    assert out["spectrum"][1] == 7.0
+
+
+def test_maxed_underdetermined_round_trip_reproduces_rates() -> None:
+    # Fewer detectors than groups with counting-statistics sigmas
+    # (sigma^2 = N): the maximum-entropy fixed point reproduces the rates
+    # and improves on the guess.
+    n_groups = 24
+    response = _synthetic_response(6, n_groups, 3.0)
+    midpoints = _log_midpoints(n_groups, 1e-6, 12.0)
+    truth = _maxwellian_plus_inv_e(midpoints, 2.53e-5)
+    rates = unfold.forward_fold(response, truth)
+    sigmas = [math.sqrt(r) for r in rates]
+    guess = [p * (1.3 + 0.7 * (j % 5) / 4.0) for j, p in enumerate(truth)]
+
+    def max_rel_err(a: list[float], b: list[float]) -> float:
+        return max(abs(x - y) / y for x, y in zip(a, b, strict=True))
+
+    out = unfold.maxed(response, rates, sigmas, guess, tolerance=1e-9, max_iterations=50_000)
+    assert out["rate_factors"] == pytest.approx([1.0] * 6, rel=1e-6)
+    assert max_rel_err(out["spectrum"], truth) < max_rel_err(guess, truth)
+    assert all(p > 0.0 for p in out["spectrum"])
+
+
+def test_maxed_irdff_ii_analytical_benchmark_shapes_recover() -> None:
+    # Same published shapes as the STAYSL-class probe (Trkov et al., NDS 163
+    # (2020) 1, arXiv:1909.03336), with group bounds bracketing each shape's
+    # support so every group sees a significant flux (the solve-based house
+    # rule). The library's tabulated group spectra are IAEA-copyright data
+    # files and are deliberately NOT used.
+    thermal_kt = 8.617333262e-5 * 293.6  # 293.6 K, eV -> MeV
+    shapes = [
+        [e * math.exp(-e / thermal_kt) + 1e-30 for e in _log_midpoints(18, 1e-9, 1e-3)],
+        [1.0 / e + 1e-30 for e in _log_midpoints(18, 1e-6, 10.0)],
+        [math.sqrt(e) * math.exp(-e / 2.5e-2) + 1e-30 for e in _log_midpoints(18, 1e-3, 0.3)],
+    ]
+    for shape in shapes:
+        response = _synthetic_response(18, 18, 0.8)
+        rates = unfold.forward_fold(response, shape)
+        sigmas = [1.0] * len(rates)
+        guess = [5.0 * p for p in shape]
+        out = unfold.maxed(response, rates, sigmas, guess, tolerance=1e-11, max_iterations=100_000)
+        assert out["spectrum"] == pytest.approx(shape, rel=1e-5)
+
+
+def test_maxed_sandii_fixed_points_agree() -> None:
+    # Both methods consume the same fold: at a fixed point every rate ratio
+    # is 1, so MAXED sees a zero dual residual and holds the SAND-II point
+    # after one confirming no-op adjustment, and vice versa.
+    response = _synthetic_response(6, 6, 1.0)
+    midpoints = _log_midpoints(6, 1e-6, 10.0)
+    truth = _maxwellian_plus_inv_e(midpoints, 2.53e-5)
+    rates = unfold.forward_fold(response, truth)
+    sigmas = [1.0] * len(rates)
+    guess = [2.5 * p for p in truth]
+    sandii_out = unfold.sandii(response, rates, guess, tolerance=1e-12, max_iterations=100_000)
+    out = unfold.maxed(response, rates, sigmas, sandii_out["spectrum"], tolerance=1e-4)
+    assert out["iterations"] == 1
+    assert out["max_rel_change"] < 1e-4
+    assert out["spectrum"] == pytest.approx(sandii_out["spectrum"], rel=1e-5)
+    maxed_out = unfold.maxed(
+        response, rates, sigmas, guess, tolerance=1e-12, max_iterations=100_000
+    )
+    back = unfold.sandii(response, rates, maxed_out["spectrum"], tolerance=1e-4)
+    assert back["iterations"] == 1
+    assert back["max_rel_change"] < 1e-4
+    assert back["spectrum"] == pytest.approx(maxed_out["spectrum"], rel=1e-5)
+
+
+def test_maxed_zero_measurement_carries_no_weight() -> None:
+    # Pinned divergence from SAND-II (shared with GRAVEL): a zero
+    # measurement is skipped rather than fitted — the guess survives
+    # untouched.
+    out = unfold.maxed([[1.0, 1.0]], [0.0], [1.0], [2.0, 3.0])
+    assert out["spectrum"] == [2.0, 3.0]
+    assert out["iterations"] == 1
+    assert out["max_rel_change"] == 0.0
+
+
+def test_maxed_chi2_target_violation_is_a_hard_fail() -> None:
+    # Two redundant readings of one group that disagree beyond their sigmas:
+    # no family member fits both, so the chi-square bottoms out above the
+    # target and the run fails loudly instead of returning a partial.
+    with pytest.raises(ValueError, match="did not converge"):
+        unfold.maxed(
+            [[1.0, 0.0], [1.0, 0.0]], [2.0, 2.1], [0.01, 0.01], [1.5, 7.0], target_chi2=1.0
+        )
+
+
+def test_maxed_non_convergence_is_a_hard_fail() -> None:
+    response = _synthetic_response(4, 8, 1.5)
+    midpoints = _log_midpoints(8, 1e-6, 10.0)
+    truth = _maxwellian_plus_inv_e(midpoints, 2.53e-5)
+    rates = unfold.forward_fold(response, truth)
+    sigmas = [1.0] * len(rates)
+    guess = [2.0 * p for p in truth]
+    with pytest.raises(ValueError, match="did not converge"):
+        unfold.maxed(response, rates, sigmas, guess, tolerance=1e-12, max_iterations=1)
+
+
+def test_maxed_validation_errors_name_the_cause() -> None:
+    response = _synthetic_response(2, 3, 1.0)
+    rates = [1.0, 2.0]
+    sigmas = [1.0, 1.0]
+    guess = [1.0, 1.0, 1.0]
+    with pytest.raises(ValueError, match="shape mismatch"):
+        unfold.maxed(response, rates, [1.0], guess)
+    with pytest.raises(ValueError, match="non-finite sigma"):
+        unfold.maxed(response, rates, [1.0, float("nan")], guess)
+    with pytest.raises(ValueError, match="sigma must be > 0"):
+        unfold.maxed(response, rates, [1.0, 0.0], guess)
+    with pytest.raises(ValueError, match="strictly positive"):
+        unfold.maxed(response, rates, sigmas, [1.0, 0.0, 1.0])
+    with pytest.raises(ValueError, match="target_chi2"):
+        unfold.maxed(response, rates, sigmas, guess, target_chi2=-1.0)
+    with pytest.raises(ValueError, match="tolerance"):
+        unfold.maxed(response, rates, sigmas, guess, tolerance=0.0)
+    with pytest.raises(ValueError, match="max_iterations"):
+        unfold.maxed(response, rates, sigmas, guess, max_iterations=0)
+    with pytest.raises(ValueError, match="unreachable"):
+        unfold.maxed([[0.0, 0.0, 0.0]], [1.0], [1.0], guess)

@@ -13,10 +13,22 @@
 //! 611) and Ballabio-broadened spectra. Profiles are caller inputs — nothing
 //! computes profiles and no equilibrium is solved. What stays out (loud
 //! [`Error::NotYetSupported`], never a guess): reactant distributions beyond
-//! the shared-temperature Maxwellian D/T mixture ([`parametric`] — the
-//! per-species-temperature Eriksson et al., Comput. Phys. Commun. **199**
-//! (2016) 40 generalization), the T-T and D(d,p)T branches, and toroidal
-//! sectors.
+//! distinct-temperature Maxwellians ([`parametric`] — non-Maxwellian tails
+//! stay out; the per-species-temperature Eriksson et al., Comput. Phys.
+//! Commun. **199** (2016) 40 generalization is supported on D/T mixtures via
+//! [`SpeciesIonTemperatures`]), T-T neutron transport (the pinned
+//! three-branch normalization lives in [`parametric`], but no publishable
+//! T-T reactivity fit or Ballabio-class line exists — the oracle's vendored
+//! tables stay out — so the sampler and the cards run the landed two
+//! neutron branches), and proton transport (the D(d,p)T proton *rate* is
+//! accounted alongside the neutron source via
+//! [`ParametricPlasmaConfig::proton_strength_density`] /
+//! [`ParametricPlasmaConfig::total_proton_strength`], 50/50 with the D-D
+//! neutron branch; no proton particles are sampled and no proton
+//! distributions reach the cards). Toroidal sectors ([`ToroidalSector`])
+//! are supported on the parametric config: birth angles uniform over
+//! `[start_angle, start_angle + rotation_angle)`, totals scaled by
+//! `rotation_angle/2π`, cards carrying a uniform angle-bin marginal.
 //!
 //! # Physics
 //!
@@ -94,6 +106,7 @@ pub use error::{Error, Result};
 pub use miller::MillerGeometry;
 pub use parametric::{
     BinnedDistribution, EmissionHistograms, FuelMixture, ParametricPlasmaConfig, ParametricSampler,
+    SpeciesIonTemperatures, ToroidalSector,
 };
 pub use profile::{DensityProfile, ProfileMode, TemperatureProfile};
 pub use reaction::FusionReaction;

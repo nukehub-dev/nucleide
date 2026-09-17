@@ -5,7 +5,9 @@
 Tokamak fusion-neutron source creation: ring and point sources plus a
 parametric Miller-geometry plasma, over the D-D (2.45 MeV) and D-T
 (14.1 MeV) reactions — singly or as arbitrary D/T fuel mixtures at a shared
-ion temperature — with ion-temperature-broadened Gaussian spectra, a seeded
+ion temperature or at distinct Maxwellian species temperatures
+(`SpeciesIonTemperatures`: D-T at the mass-weighted `T_DT`, D-D at `T_D`) —
+with ion-temperature-broadened Gaussian spectra, a seeded
 sampler to particle vectors, and MCNP `SDEF` + Serpent `src` card emission
 with a drift report.
 
@@ -44,6 +46,16 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   convention), or — via `FuelMixture` on the config / a `fuel={"D": f_D,
   "T": f_T}` dict in the Python spec — the Eriksson/DRESS mixture rule
   `S = n²·[f_D·f_T·⟨σv⟩_DT + (f_D²/2)·⟨σv⟩_DD]` at the shared profile `T_i`.
+  The T-T neutron term is pinned as the third mixture term
+  `+ f_T²·⟨σv⟩_TT` (neutron multiplicity 2 folded in, reacting at `T_T`,
+  `FuelMixture::tt_neutron_coefficient`) but not transported — no
+  publishable T-T reactivity fit (Bosch & Hale 1992 covers only D(d,n),
+  D(d,p), D-T, D-³He) or Ballabio-class line (three-body continuum) exists,
+  and the oracle's vendored tables stay out of scope. The D(d,p)T proton
+  *rate* is accounted alongside the neutron source
+  (`proton_strength_density` / `total_proton_strength`, 50/50 with the D-D
+  neutron branch, bit-for-bit; `proton_accounting` facade) while the
+  sampler and the cards stay neutron-only; proton transport stays out.
   The normalization is pinned with hand vectors in the `parametric` module
   rustdoc, and the recovery anchors are regression gates: `f_D=f_T=1/2`
   reproduces the equimolar kernel's D-T branch bit-for-bit, `f_D=1`
@@ -54,13 +66,32 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   emission for parametric sources is product-form: radial/vertical/energy
   *marginals* as discrete histograms, and the drift report must carry the
   joint-correlation distance (half the L1 distance between the true
-  `(r, z)` joint and the product of marginals).
+  `(r, z)` joint and the product of marginals). An optional
+  `ToroidalSector` (`start_angle`/`rotation_angle` pair, or the same keys in
+  the Python spec) restricts births to
+  `[start_angle, start_angle + rotation_angle)` with uniform birth angles
+  and totals scaled by `rotation_angle/2π`; the exact full-rotation spelling
+  recovers the full torus bit-for-bit (regression gate). A partial sector
+  adds a uniform angle-bin marginal to the cards (`PHI=D4` on SDEF, `phi d4`
+  on Serpent) plus a `toroidal sector` drift row; sector angles carry their
+  own loud errors (`Error::NonFinite`, `Error::InvalidSector`) at
+  construction.
 - Loud boundary (`Error::NotYetSupported` / `ValueError`, never a guess):
-  toroidal sectors (`start_angle`/`rotation_angle`), the T-T and D(d,p)T
-  branches, per-species ion temperatures / non-Maxwellian reactants (the
-  full Eriksson generalization), and profile self-consistency (zero total
-  strength). Mixture fractions carry their own loud errors
-  (`Error::NonFinite`, `Error::InvalidFuelMixture`) at construction.
+  T-T neutron transport
+  (third-term normalization pinned, `tt_neutron_coefficient`; no
+  publishable fit or line exists) and proton transport (the D(d,p)T proton
+  *rate* is accounted: `proton_strength_density` /
+  `total_proton_strength`, `proton_accounting` facade; sampler and cards
+  stay neutron-only), reactant distributions beyond distinct-temperature
+  Maxwellians (non-Maxwellian tails — the rest of the full Eriksson
+  generalization; the per-species-temperature form is supported via
+  `SpeciesIonTemperatures` on a fuel mixture), per-species temperatures
+  without a fuel mixture, and profile
+  self-consistency (zero total strength). Mixture fractions, species
+  temperatures, and sector angles carry their own loud errors
+  (`Error::NonFinite`, `Error::InvalidFuelMixture`,
+  `Error::NegativeIonTemperature`, `Error::InvalidSector`) at
+  construction.
 - Units: cm, MeV, keV (card convention); profile density is m⁻³ (Fausser
   convention, converted internally); reactivity is exposed in m³/s. The
   validation oracle converts at the openmc-plasma-source boundary (m, eV).
@@ -81,19 +112,24 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   (module rustdoc hand vectors) and the exact recovery anchors move before
   any sampler change, and the single-fuel sampling stream must stay
   bit-for-bit (no new RNG draws on the `fuel_mixture: None` path).
-- Generalizing the mixture model (per-species temperatures, T-T branch)
-  moves the `NotYetSupported` boundary only after its own pinned
-  normalization brief.
+- Generalizing the mixture model further (T-T branch transport,
+  non-Maxwellian tails) moves the `NotYetSupported` boundary only after
+  its own pinned normalization brief.
 
 ## Verification
 
 - `cargo test -p nucleide-plasma-source` (map/Jacobian closed forms,
   profile/reactivity goldens, sampler moment gates, golden cards, reader
   round trips, mixture hand vectors + exact recovery anchors + loud
-  fraction errors).
+  fraction errors, branch gates: T-T coefficient vectors, proton
+  bit-identity with the D-D branch, the no-T recovery anchor, sector gates:
+  rotation/2π hand vectors, full-rotation bit-for-bit recovery, loud angle
+  errors, species gates: T_DT hand vectors, pair-temperature strength and
+  per-branch spectra, equal-T bit-for-bit recovery, loud temperature
+  errors).
 - `pytest tests/test_plasma_source.py` after `maturin develop`.
 - `validation/plasma_source_vs_openmc.py` runs inside `run_all.sh`
-  (two-part: P1–P8 always, O1–O8 vs openmc-plasma-source/NeSST
+  (two-part: P1–P11 always, O1–O11 vs openmc-plasma-source/NeSST
   container-only with loud SKIP outside; the Containerfile layer installs
   `openmc-plasma-source` + `NeSST` and shims `scipy.integrate.cumtrapz`
   in the oracle process for scipy ≥ 1.14).

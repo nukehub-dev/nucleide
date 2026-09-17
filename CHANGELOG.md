@@ -13,6 +13,141 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Added
+
+- Vented-sink recombination internal interfaces for multi-layer tritium
+  stacks in `nucleide-tritium` (exposed through `nucleide.tritium`):
+  `LayerStack::new` now accepts `Interface::recombination(rate)` alongside
+  the linear Sieverts/Henry laws. A vented gap carries a single face
+  concentration `x ≥ 0` with half-cell fluxes `J_L = g_L·(c_L − x)`,
+  `J_R = g_R·(x − c_R)` (`g = 2D/dx` per side, no solubility involved) and
+  the desorption sink `K_r·x²` venting from the face, so
+  `J_L − J_R = K_r·x²`. The bulk matrix is CUT at the gap
+  (block-diagonal); a lone gap closes in closed form
+  `x = 2P/(√(Q²+4K_rP)+Q)`, coupled faces (several gaps, or recombination
+  outer ends alongside) by Newton iteration with the analytic Jacobian —
+  same FV θ-stepper and `linalg::tridiag` solve, with the per-step close
+  fused into the trap Picard loop exactly like the G6 outer ends. The
+  `K_r → 0` limit is a continuous-concentration joint (not a Sieverts
+  law); a non-positive permeation drive is a loud error in the steady
+  state (the transient follows the G6 clamping stance per step). The
+  flux-continuous product law has no spelling by construction (spurious
+  insulated root, symmetry breaking — permanently rejected). Gates
+  G10a–G10g/G11a–G11d (in-crate unit tests, synthetic stacks with
+  hand-derived closed forms, no `fixtures/tritium/` changes): 2-layer
+  closed form at `1e-12` with gap residual and desorption-carrying outer
+  balance, `K_r` limit pins, a 4-layer mixed-law stack (one interface of
+  each law) with flux continuity across both linear gaps, coupled-Newton
+  residuals at the Newton contract, traps on the owning layer's isotherm,
+  transient θ-balance with the desorption sink to roundoff, `dt`-halving
+  order bands, late-time asymptote, and the trap-coupled Picard-fusion
+  balance. The Python `steady_layers`/`transient_layers` facades accept a
+  `{"kind": "recombination", "rate": Kr}` dict per gap (bare
+  `"recombination"` strings fail loudly — the rate has nowhere to go) and
+  report `interface_faces` (face value per gap, `None` at linear gaps;
+  `[time][gap]` in transients) for closing the discrete balance with the
+  desorption term; single-slab and default-stack signatures are unchanged.
+
+- IRDFF-II dosimetry-response registry expansion (`nucleide-nuclei`,
+  `nucleide._internal.parse_irdff_g725`): the `V2_REACTIONS` extension adds
+  the 26 further named `MF=3` dosimetry sections of the same pinned
+  `IRDFF-II_g725.zip` (same URL + SHA-256 pins, same cache, same loud
+  offline/mismatch errors) — the remaining threshold (n,p)/(n,a)/(n,2n)
+  monitors, capture foils, fission chambers, and high-threshold bismuth
+  monitors, for 34 reactions total. `MF=10` isomer sections stay out, the
+  default pack stays v1, and the `unfold` iterators are unchanged. Parser
+  review: the pinned file carries `L2=99` (not 0) in three `MF=3` head cards
+  (notably v1's `56Fe(n,p)`), now accepted as 0-or-99 and loudly pinned.
+  Gates: synthetic mocked-fetch unit tests plus a container live-fetch gate
+  (loud SKIP when offline) with hand-checked first-response groups and
+  `unfold` round-trips at pinned tolerance. Nothing IAEA-copyright is
+  vendored.
+
+- MAXED maximum-entropy unfolding (`nucleide-unfold`, `nucleide.unfold.maxed`):
+  the fourth and last adjustment family in the crate — Shannon relative
+  entropy against the guess-as-prior over the exponential Lagrange family,
+  driven by an equilibrated Levenberg-Marquardt dual step with a chi-square
+  target (`target_chi2`, default: the detector count) and a per-iteration
+  trust-region cap. Caller sigmas are the `1/σ²` weights, zero measurements
+  carry zero weight (the GRAVEL house rule), and a relatively converged run
+  whose chi-square still exceeds the target is a hard `NotConverged` (never
+  a partial spectrum). Validation adds always-run U19-U23 gates (determined
+  recovery, counting-statistics underdetermined round-trip, bracketed
+  IRDFF-II analytical shape probes, SAND-II cross fixed points, contract
+  errors) to the same `unfold` report.
+
+- D(d,p)T proton bookkeeping and the pinned T-T branch normalization for
+  the parametric tokamak plasma source (`nucleide-plasma-source`,
+  `nucleide.plasma_source`): `ParametricPlasmaConfig::proton_strength_density`
+  / `total_proton_strength` (plus `FuelMixture::tt_neutron_coefficient`)
+  report the D(d,p)T proton production rate alongside the neutron source
+  under the pinned 50/50 convention — the proton density IS the D-D
+  neutron-branch density bit-for-bit (pure D-D gives exactly one proton per
+  neutron; D-T-only gives exactly none) — while the sampler draws no proton
+  energies, the cards carry no proton distributions, and proton transport
+  stays out of scope. The T-T neutron term is pinned as the third mixture
+  term `S = n²·[f_D·f_T·⟨σv⟩_DT + (f_D²/2)·⟨σv⟩_DD + f_T²·⟨σv⟩_TT]` (neutron
+  multiplicity 2 folded in, reacting at `T_T`, matching the upstream
+  `openmc-plasma-source` rule) but is NOT transported: no Bosch–Hale T-T
+  fit exists (Bosch & Hale 1992 covers only D(d,n), D(d,p), D-T, D-³He),
+  no Ballabio-class T-T line exists (three-body continuum), and the
+  oracle's vendored tables stay out of scope — a pure-tritium mixture stays
+  a loud error. A mixture with `f_T = 0` reproduces the landed two-branch
+  kernel bit-for-bit (regression gates). New `proton_accounting(spec)`
+  facade (per-neutron ratio plus sector-aware totals for parametric specs;
+  `None` totals for ring/point specs, which carry no density model).
+  `validation/plasma_source_vs_openmc.py` adds always-run P9 gates (exact
+  pure-fuel ratios, the 70/30 share vs quadrature, the no-T recovery
+  anchor, the loud pure-T error) and a container-only O9 probe on a
+  tritium-rich 10/90 blend showing the sampled stream sits on the
+  two-branch upstream quadrature while the three-branch reference pulls
+  away by exactly the T-T-predicted scale (protons have no oracle —
+  upstream models neutrons only).
+
+- Toroidal sectors for the parametric tokamak plasma source
+  (`nucleide-plasma-source`, `nucleide.plasma_source`): the additive
+  `start_angle`/`rotation_angle` pair [rad] (`ToroidalSector`) restricts
+  births to `[start_angle, start_angle + rotation_angle)` with uniform birth
+  angles and emission totals scaled by `rotation_angle/2π` (half torus ×0.5
+  exactly, quarter torus ×0.25 exactly); the exact full-rotation spelling
+  reproduces the landed full-torus kernel bit-for-bit (same seeded stream,
+  same cards — regression gates). A partial sector adds a uniform
+  angle-bin marginal to the cards (`PHI=D4` on SDEF, `phi d4` on Serpent)
+  plus a `toroidal sector` drift row; the SDEF card still round-trips
+  byte-identically through the typed reader (the `mcnp-io` SDEF subset
+  gains the `PHI` keyword). Non-finite or out-of-range angles are loud
+  errors (`NonFinite`/`InvalidSector`; both keys or neither in the Python
+  spec). `validation/plasma_source_vs_openmc.py` adds always-run P10 gates
+  (in-sector uniform births, full-rotation stream/card recovery, the PHI
+  marginal round-trip with its drift row) and a container-only O10 probe
+  showing a partial sector leaves the upstream-quadrature (r, z, E) moments
+  untouched.
+
+- Per-species ion temperatures for the parametric tokamak plasma source
+  (`nucleide-plasma-source`, `nucleide.plasma_source`): the additive
+  `species_temperatures={"D": T_D, "T": T_T}` dict [keV]
+  (`SpeciesIonTemperatures`) reacts a D/T fuel mixture at distinct
+  Maxwellian species temperatures — the D-T branch at the mass-weighted
+  relative temperature `T_DT = T_D + (2/5)·(T_T − T_D)`, the D-D branch at
+  `T_D` (Eriksson et al. 2016, the full distinct-Maxwellian
+  generalization) — through the emission strength, the sampler's branch
+  roulette, the card energy marginals, and the axis spectrum summary. The
+  D-T Ballabio line at `T_DT` is an effective-temperature convention
+  (Table III was fitted to single-temperature Maxwellians; the residual
+  against the full Eriksson numerical integration is out of scope, and
+  non-Maxwellian reactants stay a loud boundary). A uniform `T_D = T_T`
+  pair reproduces the shared-temperature mixture kernel bit-for-bit
+  (strengths, sampled stream, cards — regression gates). The pair
+  requires a `fuel` mixture (a single-fuel config with the pair set is a
+  loud error); the profile ion temperature is then unused for rate and
+  spectrum (still validated), while the density profile keeps shaping the
+  emission. Non-finite or negative temperatures are loud errors
+  (`NonFinite`/`NegativeIonTemperature`). `validation/
+  plasma_source_vs_openmc.py` adds always-run P11 gates (pair-temperature
+  sampled moments and branch share vs quadrature, equal-T stream/card
+  recovery) and a container-only O11 probe against the upstream quadrature
+  with the NeSST reactivities evaluated at the pair temperatures.
+
 ## [0.13.0] - 2026-09-16
 
 ### Added

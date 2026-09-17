@@ -131,12 +131,12 @@ status, and license.
 | [Variance reduction](theory/variance-reduction.mdx) | MAGIC weight windows, OpenMC/Serpent weight-window emission, and alias-table source sampling |
 | [Nuclear data](theory/nuclear-data.mdx) | Nuclide IDs, name dialects, masses, half-lives, and screening data |
 | [Point kinetics](theory/kinetics.mdx) | Prescribed-reactivity PKE system, inhour relation, prompt jump, and the stiff-aware solver |
-| [Tritium transport](theory/tritium.mdx) | 1D diffusion-trapping equations, McNabb–Foster traps, surface taxonomy, multi-layer series stacks with Sieverts or Henry interfaces, and the closed-form permeation checks |
+| [Tritium transport](theory/tritium.mdx) | 1D diffusion-trapping equations, McNabb–Foster traps, surface taxonomy, multi-layer series stacks with Sieverts, Henry, or vented-sink recombination interfaces, and the closed-form permeation checks |
 | [Gamma-ray spectroscopy](theory/spectroscopy.mdx) | Smoothing, peak counting, energy/efficiency calibration, X-ray lines, and SPE readers |
 | [UQ-lite sampling](theory/uq-sampling.mdx) | Seeded MVN, log-normal, and LHS sampling over caller-supplied covariance blocks, SANDY-compatible estimators, and the decay perturbation consumer |
 | [Damage metrics](theory/damage-metrics.mdx) | NRT/arc-dpa displacement functions, the Lindhard partition, and spectral folding conventions |
 | [Fusion neutron sources](theory/fusion-sources.mdx) | Ballabio fusion spectra, Bosch–Hale reactivity, the Miller-geometry parametric plasma map, and D-T/D-D fuel mixtures |
-| [Neutron spectrum unfolding](theory/unfolding.mdx) | SAND-II, least-squares, and GRAVEL adjustment, convergence, and underdetermined systems |
+| [Neutron spectrum unfolding](theory/unfolding.mdx) | SAND-II, least-squares, GRAVEL, and maximum-entropy adjustment, convergence, and underdetermined systems |
 | [Clearance screening](theory/clearance-screening.mdx) | Clearance index, the sum-of-fractions rule, and the EU and Spanish clearance tables |
 
 ### Reference

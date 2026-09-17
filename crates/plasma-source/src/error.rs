@@ -8,11 +8,19 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Errors raised while validating source configurations, tabulating spectra,
 /// or rendering source cards.
 ///
-/// Out-of-scope requests (toroidal sectors, the T-T and D(d,p)T branches,
-/// reactant distributions beyond the shared-temperature Maxwellian mixture)
-/// are reported through [`Error::NotYetSupported`] — a loud named error,
-/// never a panic or a silent fallback. Invalid fuel-mixture fractions carry
-/// their own named errors ([`Error::NonFinite`], [`Error::InvalidFuelMixture`]).
+/// Out-of-scope requests (T-T neutron transport, proton transport, reactant
+/// distributions beyond distinct-temperature Maxwellians, per-species ion
+/// temperatures without a D/T fuel mixture) are reported through
+/// [`Error::NotYetSupported`] — a loud named error, never a
+/// panic or a silent fallback. The D(d,p)T proton *rate* is not out of
+/// scope: it is accounted alongside the neutron source
+/// (`proton_strength_density` / `total_proton_strength`, 50/50 with the D-D
+/// neutron branch) while the sampler and the cards stay neutron-only.
+/// Invalid fuel-mixture fractions and invalid
+/// toroidal-sector angles carry their own named errors ([`Error::NonFinite`],
+/// [`Error::InvalidFuelMixture`], [`Error::InvalidSector`]); out-of-range
+/// species temperatures reuse [`Error::NonFinite`] and
+/// [`Error::NegativeIonTemperature`].
 
 #[derive(Debug, Clone, PartialEq, Error)]
 #[non_exhaustive]
@@ -27,7 +35,7 @@ pub enum Error {
     #[error("plasma-source: ion temperature must be >= 0 keV, got {0}")]
     NegativeIonTemperature(f64),
     /// The reactivity fit leaves its validity domain at this temperature
-    /// (the D-D η factor goes non-positive around 300–4700 keV, far above
+    /// (the D-D η factor goes non-positive around 965–2720 keV, far above
     /// the published fit range): `{reaction}` at `{ti_kev}` keV.
     #[error("plasma-source: {reaction} reactivity fit out of domain at {ti_kev} keV")]
     FitOutOfDomain {
@@ -55,6 +63,11 @@ pub enum Error {
     /// (within the documented 1e-12 tolerance): `{0}`.
     #[error("plasma-source: invalid fuel mixture: {0}")]
     InvalidFuelMixture(&'static str),
+    /// A toroidal-sector angle fails its documented range check
+    /// (`start_angle` outside `[0, 2π)`, `rotation_angle` outside `(0, 2π]`):
+    /// `{0}`.
+    #[error("plasma-source: invalid toroidal sector: {0}")]
+    InvalidSector(&'static str),
     /// The emitted card failed to re-parse through the typed `SDEF` reader
     /// (an internal emission invariant; surfaced loudly rather than
     /// delivered unverified).

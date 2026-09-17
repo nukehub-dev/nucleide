@@ -133,7 +133,9 @@ pub fn emit_serpent(config: &PlasmaSourceConfig, n_bins: usize) -> Result<Emitte
 ///
 /// The card carries the same three marginals as the MCNP direction —
 /// `rad d1` (birth minor-radius profile), `ext d2` (birth Z profile), and
-/// `erg d3` (global marginal energy spectrum); see
+/// `erg d3` (global marginal energy spectrum); a partial toroidal sector
+/// adds `phi d4` (uniform toroidal-angle bins over
+/// `[start, start + rotation)` radians) — see
 /// [`emit_sdef_parametric`](crate::emit_sdef::emit_sdef_parametric) for the
 /// product-form caveat. Drift rows are analytic by design (no Serpent
 /// source reader in the workspace).
@@ -145,13 +147,22 @@ pub fn emit_serpent_parametric(
     let bins = if n_bins >= 2 { n_bins } else { 21 };
     let hist = emission_histograms(config, bins)?;
 
-    let mut lines: Vec<String> = Vec::new();
-    lines.push("src 1 pos 0 0 0".to_string());
-    lines.push("src 1 rad d1".to_string());
-    lines.push("src 1 ext d2".to_string());
-    lines.push("src 1 erg d3".to_string());
+    let mut lines: Vec<String> = vec![
+        "src 1 pos 0 0 0".to_string(),
+        "src 1 rad d1".to_string(),
+        "src 1 ext d2".to_string(),
+        "src 1 erg d3".to_string(),
+    ];
+    if hist.toroidal.is_some() {
+        lines.push("src 1 phi d4".to_string());
+    }
     lines.push(format!("src 1 wgt {}", fmt_g6(config.weight)));
-    for (number, dist) in [(1, &hist.radial), (2, &hist.vertical), (3, &hist.energy)] {
+    let mut numbered: Vec<(u32, &crate::BinnedDistribution)> =
+        vec![(1, &hist.radial), (2, &hist.vertical), (3, &hist.energy)];
+    if let Some(angle) = &hist.toroidal {
+        numbered.push((4, angle));
+    }
+    for (number, dist) in numbered {
         let centers: Vec<String> = dist.centers.iter().map(|&c| fmt_g6(c)).collect();
         let masses: Vec<String> = dist.masses.iter().map(|&m| fmt_g6(m)).collect();
         lines.push(format!("SI{number} {}", centers.join(" ")));
@@ -180,6 +191,22 @@ pub fn emit_serpent_parametric(
         "product-form card: half the L1 distance between the true (r, z) birth \
          joint and the product of its marginals is lost (analytic by design)",
     ));
+    if let (Some(sector), Some(angle)) = (&config.sector, &hist.toroidal) {
+        drift.push(crate::report::DriftRow::new(
+            "toroidal sector",
+            1.0,
+            false,
+            format!(
+                "toroidal births uniform over [{:.6}, {:.6}) rad preserved as {} \
+                 uniform angle bins (phi d4); emission totals scale by \
+                 rotation/2π = {:.6} (analytic by design)",
+                sector.start_angle,
+                sector.start_angle + sector.rotation_angle,
+                angle.centers.len(),
+                sector.fraction(),
+            ),
+        ));
+    }
     Ok(EmittedCard { text, drift })
 }
 
@@ -277,5 +304,36 @@ mod tests {
             .collect();
         let sum: f64 = sp3.iter().sum();
         assert!((sum - 1.0).abs() < 1e-3, "energy masses {sum}");
+    }
+
+    #[test]
+    fn parametric_sector_card_carries_phi_marginal() {
+        use crate::parametric::ToroidalSector;
+        use std::f64::consts::PI;
+        let mut config = crate::parametric::tests::iter_h_mode();
+        config.sector = Some(ToroidalSector::new(0.5, PI).unwrap());
+        let card = emit_serpent_parametric(&config, 12).unwrap();
+        let lines: Vec<&str> = card.text.lines().collect();
+        assert_eq!(lines[0], "src 1 pos 0 0 0");
+        assert_eq!(lines[1], "src 1 rad d1");
+        assert_eq!(lines[2], "src 1 ext d2");
+        assert_eq!(lines[3], "src 1 erg d3");
+        assert_eq!(lines[4], "src 1 phi d4");
+        assert_eq!(lines[5], "src 1 wgt 1");
+        assert!(lines[6].starts_with("SI1 "));
+        assert!(lines[12].starts_with("SI4 "));
+        assert!(lines[13].starts_with("SP4 "));
+        assert_eq!(lines.len(), 14);
+        assert_eq!(card.drift.rows.len(), 4);
+        assert_eq!(card.drift.rows[3].quantity, "toroidal sector");
+        assert!(!card.drift.rows[3].reparsed, "analytic by design");
+        // Full rotation keeps the landed three-marginal card bit-for-bit.
+        let full = crate::parametric::tests::iter_h_mode();
+        let mut sector = full;
+        sector.sector = Some(ToroidalSector::new(0.0, 2.0 * PI).unwrap());
+        let a = emit_serpent_parametric(&full, 12).unwrap();
+        let b = emit_serpent_parametric(&sector, 12).unwrap();
+        assert_eq!(a.text, b.text);
+        assert_eq!(a.drift, b.drift);
     }
 }

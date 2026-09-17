@@ -21,7 +21,8 @@
 //! Modules: [`params`] (transport/trap data), [`bc`] (surface-law
 //! taxonomy), [`mod@solve`] (finite-volume theta stepper, steady solve,
 //! and closed-form gate helpers), [`layers`] (multi-layer series stacks
-//! with Sieverts/Henry interface conditions, G7–G9), [`error`] (error type).
+//! with Sieverts/Henry/vented-sink-recombination interface conditions,
+//! G7–G11), [`error`] (error type).
 //!
 //! Gate-to-test mapping (fixtures in `fixtures/tritium/`, replayed in
 //! `fixture_tests`): G1/G4 steady linear profiles and G3a/G3b/G3c trap
@@ -32,7 +33,10 @@
 //! G7 as the multi-layer steady series-resistance gates (closed forms in
 //! unit tests, `1e-12`), G8 as the multi-layer transient (asymptotic +
 //! self-convergence gates), G9 as the Henry/mixed-interface steady gates
-//! (same closed-form class, `1e-12`), with positivity and mass-balance
+//! (same closed-form class, `1e-12`), G10/G11 as the vented-sink
+//! recombination-interface gates (scalar-quadratic closed forms at
+//! `1e-12`, Newton-contract residuals for coupled faces, transient
+//! balance with the desorption sink), with positivity and mass-balance
 //! invariant checks.
 
 #![warn(missing_docs)]

@@ -314,9 +314,10 @@ Use `scripts/bump-version.sh X.Y.Z` to bump the workspace version and stamp
 - `crates/kinetics/AGENTS.md` — prescribed-reactivity point kinetics (PKE + inhour + prompt jump) + oracle-gate contracts.
 - `crates/tritium/AGENTS.md` — 1D tritium diffusion-trapping kernel (T1–T2,
   surface taxonomy, G1–G4 gates; G5 steady + G6 transient recombination
-  closed via the face-response construction; G7/G8 multi-layer series stacks
-  with Sieverts-only internal interfaces, linear fold into the tridiagonal
-  step) + facade/demo contracts.
+  closed via the face-response construction; G7/G8/G9 multi-layer series
+  stacks with Sieverts/Henry internal interfaces, linear fold into the
+  tridiagonal step; G10/G11 vented-sink recombination gaps, CUT-matrix
+  closed form / Newton close) + facade/demo contracts.
 - `crates/plasma-source/AGENTS.md` — tokamak fusion neutron sources
   (ring/point, Brysk–Ballabio spectra, SDEF/Serpent card emission;
   provenance stance, MCPL-caller-side rule, two-part oracle pattern).

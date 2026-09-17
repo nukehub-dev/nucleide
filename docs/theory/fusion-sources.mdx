@@ -389,18 +389,23 @@ byte-identically through `nucleide.mcnp.parse_sdef` (the typed `SDEF` reader).
 
 ## Assumptions and limitations
 
-- **Full torus only.** Toroidal sectors (partial-azimuth limits) are not yet
-  supported and raise a clear error at every entry point — never a silent guess.
-- **Maxwellian fuel, three choices.** Reactants are Maxwellian at a common $T_i$;
-  the fuel is equimolar D-T (strength factor $1/4$), pure D-D ($1/2$), or a D/T
-  mixture `{"D": f_D, "T": f_T}` weighted by the two-branch rate (S5-M) — the
-  equimolar and pure limits recover the single-fuel kernels exactly. Fuel
+- **Toroidal sectors.** Partial-torus sources take `start_angle`/`rotation_angle`
+  (birth angles uniform over the sector; strength scales by
+  `rotation/2π`); full rotation reproduces the full-torus kernel exactly.
+  Out-of-range angles raise a clear error — never a silent guess.
+- **Maxwellian fuel, several choices.** Reactants are Maxwellian: equimolar D-T
+  (strength factor $1/4$), pure D-D ($1/2$), a D/T mixture
+  `{"D": f_D, "T": f_T}` weighted by the two-branch rate (S5-M), or a mixture
+  with per-species ion temperatures `{"D": T_D, "T": T_T}` (the D-T branch
+  reacts at the mass-weighted effective temperature) — the equimolar, pure,
+  and shared-temperature limits recover the simpler kernels exactly. Fuel
   fractions that are negative, non-finite, or do not sum to 1 raise a clear
-  error. The full Eriksson et al. reactant-distribution
-  weighting<Citation id="eriksson-2016" /> — per-species ion temperatures or
-  non-Maxwellian reactants — is not yet supported.
-- **Neutron branch only.** The D(d,p)T proton branch is out of scope for a
-  neutron source crate.
+  error, as do negative temperatures. Non-Maxwellian reactants stay out.
+- **Neutron branches plus proton bookkeeping.** The sampler and the emitted
+  cards are neutron-only (D-T + D-D lines; no T-T neutron branch — a pure-T
+  mixture is a loud error). The D(d,p)T proton branch is reported as
+  bookkeeping next to the source (the proton density is the D-D
+  neutron-branch density, pinned 50/50); proton transport is out of scope.
 - **Profiles are caller inputs.** Nothing computes or fits profiles and no
   equilibrium is solved. Malformed geometry or profile parameters (non-positive
   minor radius or elongation, triangularity outside $(-1, 1)$, pedestal radius

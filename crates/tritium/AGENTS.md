@@ -8,8 +8,10 @@ caller-supplied temperature, plus the Dirichlet/Sieverts/Henry/zero-flux
 surface taxonomy. Multi-layer series stacks (e.g. W/Cu/CuCrZr first-wall
 stacks) extend the same kernel per layer with linear internal interface
 conditions — Sieverts (`u = c_m/K_S`) or Henry (`u = c_m/K_H`), both
-folding into the tridiagonal θ-step matrix; recombination interfaces are
-loud unsupported-interface errors (recorded limitation). Pure 1D
+folding into the tridiagonal θ-step matrix — or the vented-sink
+recombination law (R-S: a single face concentration with the `K_r·x²`
+desorption jump, closed on the CUT matrix in closed form for a lone gap
+and by Newton for coupled faces). Pure 1D
 finite-volume PDE; no multi-D, no FEM, no heat solve, no property tables.
 
 ## Ownership
@@ -34,25 +36,40 @@ facade, the `TritiumBreakthrough` demo, and
   transient by the per-step face Newton sharing the affine face-response
   construction (G6a–G6e) — never a silent pass. The same taxonomy governs
   the outer ends of multi-layer stacks (`layers.rs`).
-- Multi-layer contract (G7/G8/G9, `layers.rs`): a `LayerStack` chains
+- Multi-layer contract (G7/G8/G9/G10/G11, `layers.rs`): a `LayerStack` chains
   `N ≥ 1` caller-specified layers (thickness, cells, Arrhenius `D`,
   solubility `K`, per-layer traps/temperature/source). Internal interfaces
-  are linear local-equilibrium laws: Sieverts (`u = c_m / K_S` continuous)
+  are linear local-equilibrium laws — Sieverts (`u = c_m / K_S` continuous)
   or Henry (`u = c_m / K_H` continuous), flux continuous in both; the layer
-  `solubility` carries `K_S` or `K_H` per the adjacent interface's law.
-  `Interface::Recombination` is rejected loudly by `LayerStack::new` with
-  `Error::UnsupportedInterface` (recorded limitation, not a silent pass).
-  Both supported laws share the face flux
+  `solubility` carries `K_S` or `K_H` per the adjacent interface's law —
+  or the vented-sink recombination law (R-S): `Interface::Recombination`
+  carries the desorption rate `K_r` (finite, `> 0`), the gap holds a single
+  face concentration `x ≥ 0` with half-cell fluxes `J_L = g_L·(c_L − x)`,
+  `J_R = g_R·(x − c_R)` (`g = 2D/dx` per side, no solubility involved) and
+  the sink `K_r·x²` (`J_L − J_R = K_r·x²`). The `K_r → 0` limit is a
+  continuous-concentration joint, not a Sieverts law; a non-positive
+  permeation drive `P ≤ 0` fails loudly in the steady state (the transient
+  follows the G6 clamping stance per step). The flux-continuous product
+  law has no spelling by construction (permanently rejected: spurious
+  insulated root, symmetry breaking, blocked transient).
+  Both linear laws share the face flux
   `J = (c_i/K_i − c_{i+1}/K_{i+1})/R_f` with `R_f` the sum of the two
   half-cell resistances `dx/(2·D·K)` (`K_S` or `K_H` per the adjacent
   law); the flux is linear in the cell values
   and folds directly into the tridiagonal θ-step matrix — no interface
   Newton (the spike outcome; the nonlinear G5/G6 face machinery is needed
   only for recombination *outer ends*, reused unchanged on the layered
-  matrix). A one-layer stack dispatches to the landed single-slab kernel
+  matrix). A vented gap instead CUTs the matrix (block-diagonal): adjacent
+  values stay affine in the face value, so a lone gap closes in closed
+  form `x = 2P/(√(Q²+4K_rP)+Q)` while coupled faces (several gaps, or
+  recombination outer ends alongside) close by Newton with the analytic
+  Jacobian; the per-step close fuses into the trap Picard loop in the G6
+  slot, and the discrete balance closes against the reported boundary
+  fluxes plus the desorption sinks from the recorded gap faces
+  (`interface_faces`). A one-layer stack dispatches to the landed single-slab kernel
   and reproduces it exactly (G7c regression anchor). Goldens for the
   layered gates live in unit tests with recorded provenance (synthetic
-  stacks, hand-derived series-resistance oracles), never in
+  stacks, hand-derived series-resistance or vented-sink oracles), never in
   `fixtures/tritium/`.
 - Discretization rule: cell-centred finite volume with implicit
   theta-stepping (Crank–Nicolson default, backward Euler on request);
@@ -95,13 +112,27 @@ facade, the `TritiumBreakthrough` demo, and
   corrected interface potentials to roundoff (1e-12), profile the exact
   piecewise-linear Henry potential at the nodes; G9b 3-layer mixed
   Sieverts/Henry stack flux continuity across both interface laws to
-  roundoff against the same closed form.
+  roundoff against the same closed form. G10/G11 vented-sink gates
+  (synthetic stacks, in-test scalar-quadratic oracles): G10a 2-layer
+  closed form at 1e-12 relative with a 1e-18 absolute floor on face value,
+  fluxes, profile, gap residual, and the desorption-carrying outer
+  balance; G10b `K_r→∞` upstream-block pinning and `K_r→0`
+  continuous-joint recovery (uncut slab at 1e-12, no `K`-ratio jump);
+  G10c 4-layer one-of-each-law stack with linear-gap continuity to
+  roundoff and the super-block quadratic at 1e-12; G10d/G10e coupled
+  Newton residuals at the Newton contract with the balance closed modulo
+  the residuals; G10f traps on the owning layer's isotherm; G10g zero
+  drive loud in the steady state (zero trajectory in the transient, G6
+  clamp stance); G11a trap-free θ-balance with desorption at 1e-12
+  relative; G11b dt-halving bands as G6d on the pinned pairs (CN on the
+  spike's pair, BE on both); G11c vented steady asymptote at 1e-6 on
+  fluxes and 1e-9 on the profile; G11d trap-coupled (backward Euler)
+  mobile-plus-trapped balance with desorption at 1e-9.
 - Out of scope (do not expand here): multi-D/FEM, heat coupling,
   plasma-facing implantation models, TBR coupling, FESTIM-file I/O, any
   dolfinx linkage, vendored D/K tables (caller-supplied only);
-  recombination internal interface laws (recorded limitation — a loud
-  `UnsupportedInterface` error, not silently approximated; the nonlinear
-  per-interface Newton is its own spike cycle).
+  the flux-continuous product-law recombination interface (permanently
+  rejected — no spelling exists, never approximated).
 - WASM/tutorial surface (owned): `tritiumBreakthrough` in `bindings/wasm`
   (trap-free permeation solve returning the `J/J_ss` series plus `t_lag`
   and `J_ss`; thin facade, fixed 200-cell grid), the

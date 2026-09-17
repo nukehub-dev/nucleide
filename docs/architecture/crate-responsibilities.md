@@ -44,8 +44,9 @@ Canonical nuclide identification. Owns:
 - EPA FGR 15 external-dosimetry coefficients: the runtime-download `fgr15`
   module parses the seven `Table_4_*.DAT` scenario tables (fetched and
   hash-pinned by `nucleide.data.fetch_fgr15`; nothing vendored).
-- IRDFF-II v1 foil-response pack: the runtime-download `irdff` module parses
-  the `MF=3` sections of the named v1 reactions from `IRDFF-II.g725` text
+- IRDFF-II dosimetry-response pack (v1 foil subset + v2 extension): the
+  runtime-download `irdff` module parses
+  the `MF=3` sections of the 34 named reactions from `IRDFF-II.g725` text
   (fetched and hash-pinned by `nucleide.data.fetch_irdff`; nothing
   vendored) into caller-ready response rows over the SAND-II 725-group
   structure for spectrum unfolding.
@@ -155,15 +156,18 @@ Neutron spectrum unfolding from activation-type measurements: the SAND-II
 iterative spectral adjustment (McElroy et al., AFWL-TR-67-41, 1967 — US
 government work, clean-room from the report), the STAYSL-class damped
 least-squares adjustment (Perey, ORNL/TM-6062, 1977) on the shared
-`linalg::lstsq` kernel, and the GRAVEL chi-square-weighted adjustment
-(Matzke, PTB-N-19, 1994) — one method per cycle, each an iterator over the
-caller-supplied response matrix, measured rates, and guess spectrum, with
-per-group relative-change convergence diagnostics and a hard
-`NotConverged` past the explicit iteration cap (never a silent partial
-spectrum). MAXED stays recorded for a later one-method-per-cycle landing.
-Every response value and group bound is caller-supplied: IRDFF and other
-IAEA-copyright libraries are never vendored (the IRDFF-II v1 pack ships as
-a runtime hash-pinned download, parsed into caller-ready rows). Depends on
+`linalg::lstsq` kernel, the GRAVEL chi-square-weighted adjustment
+(Matzke, PTB-N-19, 1994), and the MAXED maximum-entropy adjustment
+(Reginatto & Goldhagen, Health Phys. 77 (1999) 579 — journal equations
+only, the closed UMG package never touched) — one method per cycle, each
+an iterator over the caller-supplied response matrix, measured rates, and
+guess spectrum, with per-group relative-change convergence diagnostics and
+a hard `NotConverged` past the explicit iteration cap (never a silent
+partial spectrum; MAXED additionally accepts at or below a caller
+chi-square target, defaulting to the detector count). Every response value
+and group bound is caller-supplied: IRDFF and other IAEA-copyright
+libraries are never vendored (the IRDFF-II pack ships as a runtime
+hash-pinned download, parsed into caller-ready rows). Depends on
 `nucleide-linalg` only
 among workspace crates; bindings depend on it, never the reverse.
 
@@ -221,8 +225,10 @@ recombination ends (`J = K_r c²`, closed in steady state and transient by
 the face-response construction, G5/G6), and multi-layer series stacks with
 Sieverts or Henry internal interface conditions (`c/K` and flux continuous;
 the linear interface flux folds into the tridiagonal step matrix —
-G7/G8/G9). Recombination internal interfaces stay loud unsupported-interface
-errors (recorded limitation); multi-D/FEM,
+G7/G8/G9) plus vented-sink recombination gaps (single face concentration
+with the `K_r x²` desorption jump, closed in closed form on the CUT matrix
+— G10/G11). The flux-continuous product law has no spelling by
+construction; multi-D/FEM,
 heat coupling, and vendored property tables stay out. Depends on
 `nucleide-linalg` only among workspace crates; bindings depend on it, never
 the reverse.

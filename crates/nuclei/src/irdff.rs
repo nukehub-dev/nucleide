@@ -53,6 +53,55 @@
 //! | `al27_na` | 27Al(n,a)24Na | 1325 | 107 | threshold ~3.2 MeV |
 //! | `na23_n2n` | 23Na(n,2n)22Na | 1125 | 16 | threshold ~12.9 MeV |
 //!
+//! # v2 named extension set
+//!
+//! [`V2_REACTIONS`] adds the 26 further `MF=3` dosimetry sections below,
+//! from the same `IRDFF-II.g725` member of the same pinned zip (same URL +
+//! SHA-256 pins, same cache, same loud offline/mismatch errors — the fetch
+//! mechanics are unchanged). The list is the classic foil/dosimetry
+//! complement of the v1 set: the remaining threshold (n,p)/(n,a)/(n,2n)
+//! monitors, the capture foils, the fission standards, and the
+//! high-threshold bismuth monitors. Every (MAT, MT) key was verified
+//! present as an `MF=3` section of the pinned distribution during the
+//! 0.14.0 expansion cycle, and every section parses with the unchanged
+//! `MF=3` machinery (full-range capture/fission rows anchor the structure,
+//! threshold rows are contiguous runs ending at the top-boundary
+//! terminator — no new row shapes, no parser changes).
+//!
+//! | name | reaction | MAT | MT | role |
+//! |---|---|---|---|---|
+//! | `f19_n2n` | 19F(n,2n)18F | 925 | 16 | high-threshold monitor |
+//! | `b10_na` | 10B(n,a)7Li | 525 | 107 | thermal 1/v alpha monitor |
+//! | `mg24_np` | 24Mg(n,p)24Na | 1225 | 103 | threshold monitor |
+//! | `al27_np` | 27Al(n,p)27Mg | 1325 | 103 | threshold monitor |
+//! | `si28_np` | 28Si(n,p)28Al | 1425 | 103 | threshold monitor |
+//! | `p31_np` | 31P(n,p)31Si | 1525 | 103 | threshold monitor |
+//! | `s32_np` | 32S(n,p)32P | 1625 | 103 | threshold monitor |
+//! | `sc45_ng` | 45Sc(n,g)46Sc | 2125 | 102 | thermal/epithermal capture foil |
+//! | `ti46_np` | 46Ti(n,p)46Sc | 2225 | 103 | threshold monitor |
+//! | `ti47_np` | 47Ti(n,p)47Sc | 2228 | 103 | threshold monitor |
+//! | `ti48_np` | 48Ti(n,p)48Sc | 2231 | 103 | threshold monitor |
+//! | `mn55_n2n` | 55Mn(n,2n)54Mn | 2525 | 16 | threshold monitor |
+//! | `fe54_np` | 54Fe(n,p)54Mn | 2625 | 103 | threshold monitor |
+//! | `co59_ng` | 59Co(n,g)60Co | 2725 | 102 | thermal capture foil |
+//! | `co59_np` | 59Co(n,p)59Fe | 2725 | 103 | threshold monitor |
+//! | `ni58_n2n` | 58Ni(n,2n)57Ni | 2825 | 16 | high-threshold monitor |
+//! | `cu63_na` | 63Cu(n,a)60Co | 2925 | 107 | threshold monitor |
+//! | `zn64_np` | 64Zn(n,p)64Cu | 3025 | 103 | threshold monitor |
+//! | `in113_ng` | 113In(n,g)114mIn | 4925 | 102 | thermal/epithermal capture foil |
+//! | `ta181_ng` | 181Ta(n,g)182Ta | 7328 | 102 | thermal/epithermal capture foil |
+//! | `w186_ng` | 186W(n,g)187W | 7443 | 102 | thermal/epithermal capture foil |
+//! | `th232_nf` | 232Th(n,f) | 9040 | 18 | fast fission chamber |
+//! | `np237_nf` | 237Np(n,f) | 9346 | 18 | fast fission chamber |
+//! | `pu239_nf` | 239Pu(n,f) | 9437 | 18 | thermal + fast fission chamber |
+//! | `bi209_n2n` | 209Bi(n,2n)208Bi | 8325 | 16 | high-threshold monitor |
+//! | `bi209_n3n` | 209Bi(n,3n)207Bi | 8325 | 17 | high-threshold monitor |
+//!
+//! The full registry is `V1_REACTIONS` ∪ `V2_REACTIONS` (34 reactions).
+//! Higher-order bismuth sections (`MT=37/152/153`) and the gas-production,
+//! damage, disappearance, and kerma sections (`MT=1/2/101/105/205/207/800/801`)
+//! are not dosimetry response rows and stay out of the registry.
+//!
 //! Isomer-production dosimetry reactions (115In(n,n′)115mIn,
 //! 103Rh(n,n′)103mRh) are stored in this distribution as `MF=10` sections
 //! in pointwise (not group-aligned) form, so they stay out of the v1 pack;
@@ -64,7 +113,7 @@
 //! (cols 67–70), MF (cols 71–72), MT (cols 73–75), sequence (cols 76–80):
 //!
 //! ```text
-//!  79197.0000 195.274000          0          0          0          07925 3  1    1   <- head: ZA, AWR, 0, 0, 0, 0
+//!  79197.0000 195.274000          0          0          0          07925 3  1    1   <- head: ZA, AWR, 0, L2, 0, 0
 //!   6512340.00  6512340.00          0          0          1        7267925 3  1    2   <- ctrl1: ..., 0, 0, 1, NG2
 //!          726          1                                            7925 3  1    3   <- ctrl2: NG2, 1
 //!   1.00000E-5 4894.41045 1.05000E-5 4778.69934 1.10000E-5 4671.979847925 3  1    4   <- (E, sigma) pairs, 3 per line
@@ -75,6 +124,12 @@
 //! - `NG2` (ctrl1 field 6) is the exact pair count; ctrl2 repeats it with
 //!   a trailing `1`. Fields are eleven columns each; floats may use the
 //!   Fortran embedded exponent (`2.589913-5` = `2.589913e-5`).
+//! - The head card's third integer field (`L2`) is `0` on most sections
+//!   but `99` on three sections of the pinned file (`56Fe(n,p)` MAT 2631,
+//!   `197Au(n,2n)` MAT 7925 MT 16, and the natural-boron total MAT 528
+//!   MT 1 — only the first is in the registry). The field is unused
+//!   downstream; the parser accepts `0` or `99` there and rejects anything
+//!   else loudly, like every other head-card deviation.
 //! - The pair energies are the SAND-II 725-group **lower boundaries** in
 //!   eV. Full-range reactions (capture, fission) list all 726 boundaries;
 //!   threshold reactions list only the contiguous run from their first
@@ -327,6 +382,53 @@ pub const V1_REACTIONS: [IrdffReaction; 8] = [
     ),
 ];
 
+/// The v2 named extension set (see module docs for the table and
+/// provenance): 26 further `MF=3` dosimetry sections of `IRDFF-II.g725`.
+/// The full registry is `V1_REACTIONS` plus these entries.
+pub const V2_REACTIONS: [IrdffReaction; 26] = [
+    IrdffReaction::new("f19_n2n", 925, 16, "19F(n,2n)18F high-threshold monitor"),
+    IrdffReaction::new("b10_na", 525, 107, "10B(n,a)7Li thermal monitor"),
+    IrdffReaction::new("mg24_np", 1225, 103, "24Mg(n,p)24Na threshold monitor"),
+    IrdffReaction::new("al27_np", 1325, 103, "27Al(n,p)27Mg threshold monitor"),
+    IrdffReaction::new("si28_np", 1425, 103, "28Si(n,p)28Al threshold monitor"),
+    IrdffReaction::new("p31_np", 1525, 103, "31P(n,p)31Si threshold monitor"),
+    IrdffReaction::new("s32_np", 1625, 103, "32S(n,p)32P threshold monitor"),
+    IrdffReaction::new("sc45_ng", 2125, 102, "45Sc(n,g)46Sc capture foil"),
+    IrdffReaction::new("ti46_np", 2225, 103, "46Ti(n,p)46Sc threshold monitor"),
+    IrdffReaction::new("ti47_np", 2228, 103, "47Ti(n,p)47Sc threshold monitor"),
+    IrdffReaction::new("ti48_np", 2231, 103, "48Ti(n,p)48Sc threshold monitor"),
+    IrdffReaction::new("mn55_n2n", 2525, 16, "55Mn(n,2n)54Mn threshold monitor"),
+    IrdffReaction::new("fe54_np", 2625, 103, "54Fe(n,p)54Mn threshold monitor"),
+    IrdffReaction::new("co59_ng", 2725, 102, "59Co(n,g)60Co capture foil"),
+    IrdffReaction::new("co59_np", 2725, 103, "59Co(n,p)59Fe threshold monitor"),
+    IrdffReaction::new(
+        "ni58_n2n",
+        2825,
+        16,
+        "58Ni(n,2n)57Ni high-threshold monitor",
+    ),
+    IrdffReaction::new("cu63_na", 2925, 107, "63Cu(n,a)60Co threshold monitor"),
+    IrdffReaction::new("zn64_np", 3025, 103, "64Zn(n,p)64Cu threshold monitor"),
+    IrdffReaction::new("in113_ng", 4925, 102, "113In(n,g)114mIn capture foil"),
+    IrdffReaction::new("ta181_ng", 7328, 102, "181Ta(n,g)182Ta capture foil"),
+    IrdffReaction::new("w186_ng", 7443, 102, "186W(n,g)187W capture foil"),
+    IrdffReaction::new("th232_nf", 9040, 18, "232Th(n,f) fast fission chamber"),
+    IrdffReaction::new("np237_nf", 9346, 18, "237Np(n,f) fast fission chamber"),
+    IrdffReaction::new("pu239_nf", 9437, 18, "239Pu(n,f) fission chamber"),
+    IrdffReaction::new(
+        "bi209_n2n",
+        8325,
+        16,
+        "209Bi(n,2n)208Bi high-threshold monitor",
+    ),
+    IrdffReaction::new(
+        "bi209_n3n",
+        8325,
+        17,
+        "209Bi(n,3n)207Bi high-threshold monitor",
+    ),
+];
+
 /// One parsed reaction row: the registry entry plus its group cross
 /// sections, expanded to [`GROUP_COUNT`] values (zero below a threshold
 /// reaction's first listed group).
@@ -490,9 +592,12 @@ pub fn parse_g725(text: &str, wanted: &[IrdffReaction]) -> Result<IrdffPack> {
                 mt,
             });
         }
-        // Head card: ZA and AWR floats, then four zero integer fields.
+        // Head card: ZA and AWR floats, three zero integer fields, and
+        // the L2 field (accepted as 0 or the distribution's documented 99).
         let head = fields11(line);
-        let head_ok = head[2..].iter().all(|field| field.trim() == "0")
+        let head_ok = head[2].trim() == "0"
+            && (head[3].trim() == "0" || head[3].trim() == "99")
+            && head[4..].iter().all(|field| field.trim() == "0")
             && head[0..2]
                 .iter()
                 .all(|field| field.trim().parse::<f64>().is_ok_and(|v| v.is_finite()));
@@ -947,6 +1052,51 @@ mod tests {
     }
 
     #[test]
+    fn head_l2_quirk_is_accepted_but_still_pinned() {
+        // The pinned distribution carries L2=99 (not 0) in three MF=3 head
+        // cards, notably v1's 56Fe(n,p): the parser accepts 0 or 99 there
+        // and rejects anything else loudly.
+        let bounds = synthetic_bounds();
+        let mut fe_vals = vec![3.0; bounds.len() - 500];
+        *fe_vals.last_mut().unwrap() = 0.0;
+        let base = format!(
+            "{}{}",
+            section_text(79197.0, AU.mat, AU.mt, &bounds, &full_values(100.0)),
+            section_text(26056.0, FE.mat, FE.mt, &bounds[500..], &fe_vals),
+        );
+        let marker = format!("{:>4} 3{:>3}{:>5}", FE.mat, FE.mt, 1);
+        let head_idx = base
+            .lines()
+            .position(|l| l.ends_with(&marker))
+            .expect("synthetic Fe head card");
+        let with_l2 = |l2: u32| {
+            base.lines()
+                .enumerate()
+                .map(|(i, l)| {
+                    if i == head_idx {
+                        format!("{}{:>11}{}", &l[..33], l2, &l[44..])
+                    } else {
+                        l.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n"
+        };
+        let pack = parse_g725(&with_l2(99), &[AU, FE]).unwrap();
+        let fe = pack.row("fe56_np").unwrap();
+        assert!(fe.sigma()[..500].iter().all(|&v| v == 0.0));
+        assert_eq!(fe.sigma()[500], 3.0);
+        match parse_g725(&with_l2(98), &[AU, FE]).unwrap_err() {
+            Error::MalformedControl { name, line, .. } => {
+                assert_eq!(name, "fe56_np");
+                assert_eq!(line, head_idx + 1);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
     fn pair_count_mismatch_is_loud() {
         let bounds = synthetic_bounds();
         // Rebuild the Au section without its final data line: NG2 still
@@ -1108,5 +1258,23 @@ mod tests {
             assert!(r.mat > 0 && r.mt > 0);
         }
         assert_eq!(V1_REACTIONS.len(), 8);
+    }
+
+    #[test]
+    fn v2_registry_is_well_formed_and_disjoint_from_v1() {
+        let mut keys = HashSet::new();
+        for r in V1_REACTIONS {
+            keys.insert((r.name, r.mat, r.mt));
+        }
+        for r in V2_REACTIONS {
+            assert!(r.title.contains("(n,"));
+            assert!(r.mat > 0 && r.mt > 0);
+            assert!(
+                keys.insert((r.name, r.mat, r.mt)),
+                "V2 entry duplicates the registry: {}",
+                r.name
+            );
+        }
+        assert_eq!(V2_REACTIONS.len(), 26);
     }
 }

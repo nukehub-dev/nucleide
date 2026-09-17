@@ -5,8 +5,8 @@
 `nucleide-nuclei`: canonical nucid representation, element/naming tables,
 name dialects, particle and reaction-name registries, and static nuclear
 reference data (`src/data/`) — plus two runtime-parsed packs: the EPA FGR 15
-external-dosimetry tables (`src/fgr15.rs`) and the IAEA IRDFF-II v1
-foil-response pack (`src/irdff.rs`).
+external-dosimetry tables (`src/fgr15.rs`) and the IAEA IRDFF-II
+dosimetry-response pack (`src/irdff.rs`, v1 foil subset + v2 extension).
 
 ## Ownership
 
@@ -44,11 +44,16 @@ the code).
   SHA-256 in `python/nucleide/data.py` (`IRDFF_SHA256`), and member text is
   passed to `irdff::parse_g725` (no network or HTTP in this crate). The v1
   pack covers the eight named foil reactions (`V1_REACTIONS`, `MF=3`
-  sections only) over the SAND-II 725-group structure; rows feed
-  `unfold.sandii`/`staysl`/`gravel` unchanged.
+  sections only) over the SAND-II 725-group structure; the v2 extension
+  (`V2_REACTIONS`) adds the 26 further named `MF=3` dosimetry sections of the
+  same pinned zip (same URL + SHA-256, same cache, same loud
+  offline/mismatch errors). `MF=10` isomer sections stay out of the
+  registry. Rows feed `unfold.sandii`/`staysl`/`gravel` unchanged.
 - **IRDFF tests use synthetic hand-built sections only** (see `irdff.rs`
   tests), in the exact `MF=3` layout. Never copy real IAEA content into a
-  test.
+  test. The head card's `L2` field is `0` on most sections but `99` on three
+  sections of the pinned file (notably v1's `56Fe(n,p)`); the parser accepts
+  `0` or `99` there and rejects anything else loudly.
 
 ## Work Guidance
 

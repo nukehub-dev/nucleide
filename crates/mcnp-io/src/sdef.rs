@@ -11,10 +11,12 @@
 //! # Accepted subset (everything else is loud, never silently misread)
 //!
 //! `SDEF` keywords: `POS`, `CELL`, `SURF`, `VEC`, `DIR`, `AXS`, `RAD`,
-//! `EXT`, `ERG`, `NRM`, `PAR`, `WGT`, `TME`. (`VEC` rides along because the
+//! `EXT`, `PHI`, `ERG`, `NRM`, `PAR`, `WGT`, `TME`. (`VEC` rides along because the
 //! decay-source emitter this reader round-trips writes `VEC=... DIR=1` lines;
 //! `AXS`/`RAD`/`EXT` were added for the plasma-source ring emitter, which
-//! writes `POS=... AXS=0 0 1 RAD=D1` delta-ring cards.) Each keyword takes
+//! writes `POS=... AXS=0 0 1 RAD=D1` delta-ring cards; `PHI` was added for
+//! the parametric plasma toroidal-sector emitter, which writes `PHI=Dn`
+//! uniform angle-bin marginals.) Each keyword takes
 //! either an inline literal (`POS`/`VEC`/`AXS` take exactly three numbers,
 //! the rest take exactly one) or a `Dn` distribution reference (`ERG=D1`).
 //! Any other keyword — `ARA`, `X`, `Y`, `Z`, `CCC`, abbreviations such as
@@ -43,7 +45,7 @@
 //!
 //! # Canonical emission ([`SdefProblem::emit`])
 //!
-//! Fields emit in fixed order `POS CELL SURF VEC DIR AXS RAD EXT ERG NRM
+//! Fields emit in fixed order `POS CELL SURF VEC DIR AXS RAD EXT PHI ERG NRM
 //! WGT PAR TME`, each on its own five-space continuation line, except that a
 //! literal `VEC` together with a literal `DIR` shares one `VEC=... DIR=...`
 //! line — the shape the decay-source emitter writes. Distribution lists wrap
@@ -313,6 +315,9 @@ pub struct SdefCard {
     pub rad: Option<SdefRef<f64>>,
     /// `EXT=x` axial extent along `AXS` (literal or `Dn`).
     pub ext: Option<SdefRef<f64>>,
+    /// `PHI=p` azimuthal angle about `AXS` in radians (literal or `Dn`;
+    /// the plasma-source toroidal-sector shape).
+    pub phi: Option<SdefRef<f64>>,
     /// `ERG=e` energy or `ERG=Dn` energy distribution.
     pub erg: Option<SdefRef<f64>>,
     /// `NRM=n` direction cosine relative to the surface normal.
@@ -436,6 +441,9 @@ impl SdefProblem {
         }
         if let Some(ext) = &card.ext {
             out.push_str(&format!("\n{CONTINUATION_INDENT}EXT={}", ext.render()));
+        }
+        if let Some(phi) = &card.phi {
+            out.push_str(&format!("\n{CONTINUATION_INDENT}PHI={}", phi.render()));
         }
         if let Some(erg) = &card.erg {
             out.push_str(&format!("\n{CONTINUATION_INDENT}ERG={}", erg.render()));
@@ -780,8 +788,8 @@ fn parse_sdef_card(card: &DataCard) -> Result<SdefCard, SdefError> {
     for (key, head, values) in &spans {
         let upper = key.to_ascii_uppercase();
         let slot: Option<&str> = match upper.as_str() {
-            "POS" | "CELL" | "SURF" | "VEC" | "DIR" | "AXS" | "RAD" | "EXT" | "ERG" | "NRM"
-            | "PAR" | "WGT" | "TME" => Some(upper.as_str()),
+            "POS" | "CELL" | "SURF" | "VEC" | "DIR" | "AXS" | "RAD" | "EXT" | "PHI" | "ERG"
+            | "NRM" | "PAR" | "WGT" | "TME" => Some(upper.as_str()),
             _ => None,
         };
         let Some(slot) = slot else {
@@ -807,6 +815,7 @@ fn parse_sdef_card(card: &DataCard) -> Result<SdefCard, SdefError> {
             "DIR" => model.dir = Some(parse_float(card, "SDEF DIR", values)?),
             "RAD" => model.rad = Some(parse_float(card, "SDEF RAD", values)?),
             "EXT" => model.ext = Some(parse_float(card, "SDEF EXT", values)?),
+            "PHI" => model.phi = Some(parse_float(card, "SDEF PHI", values)?),
             "NRM" => model.nrm = Some(parse_float(card, "SDEF NRM", values)?),
             "WGT" => model.wgt = Some(parse_float(card, "SDEF WGT", values)?),
             "TME" => model.tme = Some(parse_float(card, "SDEF TME", values)?),
@@ -820,7 +829,7 @@ fn parse_sdef_card(card: &DataCard) -> Result<SdefCard, SdefError> {
                 }
                 model.par = Some(parse_particle(&values[0]));
             }
-            _ => unreachable!("slot is one of the thirteen accepted keywords"),
+            _ => unreachable!("slot is one of the fourteen accepted keywords"),
         }
     }
     Ok(model)
@@ -838,6 +847,7 @@ fn field_is_set(model: &SdefCard, slot: &str) -> bool {
         "AXS" => model.axs.is_some(),
         "RAD" => model.rad.is_some(),
         "EXT" => model.ext.is_some(),
+        "PHI" => model.phi.is_some(),
         "ERG" => model.erg.is_some(),
         "NRM" => model.nrm.is_some(),
         "PAR" => model.par.is_some(),
@@ -963,6 +973,7 @@ fn referenced_dists(card: &SdefCard) -> Vec<u32> {
     push(&card.tme);
     push(&card.rad);
     push(&card.ext);
+    push(&card.phi);
     for field in [&card.pos, &card.vec, &card.axs] {
         if let Some(SdefRef::Dist(number)) = field {
             numbers.push(*number);
@@ -1156,6 +1167,32 @@ mod tests {
         let bad = parse_sdef_text("SDEF POS=0 0 0 AXS=0 0 RAD=D1").unwrap_err();
         assert!(bad.to_string().contains("exactly three numbers"), "{bad}");
         let dup = parse_sdef_text("SDEF RAD=1 RAD=2").unwrap_err();
+        assert!(dup.to_string().contains("duplicate"), "{dup}");
+    }
+
+    #[test]
+    fn phi_takes_literals_and_distribution_references() {
+        // The plasma-source toroidal-sector shape: PHI between EXT and ERG.
+        let text = "SDEF POS=0 0 0\
+                    \n     AXS=0 0 1\
+                    \n     RAD=D1\
+                    \n     EXT=D2\
+                    \n     PHI=D3\
+                    \n     ERG=14.1\
+                    \nSI1 L 300 300\
+                    \nSP1 D 0 1\
+                    \nSI2 L -5 5\
+                    \nSP2 D 0 1\
+                    \nSI3 L 0.5 1\
+                    \nSP3 D 0.5 0.5";
+        let problem = parse_sdef_text(text).unwrap();
+        assert_eq!(problem.card.phi, Some(SdefRef::Dist(3)));
+        assert_eq!(problem.dists.len(), 3);
+        assert_eq!(problem.emit(), text);
+        // Lowercase normalizes; duplicates stay loud.
+        let lower = parse_sdef_text("sdef pos=0 0 0\n     phi=1.5").unwrap();
+        assert_eq!(lower.card.phi, Some(SdefRef::Literal(1.5)));
+        let dup = parse_sdef_text("SDEF PHI=1 PHI=2").unwrap_err();
         assert!(dup.to_string().contains("duplicate"), "{dup}");
     }
 

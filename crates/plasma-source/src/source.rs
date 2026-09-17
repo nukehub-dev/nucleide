@@ -3,11 +3,12 @@
 //! All lengths are centimetres (the transport-code card convention) and all
 //! energies MeV. The v1 geometry set is deliberately small — a point at an
 //! arbitrary position and a ring centered on the machine axis (tokamak
-//! midplane geometry). Eccentric rings, toroidal sectors, vertical
-//! elongation, and parametric Miller-geometry plasma profiles are the
-//! follow-up landing's scope and are rejected loudly
+//! midplane geometry, uniform azimuth). Eccentric rings and vertical
+//! elongation stay out of scope and are rejected loudly
 //! ([`Error::NotYetSupported`]) at every entry point that could otherwise
-//! guess at them.
+//! guess at them. Partial toroidal sectors live on the parametric plasma
+//! config ([`crate::parametric::ToroidalSector`]), not on ring/point
+//! sources.
 
 use crate::{Error, FusionReaction, Result, SpectrumSpec};
 

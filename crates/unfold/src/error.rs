@@ -48,15 +48,17 @@ pub enum Error {
     },
     /// The shared least-squares kernel
     /// ([`nucleide_linalg::lstsq::weighted_lstsq`]) rejected or failed a
-    /// solve: `{0}`. Surfaced by the STAYSL-class method; the augmented
-    /// damping rows make every input validated up front, so a failure here
-    /// is numerical, not a caller mistake.
+    /// solve: `{0}`. Surfaced by the STAYSL-class and MAXED methods; the
+    /// augmented damping rows (STAYSL-class) and the fitted-detector dual
+    /// Jacobian (MAXED) make every input validated up front, so a failure
+    /// here is numerical, not a caller mistake.
     #[error("unfold: least-squares solve failed: {0}")]
     Lstsq(String),
     /// The spectral adjustment exhausted its iteration cap without meeting
-    /// the per-group relative-change tolerance. Hard fail — never a silent
+    /// the per-group relative-change tolerance (and, for MAXED, the
+    /// chi-square target). Hard fail — never a silent
     /// partial spectrum (the `tritium` face-Newton precedent). Shared by the
-    /// SAND-II, STAYSL-class, and GRAVEL iterators.
+    /// SAND-II, STAYSL-class, GRAVEL, and MAXED iterators.
     #[error("unfold: spectral adjustment did not converge within its iteration cap")]
     NotConverged,
 }

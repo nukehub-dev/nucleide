@@ -2,9 +2,15 @@
 
 from typing import Any
 
-from nucleide._internal import unfold_forward_fold, unfold_gravel, unfold_sandii, unfold_staysl
+from nucleide._internal import (
+    unfold_forward_fold,
+    unfold_gravel,
+    unfold_maxed,
+    unfold_sandii,
+    unfold_staysl,
+)
 
-__all__ = ["sandii", "staysl", "gravel", "forward_fold"]
+__all__ = ["sandii", "staysl", "gravel", "maxed", "forward_fold"]
 
 
 def sandii(
@@ -92,6 +98,40 @@ def gravel(
     ``max_rel_change``.
     """
     return unfold_gravel(response, rates, sigmas, guess, tolerance, max_iterations)
+
+
+def maxed(
+    response: list[list[float]],
+    rates: list[float],
+    sigmas: list[float],
+    guess: list[float],
+    *,
+    target_chi2: float | None = None,
+    tolerance: float = 1e-3,
+    max_iterations: int = 200,
+) -> dict[str, Any]:
+    """MAXED maximum-entropy adjustment (Reginatto & Goldhagen, Health Phys. 77 (1999) 579).
+
+    ``response`` holds one row per detector/reaction (all rows one value per
+    energy group), ``rates`` the measured rate per detector, ``sigmas`` one
+    strictly positive measurement sigma per detector (the chi-square weight
+    is ``1/σ²``), and ``guess`` one strictly positive value per energy group —
+    the default model the relative entropy is measured against. The guess is
+    adjusted through the exponential Lagrange family until the fold
+    reproduces the rates. ``target_chi2`` is the chi-square the run accepts
+    at or below (``None`` selects the detector count, the chi-square
+    expectation — pass an explicit smaller target down to 0.0 to demand a
+    tighter fit); ``tolerance`` is the largest per-group relative change
+    between successive adjustments the run converges under (jointly with the
+    target); ``max_iterations`` is the explicit adjustment cap — exhausting
+    it, or converging in relative change to a fit whose chi-square still
+    exceeds the target, raises ``ValueError`` (non-convergence is a hard
+    fail, never a silent partial spectrum). Unlike :func:`sandii`, zero
+    measurements carry zero weight and are simply not fitted — they pin
+    nothing to zero. Returns ``spectrum``/``rates``/``rate_factors``/
+    ``iterations``/``tolerance``/``max_rel_change``.
+    """
+    return unfold_maxed(response, rates, sigmas, guess, target_chi2, tolerance, max_iterations)
 
 
 def forward_fold(response: list[list[float]], spectrum: list[float]) -> list[float]:

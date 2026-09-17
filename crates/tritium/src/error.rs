@@ -20,8 +20,9 @@ pub enum Error {
     /// A boundary-condition parameter is invalid: `{0}`.
     #[error("tritium: invalid boundary condition: {0}")]
     BadBoundary(&'static str),
-    /// An internal interface condition is not supported (Sieverts and Henry
-    /// are): `{0}`.
+    /// An internal interface shape is not supported (the vented-sink law
+    /// is; the flux-continuous product law has no spelling by
+    /// construction): `{0}`.
     #[error("tritium: unsupported internal interface: {0}")]
     UnsupportedInterface(&'static str),
     /// A grid entry is invalid: `{0}`.

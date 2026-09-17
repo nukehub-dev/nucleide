@@ -57,14 +57,173 @@
 //! at `f_D = 1` is bit-for-bit the landed pure D-D kernel. Configurations
 //! with `fuel_mixture: None` keep the landed expression trees untouched.
 //!
+//! # Fusion branches: T-T neutrons and D(d,p)T protons (v1 stance)
+//!
+//! Two branches sit behind the landed two-neutron-branch kernel:
+//!
+//! ## T-T neutrons: normalization pinned, transport deferred
+//!
+//! The T-T neutron term enters the mixture sum as a third term with neutron
+//! multiplicity 2 folded in — the same rule the `openmc-plasma-source`
+//! oracle implements (`tokamak_source`: T-T fuel density `n_T²/2`, neutron
+//! source density doubled since T(t,2n)⁴He releases two neutrons):
+//!
+//! ```text
+//! S = n² · [f_D·f_T·⟨σv⟩_DT + (f_D²/2)·⟨σv⟩_DD + f_T²·⟨σv⟩_TT]
+//!                              [neutrons/s/cm³, relative]
+//! ```
+//!
+//! reacting at `T_T` (both reactants are tritium, so — like the D-D arm at
+//! `T_D` — no pair effective temperature applies). The neutron coefficient
+//! is [`FuelMixture::tt_neutron_coefficient`] (`f_T²`): exactly `0.0` at
+//! `f_T = 0`, `1.0` for pure tritium.
+//!
+//! v1 does NOT transport T-T neutrons through the sampler or the cards,
+//! because no publishable closed form exists for either half of the branch:
+//! Bosch & Hale, Nucl. Fusion **32** (1992) 611 covers only D(d,n)³He,
+//! D(d,p)T, T(d,n)⁴He, and ³He(d,p)⁴He (no T-T reactivity fit), and Ballabio
+//! et al., Nucl. Fusion **38** (1998) 1723 Table III covers the two-body
+//! D-D/D-T lines (the T-T three-body breakup continuum has no Gaussian
+//! line). The oracle carries T-T as vendored tables instead (NeSST `reac_TT`
+//! Hale spline plus Brune/Eriksson/Gatu-Johnson continuum files), and
+//! vendored plasma data stays out of scope — a Gaussian T-T line would be a
+//! guess, never shipped. The deferred branch is quantified, not ignored:
+//! the validation oracle compares the landed two-branch kernel against the
+//! three-branch upstream model on a tritium-rich blend (container-only),
+//! and a pure-tritium mixture stays loud (zero neutron strength).
+//!
+//! Zero-tritium recovery anchor (regression gate): a mixture with `f_T = 0`
+//! draws exactly `0.0` from the absent branches, so the no-T mixture
+//! reproduces the landed two-branch kernel bit-for-bit.
+//!
+//! ## D(d,p)T protons: accounting output, sampler untouched
+//!
+//! The D(d,p)T proton branch shares the D-D total rate 50/50 with the
+//! neutron branch (Bosch & Hale resolve the two D-D branches to ~4–8% at
+//! 10–20 keV; the pinned v1 convention reports them equal —
+//! [`ParametricPlasmaConfig::proton_strength_density`] IS the D-D neutron
+//! branch density, bit-for-bit). Protons are bookkeeping alongside the
+//! neutron source, never particles: the sampler draws no proton energies,
+//! the cards carry no proton distributions, and proton transport stays out
+//! of scope. [`ParametricPlasmaConfig::total_proton_strength`] integrates
+//! the proton density over the same `S·R·|J|` volume (sector-aware), so the
+//! `proton_per_neutron` bookkeeping ratio is exactly `1.0` for pure D-D.
+//!
+//! Hand vectors (flat profile, `T_i = 20` keV, `n = 1e20` m⁻³; the pinned
+//! `⟨σv⟩_DD = 2.602582958721524e-24` m³/s):
+//!
+//! ```text
+//! pure D-D:             P = 13012914793.607618 = S_DD  →  P/N = 1.0
+//! f_D = 0.7, f_T = 0.3: P = 6376328248.867733 (the landed D-D hand vector)
+//! f_D = f_T = 1/2:      P = 3253228698.4019046
+//! T-T neutron coeff:    f_T² = 0.25 / 0.0 / 0.09 / 1.0
+//!                       (equimolar / no-T / 70-30 / pure-T)
+//! ```
+//!
+//! # Per-species ion temperatures (mixture v2)
+//!
+//! [`SpeciesIonTemperatures`] generalizes the mixture rule to distinct
+//! Maxwellian species temperatures `(T_D, T_T)` in keV — uniform scalars,
+//! flat in minor radius. Each pair reacts at its own relative-temperature
+//! closed form: two Maxwellians at `(T_D, T_T)` have a Maxwellian
+//! relative-velocity distribution at the mass-weighted effective temperature
+//! (Eriksson et al., Comput. Phys. Commun. **199** (2016) 40 — the full
+//! Eriksson generalization for distinct Maxwellians):
+//!
+//! ```text
+//! S = n² · [f_D·f_T·⟨σv⟩_DT(T_DT) + (f_D²/2)·⟨σv⟩_DD(T_D)]
+//! T_DT = (m_D·T_T + m_T·T_D) / (m_D + m_T),  m_D = 2, m_T = 3 (mass numbers)
+//!      = T_D + (2/5)·(T_T − T_D)   (this spelling, so T_D = T_T recovers T_D
+//!                                   bit-for-bit: the difference is exactly 0)
+//! ```
+//!
+//! The D-D branch is exact (both reactants are deuterium at `T_D`); the D-T
+//! branch evaluates the landed Bosch–Hale fit at `T_DT`. Per-branch Ballabio
+//! spectra follow the same pair temperatures — the D-T line at `T_DT`, the
+//! D-D line at `T_D` — so the sampler's branch roulette, the card energy
+//! marginals, and the axis summary all stay consistent with the strength
+//! rule. The D-T spectrum arm is an effective-temperature convention:
+//! Ballabio Table III was fitted to single-temperature Maxwellians, so away
+//! from `T_D = T_T` the Gaussian-at-`T_DT` line captures the leading
+//! mass-weighted relative-temperature dependence while the residual against
+//! the true distinct-temperature spectrum (the full Eriksson numerical
+//! integration over arbitrary reactant distributions) is out of scope to
+//! quantify — non-Maxwellian reactants stay a loud boundary.
+//!
+//! Hand vectors (flat profile, `n = 1e20` m⁻³, `f_D = 0.7`, `f_T = 0.3`,
+//! `T_D = 20` keV, `T_T = 30` keV; `T_DT = 24.0` keV exactly, pinned
+//! reactivity `⟨σv⟩_DT(24) = 5.414667327922193e-22` m³/s alongside the
+//! landed `⟨σv⟩_DD(20) = 2.602582958721524e-24` m³/s):
+//!
+//! ```text
+//! S = 1137080138863.6606 + 6376328248.867733 = 1143456467112.5283
+//! ```
+//!
+//! Exact recovery anchor (regression gate): `T_D = T_T` reproduces the
+//! shared-temperature mixture kernel bit-for-bit — strength densities and
+//! the axis spectrum summary — because `T_DT` computes to `T_D` exactly.
+//! The pair requires a fuel mixture (a single-fuel config with the pair set
+//! is a loud [`Error::NotYetSupported`]); the profile ion temperature is
+//! then unused for rate and spectrum (still validated), while the density
+//! profile keeps shaping `S(r) ∝ n(r)²`.
+//!
+//! # Toroidal sectors
+//!
+//! [`ToroidalSector`] restricts birth positions to the toroidal interval
+//! `[start_angle, start_angle + rotation_angle)` (radians, measured from the
+//! machine `+x` axis toward `+y`, the sampler's azimuth convention). The
+//! landed kernel `S(r)·R·|J|` is independent of the toroidal angle, so the
+//! toroidal integral contributes `rotation_angle` instead of `2π`:
+//!
+//! ```text
+//! total(sector) = total(full torus) · rotation_angle / 2π
+//! ```
+//!
+//! and birth angles are uniform over the sector. The radial, poloidal, and
+//! spectral physics are untouched — a sector only rescales the total and
+//! remaps the one toroidal-angle draw — so `(r, θ, E)` moments match the
+//! full-torus quadrature and only the angle marginal changes.
+//!
+//! Hand vectors (flat L-mode profile, `T_i = 20` keV, `n = 1e20` m⁻³; the
+//! pinned D-T branch strength `1082555099422.2937` from the mixture vectors
+//! above, equimolar D-T config):
+//!
+//! ```text
+//! rotation = π (half torus):     S(r) unchanged; total = full · 0.5 exactly
+//! rotation = π/2 (quarter torus): total = full · 0.25 exactly
+//! ```
+//!
+//! Exact recovery anchor (regression gate, not an approximation): a sector
+//! with `start_angle = 0` and `rotation_angle = 2π` (exactly) reproduces the
+//! landed full-torus kernel bit-for-bit — the same `2.0·π` constant scales
+//! the total, `0.0 + 2π·u == 2π·u` maps the same toroidal draw, no new RNG
+//! draws exist on any path, and card emission omits the angle marginal, so
+//! the sampled stream and the emitted cards are identical. A full-rotation
+//! sector with nonzero start is distribution-identical (not bit-for-bit:
+//! the angle origin shifts).
+//!
+//! Card emission carries a partial sector as a fourth uniform angle-bin
+//! marginal (`PHI=D4` on SDEF, `phi d4` on Serpent, bin centers over
+//! `[start, start + rotation)` radians) plus a `toroidal sector` drift row;
+//! a full rotation (or no sector) emits the landed three-marginal card.
+//!
+//! Sector angles are validated loudly at construction: non-finite angles
+//! give [`Error::NonFinite`]; `start_angle` outside `[0, 2π)` or
+//! `rotation_angle` outside `(0, 2π]` gives [`Error::InvalidSector`].
+//! Angles are never renormalized or wrapped — pass a normalized sector.
+//!
 //! Profiles are caller inputs; nothing here computes profiles or solves an
 //! equilibrium. The documented loud boundary ([`Error::NotYetSupported`]):
-//! reactant distributions beyond the shared-temperature Maxwellian mixture
-//! above (per-species ion temperatures, non-Maxwellian tails — the full
-//! Eriksson generalization), the T-T and D(d,p)T branches, and toroidal
-//! sectors (caller-side rejection of the sampled `φ` remains the spelling).
-//! Mixture fractions themselves are validated loudly at construction:
-//! non-finite, negative, or non-summing pairs never reach the sampler.
+//! reactant distributions beyond distinct-temperature Maxwellians
+//! (non-Maxwellian tails — the rest of the full Eriksson generalization),
+//! T-T neutron transport (normalization pinned above; no publishable fit or
+//! line exists), and proton transport (the D(d,p)T proton *rate* is
+//! accounted via [`ParametricPlasmaConfig::proton_strength_density`] /
+//! [`ParametricPlasmaConfig::total_proton_strength`]; no proton particles
+//! are sampled and no proton distributions reach the cards).
+//! Mixture fractions, species temperatures, and sector angles themselves are
+//! validated loudly at construction: non-finite, negative, non-summing, or
+//! out-of-range values never reach the sampler.
 //!
 //! # Card emission
 //!
@@ -147,6 +306,149 @@ impl FuelMixture {
             self.f_deuterium * self.f_deuterium / 2.0,
         )
     }
+
+    /// T-T neutron coefficient of the pinned three-branch normalization
+    /// (module rustdoc): `f_T²` — the `f_T²/2` same-species-guarded reaction
+    /// weight with the T(t,2n)⁴He neutron multiplicity 2 folded in, matching
+    /// the oracle's `½·n_T²·reac_TT·2` rule. Exactly `0.0` at `f_T = 0` (the
+    /// zero-tritium recovery anchor) and `1.0` for pure tritium. v1 carries
+    /// the coefficient only — no `⟨σv⟩_TT` fit exists in publishable closed
+    /// form (module rustdoc), so T-T neutron transport stays a loud
+    /// boundary and this method is the machine-readable pin for the future
+    /// branch term.
+    pub fn tt_neutron_coefficient(&self) -> f64 {
+        self.f_tritium * self.f_tritium
+    }
+}
+
+/// Toroidal sector for the parametric source: birth positions are uniform
+/// in toroidal angle over `[start_angle, start_angle + rotation_angle)`
+/// (radians; see the module rustdoc for the pinned normalization, hand
+/// vectors, and recovery anchor).
+///
+/// Construction is loud: NaN/infinite angles give [`Error::NonFinite`],
+/// `start_angle` outside `[0, 2π)` or `rotation_angle` outside `(0, 2π]`
+/// gives [`Error::InvalidSector`]. Angles are used exactly as given —
+/// nothing is renormalized or wrapped.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ToroidalSector {
+    /// Sector start angle `φ₀` \[rad\], in `[0, 2π)`.
+    pub start_angle: f64,
+    /// Sector extent \[rad\], in `(0, 2π]` (`2π` exactly is the full torus).
+    pub rotation_angle: f64,
+}
+
+impl ToroidalSector {
+    /// New validated sector; errors are loud and named.
+    pub fn new(start_angle: f64, rotation_angle: f64) -> Result<Self> {
+        let sector = Self {
+            start_angle,
+            rotation_angle,
+        };
+        sector.validate()?;
+        Ok(sector)
+    }
+
+    /// Validate both angles: finite, `start_angle` in `[0, 2π)`,
+    /// `rotation_angle` in `(0, 2π]`.
+    pub fn validate(&self) -> Result<()> {
+        if !self.start_angle.is_finite() {
+            return Err(Error::NonFinite("toroidal sector start angle"));
+        }
+        if !self.rotation_angle.is_finite() {
+            return Err(Error::NonFinite("toroidal sector rotation angle"));
+        }
+        if !(0.0..2.0 * PI).contains(&self.start_angle) {
+            return Err(Error::InvalidSector("start_angle must be in [0, 2π)"));
+        }
+        if self.rotation_angle <= 0.0 || self.rotation_angle > 2.0 * PI {
+            return Err(Error::InvalidSector("rotation_angle must be in (0, 2π]"));
+        }
+        Ok(())
+    }
+
+    /// Fraction of the full torus this sector covers
+    /// (`rotation_angle / 2π`): the total-strength scale factor.
+    pub fn fraction(&self) -> f64 {
+        self.rotation_angle / (2.0 * PI)
+    }
+
+    /// True for the exact full-rotation spelling (`rotation_angle == 2π`):
+    /// card emission omits the angle marginal and the kernel recovers the
+    /// landed full-torus form (module rustdoc anchor).
+    pub fn is_full_rotation(&self) -> bool {
+        self.rotation_angle == 2.0 * PI
+    }
+
+    /// Map a unit uniform draw to a birth toroidal angle \[rad\].
+    pub fn map_angle(&self, u: f64) -> f64 {
+        self.start_angle + self.rotation_angle * u
+    }
+}
+
+/// Per-species ion temperatures for the D/T fuel mixture: uniform
+/// deuterium/tritium temperatures in keV, flat in minor radius (mixture v2 —
+/// see the module rustdoc for the pinned normalization, hand vectors, and
+/// recovery anchor).
+///
+/// Construction is loud: NaN/infinite temperatures give [`Error::NonFinite`],
+/// negative temperatures give [`Error::NegativeIonTemperature`]. The pair
+/// requires [`ParametricPlasmaConfig::fuel_mixture`] (a single-fuel config
+/// with the pair set is [`Error::NotYetSupported`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpeciesIonTemperatures {
+    /// Deuterium ion temperature `T_D` \[keV\]; non-negative.
+    pub deuterium_kev: f64,
+    /// Tritium ion temperature `T_T` \[keV\]; non-negative.
+    pub tritium_kev: f64,
+}
+
+impl SpeciesIonTemperatures {
+    /// D–T mass weight `m_D/(m_D + m_T)` with mass numbers `m_D = 2`,
+    /// `m_T = 3` (exact integers, documented convention).
+    const DEUTERIUM_WEIGHT: f64 = 2.0 / 5.0;
+
+    /// New validated pair; errors are loud and named.
+    pub fn new(deuterium_kev: f64, tritium_kev: f64) -> Result<Self> {
+        let pair = Self {
+            deuterium_kev,
+            tritium_kev,
+        };
+        pair.validate()?;
+        Ok(pair)
+    }
+
+    /// Validate both temperatures: finite and non-negative.
+    pub fn validate(&self) -> Result<()> {
+        if !self.deuterium_kev.is_finite() {
+            return Err(Error::NonFinite("deuterium ion temperature"));
+        }
+        if !self.tritium_kev.is_finite() {
+            return Err(Error::NonFinite("tritium ion temperature"));
+        }
+        if self.deuterium_kev < 0.0 {
+            return Err(Error::NegativeIonTemperature(self.deuterium_kev));
+        }
+        if self.tritium_kev < 0.0 {
+            return Err(Error::NegativeIonTemperature(self.tritium_kev));
+        }
+        Ok(())
+    }
+
+    /// D–T effective temperature \[keV\] for a species pair: the
+    /// mass-weighted relative temperature
+    /// `(m_D·T_T + m_T·T_D)/(m_D + m_T)` spelled as
+    /// `T_D + (2/5)·(T_T − T_D)`, so equal temperatures recover `T_D`
+    /// bit-for-bit (the difference is exactly `0.0`; module rustdoc anchor).
+    pub fn dt_effective_kev(deuterium_kev: f64, tritium_kev: f64) -> f64 {
+        deuterium_kev + Self::DEUTERIUM_WEIGHT * (tritium_kev - deuterium_kev)
+    }
+
+    /// D–T effective temperature \[keV\] of this pair (see
+    /// [`Self::dt_effective_kev`]).
+    pub fn dt_effective(&self) -> f64 {
+        Self::dt_effective_kev(self.deuterium_kev, self.tritium_kev)
+    }
 }
 
 /// Parametric tokamak plasma source configuration.
@@ -170,6 +472,14 @@ pub struct ParametricPlasmaConfig {
     /// Optional D/T fuel mixture (module rustdoc normalization). `None` —
     /// the default — keeps the landed single-fuel kernels bit-for-bit.
     pub fuel_mixture: Option<FuelMixture>,
+    /// Optional per-species ion temperatures (module rustdoc normalization).
+    /// `None` — the default — reacts at the shared profile ion temperature.
+    /// When set, a fuel mixture is required and the profile ion temperature
+    /// is unused for rate and spectrum (still validated).
+    pub species_temperatures: Option<SpeciesIonTemperatures>,
+    /// Optional toroidal sector (module rustdoc normalization). `None` —
+    /// the default — keeps the landed full-torus kernel bit-for-bit.
+    pub sector: Option<ToroidalSector>,
     /// Particle weight carried by the sampler and the emitted cards.
     pub weight: f64,
 }
@@ -193,6 +503,17 @@ impl ParametricPlasmaConfig {
         }
         if let Some(mixture) = &self.fuel_mixture {
             mixture.validate()?;
+        }
+        if let Some(pair) = &self.species_temperatures {
+            pair.validate()?;
+            if self.fuel_mixture.is_none() {
+                return Err(Error::NotYetSupported(
+                    "per-species ion temperatures need a D/T fuel mixture",
+                ));
+            }
+        }
+        if let Some(sector) = &self.sector {
+            sector.validate()?;
         }
         Ok(())
     }
@@ -219,26 +540,44 @@ impl ParametricPlasmaConfig {
         )
     }
 
+    /// Species ion temperatures `(T_D, T_T)` \[keV\] at minor radius `r`
+    /// \[cm\]: the uniform [`SpeciesIonTemperatures`] pair when set, else
+    /// the shared profile ion temperature twice.
+    fn species_temperatures_at(&self, r: f64) -> (f64, f64) {
+        match &self.species_temperatures {
+            Some(pair) => (pair.deuterium_kev, pair.tritium_kev),
+            None => {
+                let ti_kev = self.temperature_kev(r);
+                (ti_kev, ti_kev)
+            }
+        }
+    }
+
     /// (D-T, D-D) branch strength densities \[neutrons/s/cm³, arbitrary
     /// global scale\] at minor radius `r` \[cm\]: each branch `k·n²·⟨σv⟩`
     /// with density in cm⁻³ and reactivity in cm³/s, built in the landed
     /// left-associated expression tree so that single-fuel configurations
-    /// and the module-rustdoc recovery anchors reproduce bit-for-bit. Zero
+    /// and the module-rustdoc recovery anchors reproduce bit-for-bit. A
+    /// mixture reacts the D-T branch at the pair effective temperature
+    /// [`SpeciesIonTemperatures::dt_effective_kev`] and the D-D branch at
+    /// `T_D` (module rustdoc); without a pair both reduce to the shared
+    /// profile temperature exactly. Zero
     /// temperature ⇒ zero strength on both branches (cold separatrix makes
     /// no neutrons).
     fn branch_strength_density(&self, r: f64) -> Result<(f64, f64)> {
         let n_m3 = self.density_m3(r);
-        let ti_kev = self.temperature_kev(r);
+        let (t_d, t_t) = self.species_temperatures_at(r);
         let n_cm3 = n_m3 * 1e-6;
         match &self.fuel_mixture {
             Some(mixture) => {
                 let (k_dt, k_dd) = mixture.branch_weights();
-                let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(ti_kev)? * 1e6;
-                let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(ti_kev)? * 1e6;
+                let t_eff = SpeciesIonTemperatures::dt_effective_kev(t_d, t_t);
+                let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(t_eff)? * 1e6;
+                let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(t_d)? * 1e6;
                 Ok((k_dt * n_cm3 * n_cm3 * sv_dt, k_dd * n_cm3 * n_cm3 * sv_dd))
             }
             None => {
-                let reactivity = self.fuel.reactivity_m3_per_s(ti_kev)? * 1e6;
+                let reactivity = self.fuel.reactivity_m3_per_s(t_d)? * 1e6;
                 match self.fuel {
                     FusionReaction::Dt => Ok((0.25 * n_cm3 * n_cm3 * reactivity, 0.0)),
                     FusionReaction::Dd => Ok((0.0, 0.5 * n_cm3 * n_cm3 * reactivity)),
@@ -256,31 +595,81 @@ impl ParametricPlasmaConfig {
         Ok(s_dt + s_dd)
     }
 
-    /// Neutron-branch spectra at ion temperature `ti_kev` \[keV\]:
+    /// Relative D(d,p)T proton production density \[protons/s/cm³, same
+    /// arbitrary global scale as [`Self::strength_density`] at minor radius
+    /// `r` \[cm\]: the pinned v1 accounting convention (module rustdoc) —
+    /// the proton branch shares the D-D total rate 50/50 with the neutron
+    /// branch, so this IS the D-D neutron-branch density, bit-for-bit
+    /// (the branch tuple's second element, not a re-expression). Zero for
+    /// D-T-only configurations. Accounting output only: the sampler and the
+    /// cards never see it.
+    pub fn proton_strength_density(&self, r: f64) -> Result<f64> {
+        let (_, s_dd) = self.branch_strength_density(r)?;
+        Ok(s_dd)
+    }
+
+    /// Total relative proton production strength ∭ P·R·|J| da dθ dφ over the
+    /// same volume element as [`Self::total_strength`] (full torus, or the
+    /// sector's `rotation_angle` when one is set — the landed `2.0·π`
+    /// constant is kept verbatim on the `None` path). Same arbitrary global
+    /// scale as the neutron total, so ratios (`proton_per_neutron`) are
+    /// meaningful; pure D-D gives exactly the neutron total. D-T-only
+    /// configurations make no protons: exact `0.0` (fuel logic, not a
+    /// table-build error). A mixture that makes D-D neutrons but has zero
+    /// total strength elsewhere (cold profiles) still fails loudly through
+    /// the table build.
+    pub fn total_proton_strength(&self) -> Result<f64> {
+        if let Some(sector) = &self.sector {
+            sector.validate()?;
+        }
+        let makes_protons = match (&self.fuel_mixture, self.fuel) {
+            (Some(mixture), _) => mixture.f_deuterium > 0.0,
+            (None, FusionReaction::Dd) => true,
+            (None, FusionReaction::Dt) => false,
+        };
+        if !makes_protons {
+            return Ok(0.0);
+        }
+        let table = WeightTable::build_with(self, |r| self.proton_strength_density(r))?;
+        let toroidal = match &self.sector {
+            None => 2.0 * PI,
+            Some(sector) => sector.rotation_angle,
+        };
+        Ok(toroidal * table.masses.iter().sum::<f64>())
+    }
+
+    /// Neutron-branch spectra at species temperatures `(t_d, t_t)` \[keV\]:
     /// `(reaction, weight, mean, sigma)` tuples with weights summing to 1.
-    /// Single fuel → one unit-weight branch; a mixture → D-T and D-D
-    /// branches weighted by the rate rule at `ti_kev` (the module rustdoc
-    /// normalization). Where the total mixture rate underflows — both
-    /// reactivities zero, a cold annulus — the D-T branch is returned by
-    /// convention: the mixture spectrum degenerates to the 14.021 MeV line
-    /// exactly as the single-fuel kernels degenerate at `T_i = 0`.
-    fn spectrum_branches(&self, ti_kev: f64) -> Result<Vec<(FusionReaction, f64, f64, f64)>> {
+    /// Single fuel → one unit-weight branch at the shared temperature; a
+    /// mixture → D-T and D-D branches weighted by the rate rule, the D-T
+    /// arm at the pair effective temperature and the D-D arm at `t_d`
+    /// (the module rustdoc normalization). Where the total mixture rate
+    /// underflows — both reactivities zero, a cold annulus — the D-T branch
+    /// is returned by convention: the mixture spectrum degenerates to the
+    /// 14.021 MeV line exactly as the single-fuel kernels degenerate at
+    /// `T_i = 0`.
+    fn spectrum_branches(
+        &self,
+        t_d: f64,
+        t_t: f64,
+    ) -> Result<Vec<(FusionReaction, f64, f64, f64)>> {
         match &self.fuel_mixture {
             None => {
-                let (mu, sigma) = self.fuel.moments_mev(ti_kev)?;
+                let (mu, sigma) = self.fuel.moments_mev(t_d)?;
                 Ok(vec![(self.fuel, 1.0, mu, sigma)])
             }
             Some(mixture) => {
+                let t_eff = SpeciesIonTemperatures::dt_effective_kev(t_d, t_t);
                 let (k_dt, k_dd) = mixture.branch_weights();
-                let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(ti_kev)?;
-                let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(ti_kev)?;
+                let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(t_eff)?;
+                let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(t_d)?;
                 let w_dt = k_dt * sv_dt;
                 let w_dd = k_dd * sv_dd;
-                let (mu_dt, sigma_dt) = FusionReaction::Dt.moments_mev(ti_kev)?;
+                let (mu_dt, sigma_dt) = FusionReaction::Dt.moments_mev(t_eff)?;
                 if w_dt + w_dd <= 0.0 {
                     return Ok(vec![(FusionReaction::Dt, 1.0, mu_dt, sigma_dt)]);
                 }
-                let (mu_dd, sigma_dd) = FusionReaction::Dd.moments_mev(ti_kev)?;
+                let (mu_dd, sigma_dd) = FusionReaction::Dd.moments_mev(t_d)?;
                 let p_dt = w_dt / (w_dt + w_dd);
                 Ok(vec![
                     (FusionReaction::Dt, p_dt, mu_dt, sigma_dt),
@@ -296,14 +685,14 @@ impl ParametricPlasmaConfig {
     /// moments (between-branch variance included) and the dominant
     /// branch's nominal line (D-T preferred on exact ties).
     pub fn axis_spectrum_summary(&self) -> Result<(f64, f64, f64)> {
-        let ti_kev = self.temperature_kev(0.0);
+        let (t_d, t_t) = self.species_temperatures_at(0.0);
         match &self.fuel_mixture {
             None => {
-                let (mean, sigma) = self.fuel.moments_mev(ti_kev)?;
+                let (mean, sigma) = self.fuel.moments_mev(t_d)?;
                 Ok((self.fuel.nominal_energy_mev(), mean, sigma))
             }
             Some(_) => {
-                let branches = self.spectrum_branches(ti_kev)?;
+                let branches = self.spectrum_branches(t_d, t_t)?;
                 let mean: f64 = branches.iter().map(|b| b.1 * b.2).sum();
                 let second: f64 = branches.iter().map(|b| b.1 * (b.3 * b.3 + b.2 * b.2)).sum();
                 let variance = (second - mean * mean).max(0.0);
@@ -321,12 +710,23 @@ impl ParametricPlasmaConfig {
         }
     }
 
-    /// Total relative source strength ∭ S·R·|J| da dθ dφ (the toroidal
-    /// integral contributes the factor `2π`). Arbitrary global scale, but
-    /// ratios between configurations are meaningful.
+    /// Total relative source strength ∭ S·R·|J| da dθ dφ. The toroidal
+    /// integral contributes `2π` on the full torus or `rotation_angle` on a
+    /// sector (module rustdoc) — the landed `2.0·π` constant is kept
+    /// verbatim on the `None` path so the full-torus value is untouched,
+    /// and an exact-`2π` sector scales by the identical constant
+    /// (bit-for-bit recovery). Arbitrary global scale, but ratios between
+    /// configurations are meaningful.
     pub fn total_strength(&self) -> Result<f64> {
+        if let Some(sector) = &self.sector {
+            sector.validate()?;
+        }
         let table = WeightTable::build(self)?;
-        Ok(2.0 * PI * table.masses.iter().sum::<f64>())
+        let toroidal = match &self.sector {
+            None => 2.0 * PI,
+            Some(sector) => sector.rotation_angle,
+        };
+        Ok(toroidal * table.masses.iter().sum::<f64>())
     }
 }
 
@@ -346,6 +746,19 @@ struct WeightTable {
 
 impl WeightTable {
     fn build(config: &ParametricPlasmaConfig) -> Result<Self> {
+        Self::build_with(config, |r| config.strength_density(r))
+    }
+
+    /// Build over an explicit radial density: the landed [`Self::build`]
+    /// passes the neutron [`ParametricPlasmaConfig::strength_density`];
+    /// proton accounting passes
+    /// [`ParametricPlasmaConfig::proton_strength_density`]. Same grid, same
+    /// expression tree — the neutron path is bit-identical to the landed
+    /// build.
+    fn build_with(
+        config: &ParametricPlasmaConfig,
+        density: impl Fn(f64) -> Result<f64>,
+    ) -> Result<Self> {
         let a = config.geometry.minor_radius_cm;
         let dr = a / R_GRID as f64;
         let mut edges = Vec::with_capacity(R_GRID + 1);
@@ -357,7 +770,7 @@ impl WeightTable {
         for i in 0..R_GRID {
             let r = (i as f64 + 0.5) * dr;
             edges.push(i as f64 * dr);
-            let strength = config.strength_density(r)?;
+            let strength = density(r)?;
             // Poloidal marginal ∫ R|J| dθ at cell midpoint (uniform θ grid,
             // trapezoid on a periodic integrand).
             let dtheta = 2.0 * PI / THETA_GRID as f64;
@@ -462,8 +875,14 @@ impl ParametricSampler {
     }
 
     /// Sample one particle: `r` from the strength-weighted radial CDF, `θ`
-    /// from the cell's poloidal CDF, `φ` uniform; energy from the local
+    /// from the cell's poloidal CDF, `φ` uniform over the full torus or the
+    /// sector (module rustdoc); energy from the local
     /// ion-temperature Ballabio Gaussian; isotropic direction.
+    ///
+    /// The sector remaps the same single toroidal draw (`start + rotation·u`;
+    /// `0 + 2π·u == 2π·u`, so the exact full-rotation spelling reproduces
+    /// the landed stream bit-for-bit) and consumes no new RNG draws on any
+    /// path.
     ///
     /// The `Err(_) => 0.0` arm is unreachable-in-practice: the config is
     /// validated at construction and `temperature_kev(r)` evaluates a
@@ -483,17 +902,17 @@ impl ParametricSampler {
         }
     }
 
-    /// Draw the birth spectrum moments `(mean, sigma)` \[MeV\] at ion
-    /// temperature `ti_kev`: the config fuel's Ballabio moments, or — for a
-    /// fuel mixture — the branch roulette weighted by the rate rule at
-    /// `ti_kev` (module rustdoc) followed by the chosen branch's moments.
+    /// Draw the birth spectrum moments `(mean, sigma)` \[MeV\] at species
+    /// temperatures `(t_d, t_t)`: the config fuel's Ballabio moments, or —
+    /// for a fuel mixture — the branch roulette weighted by the rate rule
+    /// (module rustdoc) followed by the chosen branch's moments.
     /// The single-fuel path consumes no RNG, so the landed sampling stream
     /// is preserved bit-for-bit; the mixture path draws one extra uniform
     /// per particle. Both reactivities zero (a cold annulus) degenerates to
     /// the D-T line by the documented convention of
     /// [`ParametricPlasmaConfig::spectrum_branches`].
-    fn sample_spectrum_moments(&mut self, ti_kev: f64) -> Result<(f64, f64)> {
-        let branches = self.config.spectrum_branches(ti_kev)?;
+    fn sample_spectrum_moments(&mut self, t_d: f64, t_t: f64) -> Result<(f64, f64)> {
+        let branches = self.config.spectrum_branches(t_d, t_t)?;
         if branches.len() == 1 {
             return Ok((branches[0].2, branches[0].3));
         }
@@ -518,10 +937,13 @@ impl ParametricSampler {
         let dr = self.config.geometry.minor_radius_cm / R_GRID as f64;
         let cell = ((r / dr).floor() as usize).min(R_GRID - 1);
         let theta = self.table.sample_theta(cell, self.rng.uniform());
-        let phi = 2.0 * PI * self.rng.uniform();
+        let phi = match &self.config.sector {
+            None => 2.0 * PI * self.rng.uniform(),
+            Some(sector) => sector.map_angle(self.rng.uniform()),
+        };
         let (big_r, z) = self.config.geometry.map(r, theta);
-        let ti_kev = self.config.temperature_kev(r);
-        let (mean, sigma) = self.sample_spectrum_moments(ti_kev)?;
+        let (t_d, t_t) = self.config.species_temperatures_at(r);
+        let (mean, sigma) = self.sample_spectrum_moments(t_d, t_t)?;
         let energy_mev = if sigma > 0.0 {
             mean + sigma * self.rng.standard_normal()
         } else {
@@ -562,6 +984,12 @@ pub struct EmissionHistograms {
     pub vertical: BinnedDistribution,
     /// Global marginal energy spectrum \[MeV\].
     pub energy: BinnedDistribution,
+    /// Uniform toroidal-angle marginal over
+    /// `[start, start + rotation)` \[rad\] (`bins` bins): `Some` for a
+    /// partial sector, `None` on the full torus (no sector or an exact
+    /// full rotation — card emission then keeps the landed three-marginal
+    /// shape bit-for-bit).
+    pub toroidal: Option<BinnedDistribution>,
     /// Captured energy probability mass (1 − tail truncation).
     pub energy_coverage: f64,
     /// Half the L1 distance between the true `(r, z)` birth joint and the
@@ -598,8 +1026,8 @@ pub fn emission_histograms(
     for i in 0..R_GRID {
         let r = (i as f64 + 0.5) * dr;
         let strength = config.strength_density(r)?;
-        let ti = config.temperature_kev(r);
-        for &(_, _, mu, sigma) in &config.spectrum_branches(ti)? {
+        let (t_d, t_t) = config.species_temperatures_at(r);
+        for &(_, _, mu, sigma) in &config.spectrum_branches(t_d, t_t)? {
             energy_lo = energy_lo.min(mu - ENERGY_WIDTH_SIGMA * sigma);
             energy_hi = energy_hi.max(mu + ENERGY_WIDTH_SIGMA * sigma);
         }
@@ -659,8 +1087,8 @@ pub fn emission_histograms(
     let mut energy_coverage = 0.0f64;
     for i in 0..R_GRID {
         let r = (i as f64 + 0.5) * dr;
-        let ti = config.temperature_kev(r);
-        let branches = config.spectrum_branches(ti)?;
+        let (t_d, t_t) = config.species_temperatures_at(r);
+        let branches = config.spectrum_branches(t_d, t_t)?;
         let cell_mass: f64 = cell_weights[i * THETA_GRID..(i + 1) * THETA_GRID]
             .iter()
             .sum();
@@ -701,6 +1129,23 @@ pub fn emission_histograms(
         .collect();
     let energy_masses: Vec<f64> = energy_m.iter().map(|m| m / total).collect();
 
+    // Toroidal-angle marginal: the birth angle is uniform over the sector
+    // (module rustdoc), so the marginal is exact, not sampled — bin centers
+    // over [start, start + rotation) with equal masses. The full torus
+    // carries no marginal (the landed card shape is untouched).
+    let toroidal = match config.sector {
+        Some(sector) if !sector.is_full_rotation() => {
+            let width = sector.rotation_angle / bins as f64;
+            Some(BinnedDistribution {
+                centers: (0..bins)
+                    .map(|b| sector.start_angle + (b as f64 + 0.5) * width)
+                    .collect(),
+                masses: vec![1.0 / bins as f64; bins],
+            })
+        }
+        _ => None,
+    };
+
     Ok(EmissionHistograms {
         radial: BinnedDistribution {
             centers: (0..bins)
@@ -718,6 +1163,7 @@ pub fn emission_histograms(
             centers: energy_centers,
             masses: energy_masses,
         },
+        toroidal,
         energy_coverage,
         joint_correlation: corr,
     })
@@ -755,6 +1201,8 @@ pub(crate) mod tests {
             pedestal_radius_cm: 150.0,
             fuel: FusionReaction::Dt,
             fuel_mixture: None,
+            species_temperatures: None,
+            sector: None,
             weight: 1.0,
         }
     }
@@ -908,6 +1356,136 @@ pub(crate) mod tests {
         }
     }
 
+    // --- G-branches: T-T coefficient, D(d,p)T proton accounting, zero-T anchor
+
+    #[test]
+    fn tt_neutron_coefficient_hand_vectors_are_exact() {
+        // Pinned three-branch normalization (module rustdoc): f_T² with the
+        // multiplicity folded in — exact at every anchor.
+        assert_eq!(
+            FuelMixture::new(0.5, 0.5).unwrap().tt_neutron_coefficient(),
+            0.25
+        );
+        assert_eq!(
+            FuelMixture::new(1.0, 0.0).unwrap().tt_neutron_coefficient(),
+            0.0
+        );
+        assert_eq!(
+            FuelMixture::new(0.7, 0.3).unwrap().tt_neutron_coefficient(),
+            0.09
+        );
+        assert_eq!(
+            FuelMixture::new(0.0, 1.0).unwrap().tt_neutron_coefficient(),
+            1.0
+        );
+    }
+
+    #[test]
+    fn proton_strength_is_the_dd_branch_bit_for_bit() {
+        // The pinned 50/50 accounting convention (module rustdoc): the
+        // proton density IS the D-D neutron-branch density — asserted with
+        // assert_eq, not a tolerance, on both the flat hand-vector config
+        // and the H-mode config, with and without a fuel mixture.
+        let flat = flat_config(1.85, 0.0, 0.0);
+        let n_cm3 = flat.density_m3(123.0) * 1e-6;
+        let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(20.0).unwrap() * 1e6;
+        let mut blend = flat;
+        blend.fuel_mixture = Some(FuelMixture::new(0.7, 0.3).unwrap());
+        let p = blend.proton_strength_density(123.0).unwrap();
+        let (_, s_dd) = blend.branch_strength_density(123.0).unwrap();
+        assert_eq!(p, s_dd);
+        assert_eq!(p, 0.7 * 0.7 / 2.0 * n_cm3 * n_cm3 * sv_dd);
+        let want = 6376328248.867733_f64; // module rustdoc hand vector
+        assert!((p - want).abs() < 1e-12 * want, "{p} vs {want}");
+
+        // Single-fuel D-D: proton density equals the landed kernel.
+        let mut dd = flat;
+        dd.fuel = FusionReaction::Dd;
+        for &r in &[0.0, 50.0, 123.0, 199.9] {
+            assert_eq!(
+                dd.proton_strength_density(r).unwrap(),
+                dd.strength_density(r).unwrap(),
+            );
+        }
+        // D-T-only configurations make no protons: exact zero, no residue.
+        let dt = flat; // fuel: Dt, fuel_mixture: None
+        for &r in &[0.0, 123.0, 199.9] {
+            assert_eq!(dt.proton_strength_density(r).unwrap(), 0.0);
+        }
+        assert_eq!(dt.total_proton_strength().unwrap(), 0.0);
+        let mut equimolar = flat;
+        equimolar.fuel_mixture = Some(FuelMixture::new(0.5, 0.5).unwrap());
+        assert_eq!(
+            equimolar.proton_strength_density(123.0).unwrap(),
+            3253228698.4019046_f64
+        );
+        // H-mode mixture: bit-identity holds off the flat profile too.
+        let mut h = iter_h_mode();
+        h.fuel_mixture = Some(FuelMixture::new(0.7, 0.3).unwrap());
+        for &r in &[0.0, 37.5, 100.0, 150.0, 199.9, 200.0] {
+            let (_, s_dd) = h.branch_strength_density(r).unwrap();
+            assert_eq!(h.proton_strength_density(r).unwrap(), s_dd);
+        }
+    }
+
+    #[test]
+    fn no_tritium_mixture_recovers_two_branch_kernel_bit_for_bit() {
+        // Zero-tritium recovery anchor (module rustdoc): with f_T = 0 the
+        // absent D-T and T-T branches contribute exactly 0.0, so the no-T
+        // mixture reproduces the landed two-branch kernel bit-for-bit —
+        // neutron total and proton density alike.
+        let mut landed = iter_h_mode();
+        landed.fuel = FusionReaction::Dd;
+        let mut mixture = landed;
+        mixture.fuel_mixture = Some(FuelMixture::new(1.0, 0.0).unwrap());
+        assert_eq!(
+            mixture.fuel_mixture.unwrap().tt_neutron_coefficient(),
+            0.0,
+            "the deferred T-T term vanishes exactly at f_T = 0"
+        );
+        for &r in &[0.0, 37.5, 100.0, 150.0, 199.9, 200.0] {
+            assert_eq!(
+                mixture.strength_density(r).unwrap(),
+                landed.strength_density(r).unwrap(),
+            );
+            assert_eq!(
+                mixture.proton_strength_density(r).unwrap(),
+                landed.strength_density(r).unwrap(),
+            );
+        }
+        assert_eq!(
+            mixture.total_proton_strength().unwrap(),
+            landed.total_strength().unwrap(),
+            "pure-D proton total must equal the landed D-D neutron total"
+        );
+    }
+
+    #[test]
+    fn total_proton_strength_matches_branch_share() {
+        // Flat 70/30 blend: uniform temperature, so the proton share of the
+        // neutron total equals the D-D branch weight ratio (grid-quadrature
+        // precision, 1e-12); pure D-D gives proton/neutron == 1 within
+        // summation order.
+        let flat = flat_config(1.85, 0.0, 0.0);
+        let mut blend = flat;
+        blend.fuel_mixture = Some(FuelMixture::new(0.7, 0.3).unwrap());
+        let (k_dt, k_dd) = FuelMixture::new(0.7, 0.3).unwrap().branch_weights();
+        let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(20.0).unwrap();
+        let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(20.0).unwrap();
+        let p_dd = k_dd * sv_dd / (k_dt * sv_dt + k_dd * sv_dd);
+        let n = blend.total_strength().unwrap();
+        let p = blend.total_proton_strength().unwrap();
+        assert!(
+            (p / n - p_dd).abs() < 1e-12,
+            "proton share {} vs {p_dd}",
+            p / n
+        );
+        let mut dd = flat;
+        dd.fuel = FusionReaction::Dd;
+        let rel = (dd.total_proton_strength().unwrap() / dd.total_strength().unwrap() - 1.0).abs();
+        assert!(rel < 1e-12, "pure-D proton/neutron {rel}");
+    }
+
     #[test]
     fn mixture_fractions_are_loud() {
         assert_eq!(
@@ -938,6 +1516,307 @@ pub(crate) mod tests {
             c.validate(),
             Err(Error::InvalidFuelMixture("fuel fractions must be >= 0"))
         ));
+    }
+
+    // --- G-species: per-species ion temperatures, recovery anchor, loud errors
+
+    #[test]
+    fn species_effective_temperature_hand_vectors() {
+        use SpeciesIonTemperatures as ST;
+        // Equal temperatures recover exactly (bit-for-bit anchor input).
+        assert_eq!(ST::dt_effective_kev(20.0, 20.0), 20.0);
+        assert_eq!(ST::dt_effective_kev(0.0, 0.0), 0.0);
+        // Hand vector: T_D = 20, T_T = 30 → 20 + (2/5)·10 = 24.0 exactly.
+        assert_eq!(ST::dt_effective_kev(20.0, 30.0), 24.0);
+        assert_eq!(
+            ST::dt_effective_kev(20.0, 30.0),
+            20.0 + (2.0 / 5.0) * (30.0 - 20.0)
+        );
+        // Mass weighting favors the heavier species' partner: heating T
+        // moves T_DT less than heating D by the same amount.
+        assert!(ST::dt_effective_kev(20.0, 30.0) < ST::dt_effective_kev(30.0, 20.0));
+        assert_eq!(ST::new(20.0, 30.0).unwrap().dt_effective(), 24.0);
+    }
+
+    #[test]
+    fn species_strength_hand_vectors() {
+        // Flat L-mode profile: n = 1e20 m⁻³ everywhere; f_D = 0.7,
+        // f_T = 0.3, T_D = 20 keV, T_T = 30 keV — the module rustdoc hand
+        // vector (T_DT = 24 keV). Exact expression equality against the
+        // branch decomposition, plus the pinned decimal golden at 1e-12.
+        let flat = flat_config(1.85, 0.0, 0.0);
+        let mut species = flat;
+        species.fuel_mixture = Some(FuelMixture::new(0.7, 0.3).unwrap());
+        species.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 30.0).unwrap());
+        let n_cm3 = flat.density_m3(123.0) * 1e-6;
+        let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(24.0).unwrap() * 1e6;
+        let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(20.0).unwrap() * 1e6;
+        let s = species.strength_density(123.0).unwrap();
+        assert_eq!(
+            s,
+            0.7 * 0.3 * n_cm3 * n_cm3 * sv_dt + 0.7 * 0.7 / 2.0 * n_cm3 * n_cm3 * sv_dd
+        );
+        let want = 1143456467112.5283_f64; // module rustdoc hand vector
+        assert!((s - want).abs() < 1e-12 * want, "{s} vs {want}");
+    }
+
+    #[test]
+    fn species_equal_temperatures_recover_shared_mixture_bit_for_bit() {
+        // T_D = T_T = profile T recovers the shared-temperature mixture
+        // kernel bit-for-bit: T_DT computes to T_D exactly, so strengths
+        // and the axis spectrum summary are identical.
+        let mut shared = iter_h_mode();
+        shared.fuel_mixture = Some(FuelMixture::new(0.5, 0.5).unwrap());
+        let mut species = shared;
+        for &r in &[0.0, 37.5, 100.0, 150.0, 199.9, 200.0] {
+            let ti = shared.temperature_kev(r);
+            species.species_temperatures = Some(SpeciesIonTemperatures::new(ti, ti).unwrap());
+            assert_eq!(
+                species.strength_density(r).unwrap(),
+                shared.strength_density(r).unwrap(),
+                "per-species strength must equal the shared kernel at r={r}"
+            );
+        }
+        let ti0 = shared.temperature_kev(0.0);
+        species.species_temperatures = Some(SpeciesIonTemperatures::new(ti0, ti0).unwrap());
+        assert_eq!(
+            species.axis_spectrum_summary().unwrap(),
+            shared.axis_spectrum_summary().unwrap(),
+        );
+        // The equimolar pair-equal total also matches the landed hand
+        // vector decimal golden.
+        let mut flat = flat_config(1.85, 0.0, 0.0);
+        flat.fuel_mixture = Some(FuelMixture::new(0.5, 0.5).unwrap());
+        flat.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 20.0).unwrap());
+        let s = flat.strength_density(123.0).unwrap();
+        let want = 1085808328120.6956_f64;
+        assert!((s - want).abs() < 1e-12 * want, "{s} vs {want}");
+    }
+
+    #[test]
+    fn species_branch_spectra_follow_pair_temperatures() {
+        // The D-T line sits at T_DT = 24 keV, the D-D line at T_D = 20 keV
+        // (module rustdoc convention): per-branch Ballabio moments pinned
+        // to the independent goldens.
+        let flat = flat_config(1.85, 0.0, 0.0);
+        let mut species = flat;
+        species.fuel_mixture = Some(FuelMixture::new(0.7, 0.3).unwrap());
+        species.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 30.0).unwrap());
+        let branches = species.spectrum_branches(20.0, 30.0).unwrap();
+        assert_eq!(branches.len(), 2);
+        let (mu_dt, sigma_dt) = FusionReaction::Dt.moments_mev(24.0).unwrap();
+        let (mu_dd, sigma_dd) = FusionReaction::Dd.moments_mev(20.0).unwrap();
+        assert_eq!((branches[0].2, branches[0].3), (mu_dt, sigma_dt));
+        assert_eq!((branches[1].2, branches[1].3), (mu_dd, sigma_dd));
+        assert!((mu_dt - 14.077934372230146).abs() < 1e-12, "{mu_dt}");
+        assert!((sigma_dt - 0.37003905085517863).abs() < 1e-12, "{sigma_dt}");
+    }
+
+    #[test]
+    fn species_temperatures_are_loud() {
+        assert_eq!(
+            SpeciesIonTemperatures::new(f64::NAN, 20.0),
+            Err(Error::NonFinite("deuterium ion temperature"))
+        );
+        assert_eq!(
+            SpeciesIonTemperatures::new(20.0, f64::INFINITY),
+            Err(Error::NonFinite("tritium ion temperature"))
+        );
+        assert_eq!(
+            SpeciesIonTemperatures::new(-1.0, 20.0),
+            Err(Error::NegativeIonTemperature(-1.0))
+        );
+        assert_eq!(
+            SpeciesIonTemperatures::new(20.0, -0.5),
+            Err(Error::NegativeIonTemperature(-0.5))
+        );
+        // Config-level validation surfaces the same named errors.
+        let mut c = iter_h_mode();
+        c.fuel_mixture = Some(FuelMixture::new(0.5, 0.5).unwrap());
+        c.species_temperatures = Some(SpeciesIonTemperatures {
+            deuterium_kev: 20.0,
+            tritium_kev: -1.0,
+        });
+        assert!(matches!(
+            c.validate(),
+            Err(Error::NegativeIonTemperature(_))
+        ));
+        // The pair without a fuel mixture is a loud scope error, never a
+        // silent single-fuel fallback.
+        let mut single = iter_h_mode();
+        single.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 30.0).unwrap());
+        assert!(matches!(single.validate(), Err(Error::NotYetSupported(_))));
+        assert!(matches!(
+            ParametricSampler::new(single, 7),
+            Err(Error::NotYetSupported(_))
+        ));
+    }
+
+    // --- G-sector: toroidal-sector normalization, recovery, loud angles ---
+
+    #[test]
+    fn sector_strength_scales_by_rotation_over_two_pi() {
+        // The kernel is φ-independent, so the toroidal integral is the
+        // rotation itself: power-of-two fractions are exact in binary FP
+        // (scaling by 1/2 commutes with the one rounding), general angles
+        // at transcription precision.
+        let full = flat_config(1.85, 0.0, 0.0);
+        let total_full = full.total_strength().unwrap();
+        let mut half = full;
+        half.sector = Some(ToroidalSector::new(0.0, PI).unwrap());
+        assert_eq!(half.total_strength().unwrap(), total_full * 0.5);
+        let mut quarter = full;
+        quarter.sector = Some(ToroidalSector::new(1.0, PI / 2.0).unwrap());
+        assert_eq!(quarter.total_strength().unwrap(), total_full * 0.25);
+        // Start shifts births, never the total.
+        let mut shifted = full;
+        shifted.sector = Some(ToroidalSector::new(2.0, PI).unwrap());
+        assert_eq!(
+            shifted.total_strength().unwrap(),
+            half.total_strength().unwrap()
+        );
+        // General angle: ratio at 1e-12.
+        let mut general = full;
+        general.sector = Some(ToroidalSector::new(0.5, 1.0).unwrap());
+        let ratio = general.total_strength().unwrap() / total_full;
+        let want = 1.0 / (2.0 * PI);
+        assert!((ratio - want).abs() < 1e-12 * want, "{ratio} vs {want}");
+        // The local density is sector-independent (only the toroidal
+        // integral rescales).
+        assert_eq!(
+            general.strength_density(123.0).unwrap(),
+            full.strength_density(123.0).unwrap()
+        );
+    }
+
+    #[test]
+    fn full_rotation_sector_recovers_full_torus_bit_for_bit() {
+        // Module-rustdoc anchor: start 0 + exact 2π reproduces the landed
+        // kernel — total, sampled stream, and card marginals.
+        let full = iter_h_mode();
+        let mut sector = full;
+        sector.sector = Some(ToroidalSector::new(0.0, 2.0 * PI).unwrap());
+        assert_eq!(
+            sector.total_strength().unwrap(),
+            full.total_strength().unwrap()
+        );
+        let a = ParametricSampler::new(full, 17).unwrap().sample_n(256);
+        let b = ParametricSampler::new(sector, 17).unwrap().sample_n(256);
+        assert_eq!(a, b);
+        assert_eq!(
+            emission_histograms(&sector, 15).unwrap(),
+            emission_histograms(&full, 15).unwrap()
+        );
+    }
+
+    #[test]
+    fn sector_sampler_birth_angles_are_uniform_over_sector() {
+        // start 0.5 rad, rotation 1.5 rad: every birth lands in-sector and
+        // the mean angle matches the uniform closed form.
+        let mut config = flat_config(1.85, 0.0, 0.0);
+        let (start, rotation) = (0.5, 1.5);
+        config.sector = Some(ToroidalSector::new(start, rotation).unwrap());
+        let mut sampler = ParametricSampler::new(config, 23).unwrap();
+        let particles = sampler.sample_n(N);
+        let mut sum = 0.0;
+        for p in &particles {
+            let mut phi = p.position_cm[1].atan2(p.position_cm[0]);
+            if phi < 0.0 {
+                phi += 2.0 * PI;
+            }
+            assert!(
+                phi >= start && phi < start + rotation,
+                "birth angle {phi} outside [{start}, {})",
+                start + rotation
+            );
+            sum += phi;
+        }
+        let mean = sum / N as f64;
+        let want = start + rotation / 2.0;
+        let se = rotation / (12.0 * N as f64).sqrt();
+        assert!(
+            (mean - want).abs() < 8.0 * se,
+            "mean angle {mean} vs {want} ± {se}"
+        );
+    }
+
+    #[test]
+    fn sector_emission_histograms_carry_uniform_angle_marginal() {
+        let mut config = flat_config(1.85, 0.0, 0.0);
+        config.sector = Some(ToroidalSector::new(0.5, 1.5).unwrap());
+        let hist = emission_histograms(&config, 15).unwrap();
+        let angle = hist.toroidal.as_ref().expect("partial sector marginal");
+        assert_eq!(angle.masses.len(), 15);
+        assert!(angle.masses.iter().all(|&m| m == 1.0 / 15.0));
+        assert!(angle.centers.windows(2).all(|w| w[0] < w[1]));
+        assert!((angle.centers[0] - (0.5 + 0.05)).abs() < 1e-12);
+        assert!((angle.centers[14] - (0.5 + 1.5 - 0.05)).abs() < 1e-12);
+        let sum: f64 = angle.masses.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-12, "angle masses sum {sum}");
+        // Full torus carries no marginal: the landed card shape is untouched.
+        let full = emission_histograms(&iter_h_mode(), 15).unwrap();
+        assert!(full.toroidal.is_none());
+        let mut rotation = flat_config(1.85, 0.0, 0.0);
+        rotation.sector = Some(ToroidalSector::new(1.0, 2.0 * PI).unwrap());
+        assert!(emission_histograms(&rotation, 15)
+            .unwrap()
+            .toroidal
+            .is_none());
+    }
+
+    #[test]
+    fn sector_angles_are_loud() {
+        assert_eq!(
+            ToroidalSector::new(f64::NAN, 1.0),
+            Err(Error::NonFinite("toroidal sector start angle"))
+        );
+        assert_eq!(
+            ToroidalSector::new(0.0, f64::INFINITY),
+            Err(Error::NonFinite("toroidal sector rotation angle"))
+        );
+        assert_eq!(
+            ToroidalSector::new(-0.1, 1.0),
+            Err(Error::InvalidSector("start_angle must be in [0, 2π)"))
+        );
+        assert_eq!(
+            ToroidalSector::new(2.0 * PI, 1.0),
+            Err(Error::InvalidSector("start_angle must be in [0, 2π)"))
+        );
+        assert_eq!(
+            ToroidalSector::new(0.0, 0.0),
+            Err(Error::InvalidSector("rotation_angle must be in (0, 2π]"))
+        );
+        assert_eq!(
+            ToroidalSector::new(0.0, -1.0),
+            Err(Error::InvalidSector("rotation_angle must be in (0, 2π]"))
+        );
+        assert_eq!(
+            ToroidalSector::new(0.0, 2.0 * PI + 0.1),
+            Err(Error::InvalidSector("rotation_angle must be in (0, 2π]"))
+        );
+        // Boundary values are admitted exactly.
+        assert!(ToroidalSector::new(0.0, 2.0 * PI).is_ok());
+        assert!(ToroidalSector::new(0.0, 1e-300).is_ok());
+        // Config-level validation surfaces the same named errors.
+        let mut c = iter_h_mode();
+        c.sector = Some(ToroidalSector {
+            start_angle: -1.0,
+            rotation_angle: 1.0,
+        });
+        assert!(matches!(c.validate(), Err(Error::InvalidSector(_))));
+        let mut c = iter_h_mode();
+        c.sector = Some(ToroidalSector {
+            start_angle: f64::NAN,
+            rotation_angle: 1.0,
+        });
+        assert!(matches!(c.validate(), Err(Error::NonFinite(_))));
+        // A bad sector is loud through total_strength too.
+        let mut c = iter_h_mode();
+        c.sector = Some(ToroidalSector {
+            start_angle: 0.0,
+            rotation_angle: f64::NAN,
+        });
+        assert!(c.total_strength().is_err());
     }
 
     // --- G-flat: sampled moments vs closed forms at δ = 0 ---------------------
@@ -1033,6 +1912,46 @@ pub(crate) mod tests {
             (mean - want).abs() < 6.0 * se_mean,
             "<E> {mean} vs {want} ± {se_mean}"
         );
+    }
+
+    #[test]
+    fn species_sampler_fires_both_branches_at_pair_temperatures() {
+        // 70/30 D/T flat plasma at T_D = 20 keV, T_T = 30 keV: the D-T
+        // branch reacts at T_DT = 24 keV and the D-D branch at T_D, so both
+        // lines must appear in the stream and the mean energy must match
+        // the pair-temperature branch-weighted mean (module rustdoc).
+        let mut config = flat_config(1.85, 0.0, 0.0);
+        config.fuel_mixture = Some(FuelMixture::new(0.7, 0.3).unwrap());
+        config.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 30.0).unwrap());
+        let mut sampler = ParametricSampler::new(config, 13).unwrap();
+        let particles = sampler.sample_n(N);
+        let (k_dt, k_dd) = FuelMixture::new(0.7, 0.3).unwrap().branch_weights();
+        let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(24.0).unwrap();
+        let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(20.0).unwrap();
+        let p_dd = k_dd * sv_dd / (k_dt * sv_dt + k_dd * sv_dd);
+        let below = particles.iter().filter(|p| p.energy_mev < 10.0).count() as f64;
+        let frac_dd = below / N as f64;
+        let se = (p_dd * (1.0 - p_dd) / N as f64).sqrt();
+        assert!(
+            (frac_dd - p_dd).abs() < 8.0 * se,
+            "D-D branch fraction {frac_dd} vs {p_dd} ± {se}"
+        );
+        let (mu_dt, sigma_dt) = FusionReaction::Dt.moments_mev(24.0).unwrap();
+        let (mu_dd, sigma_dd) = FusionReaction::Dd.moments_mev(20.0).unwrap();
+        let want = p_dd * mu_dd + (1.0 - p_dd) * mu_dt;
+        let var = p_dd * (sigma_dd * sigma_dd + mu_dd * mu_dd)
+            + (1.0 - p_dd) * (sigma_dt * sigma_dt + mu_dt * mu_dt)
+            - want * want;
+        let mean: f64 = particles.iter().map(|p| p.energy_mev).sum::<f64>() / N as f64;
+        let se_mean = var.sqrt() / (N as f64).sqrt();
+        assert!(
+            (mean - want).abs() < 6.0 * se_mean,
+            "<E> {mean} vs {want} ± {se_mean}"
+        );
+        // Deterministic per seed on the species path too.
+        let a = ParametricSampler::new(config, 31).unwrap().sample_n(256);
+        let b = ParametricSampler::new(config, 31).unwrap().sample_n(256);
+        assert_eq!(a, b);
     }
 
     #[test]

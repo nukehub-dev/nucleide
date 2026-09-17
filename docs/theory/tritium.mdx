@@ -66,15 +66,15 @@ equilibrium, recombination flux, or symmetry). Temperature is a
 caller-supplied profile `T(x, t)`; there is no heat solve in v1. Series
 stacks of slabs — multi-layer walls such as W/Cu/CuCrZr first walls —
 extend the same equations layer-by-layer with linear interface
-conditions (L1: Sieverts or Henry) and the series-resistance steady
-state (L2).
+conditions (L1: Sieverts or Henry) or the vented-sink recombination law
+(L3) and the series-resistance steady state (L2).
 
 <Callout type="info" title="Code shape">
   The crate mirrors the kinetics layout: `params.rs` (transport and
   trap data with validating constructors), `bc.rs` (the surface-law
   taxonomy), `solve.rs` (the implicit stepper plus closed-form gate
   helpers), `layers.rs` (multi-layer series stacks with Sieverts/Henry
-  interface conditions), and `error.rs` (a `#[non_exhaustive]` error enum with the
+  interface conditions plus the vented-sink recombination law), and `error.rs` (a `#[non_exhaustive]` error enum with the
   crate `Result` alias).
 </Callout>
 
@@ -318,10 +318,25 @@ $$
 
 Each layer's `K` is caller data: the layer solubility plays `K_S` or `K_H`
 according to the law declared at the adjacent interface (one law per gap).
-Recombination interface laws (`J = K_r c²` across a gap) raise a clear
-unsupported-interface error — never a silent pass. The steady state is the
-series-resistance network over the per-layer permeabilities
-`Φ_k = D_k K_k`: `u(x)` is piecewise linear with constant flux
+A gap may instead carry the vented-sink recombination law (L3, G10): a
+single face concentration `x ≥ 0` with half-cell fluxes
+`J_L = g_L (c_L − x)`, `J_R = g_R (x − c_R)` (`g = 2D/dx` per side, no
+solubility involved) and the desorption sink `K_r x²` venting from the
+face,
+
+$$
+J_L - J_R = K_r x^2.
+\tag{L3}
+$$
+
+The `K_r → 0` limit is a continuous-concentration joint, not a Sieverts
+law; a non-positive permeation drive has no nonnegative root and is a
+clear error. The flux-continuous product law (`J = K_r x_0 x_1`) is
+rejected by construction — it admits a spurious insulated root and no
+symmetric root, so no spelling for it exists. Away from vented gaps the
+steady state is the series-resistance network over the per-layer
+permeabilities `Φ_k = D_k K_k`: `u(x)` is piecewise linear with constant
+flux
 
 $$
 J = \frac{u(0) - u(L)}{\sum_k L_k / \Phi_k}.
@@ -334,7 +349,13 @@ face resistance `R_f = dx_k/(2Φ_k) + dx_{k+1}/(2Φ_{k+1})` — linear in the
 neighbouring cell values, so the linear interface condition (Sieverts or
 Henry — the resistance form is law-agnostic) folds directly into the
 tridiagonal θ-step matrix (the spike outcome: no interface Newton is
-needed, unlike the nonlinear recombination faces of G5/G6). Within one
+needed, unlike the nonlinear recombination faces of G5/G6). A vented gap
+instead CUTs the matrix (block-diagonal; each block sees a Dirichlet cut
+face): the adjacent-cell values stay affine in the face value, so the
+scalar residual `R(x) = P − Q·x − K_r·x² = 0` closes in closed form
+`x = 2P/(√(Q²+4K_rP)+Q)`; coupled faces (several gaps, or recombination
+outer ends alongside) close by Newton iteration with the analytic
+Jacobian. Within one
 uniform layer it reduces to the landed arithmetic-mean face. Outer ends
 reuse the landed surface taxonomy unchanged, including recombination ends
 through the same face-response construction. A one-layer stack dispatches
@@ -402,8 +423,8 @@ gated in-crate.
 The linear Henry law shares the (L1) construction — `u = c_m/K_H`
 continuous with continuous flux, folding into the same tridiagonal
 θ-step matrix with `K_H` in place of `K_S` — so the steady gates carry
-over at G7-class tolerances (recombination interfaces remain clear
-errors, and the G7c single-layer recovery anchor is unchanged):
+over at G7-class tolerances (the G7c single-layer recovery anchor is
+unchanged):
 
 - **G9a (Henry series resistance)**: a 2-layer stack joined by one Henry
   interface matches the (L2) closed form at `1e-12` relative on the
@@ -415,6 +436,56 @@ errors, and the G7c single-layer recovery anchor is unchanged):
   interface holds flux continuity across both interface laws to roundoff
   against the same series-resistance closed form, with the interface
   potentials pinned from each side.
+
+### G10 — Vented-sink recombination interfaces
+
+A vented-sink gap (L3) desorbs `K_r x²` from its single face
+concentration, so — unlike the linear gaps — it carries a flux jump, not
+flux continuity. The CUT-matrix construction closes each gap against the
+adjacent blocks: one gap in closed form, coupled faces by Newton. The
+gates are synthetic stacks with hand-derived closed forms (each
+Dirichlet-bounded block is nodally exact for linear profiles, so the
+discrete residual is the continuum quadratic to roundoff):
+
+- **G10a (closed form)**: a 2-layer stack with one vented gap matches the
+  continuum root of `R(x) = D₁(c₀−x)/L₁ − D₂(x−cN)/L₂ − K_r·x²` at `1e-12`
+  on the face value, fluxes, and block-linear profile, with the gap
+  residual and the outer balance `F_L + F_R + K_r·x² = 0` at the same
+  tolerance.
+- **G10b (rate limits)**: `K_r → ∞` pins the upstream block to its
+  Dirichlet-terminated profile; `K_r → 0` recovers the uncut slab on
+  identical layers and holds joint-continuous `c` (no `K`-ratio jump) on
+  contrasting solubilities — the continuous joint, not Sieverts.
+- **G10c (mixed laws)**: a 4-layer stack with one interface of each law
+  holds flux continuity across both linear gaps to roundoff while the
+  vented gap closes the scalar quadratic against the super-block
+  resistances at `1e-12`.
+- **G10d/G10e (coupled Newton)**: two vented gaps, or a vented gap plus a
+  recombination outer end, close by Newton — residuals pin the Newton
+  contract and the outer balance closes modulo the residuals.
+- **G10f/G10g (traps and errors)**: traps evaluate on the owning layer's
+  isotherm behind the vented close; zero drive fails loudly (no
+  nonnegative root).
+
+### G11 — Vented-sink transient
+
+The transient reuses the θ-stepper on the CUT matrix with the G6
+face-coupling moved interior: one sensitivity column per vent face per
+`dt` span, per-step close (closed form for a lone gap, warm-started
+Newton for coupled faces — fused into the trap Picard loop), and the
+discrete balance closed against the reported boundary fluxes *plus* the
+desorption sinks from the recorded gap faces. A lone gap follows the G6
+clamping stance per step; the steady `P ≤ 0` loud error stands:
+
+- **G11a (mass balance)**: trap-free, one θ-step per output — the balance
+  with the desorption sink closes to roundoff.
+- **G11b (self-convergence)**: `dt`-halving shows the θ-method order in
+  the resolved band (Crank–Nicolson on the spike's pinned pair,
+  backward Euler on both pairs).
+- **G11c (long-time asymptote)**: the vented transient lands on the
+  vented steady state (fluxes at `1e-6`, profile at `1e-9`).
+- **G11d (trap fusion)**: the trap-coupled transient closes the
+  mobile-plus-trapped balance with the desorption sink.
 
 ### Invariants
 
@@ -440,7 +511,10 @@ plus the G6e independent method-of-lines cross-check), G7/G8/G9 as the
 multi-layer gates (series-resistance closed forms at `1e-12` with
 roundoff-level interface continuity pins, including Henry-interface and
 mixed-law stacks; transient asymptote +
-self-convergence + mass balance), plus positivity and mass-balance
+self-convergence + mass balance), G10/G11 as the vented-sink
+recombination-interface gates (scalar-quadratic closed forms at `1e-12`,
+Newton-contract residuals for coupled faces, transient balance with the
+desorption sink plus asymptote + self-convergence + trap fusion), plus positivity and mass-balance
 invariant checks.
 
 ## Worked example: G1 slab
@@ -461,11 +535,13 @@ flux is still `≈2.3e-3 J_ss` at `t = 31.6 s` and reaches `0.9999 J_ss` by
 - **Prescribed temperature**: `T(x, t)` is caller data; no heat solve.
 - **Caller-supplied properties**: diffusivities, solubilities, trapping
   rates, and surface constants ship as caller data; no vendored tables.
-- **Linear interface laws**: internal interfaces close through a linear
+- **Linear plus vented-sink interface laws**: internal interfaces close through a linear
   law — Sieverts (`c/K_S` continuous) or Henry (`c/K_H` continuous) — with
-  continuous flux; recombination interface laws raise a clear
-  unsupported-interface error, and trap-species discontinuities across
-  interfaces enter only through caller data.
+  continuous flux, or through the vented-sink recombination law (single
+  face concentration with the `K_r x²` desorption jump); reverse or zero
+  drive on a vented gap is a clear error, and trap-species discontinuities across
+  interfaces enter only through caller data. The flux-continuous
+  product law has no spelling by construction.
 - **Single mobile species**: tritium only; H/D co-diffusion and isotope
   exchange are out.
 - **Static traps**: `N_j` fixed; damage-driven intrinsic trap creation is
@@ -479,15 +555,15 @@ flux is still `≈2.3e-3 J_ss` at `t = 31.6 s` and reaches `0.9999 J_ss` by
   and none is claimed.
 - **Thin facades only**: `nucleide.tritium` (Python) and
   `tritiumBreakthrough` (WASM) expose the landed kernel; no new physics
-  past T1–T2/G1–G8.
+  past T1–T2/G1–G11.
 
 ## Validation
 
 - **Analytic replay** (landed): Rust fixture tests plus
   `tests/test_tritium.py` assert the G1–G4 fixtures at the pinned
-  tolerances and replay G5/G6 and the multi-layer G7/G8/G9 gates as in-test
-  closed forms (synthetic stacks with hand-derived series-resistance
-  oracles; the multi-layer goldens live in unit tests, not
+  tolerances and replay G5/G6 and the multi-layer G7/G8/G9/G10/G11 gates as in-test
+  closed forms (synthetic stacks with hand-derived series-resistance and
+  vented-sink oracles; the multi-layer goldens live in unit tests, not
   `fixtures/tritium/`), following the kinetics oracle pattern. No
   `validation/*_vs_*.py` script exists — there is no external oracle to
   wire, so none was added.

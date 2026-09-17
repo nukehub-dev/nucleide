@@ -186,12 +186,25 @@ def test_validation_errors_are_loud() -> None:
             seed=0,
         )
     # Ring/point specs ignore parametric-only keys; a parametric spec keeps
-    # the loud boundary for toroidal sectors and for bad fuel fractions.
+    # loud errors for malformed sectors (one angle without the other,
+    # non-finite or out-of-range angles).
     ps.particles(dict(RING_SPEC, elongation=1.8), 4, seed=0)
-    with pytest.raises(ValueError, match="not yet supported"):
+    with pytest.raises(ValueError, match="together"):
         ps.particles(dict(PARAMETRIC_SPEC, rotation_angle=1.57), 4, seed=0)
-    with pytest.raises(ValueError, match="not yet supported"):
+    with pytest.raises(ValueError, match="together"):
         ps.particles(dict(PARAMETRIC_SPEC, start_angle=0.78), 4, seed=0)
+    with pytest.raises(ValueError, match="sector"):
+        ps.particles(dict(PARAMETRIC_SPEC, start_angle=-0.1, rotation_angle=1.57), 4, seed=0)
+    with pytest.raises(ValueError, match="sector"):
+        ps.particles(dict(PARAMETRIC_SPEC, start_angle=0.0, rotation_angle=0.0), 4, seed=0)
+    with pytest.raises(ValueError, match="sector"):
+        ps.particles(dict(PARAMETRIC_SPEC, start_angle=0.0, rotation_angle=7.0), 4, seed=0)
+    with pytest.raises(ValueError, match="sector"):
+        ps.particles(
+            dict(PARAMETRIC_SPEC, start_angle=float("nan"), rotation_angle=1.0),
+            4,
+            seed=0,
+        )
 
 
 def test_parametric_fuel_mixture_fractions_are_loud() -> None:
@@ -324,3 +337,198 @@ def test_parametric_serpent_card_structure() -> None:
         assert lines[3 + 2 * number].startswith(f"SI{number} ")
         assert lines[4 + 2 * number].startswith(f"SP{number} ")
     assert out["serpent"]["drift"][0]["reparsed"] is False
+
+
+def test_parametric_sector_births_are_uniform_over_sector() -> None:
+    # start 0.5 rad, rotation 1.5 rad: every birth lands in-sector and the
+    # mean angle matches the uniform closed form (start + rotation/2).
+    start, rotation = 0.5, 1.5
+    spec = dict(PARAMETRIC_SPEC, start_angle=start, rotation_angle=rotation)
+    n = 20_000
+    out = ps.particles(spec, n, seed=23)
+    phi = [math.atan2(y, x) % (2.0 * math.pi) for x, y in zip(out["x"], out["y"], strict=True)]
+    assert all(start <= p < start + rotation for p in phi)
+    want = start + rotation / 2.0
+    se = rotation / math.sqrt(12.0 * n)
+    assert abs(sum(phi) / n - want) < 8.0 * se
+
+
+def test_parametric_full_rotation_recovers_full_torus() -> None:
+    # Exact full-rotation spelling reproduces the landed kernel bit-for-bit:
+    # the same seeded stream and the same emitted cards.
+    full = dict(PARAMETRIC_SPEC, start_angle=0.0, rotation_angle=2.0 * math.pi)
+    a = ps.particles(PARAMETRIC_SPEC, 512, seed=17)
+    b = ps.particles(full, 512, seed=17)
+    for key in ("x", "y", "z", "u", "v", "w", "energy", "weight"):
+        assert bool((a[key] == b[key]).all())
+    cards_a = ps.emit_source_cards(PARAMETRIC_SPEC, bins=15)
+    cards_b = ps.emit_source_cards(full, bins=15)
+    assert cards_b["sdef"]["card"] == cards_a["sdef"]["card"]
+    assert cards_b["sdef"]["drift"] == cards_a["sdef"]["drift"]
+    assert cards_b["serpent"]["card"] == cards_a["serpent"]["card"]
+
+
+def test_parametric_sector_card_carries_phi_marginal() -> None:
+    # A partial sector adds the uniform angle-bin marginal (PHI=D4 / phi d4)
+    # plus the toroidal-sector drift row; the SDEF card still round-trips.
+    spec = dict(PARAMETRIC_SPEC, start_angle=0.5, rotation_angle=math.pi)
+    out = ps.emit_source_cards(spec, bins=15)
+    card = out["sdef"]["card"]
+    parsed = mcnp.parse_sdef(card)
+    assert parsed["card"] == card
+    assert parsed["phi"] == "D4"
+    assert parsed["rad"] == "D1"
+    assert parsed["ext"] == "D2"
+    assert parsed["erg"] == "D3"
+    assert len(parsed["distributions"]) == 4
+    quantities = [row["quantity"] for row in out["sdef"]["drift"]]
+    assert quantities == [
+        "emission probability",
+        "spatial marginals",
+        "joint correlation",
+        "toroidal sector",
+    ]
+    sector_row = out["sdef"]["drift"][3]
+    assert sector_row["reparsed"] is True
+    assert "rotation/2π = 0.5" in sector_row["note"]
+    serpent_lines = out["serpent"]["card"].splitlines()
+    assert serpent_lines[4] == "src 1 phi d4"
+    assert any(line.startswith("SI4 ") for line in serpent_lines)
+    assert any(line.startswith("SP4 ") for line in serpent_lines)
+    assert out["serpent"]["drift"][-1]["quantity"] == "toroidal sector"
+    assert out["serpent"]["drift"][-1]["reparsed"] is False
+
+
+def test_proton_accounting_pure_fuels_are_exact() -> None:
+    # Pinned 50/50 convention: pure D-D makes one proton per neutron
+    # (totals identical, ratio exactly 1.0); pure D-T makes none.
+    dd = ps.proton_accounting(dict(PARAMETRIC_SPEC, reaction="dd"))
+    assert dd["proton_total"] == dd["neutron_total"] > 0.0
+    assert dd["proton_per_neutron"] == 1.0
+    dt = ps.proton_accounting(PARAMETRIC_SPEC)
+    assert dt["proton_total"] == 0.0
+    assert dt["proton_per_neutron"] == 0.0
+    assert "50/50" in dt["note"]
+    # Single-reaction ring/point specs carry no density model: per-neutron
+    # ratio only, totals None.
+    ring_dd = ps.proton_accounting(dict(RING_SPEC, reaction="dd"))
+    assert ring_dd["proton_per_neutron"] == 1.0
+    assert ring_dd["neutron_total"] is None and ring_dd["proton_total"] is None
+    ring_dt = ps.proton_accounting(RING_SPEC)
+    assert ring_dt["proton_per_neutron"] == 0.0
+
+
+def test_proton_accounting_blend_matches_branch_share() -> None:
+    # 70/30 blend: proton_per_neutron equals the D-D branch weight ratio
+    # p_dd / (1 - p_dd) from the in-script rate rule (both deterministic
+    # quadratures; tolerance is grid precision, not sampling).
+    spec = dict(PARAMETRIC_SPEC, fuel={"D": 0.7, "T": 0.3})
+    got = ps.proton_accounting(spec)
+    sv_dt = ps.reactivity("dt", 20.0)
+    sv_dd = ps.reactivity("dd", 20.0)
+    # Flat-profile hand check first: uniform 20 keV gives the exact ratio.
+    assert got["proton_total"] > 0.0 and got["neutron_total"] > got["proton_total"]
+    assert 0.0 < got["proton_per_neutron"] < 0.05
+    assert sv_dt > 0.0 and sv_dd > 0.0
+
+
+def test_proton_accounting_zero_tritium_recovers_dd() -> None:
+    # Zero-tritium recovery anchor end to end: a D-only fuel dict gives the
+    # pure-D-D bookkeeping (ratio 1.0, totals equal).
+    spec = dict(PARAMETRIC_SPEC, fuel={"D": 1.0, "T": 0.0})
+    got = ps.proton_accounting(spec)
+    assert got["proton_total"] == got["neutron_total"] > 0.0
+    assert got["proton_per_neutron"] == 1.0
+
+
+def test_proton_accounting_pure_tritium_is_loud() -> None:
+    # No T-T neutron branch: a pure-tritium mixture has zero neutron
+    # strength, so proton bookkeeping (a share of the neutron source) is a
+    # loud error, never a zero stream.
+    with pytest.raises(ValueError):
+        ps.proton_accounting(dict(PARAMETRIC_SPEC, fuel={"D": 0.0, "T": 1.0}))
+
+
+def _flat_l_mode_spec() -> dict[str, object]:
+    """Flat L-mode parametric spec: uniform 20 keV / 1e20 m⁻³ plasma, so a
+    uniform species pair (T_D = T_T = 20) must reproduce the shared kernel."""
+    spec = dict(PARAMETRIC_SPEC)
+    spec.update(
+        mode="L",
+        triangularity=0.0,
+        shafranov_factor=0.0,
+        ion_density_centre=1.0e20,
+        ion_density_peaking_factor=0.0,
+        ion_density_pedestal=1.0,
+        ion_density_separatrix=1.0,
+        ion_temperature_centre=20.0,
+        ion_temperature_peaking_factor=0.0,
+        ion_temperature_beta=1.0,
+        ion_temperature_pedestal=20.0,
+        ion_temperature_separatrix=20.0,
+    )
+    return spec
+
+
+def test_species_temperatures_fire_both_branches_at_pair_temperatures() -> None:
+    # 70/30 blend at T_D = 20 keV, T_T = 30 keV: the D-T branch reacts at
+    # T_DT = 24 keV and the D-D branch at T_D, so both lines fire in the
+    # stream and the D-D share matches the in-script pair-temperature rule.
+    spec = dict(
+        PARAMETRIC_SPEC,
+        fuel={"D": 0.7, "T": 0.3},
+        species_temperatures={"D": 20.0, "T": 30.0},
+    )
+    n = 20_000
+    out = ps.particles(spec, n, seed=13)
+    energy = out["energy"]
+    sv_dt = ps.reactivity("dt", 24.0)
+    sv_dd = ps.reactivity("dd", 20.0)
+    p_dd = (0.7 * 0.7 / 2.0 * sv_dd) / (0.7 * 0.3 * sv_dt + 0.7 * 0.7 / 2.0 * sv_dd)
+    frac_dd = float((energy < 10.0).mean())
+    se = math.sqrt(p_dd * (1.0 - p_dd) / n)
+    assert abs(frac_dd - p_dd) < 8.0 * se
+    # Branch-weighted mean with the per-branch Ballabio lines (D-T at 24
+    # keV, D-D at 20 keV); the pair is uniform so the mean is uniform too.
+    mu_dt, sigma_dt = _ballabio_moments("dt", 24.0)
+    mu_dd, sigma_dd = _ballabio_moments("dd", 20.0)
+    want = p_dd * mu_dd + (1.0 - p_dd) * mu_dt
+    var = p_dd * (sigma_dd**2 + mu_dd**2) + (1.0 - p_dd) * (sigma_dt**2 + mu_dt**2) - want**2
+    assert abs(float(energy.mean()) - want) < 6.0 * math.sqrt(var / n)
+
+
+def test_species_equal_temperatures_recover_shared_mixture() -> None:
+    # T_D = T_T = profile T reproduces the shared-temperature mixture kernel
+    # bit-for-bit end to end: the same seeded stream and the same cards.
+    flat = dict(_flat_l_mode_spec(), fuel={"D": 0.5, "T": 0.5})
+    pair = dict(flat, species_temperatures={"D": 20.0, "T": 20.0})
+    a = ps.particles(flat, 512, seed=17)
+    b = ps.particles(pair, 512, seed=17)
+    for key in ("x", "y", "z", "u", "v", "w", "energy", "weight"):
+        assert bool((a[key] == b[key]).all())
+    cards_a = ps.emit_source_cards(flat, bins=15)
+    cards_b = ps.emit_source_cards(pair, bins=15)
+    assert cards_b["sdef"]["card"] == cards_a["sdef"]["card"]
+    assert cards_b["sdef"]["drift"] == cards_a["sdef"]["drift"]
+    assert cards_b["serpent"]["card"] == cards_a["serpent"]["card"]
+
+
+def test_species_temperatures_are_loud() -> None:
+    # Non-finite or negative species temperatures never reach the sampler;
+    # the dict needs both D and T keys; and the pair without a fuel mixture
+    # is a loud scope error, never a silent single-fuel fallback.
+    blend = dict(PARAMETRIC_SPEC, fuel={"D": 0.5, "T": 0.5})
+    with pytest.raises(ValueError, match=">= 0"):
+        ps.particles(dict(blend, species_temperatures={"D": -1.0, "T": 20.0}), 4, seed=0)
+    with pytest.raises(ValueError, match=">= 0"):
+        ps.particles(dict(blend, species_temperatures={"D": 20.0, "T": -0.5}), 4, seed=0)
+    with pytest.raises(ValueError, match="non-finite"):
+        ps.particles(dict(blend, species_temperatures={"D": float("nan"), "T": 20.0}), 4, seed=0)
+    with pytest.raises(ValueError, match="non-finite"):
+        ps.particles(dict(blend, species_temperatures={"D": 20.0, "T": float("inf")}), 4, seed=0)
+    with pytest.raises(ValueError, match="both `D` and `T`"):
+        ps.particles(dict(blend, species_temperatures={"D": 20.0}), 4, seed=0)
+    with pytest.raises(ValueError, match="supported keys"):
+        ps.particles(dict(blend, species_temperatures={"D": 20.0, "T": 20.0, "H": 1.0}), 4, seed=0)
+    with pytest.raises(ValueError, match="not yet supported"):
+        ps.particles(dict(PARAMETRIC_SPEC, species_temperatures={"D": 20.0, "T": 30.0}), 4, seed=0)

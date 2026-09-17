@@ -9,13 +9,27 @@ Two parts:
    closed forms at zero triangularity, Bosch–Hale reactivity transcription,
    sampled birth moments vs independent fine quadrature of S·R·|J|), and P8
    on a pinned 70/30 D/T fuel blend (mixture-rule sampled moments and the
-   D-D branch share vs in-script mixture quadrature).
+   D-D branch share vs in-script mixture quadrature), plus P9 on the
+   D(d,p)T proton bookkeeping (pure-fuel exact ratios, the 70/30 share vs
+   quadrature, the no-T recovery anchor, and the loud pure-T error), plus
+   P10 on toroidal sectors (in-sector uniform births, bit-for-bit
+   full-rotation recovery, the PHI=D4 card marginal with its drift row),
+   plus P11 on per-species ion temperatures (pair-temperature sampled
+   moments and branch share vs quadrature, bit-for-bit equal-T recovery).
 2. openmc-plasma-source cross-check (container oracle): O1-O3 on the
    ring/point legs (Ballabio helpers, D-D energy moments, ring geometry),
    O4-O7 on the parametric leg (Miller map, L/H profiles, reactivity vs
    NeSST, sampled moments vs quadrature built from the upstream functions),
-   and O8 on the pinned 70/30 blend (mixture moments vs quadrature over the
-   upstream map/profiles with the NeSST D-T and D-D reactivities). The
+   O8 on the pinned 70/30 blend (mixture moments vs quadrature over the
+   upstream map/profiles with the NeSST D-T and D-D reactivities), and O9
+   on a tritium-rich 10/90 blend (two-branch kernel vs the three-branch
+   upstream model: the deferred T-T branch quantified, never ignored).
+   Protons have no oracle — the upstream package models neutrons only —
+   so D(d,p)T accounting rests on the always-run P9 gates — and O10 on a
+   partial toroidal sector ((r, z, E) moments vs the upstream quadrature
+   plus the uniform angle marginal) — and O11 on a 70/30 blend at distinct
+   species temperatures (moments vs the upstream quadrature with the NeSST
+   reactivities evaluated at the pair temperatures). The
    upstream package is an optional oracle dependency: if it cannot be
    imported, the oracle checks are reported as SKIP with their reason (never
    silently).
@@ -249,6 +263,38 @@ def _quadrature_moments_mixture(
     return {"<r^2>": num_r2 / den, "mean_e": num_e / den, "p_dd": num_dd / den}
 
 
+def _quadrature_moments_mixture_species(
+    spec: dict, f_d: float, f_t: float, t_d: float, t_t: float, n_r: int = 400, n_t: int = 400
+) -> dict[str, float]:
+    """Fine-quadrature reference under the per-species-temperature mixture rule
+    S = n^2·[f_D·f_T·<sv>_DT(T_DT) + (f_D^2/2)·<sv>_DD(T_D)] with the
+    mass-weighted T_DT = T_D + (2/5)·(T_T − T_D): strength-weighted <r^2>,
+    branch-weighted mean birth energy, and the total D-D branch share."""
+    t_dt = t_d + 0.4 * (t_t - t_d)
+    am = spec["minor_radius"]
+    dr = am / n_r
+    dt = 2.0 * math.pi / n_t
+    num_r2 = den = num_e = num_dd = 0.0
+    for i in range(n_r):
+        r = (i + 0.5) * dr
+        n_cm3 = _profile_density(spec, r) * 1e-6
+        sv_dt = _reactivity_m3_s("dt", t_dt) * 1e6
+        sv_dd = _reactivity_m3_s("dd", t_d) * 1e6
+        w_dt = f_d * f_t * sv_dt
+        w_dd = f_d * f_d / 2.0 * sv_dd
+        mu_dt, _ = _ballabio_moments("dt", t_dt)
+        mu_dd, _ = _ballabio_moments("dd", t_d)
+        p_dd = w_dd / (w_dt + w_dd) if w_dt + w_dd > 0.0 else 0.0
+        for j in range(n_t):
+            theta = (j + 0.5) * dt
+            w = n_cm3 * n_cm3 * (w_dt + w_dd) * _volume_element(spec, r, theta) * dr * dt
+            den += w
+            num_r2 += w * r * r
+            num_e += w * (p_dd * mu_dd + (1.0 - p_dd) * mu_dt)
+            num_dd += w * p_dd
+    return {"<r^2>": num_r2 / den, "mean_e": num_e / den, "p_dd": num_dd / den}
+
+
 def analytic_gates() -> tuple[list[list[str]], list[str]]:
     """P1-P4 on the synthetic ring spec; returns (gate rows, prose notes)."""
     rows: list[list[str]] = []
@@ -438,11 +484,199 @@ def parametric_gates() -> tuple[list[list[str]], list[str]]:
         f"rule), n={N}; the D-D branch share gate proves both Ballabio lines "
         f"fire in the sampled stream."
     )
+
+    # P9: D(d,p)T proton accounting + zero-tritium recovery (always run).
+    # Proton bookkeeping is analytic (no sampling noise): pure D-D gives one
+    # proton per neutron exactly, D-T-only gives none, the 70/30 ratio
+    # matches the in-script mixture quadrature share, a D-only fuel dict
+    # recovers the pure-D-D bookkeeping exactly, and pure tritium (no T-T
+    # neutron branch) is a loud error, never a zero stream.
+    dd_acc = ps.proton_accounting(dict(PARAMETRIC_SPEC, reaction="dd"))
+    rows.append(
+        [
+            "P9 pure D-D proton/neutron",
+            fmt(dd_acc["proton_per_neutron"] - 1.0),
+            "exact",
+            _check(
+                dd_acc["proton_per_neutron"] == 1.0
+                and dd_acc["proton_total"] == dd_acc["neutron_total"],
+                "P9 pure DD",
+            ),
+        ]
+    )
+    dt_acc = ps.proton_accounting(PARAMETRIC_SPEC)
+    rows.append(
+        [
+            "P9 D-T-only protons",
+            fmt(dt_acc["proton_total"]),
+            "exact 0",
+            _check(
+                dt_acc["proton_total"] == 0.0 and dt_acc["proton_per_neutron"] == 0.0,
+                "P9 DT",
+            ),
+        ]
+    )
+    got_acc = ps.proton_accounting(blend)
+    want_share = quad["p_dd"] / (1.0 - quad["p_dd"])
+    err_p = rel_diff(got_acc["proton_per_neutron"], want_share)
+    rows.append(["P9 70/30 proton share", fmt(err_p), "< 1e-2", _check(err_p < 1e-2, "P9 share")])
+    d_only = ps.proton_accounting(dict(PARAMETRIC_SPEC, fuel={"D": 1.0, "T": 0.0}))
+    rows.append(
+        [
+            "P9 no-T recovery",
+            fmt(d_only["proton_per_neutron"] - 1.0),
+            "exact",
+            _check(
+                d_only["proton_per_neutron"] == 1.0
+                and d_only["proton_total"] == d_only["neutron_total"],
+                "P9 no-T",
+            ),
+        ]
+    )
+    try:
+        ps.proton_accounting(dict(PARAMETRIC_SPEC, fuel={"D": 0.0, "T": 1.0}))
+        loud_ok = False
+    except Exception:  # noqa: BLE001 — any loud error satisfies the gate
+        loud_ok = True
+    rows.append(["P9 pure-T loud", "-", "raises", _check(loud_ok, "P9 pure-T")])
+    notes.append(
+        "P9 D(d,p)T proton bookkeeping (pinned 50/50 with the D-D neutron "
+        "branch; sampler and cards stay neutron-only): exact pure-fuel "
+        "ratios, the 70/30 share vs the P8 quadrature (tolerance is the "
+        "256-vs-400 grid precision on the H-mode pedestal kink — exactness "
+        "is pinned by the crate hand vectors), the no-T recovery anchor, "
+        "and the loud pure-T error."
+    )
+
+    # P10: toroidal sectors (always run). Births are uniform over
+    # [start, start + rotation) (mean-angle gate at 8 sigma, every birth
+    # in-sector), the exact full-rotation spelling reproduces the landed
+    # kernel bit-for-bit (same seeded stream, same emitted cards), and a
+    # partial sector adds the PHI=D4 angle-bin marginal plus the
+    # toroidal-sector drift row while the SDEF card still round-trips.
+    start, rotation = 0.5, 1.5
+    sector = dict(PARAMETRIC_SPEC, start_angle=start, rotation_angle=rotation)
+    out = ps.particles(sector, N, seed=23)
+    phi = np.arctan2(out["y"], out["x"]) % (2.0 * math.pi)
+    in_sector = bool(((phi >= start) & (phi < start + rotation)).all())
+    rows.append(["P10 sector births in-sector", "-", "all", _check(in_sector, "P10 in-sector")])
+    want_phi = start + rotation / 2.0
+    se_phi = rotation / math.sqrt(12.0 * N)
+    mean_phi = float(np.mean(phi))
+    rows.append(
+        [
+            "P10 sector mean angle",
+            fmt(mean_phi - want_phi),
+            "< 8 sigma",
+            _check(abs(mean_phi - want_phi) < 8.0 * se_phi, "P10 angle"),
+        ]
+    )
+    full = dict(PARAMETRIC_SPEC, start_angle=0.0, rotation_angle=2.0 * math.pi)
+    a = ps.particles(PARAMETRIC_SPEC, 512, seed=17)
+    b = ps.particles(full, 512, seed=17)
+    recovered = all(bool((a[key] == b[key]).all()) for key in ("x", "y", "z", "energy"))
+    rows.append(["P10 full-rotation stream", "-", "exact", _check(recovered, "P10 stream")])
+    cards_a = ps.emit_source_cards(PARAMETRIC_SPEC, bins=15)
+    cards_b = ps.emit_source_cards(full, bins=15)
+    same_cards = (
+        cards_b["sdef"]["card"] == cards_a["sdef"]["card"]
+        and cards_b["serpent"]["card"] == cards_a["serpent"]["card"]
+    )
+    rows.append(["P10 full-rotation cards", "-", "exact", _check(same_cards, "P10 cards")])
+    sec_cards = ps.emit_source_cards(sector, bins=15)
+    sec_parsed = mcnp.parse_sdef(sec_cards["sdef"]["card"])
+    phi_ok = (
+        sec_parsed["card"] == sec_cards["sdef"]["card"]
+        and sec_parsed["phi"] == "D4"
+        and len(sec_parsed["distributions"]) == 4
+    )
+    rows.append(["P10 sector PHI marginal", "-", "round-trip", _check(phi_ok, "P10 PHI")])
+    drift_quantities = [row["quantity"] for row in sec_cards["sdef"]["drift"]]
+    drift_ok = drift_quantities[-1] == "toroidal sector" and bool(
+        sec_cards["sdef"]["drift"][-1]["reparsed"]
+    )
+    rows.append(["P10 sector drift row", "-", "present", _check(drift_ok, "P10 drift")])
+    notes.append(
+        f"P10 toroidal sector (start {start} rad, rotation {rotation} rad): "
+        f"uniform birth angles over the sector (n={N}), bit-for-bit "
+        f"full-rotation recovery of the landed kernel (stream and cards), "
+        f"and the PHI=D4 angle-bin marginal with its drift row."
+    )
+
+    # P11: per-species ion temperatures (always run). A 70/30 blend at
+    # T_D = 20 keV, T_T = 30 keV reacts the D-T branch at T_DT = 24 keV and
+    # the D-D branch at T_D: sampled mean energy, radius moment, and D-D
+    # branch share sit on the pair-temperature quadrature. On a flat
+    # uniform-20 keV L-mode plasma the equal pair (20, 20) reproduces the
+    # shared-temperature mixture kernel bit-for-bit (stream and cards).
+    t_d11, t_t11 = 20.0, 30.0
+    species11 = dict(
+        PARAMETRIC_SPEC,
+        fuel={"D": 0.7, "T": 0.3},
+        species_temperatures={"D": t_d11, "T": t_t11},
+    )
+    ours11 = ps.particles(species11, N, seed=81)
+    quad11 = _quadrature_moments_mixture_species(PARAMETRIC_SPEC, 0.7, 0.3, t_d11, t_t11)
+    err_e11 = rel_diff(float(np.mean(ours11["energy"])), quad11["mean_e"])
+    rows.append(
+        ["P11 species mean birth energy", fmt(err_e11), "< 1e-2", _check(err_e11 < 1e-2, "P11 E")]
+    )
+    major11 = np.hypot(ours11["x"], ours11["y"])
+    r11 = _recover_minor_radius(PARAMETRIC_SPEC, major11, ours11["z"])
+    err_r11 = rel_diff(float(np.mean(r11**2)), quad11["<r^2>"])
+    rows.append(
+        ["P11 species birth <r^2>", fmt(err_r11), "< 1e-2", _check(err_r11 < 1e-2, "P11 r2")]
+    )
+    frac_dd11 = float(np.mean(ours11["energy"] < 10.0))
+    se_dd11 = math.sqrt(quad11["p_dd"] * (1.0 - quad11["p_dd"]) / N)
+    rows.append(
+        [
+            "P11 species D-D branch share",
+            fmt(frac_dd11 - quad11["p_dd"]),
+            "< 8 sigma",
+            _check(abs(frac_dd11 - quad11["p_dd"]) < 8.0 * se_dd11, "P11 share"),
+        ]
+    )
+    flat11 = dict(
+        PARAMETRIC_SPEC,
+        mode="L",
+        triangularity=0.0,
+        shafranov_factor=0.0,
+        ion_density_centre=1.0e20,
+        ion_density_peaking_factor=0.0,
+        ion_density_pedestal=1.0,
+        ion_density_separatrix=1.0,
+        ion_temperature_centre=20.0,
+        ion_temperature_peaking_factor=0.0,
+        ion_temperature_beta=1.0,
+        ion_temperature_pedestal=20.0,
+        ion_temperature_separatrix=20.0,
+        fuel={"D": 0.5, "T": 0.5},
+    )
+    pair11 = dict(flat11, species_temperatures={"D": 20.0, "T": 20.0})
+    a11 = ps.particles(flat11, 512, seed=17)
+    b11 = ps.particles(pair11, 512, seed=17)
+    recovered11 = all(bool((a11[key] == b11[key]).all()) for key in ("x", "y", "z", "energy"))
+    rows.append(["P11 equal-T stream recovery", "-", "exact", _check(recovered11, "P11 stream")])
+    cards_a11 = ps.emit_source_cards(flat11, bins=15)
+    cards_b11 = ps.emit_source_cards(pair11, bins=15)
+    same_cards11 = (
+        cards_b11["sdef"]["card"] == cards_a11["sdef"]["card"]
+        and cards_b11["serpent"]["card"] == cards_a11["serpent"]["card"]
+    )
+    rows.append(["P11 equal-T card recovery", "-", "exact", _check(same_cards11, "P11 cards")])
+    notes.append(
+        f"P11 per-species ion temperatures (T_D={t_d11:g} keV, T_T={t_t11:g} keV, "
+        f"70/30 blend, n={N}): D-T reacts at T_DT={t_d11 + 0.4 * (t_t11 - t_d11):g} keV, "
+        f"D-D at T_D (sampled moments and branch share vs the pair-temperature "
+        f"quadrature); the uniform equal pair on a flat 20 keV plasma recovers "
+        f"the shared kernel bit-for-bit (stream and cards)."
+    )
     return rows, notes
 
 
 def oracle_check_openmc_plasma_source() -> tuple[list[list[str]], list[str], bool]:
-    """O1-O7 vs the upstream MIT-licensed package. Returns (rows, notes, skipped)."""
+    """O1-O11 vs the upstream MIT-licensed package. Returns (rows, notes, skipped)."""
     # NeSST (< 1.2) still imports scipy.integrate.cumtrapz, removed in scipy
     # 1.14; the modern spelling is a drop-in for its usage. Shim the alias in
     # this oracle process only (never in the shipped library).
@@ -651,7 +885,7 @@ def oracle_check_openmc_plasma_source() -> tuple[list[list[str]], list[str], boo
     )
 
     # O6: reactivity vs NeSST (published-coefficient precision ~5e-9).
-    from NeSST.spectral_model import reac_DD, reac_DT
+    from NeSST.spectral_model import TT_model, reac_DD, reac_DT, reac_TT
 
     worst = 0.0
     for reaction, up in (("dt", reac_DT), ("dd", reac_DD)):
@@ -706,6 +940,130 @@ def oracle_check_openmc_plasma_source() -> tuple[list[list[str]], list[str], boo
         f"O8 70/30 D/T blend vs quadrature over the upstream map/profiles "
         f"with NeSST reac_DT + reac_DD under the mixture rule, n={N} "
         f"(upstream T-T branch excluded — no T-T reaction in Nucleide)."
+    )
+
+    # O9: tritium-rich (10/90) blend — the landed two-branch kernel vs the
+    # three-branch upstream model. Nucleide carries no T-T branch (no
+    # publishable closed form exists; the oracle's vendored Hale table +
+    # continuum files stay out of scope), so the sampled stream must sit on
+    # the two-branch quadrature while the three-branch reference pulls away
+    # by exactly the T-T share — the deferred branch quantified, not
+    # ignored. Protons have no oracle (upstream models neutrons only); P9
+    # pins the D(d,p)T bookkeeping analytically.
+    f_d9, f_t9 = 0.1, 0.9
+    blend9 = dict(PARAMETRIC_SPEC, fuel={"D": f_d9, "T": f_t9})
+    ours9 = ps.particles(blend9, N, seed=79)
+    mean9 = float(np.mean(ours9["energy"]))
+    quad2 = _quadrature_upstream_mixture(
+        g, tokamak_ion_density, tokamak_ion_temperature, reac_DT, reac_DD, f_d9, f_t9
+    )
+    quad3 = _quadrature_upstream_mixture_tt(
+        g,
+        tokamak_ion_density,
+        tokamak_ion_temperature,
+        reac_DT,
+        reac_DD,
+        reac_TT,
+        TT_model,
+        f_d9,
+        f_t9,
+    )
+    err_2 = rel_diff(mean9, quad2["mean_e"])
+    rows.append(
+        ["O9 T-rich two-branch mean", fmt(err_2), "< 1e-2", _check(err_2 < 1e-2, "O9 2-branch")]
+    )
+    predicted = abs(quad3["mean_e"] - quad2["mean_e"])
+    measured = abs(mean9 - quad3["mean_e"])
+    rows.append(
+        ["O9 T-T pull significant", fmt(measured), "> 0.1 MeV", _check(measured > 0.1, "O9 pull")]
+    )
+    err_tt = abs(measured - predicted) / predicted
+    rows.append(
+        [
+            "O9 T-T pull at predicted scale",
+            fmt(err_tt),
+            "< 2e-2",
+            _check(err_tt < 2e-2, "O9 scale"),
+        ]
+    )
+    notes.append(
+        f"O9 10/90 D/T blend, n={N}: sampled mean birth energy sits on the "
+        f"two-branch upstream quadrature (no T-T on either side) while the "
+        f"three-branch reference (NeSST reac_TT x2 multiplicity + Brune "
+        f"continuum mean ~4.6 MeV) pulls away by the T-T-predicted "
+        f"{predicted:.3f} MeV (TT neutron share {quad3['tt_share']:.4f}); "
+        f"measured pull {measured:.3f} MeV."
+    )
+
+    # O10: toroidal sector vs the upstream quadrature. A partial sector must
+    # leave the (r, z, E) physics untouched — the sampled energy and radius
+    # moments sit on the same O7 two-branch quadrature built from the
+    # upstream map/profiles — while birth angles are uniform over the sector
+    # (the upstream full-torus phi draw has no sector spelling, so the angle
+    # marginal itself rests on the always-run P10 gates).
+    start10, rotation10 = 0.5, 1.5
+    sector10 = dict(PARAMETRIC_SPEC, start_angle=start10, rotation_angle=rotation10)
+    ours10 = ps.particles(sector10, N, seed=80)
+    quad10 = _quadrature_upstream(g, tokamak_ion_density, tokamak_ion_temperature, reac_DT)
+    err_e10 = rel_diff(float(np.mean(ours10["energy"])), quad10["mean_e"])
+    rows.append(
+        ["O10 sector mean birth energy", fmt(err_e10), "< 1e-2", _check(err_e10 < 1e-2, "O10 E")]
+    )
+    major10 = np.hypot(ours10["x"], ours10["y"])
+    r10 = _recover_minor_radius(g, major10, ours10["z"])
+    err_r10 = rel_diff(float(np.mean(r10**2)), quad10["<r^2>"])
+    rows.append(
+        ["O10 sector birth <r^2>", fmt(err_r10), "< 1e-2", _check(err_r10 < 1e-2, "O10 r2")]
+    )
+    phi10 = np.arctan2(ours10["y"], ours10["x"]) % (2.0 * math.pi)
+    mean10 = float(np.mean(phi10))
+    want10 = start10 + rotation10 / 2.0
+    se10 = rotation10 / math.sqrt(12.0 * N)
+    rows.append(
+        [
+            "O10 sector mean angle",
+            fmt(mean10 - want10),
+            "< 8 sigma",
+            _check(abs(mean10 - want10) < 8.0 * se10, "O10 angle"),
+        ]
+    )
+    notes.append(
+        f"O10 partial toroidal sector (start {start10} rad, rotation {rotation10} rad), "
+        f"n={N}: (r, z, E) moments sit on the O7 upstream quadrature (the sector "
+        f"only remaps the toroidal draw) and birth angles are uniform over the sector."
+    )
+
+    # O11: per-species ion temperatures vs the upstream quadrature. A 70/30
+    # blend at T_D = 20 keV, T_T = 30 keV reacts D-T at T_DT = 24 keV and D-D
+    # at T_D through the scalar NeSST reactivity functions (the upstream
+    # package has no distinct-temperature spelling — the pair temperatures
+    # enter there, so the cross-check is the independent NeSST transcription
+    # plus the upstream profiles and map).
+    t_d11, t_t11 = 20.0, 30.0
+    blend11 = dict(
+        PARAMETRIC_SPEC,
+        fuel={"D": 0.7, "T": 0.3},
+        species_temperatures={"D": t_d11, "T": t_t11},
+    )
+    ours11 = ps.particles(blend11, N, seed=82)
+    quad11 = _quadrature_upstream_mixture_species(
+        g, tokamak_ion_density, reac_DT, reac_DD, 0.7, 0.3, t_d11, t_t11
+    )
+    err_e11 = rel_diff(float(np.mean(ours11["energy"])), quad11["mean_e"])
+    rows.append(
+        ["O11 species mean birth energy", fmt(err_e11), "< 1e-2", _check(err_e11 < 1e-2, "O11 E")]
+    )
+    major11 = np.hypot(ours11["x"], ours11["y"])
+    r11 = _recover_minor_radius(g, major11, ours11["z"])
+    err_r11 = rel_diff(float(np.mean(r11**2)), quad11["<r^2>"])
+    rows.append(
+        ["O11 species birth <r^2>", fmt(err_r11), "< 1e-2", _check(err_r11 < 1e-2, "O11 r2")]
+    )
+    notes.append(
+        f"O11 70/30 D/T blend at T_D={t_d11:g} keV, T_T={t_t11:g} keV "
+        f"(D-T at T_DT={t_d11 + 0.4 * (t_t11 - t_d11):g} keV, D-D at T_D), n={N}: "
+        f"sampled moments vs quadrature over the upstream map/profiles with "
+        f"NeSST reac_DT + reac_DD evaluated at the pair temperatures."
     )
     return rows, notes, False
 
@@ -776,6 +1134,145 @@ def _quadrature_upstream_mixture(
     return {"<r^2>": num_r2 / den, "mean_e": num_e / den}
 
 
+def _quadrature_upstream_mixture_species(
+    g: dict,
+    density_fn,
+    reac_dt,
+    reac_dd,
+    f_d: float,
+    f_t: float,
+    t_d: float,
+    t_t: float,
+    n_r: int = 400,
+    n_t: int = 400,
+) -> dict[str, float]:
+    """Quadrature of n^2·[f_D·f_T·reac_DT(T_DT) + (f_D^2/2)·reac_DD(T_D)]·R·|J|
+    using the upstream density profile and NeSST reactivities at the uniform
+    pair temperatures (T_DT = T_D + (2/5)·(T_T − T_D)); the volume element
+    uses the in-script Miller transcription (gate O4). The upstream package
+    has no distinct-temperature spelling, so the pair temperatures enter
+    through its scalar reactivity functions — the cross-check is the
+    independent NeSST transcription plus the upstream profiles."""
+    t_dt = t_d + 0.4 * (t_t - t_d)
+    am = g["minor_radius"]
+    dr = am / n_r
+    dt = 2.0 * math.pi / n_t
+    num_r2 = den = num_e = 0.0
+    sv_dt = float(reac_dt(t_dt * 1e3)) * 1e6  # m^3/s -> cm^3/s
+    sv_dd = float(reac_dd(t_d * 1e3)) * 1e6
+    w_dt = f_d * f_t * sv_dt
+    w_dd = f_d * f_d / 2.0 * sv_dd
+    mu_dt, _ = _ballabio_moments("dt", t_dt)
+    mu_dd, _ = _ballabio_moments("dd", t_d)
+    p_dd = w_dd / (w_dt + w_dd) if w_dt + w_dd > 0.0 else 0.0
+    mean_e = p_dd * mu_dd + (1.0 - p_dd) * mu_dt
+    for i in range(n_r):
+        r = (i + 0.5) * dr
+        n_m3 = float(
+            density_fn(
+                mode=g["mode"],
+                ion_density_centre=g["ion_density_centre"],
+                ion_density_peaking_factor=g["ion_density_peaking_factor"],
+                ion_density_pedestal=g["ion_density_pedestal"],
+                minor_radius=am,
+                pedestal_radius=g["pedestal_radius"],
+                ion_density_separatrix=g["ion_density_separatrix"],
+                r=r,
+            )
+        )
+        strength = n_m3 * n_m3 * 1e-12 * (w_dt + w_dd)  # (n·1e-6)^2 = n^2·1e-12
+        for j in range(n_t):
+            theta = (j + 0.5) * dt
+            w = strength * _volume_element(g, r, theta) * dr * dt
+            den += w
+            num_r2 += w * r * r
+            num_e += w * mean_e
+    return {"<r^2>": num_r2 / den, "mean_e": num_e / den}
+
+
+def _quadrature_upstream_mixture_tt(
+    g: dict,
+    density_fn,
+    temperature_fn,
+    reac_dt,
+    reac_dd,
+    reac_tt,
+    tt_model,
+    f_d: float,
+    f_t: float,
+    n_r: int = 400,
+    n_t: int = 400,
+) -> dict[str, float]:
+    """Three-branch quadrature adding the oracle's T-T model to
+    `_quadrature_upstream_mixture`: the T-T neutron weight is
+    `f_T^2·reac_TT` (the oracle's `n_T^2/2·reac_TT` fuel density with the
+    x2 neutron multiplicity folded in — the pinned normalization), and the
+    T-T mean birth energy is the oracle continuum mean (Brune model,
+    ~4.6 MeV, nearly T-independent) evaluated per cell where the branch
+    burns. Returns the three-branch mean plus the T-T neutron share."""
+    import numpy as _np
+
+    e_grid = _np.linspace(1e3, 12e6, 200)  # eV (oracle continuum grid)
+    am = g["minor_radius"]
+    dr = am / n_r
+    dt = 2.0 * math.pi / n_t
+    num_e = den = num_tt = 0.0
+    for i in range(n_r):
+        r = (i + 0.5) * dr
+        n_m3 = float(
+            density_fn(
+                mode=g["mode"],
+                ion_density_centre=g["ion_density_centre"],
+                ion_density_peaking_factor=g["ion_density_peaking_factor"],
+                ion_density_pedestal=g["ion_density_pedestal"],
+                minor_radius=am,
+                pedestal_radius=g["pedestal_radius"],
+                ion_density_separatrix=g["ion_density_separatrix"],
+                r=r,
+            )
+        )
+        t_kev = (
+            float(
+                temperature_fn(
+                    r=r,
+                    mode=g["mode"],
+                    pedestal_radius=g["pedestal_radius"],
+                    ion_temperature_pedestal=g["ion_temperature_pedestal"],
+                    ion_temperature_centre=g["ion_temperature_centre"],
+                    ion_temperature_beta=g["ion_temperature_beta"],
+                    ion_temperature_peaking_factor=g["ion_temperature_peaking_factor"],
+                    ion_temperature_separatrix=g["ion_temperature_separatrix"],
+                    minor_radius=am,
+                )
+            )
+            / 1e3
+        )
+        sv_dt = float(reac_dt(t_kev * 1e3)) * 1e6  # m^3/s -> cm^3/s
+        sv_dd = float(reac_dd(t_kev * 1e3)) * 1e6
+        sv_tt = float(reac_tt(t_kev * 1e3)) * 1e6
+        w_dt = f_d * f_t * sv_dt
+        w_dd = f_d * f_d / 2.0 * sv_dd
+        w_tt = f_t * f_t * sv_tt
+        mu_dt, _ = _ballabio_moments("dt", t_kev)
+        mu_dd, _ = _ballabio_moments("dd", t_kev)
+        if w_tt > 0.0:
+            spec = _np.asarray(tt_model.spec(e_grid, max(t_kev, 0.5) * 1e3, "Brune"))
+            mu_tt = float(_np.trapezoid(e_grid * spec, e_grid) / _np.trapezoid(spec, e_grid))
+            mu_tt /= 1e6  # eV -> MeV
+        else:
+            mu_tt = mu_dt  # weightless branch; value unused
+        tot = w_dt + w_dd + w_tt
+        mean_e = (w_dt * mu_dt + w_dd * mu_dd + w_tt * mu_tt) / tot if tot > 0.0 else mu_dt
+        strength = n_m3 * n_m3 * 1e-12 * tot
+        for j in range(n_t):
+            theta = (j + 0.5) * dt
+            w = strength * _volume_element(g, r, theta) * dr * dt
+            den += w
+            num_e += w * mean_e
+            num_tt += w * (w_tt / tot if tot > 0.0 else 0.0)
+    return {"mean_e": num_e / den, "tt_share": num_tt / den}
+
+
 def _quadrature_upstream(
     g: dict,
     density_fn,
@@ -840,13 +1337,22 @@ def main() -> int:
         "the synthetic ring spec (closed-form ring/spectrum moments, sampler "
         "determinism, card emission), P5-P7 on a parametric Miller-geometry "
         "plasma (flat-profile Jacobian closed forms, Bosch-Hale reactivity "
-        "transcription, sampled moments vs fine quadrature), and P8 on a "
+        "transcription, sampled moments vs fine quadrature), P8 on a "
         "pinned 70/30 D/T fuel blend (mixture-rule moments and the D-D "
-        "branch share vs in-script mixture quadrature) — always run — plus "
-        "container-only cross-checks O1-O8 against the upstream "
+        "branch share vs in-script mixture quadrature), and P9 on the "
+        "D(d,p)T proton bookkeeping (exact pure-fuel ratios, the 70/30 "
+        "share, the no-T recovery anchor, the loud pure-T error), and P10 "
+        "on toroidal sectors (in-sector uniform births, bit-for-bit "
+        "full-rotation recovery, the PHI=D4 marginal with its drift row), and P11 "
+        "on per-species ion temperatures (pair-temperature moments and branch "
+        "share, bit-for-bit equal-T recovery) — "
+        "always run — plus container-only cross-checks O1-O11 against the upstream "
         "openmc-plasma-source package and NeSST (Ballabio helpers, sampled "
         "ring/point sources, Miller map, Fausser profiles, reactivities, "
-        "end-to-end parametric moments, and the pinned 70/30 blend)."
+        "end-to-end parametric moments, the pinned 70/30 blend, the "
+        "tritium-rich 10/90 T-T divergence probe, the partial-sector "
+        "moment cross-check, and the distinct-temperature blend probe; protons have no oracle — "
+        "upstream models neutrons only)."
     )
     rows1, notes1 = analytic_gates()
     for note in notes1:
@@ -862,7 +1368,7 @@ def main() -> int:
     if skipped:
         skip_rows = [
             [f"{gate}", "SKIP (openmc-plasma-source unavailable)"]
-            for gate in ("O1", "O2", "O3", "O4", "O5", "O6", "O7", "O8")
+            for gate in ("O1", "O2", "O3", "O4", "O5", "O6", "O7", "O8", "O9", "O10", "O11")
         ]
         report.table(["Gate", "Status"], skip_rows)
     else:

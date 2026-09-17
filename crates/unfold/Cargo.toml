@@ -1,6 +1,6 @@
 [package]
 name = "nucleide-unfold"
-description = "Neutron spectrum unfolding from activation-type measurements (SAND-II, STAYSL-class least-squares, and GRAVEL adjustment)"
+description = "Neutron spectrum unfolding from activation-type measurements (SAND-II, STAYSL-class least-squares, GRAVEL, and MAXED maximum-entropy adjustment)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

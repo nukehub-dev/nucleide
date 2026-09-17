@@ -37,6 +37,8 @@ fn iter_h_mode() -> ParametricPlasmaConfig {
         pedestal_radius_cm: 150.0,
         fuel: FusionReaction::Dt,
         fuel_mixture: None,
+        species_temperatures: None,
+        sector: None,
         weight: 1.0,
     }
 }

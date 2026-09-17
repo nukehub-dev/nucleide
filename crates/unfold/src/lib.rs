@@ -14,8 +14,9 @@
 //! caller-supplied per-detector sigmas as weights, every solve routed
 //! through the shared [`nucleide_linalg::lstsq`] kernel, and GRAVEL
 //! ([`gravel`], Matzke, PTB-N-19, 1994 — the SAND-II update with
-//! measurement-error weights). Recorded for a later cycle: MAXED
-//! (Reginatto & Goldhagen, Health Phys. 77 (1999) 579) maximum entropy.
+//! measurement-error weights), and MAXED ([`maxed`], Reginatto &
+//! Goldhagen, Health Phys. 77 (1999) 579 — maximum entropy over the
+//! exponential Lagrange family with a chi-square target).
 //!
 //! Data provenance is pinned: every response value, measured rate, guess
 //! entry, and energy-group bound is caller-supplied. Evaluated libraries
@@ -34,15 +35,17 @@
 //! Modules: [`error`] (named error set), [`sandii`] (SAND-II adjustment
 //! iterator + driver), [`staysl`] (STAYSL-class damped least-squares
 //! iterator + driver), [`gravel`] (GRAVEL chi-square-weighted adjustment
+//! iterator + driver), [`maxed`] (MAXED maximum-entropy dual adjustment
 //! iterator + driver). [`forward_fold`] is the shared forward operator.
-//! [`staysl`] and [`gravel`] keep their `Iteration`/`Solution` types
-//! module-scoped: the names intentionally mirror [`sandii`]'s, which stay
-//! re-exported at the crate root for compatibility.
+//! [`staysl`], [`gravel`], and [`maxed`] keep their `Iteration`/`Solution`
+//! types module-scoped: the names intentionally mirror [`sandii`]'s, which
+//! stay re-exported at the crate root for compatibility.
 
 #![warn(missing_docs)]
 
 pub mod error;
 pub mod gravel;
+pub mod maxed;
 pub mod sandii;
 pub mod staysl;
 
