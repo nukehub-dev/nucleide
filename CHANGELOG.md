@@ -13,6 +13,8 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-17
+
 ### Added
 
 - Vented-sink recombination internal interfaces for multi-layer tritium
