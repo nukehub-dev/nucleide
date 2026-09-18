@@ -712,7 +712,7 @@ mod tests {
             half_life: Some(std::f64::consts::LN_2 / L1),
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "B".into(),
+                target: Some("B".into()),
                 branching_ratio: 1.0,
             }],
             ..Default::default()
@@ -722,7 +722,7 @@ mod tests {
             half_life: Some(std::f64::consts::LN_2 / L2),
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "C".into(),
+                target: Some("C".into()),
                 branching_ratio: 1.0,
             }],
             ..Default::default()
@@ -881,7 +881,7 @@ mod tests {
             half_life: Some(std::f64::consts::LN_2 / L1),
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "B".into(),
+                target: Some("B".into()),
                 branching_ratio: 1.0,
             }],
             reactions: vec![crate::chain::Reaction {
@@ -897,7 +897,7 @@ mod tests {
             half_life: Some(std::f64::consts::LN_2 / L2),
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "C".into(),
+                target: Some("C".into()),
                 branching_ratio: 1.0,
             }],
             ..Default::default()
@@ -1034,7 +1034,7 @@ mod tests {
             half_life: Some(std::f64::consts::LN_2 / L1),
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "B".into(),
+                target: Some("B".into()),
                 branching_ratio: 1.0,
             }],
             reactions: vec![crate::chain::Reaction {
@@ -1053,7 +1053,7 @@ mod tests {
             half_life: Some(std::f64::consts::LN_2 / L2),
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "C".into(),
+                target: Some("C".into()),
                 branching_ratio: 1.0,
             }],
             ..Default::default()
@@ -1337,7 +1337,7 @@ mod tests {
             half_life: Some(std::f64::consts::LN_2 / L1),
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "B".into(),
+                target: Some("B".into()),
                 branching_ratio: 1.0,
             }],
             reactions: vec![crate::chain::Reaction {
@@ -1353,7 +1353,7 @@ mod tests {
             half_life: Some(std::f64::consts::LN_2 / L2),
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "C".into(),
+                target: Some("C".into()),
                 branching_ratio: 1.0,
             }],
             ..Default::default()

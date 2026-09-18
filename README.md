@@ -168,6 +168,12 @@ Pre-alpha. APIs may change without notice.
 
 Additional tutorials, reference pages, and developer guides live in the
 [`docs/`](https://github.com/nukehub-dev/nucleide/tree/main/docs) tree.
+Runnable end-to-end workflows live in
+[`notebooks/`](https://github.com/nukehub-dev/nucleide/tree/main/notebooks)
+(first-wall damage + UQ, activation screening + radiological totals, tokamak
+source sampling + card emission) — every notebook executes in CI, and the
+Python tutorials' code blocks execute too, so docs double as verified
+examples.
 
 ## Acknowledgments
 

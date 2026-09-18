@@ -336,7 +336,7 @@ mod tests {
             half_life: Some(std::f64::consts::LN_2 / 1.0e-6),
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "B".into(),
+                target: Some("B".into()),
                 branching_ratio: 1.0,
             }],
             ..Default::default()

@@ -409,7 +409,7 @@ fn decay_entries(chain: &crate::chain::Chain) -> BTreeMap<(usize, usize), f64> {
                     continue;
                 }
                 if !mode.kind.contains("sf") {
-                    if let Some(j) = chain.index_of(&mode.target) {
+                    if let Some(j) = mode.target.as_deref().and_then(|t| chain.index_of(t)) {
                         add(j, i, branch_val);
                     }
                 }
@@ -524,7 +524,7 @@ mod tests {
                 half_life: Some(hl(L1)),
                 decay_modes: vec![DecayMode {
                     kind: "beta".into(),
-                    target: "B".into(),
+                    target: Some("B".into()),
                     branching_ratio: 1.0,
                 }],
                 ..Default::default()
@@ -534,7 +534,7 @@ mod tests {
                 half_life: Some(hl(L2)),
                 decay_modes: vec![DecayMode {
                     kind: "beta".into(),
-                    target: "C".into(),
+                    target: Some("C".into()),
                     branching_ratio: 1.0,
                 }],
                 ..Default::default()
@@ -661,7 +661,7 @@ mod tests {
                 half_life: Some(std::f64::consts::LN_2 / lam_p),
                 decay_modes: vec![DecayMode {
                     kind: "beta".into(),
-                    target: "D".into(),
+                    target: Some("D".into()),
                     branching_ratio: 1.0,
                 }],
                 ..Default::default()
@@ -671,7 +671,7 @@ mod tests {
                 half_life: Some(std::f64::consts::LN_2 / lam_d),
                 decay_modes: vec![DecayMode {
                     kind: "beta".into(),
-                    target: "S".into(),
+                    target: Some("S".into()),
                     branching_ratio: 1.0,
                 }],
                 ..Default::default()
@@ -737,7 +737,7 @@ mod tests {
                 half_life: Some(hl(lam)),
                 decay_modes: vec![DecayMode {
                     kind: "beta".into(),
-                    target: "B".into(),
+                    target: Some("B".into()),
                     branching_ratio: 1.0,
                 }],
                 ..Default::default()
@@ -769,7 +769,7 @@ mod tests {
                 half_life: Some(hl(L1)),
                 decay_modes: vec![DecayMode {
                     kind: "beta".into(),
-                    target: "B".into(),
+                    target: Some("B".into()),
                     branching_ratio: 1.0,
                 }],
                 ..Default::default()
@@ -779,7 +779,7 @@ mod tests {
                 half_life: Some(hl(L2)),
                 decay_modes: vec![DecayMode {
                     kind: "beta".into(),
-                    target: "A".into(),
+                    target: Some("A".into()),
                     branching_ratio: 1.0,
                 }],
                 ..Default::default()
@@ -802,7 +802,7 @@ mod tests {
                 half_life: Some(hl(L1)),
                 decay_modes: vec![DecayMode {
                     kind: "beta".into(),
-                    target: "B".into(),
+                    target: Some("B".into()),
                     branching_ratio: 1.0,
                 }],
                 ..Default::default()
@@ -843,7 +843,7 @@ mod tests {
                 half_life: Some(hl(L1)),
                 decay_modes: vec![DecayMode {
                     kind: "beta".into(),
-                    target: "B".into(),
+                    target: Some("B".into()),
                     branching_ratio: 1.0,
                 }],
                 reactions: vec![crate::chain::Reaction {
@@ -859,7 +859,7 @@ mod tests {
                 half_life: Some(hl(L2)),
                 decay_modes: vec![DecayMode {
                     kind: "beta".into(),
-                    target: "C".into(),
+                    target: Some("C".into()),
                     branching_ratio: 1.0,
                 }],
                 ..Default::default()
@@ -910,7 +910,7 @@ mod tests {
                 half_life: Some(hl(L1)),
                 decay_modes: vec![DecayMode {
                     kind: "beta".into(),
-                    target: "B".into(),
+                    target: Some("B".into()),
                     branching_ratio: 1.0,
                 }],
                 reactions: vec![crate::chain::Reaction {

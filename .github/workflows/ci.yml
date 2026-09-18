@@ -43,8 +43,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install ruff mypy
-      - run: ruff format --check python tests
-      - run: ruff check python tests
+      - run: ruff format --check python tests notebooks
+      - run: ruff check python tests notebooks
       - name: mypy (needs the compiled module for full check; stub-only here)
         run: mypy python/nucleide
 
@@ -61,9 +61,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - uses: dtolnay/rust-toolchain@stable
-      - run: pip install maturin pytest pytest-cov ruff mypy numpy
+      - run: pip install maturin pytest pytest-cov ruff mypy numpy nbclient nbformat ipykernel
       - run: maturin build
       - run: pip install --no-index --find-links target/wheels nucleide
-      - run: ruff format --check python tests && ruff check python tests
+      - run: ruff format --check python tests notebooks && ruff check python tests notebooks
       - run: mypy
       - run: pytest tests/ -v

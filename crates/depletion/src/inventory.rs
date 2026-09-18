@@ -747,6 +747,10 @@ pub fn cumulative_decays(sys: &DepletionSystem, n0: &[f64], dt: f64) -> Result<V
 
 /// Direct daughters of `name`: `(child, branching_ratio, mode kind)` in
 /// chain order. Unknown names give an empty vector.
+/// Decay products of `name` as `(product, branching_ratio, mode kind)`.
+///
+/// Only modes with an in-chain daughter are listed; target-less modes decay
+/// out of the modeled chain and carry no product endpoint.
 pub fn progeny(chain: &Chain, name: &str) -> Vec<(String, f64, String)> {
     let Some(idx) = chain.index_of(name) else {
         return Vec::new();
@@ -754,7 +758,11 @@ pub fn progeny(chain: &Chain, name: &str) -> Vec<(String, f64, String)> {
     chain.nuclides[idx]
         .decay_modes
         .iter()
-        .map(|m| (m.target.clone(), m.branching_ratio, m.kind.clone()))
+        .filter_map(|m| {
+            m.target
+                .clone()
+                .map(|t| (t, m.branching_ratio, m.kind.clone()))
+        })
         .collect()
 }
 
@@ -765,14 +773,14 @@ pub fn branching_fraction(chain: &Chain, parent: &str, child: &str) -> Option<f6
     let sum: f64 = chain.nuclides[idx]
         .decay_modes
         .iter()
-        .filter(|m| m.target == child)
+        .filter(|m| m.target.as_deref() == Some(child))
         .map(|m| m.branching_ratio)
         .sum();
     // Distinguish "no edge" (sum of nothing) from a genuine zero branch.
     if chain.nuclides[idx]
         .decay_modes
         .iter()
-        .any(|m| m.target == child)
+        .any(|m| m.target.as_deref() == Some(child))
     {
         Some(sum)
     } else {
@@ -787,19 +795,23 @@ pub fn decay_mode(chain: &Chain, parent: &str, child: &str) -> Option<String> {
     chain.nuclides[idx]
         .decay_modes
         .iter()
-        .find(|m| m.target == child)
+        .find(|m| m.target.as_deref() == Some(child))
         .map(|m| m.kind.clone())
 }
 
 /// All decay edges as `(parent, child, branching_ratio, mode kind)` in
-/// chain order.
+/// chain order. Target-less modes decay out of the modeled chain and carry
+/// no child endpoint, so they are not listed here.
 pub fn chain_edges(chain: &Chain) -> Vec<(String, String, f64, String)> {
     let mut edges = Vec::new();
     for nuc in &chain.nuclides {
         for mode in &nuc.decay_modes {
+            let Some(child) = mode.target.clone() else {
+                continue;
+            };
             edges.push((
                 nuc.name.clone(),
-                mode.target.clone(),
+                child,
                 mode.branching_ratio,
                 mode.kind.clone(),
             ));
@@ -826,7 +838,7 @@ mod tests {
             half_life: Some(hl(L1)),
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "B".into(),
+                target: Some("B".into()),
                 branching_ratio: 1.0,
             }],
             ..Default::default()
@@ -836,7 +848,7 @@ mod tests {
             half_life: Some(hl(L2)),
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "C".into(),
+                target: Some("C".into()),
                 branching_ratio: 1.0,
             }],
             ..Default::default()
@@ -855,7 +867,7 @@ mod tests {
             half_life: Some(t_half),
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "Ni60".into(),
+                target: Some("Ni60".into()),
                 branching_ratio: 1.0,
             }],
             ..Default::default()
@@ -1071,12 +1083,12 @@ mod tests {
             decay_modes: vec![
                 DecayMode {
                     kind: "ec".into(),
-                    target: "D1".into(),
+                    target: Some("D1".into()),
                     branching_ratio: 0.1072,
                 },
                 DecayMode {
                     kind: "beta".into(),
-                    target: "D2".into(),
+                    target: Some("D2".into()),
                     branching_ratio: 0.8928,
                 },
             ],

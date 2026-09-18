@@ -106,7 +106,7 @@ mod tests {
             half_life: Some(std::f64::consts::LN_2 / 1e-6), // lambda = 1e-6
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "B".into(),
+                target: Some("B".into()),
                 branching_ratio: 1.0,
             }],
             ..Default::default()
@@ -116,7 +116,7 @@ mod tests {
             half_life: Some(std::f64::consts::LN_2 / 1e-5), // lambda = 1e-5
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "C".into(),
+                target: Some("C".into()),
                 branching_ratio: 1.0,
             }],
             reactions: vec![Reaction {
@@ -232,7 +232,10 @@ mod tests {
         assert_eq!(chain.len(), 9);
         let i135 = chain.index_of("I135").unwrap();
         assert_eq!(chain.nuclides[i135].decay_modes.len(), 1);
-        assert_eq!(chain.nuclides[i135].decay_modes[0].target, "Xe135");
+        assert_eq!(
+            chain.nuclides[i135].decay_modes[0].target.as_deref(),
+            Some("Xe135")
+        );
         // Gd157 capture goes to "Nothing" => target None
         let gd = chain.index_of("Gd157").unwrap();
         assert_eq!(chain.nuclides[gd].reactions[0].target, None);
@@ -241,6 +244,71 @@ mod tests {
         assert!(!chain.nuclides[u235].neutron_fission_yields.is_empty());
         let fy = &chain.nuclides[u235].neutron_fission_yields[0];
         assert_eq!(fy.products["I135"], 0.0292737);
+    }
+
+    #[test]
+    fn ni_chain_parses_with_out_of_chain_decays_as_loss() {
+        // Regression: `chain_ni.xml` carries decays whose daughters fall
+        // outside the modeled chain (Fe55→Mn55, Fe59→Co59, Ni57→Co57,
+        // Ni59→Co59, Ni63→Cu63, Ni65→Cu65). An absent `target` parses to
+        // `None` — the decay analogue of a target-less `<reaction>` — while
+        // an explicit but unresolvable target stays a loud error.
+        let path = format!(
+            "{}/../../fixtures/depletion/chain_ni.xml",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let chain = Chain::from_file(path).unwrap();
+        for parent in ["Fe55", "Fe59", "Ni57", "Ni59", "Ni63", "Ni65"] {
+            let i = chain.index_of(parent).unwrap();
+            assert_eq!(chain.nuclides[i].decay_modes.len(), 1);
+            assert_eq!(chain.nuclides[i].decay_modes[0].target, None);
+        }
+        // In-chain daughters still resolve.
+        let i = chain.index_of("Co60").unwrap();
+        assert_eq!(
+            chain.nuclides[i].decay_modes[0].target.as_deref(),
+            Some("Ni60")
+        );
+        // Explicit-but-absent stays loud (typo guard, not silent loss) —
+        // the build itself rejects it, before any solve runs.
+        let bad = Chain::from_xml(
+            "<depletion_chain><nuclide name=\"A\" half_life=\"1.0\">\
+             <decay type=\"beta\" target=\"Nobody\" branching_ratio=\"1.0\"/>\
+             </nuclide></depletion_chain>",
+        )
+        .unwrap();
+        match DepletionSystem::build(bad, &ReactionRates::new()) {
+            Err(Error::UnknownNuclide { name, context }) => {
+                assert_eq!(name, "Nobody");
+                assert_eq!(context, "decay target");
+            }
+            other => panic!("expected UnknownNuclide, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn out_of_chain_decay_is_pure_loss_on_both_solvers() {
+        // Fe55 (λ = ln2/86594050 s⁻¹) decays out of the Ni chain: no gain
+        // term exists, so CRAM-48 and analytic Bateman must both reproduce
+        // the exact exponential — and agree with each other.
+        let path = format!(
+            "{}/../../fixtures/depletion/chain_ni.xml",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let chain = Chain::from_file(path).unwrap();
+        let sys = DepletionSystem::build(chain, &ReactionRates::new()).unwrap();
+        let mut n0 = BTreeMap::new();
+        n0.insert("Fe55".to_string(), 1.0e15);
+        let dt = 1.0e7;
+        let want = 1.0e15 * (-std::f64::consts::LN_2 / 86594050.0 * dt).exp();
+        for method in [Method::Cram(Order::Order48), Method::Bateman] {
+            let out = deplete_with_method(&sys, method, &n0, dt).unwrap();
+            let got = out.atoms["Fe55"];
+            assert!(
+                (got - want).abs() <= 1e-9 * want,
+                "{method:?}: got {got}, want {want}"
+            );
+        }
     }
 
     #[test]
@@ -340,12 +408,12 @@ mod tests {
             decay_modes: vec![
                 DecayMode {
                     kind: "alpha".into(),
-                    target: "B".into(),
+                    target: Some("B".into()),
                     branching_ratio: 0.5,
                 },
                 DecayMode {
                     kind: "p".into(),
-                    target: "C".into(),
+                    target: Some("C".into()),
                     branching_ratio: 0.5,
                 },
             ],
@@ -449,12 +517,12 @@ mod tests {
             decay_modes: vec![
                 DecayMode {
                     kind: "beta".into(),
-                    target: "B".into(),
+                    target: Some("B".into()),
                     branching_ratio: 0.3,
                 },
                 DecayMode {
                     kind: "beta".into(),
-                    target: "C".into(),
+                    target: Some("C".into()),
                     branching_ratio: 0.3,
                 },
             ],
@@ -756,12 +824,12 @@ mod tests {
             decay_modes: vec![
                 DecayMode {
                     kind: "beta".into(),
-                    target: "B".into(),
+                    target: Some("B".into()),
                     branching_ratio: 0.2,
                 },
                 DecayMode {
                     kind: "beta".into(),
-                    target: "C".into(),
+                    target: Some("C".into()),
                     branching_ratio: 0.4,
                 },
             ],
@@ -788,12 +856,12 @@ mod tests {
             decay_modes: vec![
                 DecayMode {
                     kind: "beta".into(),
-                    target: "B".into(),
+                    target: Some("B".into()),
                     branching_ratio: 0.0,
                 },
                 DecayMode {
                     kind: "beta".into(),
-                    target: "C".into(),
+                    target: Some("C".into()),
                     branching_ratio: 1.0,
                 },
             ],
@@ -822,7 +890,7 @@ mod tests {
             half_life: Some(std::f64::consts::LN_2 / 1e-6),
             decay_modes: vec![DecayMode {
                 kind: "beta".into(),
-                target: "Missing".into(),
+                target: Some("Missing".into()),
                 branching_ratio: 1.0,
             }],
             ..Default::default()
@@ -843,17 +911,17 @@ mod tests {
             decay_modes: vec![
                 DecayMode {
                     kind: "sf".into(),
-                    target: "B".into(),
+                    target: Some("B".into()),
                     branching_ratio: 0.5,
                 },
                 DecayMode {
                     kind: "alpha".into(),
-                    target: "B".into(),
+                    target: Some("B".into()),
                     branching_ratio: 0.25,
                 },
                 DecayMode {
                     kind: "p".into(),
-                    target: "B".into(),
+                    target: Some("B".into()),
                     branching_ratio: 0.25,
                 },
             ],
@@ -1134,10 +1202,20 @@ mod tests {
                 s += &format!("  <nuclide name=\"{}\">\n", n.name);
             }
             for d in &n.decay_modes {
-                s += &format!(
-                    "    <decay type=\"{}\" target=\"{}\" branching_ratio=\"{}\"/>\n",
-                    d.kind, d.target, d.branching_ratio
-                );
+                match &d.target {
+                    Some(t) => {
+                        s += &format!(
+                            "    <decay type=\"{}\" target=\"{t}\" branching_ratio=\"{}\"/>\n",
+                            d.kind, d.branching_ratio
+                        )
+                    }
+                    None => {
+                        s += &format!(
+                            "    <decay type=\"{}\" branching_ratio=\"{}\"/>\n",
+                            d.kind, d.branching_ratio
+                        )
+                    }
+                }
             }
             for r in &n.reactions {
                 match &r.target {

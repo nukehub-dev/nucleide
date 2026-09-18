@@ -28,10 +28,10 @@ installed version's tag (in a source checkout, the same file is already under
 `fixtures/data/`):
 
 ```python
-from nucleide.data import fetch_compendium
 from nucleide.material import MaterialsCompendium
 
-path = fetch_compendium()  # add ref="main" or a commit SHA to override
+# In a source checkout, read the committed file directly (no download).
+path = "fixtures/data/MaterialsCompendium.json"
 lib = MaterialsCompendium.load(path)
 print(len(lib), "materials")
 print(lib.names()[:5])

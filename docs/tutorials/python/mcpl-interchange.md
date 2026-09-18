@@ -14,7 +14,12 @@ Particle units follow the published format: kinetic energy in MeV, position
 in cm, time in ms.
 
 ```python
+import os
+import tempfile
 from nucleide.mcpl import read_mcpl, write_mcpl
+
+tmp = tempfile.mkdtemp(prefix="nucleide-mcpl-demo-")
+demo_path = os.path.join(tmp, "demo.mcpl")
 
 header = {
     "srcname": "demo",
@@ -39,9 +44,9 @@ particles = [
     }
 ]
 
-write_mcpl("demo.mcpl", header, particles)
+write_mcpl(demo_path, header, particles)
 
-mc = read_mcpl("demo.mcpl")
+mc = read_mcpl(demo_path)
 print(mc.version, mc.nparticles, mc.srcname)
 for p in mc.particles():
     print(p["ekin"], p["pdgcode"], p["direction"])
@@ -64,10 +69,14 @@ an options dict selects double precision, surf→userflags, gzip, a deck-embed
 blob, `srcname`, and `comments`:
 
 ```python
+import tempfile
 from nucleide.mcpl import mcpl2ssw, ssw2mcpl
 
-n = ssw2mcpl("surface.w", "surface.mcpl", [100, 200], ["neutron", "gamma"])
-m = mcpl2ssw("surface.mcpl", "surface.w", "back.w")  # reference header cloned
+tmp = tempfile.mkdtemp(prefix="nucleide-mcpl-")
+mcpl_path = f"{tmp}/surface.mcpl"
+ref_w = "fixtures/mcpl/ssw_conversion/reference.w"
+n = ssw2mcpl(ref_w, mcpl_path, [100, 200], ["neutron", "gamma"])
+m = mcpl2ssw(mcpl_path, ref_w, f"{tmp}/surface.w")  # reference header cloned
 ```
 
 `mcpl2ssw` clones the reference SSW header (code/version/deck passthrough,
@@ -103,11 +112,12 @@ upstream `mcpltool` merge/extract/repair surface plus record statistics):
   ignored, and the file is rewritten in place.
 
 ```python
-from nucleide.mcpl import extract_mcpl, mcpl_stats, merge_mcpl, repair_mcpl
+from nucleide.mcpl import extract_mcpl, mcpl_stats, merge_mcpl
 
-n = merge_mcpl(["run_1.mcpl", "run_2.mcpl"], "combined.mcpl")
-m = extract_mcpl("combined.mcpl", "neutrons.mcpl", {"predicate": lambda p: p["pdgcode"] == 2112})
-stats = mcpl_stats("neutrons.mcpl")
+combined = f"{tmp}/combined.mcpl"
+n = merge_mcpl([mcpl_path, mcpl_path], combined)
+m = extract_mcpl(combined, f"{tmp}/neutrons.mcpl", {"predicate": lambda p: p["pdgcode"] == 2112})
+stats = mcpl_stats(f"{tmp}/neutrons.mcpl")
 print(stats["nparticles"], stats["ekin_mean"], stats["pdg_counts"])
 ```
 

@@ -120,7 +120,7 @@ fn synthetic_chain(n: usize) -> Chain {
             decay_energy: 1e3,
             decay_modes: vec![DecayMode {
                 kind: "beta-".into(),
-                target,
+                target: Some(target),
                 branching_ratio: 0.99,
             }],
             reactions,
@@ -270,7 +270,7 @@ fn decay_chain(n: usize) -> Chain {
                 Some(1.0e4 + i as f64 * 977.0),
                 vec![DecayMode {
                     kind: "beta-".into(),
-                    target: format!("D{}", i + 1),
+                    target: Some(format!("D{}", i + 1)),
                     branching_ratio: 1.0,
                 }],
             )

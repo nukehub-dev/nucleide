@@ -82,9 +82,9 @@ documented Nucleide surface.
 ```python
 from nucleide.spectroscopy import parse_dollar_spe, parse_spe, read_dollar_spe, read_spe
 
-dollar = read_dollar_spe("gv_format.spe")  # first line must be $SPEC_ID:
-plain = read_spe("plain.spe")  # rejects the $SPEC_ID: magic
-text_parsed = parse_dollar_spe(open("gv_format.spe").read())
+dollar = read_dollar_spe("fixtures/spectroscopy/dollar_min.spe")  # first line must be $SPEC_ID:
+plain = read_spe("fixtures/spectroscopy/plain_min.spe")  # rejects the $SPEC_ID: magic
+text_parsed = parse_dollar_spe(open("fixtures/spectroscopy/dollar_min.spe").read())
 print(dollar["counts"][:5], dollar["ebin"][:5], dollar["dead_time"])
 ```
 
@@ -99,7 +99,7 @@ live-then-real, dollar channel labels stay positional under a nonzero
 ```python
 from nucleide.spectroscopy import parse_lines_tsv, read_decay_lines, sdef_decay_source
 
-lines = read_decay_lines("lines.tsv")  # energy_MeV intensity rows, # comments ok
+lines = read_decay_lines("fixtures/spectroscopy/decay_lines_sample.tsv")  # energy_MeV intensity rows, # comments ok
 bins, card = sdef_decay_source(lines, particle="Photon")
 print(card)
 ```

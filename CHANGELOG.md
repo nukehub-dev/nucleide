@@ -13,6 +13,34 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Fixed
+
+- Target-less `<decay>` chain entries now parse as decay out of the modeled
+  chain (pure diagonal loss, no gain term) — the decay analogue of the
+  long-standing target-less `<reaction>` convention, including
+  `target="nothing"`. Previously the committed
+  `fixtures/depletion/chain_ni.xml` was rejected outright even though its
+  target-less decays (Fe55→Mn55 and friends) are physically just truncated
+  chains. An explicit `target` naming a nuclide absent from the chain stays
+  a loud `UnknownNuclide` error; CRAM and Bateman agree exactly on the
+  pure-loss exponential.
+
+### Added
+
+- Runnable workflow notebooks in `notebooks/` (first-wall damage + UQ,
+  activation screening + radiological totals, tokamak source sampling +
+  card emission): synthetic inputs and committed fixtures only, fixed
+  seeds, no outputs vendored in the files, executed end to end in CI
+  (`tests/test_notebooks.py`, needs `nbclient`/`nbformat`/`ipykernel`),
+  with Colab badges for one-click runs once the PyPI release is live.
+- Tutorial code-execution gate (`tests/test_tutorial_code.py`): every
+  runnable ```python block in `docs/tutorials/python/*.md` executes in CI
+  in document order, so the tutorials double as verified examples.
+  Placeholder-path snippets now point at real fixtures (or carry an
+  explicit skip marker for user-side/h5py/scratch-file demos), and the
+  `fetch_compendium` tutorial snippet reads the committed compendium file
+  instead of downloading.
+
 ## [0.16.0] - 2026-09-18
 
 ### Added

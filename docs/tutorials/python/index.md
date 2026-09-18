@@ -1,7 +1,7 @@
 ---
 title: Python tutorials
 sidebar:
-  order: 0
+  order: 3
 ---
 
 Hands-on Python guides for Nucleide. Each tutorial is short, self-contained,
@@ -54,3 +54,12 @@ and assumes you have already installed the project (see
     adjustment, including the IRDFF response pack.
 21. [Clearance screening](clearance-screening.md) — classify parsed activation
     inventories against the EU or Spanish clearance tables.
+
+## End-to-end notebooks
+
+Single-topic pages above compose into full workflows in
+[`notebooks/`](https://github.com/nukehub-dev/nucleide/tree/main/notebooks):
+first-wall damage + UQ, activation screening + radiological totals, and
+tokamak source sampling + card emission. Every notebook executes in CI with
+fixed seeds over committed fixtures, so the workflows are verified examples,
+not sketches.

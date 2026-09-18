@@ -144,7 +144,7 @@ cargo clippy --all-targets -- -D warnings   # zero warnings tolerated
 cargo test --workspace
 maturin develop                              # rebuild Python extension
 pytest tests/
-ruff format --check python tests validation && ruff check python tests validation
+ruff format --check python tests validation notebooks && ruff check python tests validation notebooks
 mypy                                         # strict; stubs in *.pyi
 python3 scripts/gen-reference.py --check     # crate/module/fixture indexes fresh
 cd website && npm run format:check && npm run build:wasm && npm run check && npm run build && npm run test:e2e:ci
@@ -338,6 +338,8 @@ Use `scripts/bump-version.sh X.Y.Z` to bump the workspace version and stamp
 - `website/AGENTS.md` — website build, preview, sync, and E2E test workflow.
 - `validation/AGENTS.md` — cross-code validation harness workflow and the
   generated-results contract.
+- `notebooks/AGENTS.md` — runnable workflow notebooks (synthetic-only,
+  outputs-stripped, CI-executed) and the tutorial code-execution contract.
 
 Create additional child `AGENTS.md` files under `crates/<name>/` or other
 folders once they grow their own durable contracts (e.g. fixture policy

@@ -84,6 +84,14 @@ module = ["openmc", "openmc.*"]
 follow_imports = "skip"
 ignore_missing_imports = true
 
+# The notebook stack (`nbformat`, `nbclient`, `ipykernel`) is a test-only
+# dependency of `tests/test_notebooks.py`; treat it as opaque — the tests
+# use only dynamically-typed notebook handles, never its annotations.
+[[tool.mypy.overrides]]
+module = ["nbformat", "nbformat.*", "nbclient", "nbclient.*", "ipykernel", "ipykernel.*"]
+follow_imports = "skip"
+ignore_missing_imports = true
+
 [tool.coverage.run]
 source = ["nucleide", "tests"]
 

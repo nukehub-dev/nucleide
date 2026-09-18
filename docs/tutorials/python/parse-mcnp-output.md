@@ -15,7 +15,7 @@ An `xsdir` file indexes the cross-section tables available to MCNP.
 ```python
 from nucleide.mcnp import read_xsdir
 
-xs = read_xsdir("path/to/xsdir")
+xs = read_xsdir("fixtures/mcnp/xsdir/dummy_xsdir")
 print(xs.datapath)
 for t in xs.tables[:5]:
     print(t.name, t.zaid())
@@ -28,7 +28,7 @@ A `meshtal` file contains one or more FMESH tallies.
 ```python
 from nucleide.mcnp import read_meshtal
 
-mt = read_meshtal("path/to/meshtal")
+mt = read_meshtal("fixtures/mcnp/meshtal/mcnp_meshtal_single_meshtal.txt")
 print(mt.version, mt.histories)
 
 t4 = mt.tallies[4]
@@ -68,10 +68,10 @@ integers with `try_from_nucid` / `is_valid` on the Rust side).
 ```python
 from nucleide.mcnp import read_mctal, read_ptrac, read_ssw, read_wwinp
 
-k = read_mctal("path/to/mctal")
-ww = read_wwinp("path/to/wwinp")
-pt = read_ptrac("path/to/ptrac")
-ss = read_ssw("path/to/ssw")
+k = read_mctal("fixtures/mcnp/mctal/synthetic_kcode5.mctal")
+ww = read_wwinp("fixtures/mcnp/wwinp/mcnp_wwinp_wwinp_np.txt")
+pt = read_ptrac("fixtures/mcnp/ptrac/mcnp_ptrac_i4_little.ptrac")
+ss = read_ssw("fixtures/mcnp/ssw/mcnp_surfsrc_onetrack.w")
 ```
 
 `read_mctal` returns the header, the standard tally bodies (`tallies`, each
@@ -88,8 +88,11 @@ tallies).
 
 ## Writing SSW files
 
-Use `write_ssw` to write a modified surface-source file back to disk.
+Use `write_ssw` to write a modified surface-source file back to disk
+(writes scratch files, so this snippet is excluded from code execution;
+`tests/test_mcnp.py` covers the writer):
 
+<!-- code-test: skip -->
 ```python
 from nucleide.mcnp import write_ssw
 
@@ -101,8 +104,10 @@ write_ssw(ss, "path/to/output.ssw")
 `DeckProblem` parses a full input deck (message/title/cell/surface/data
 blocks) into typed cell/surface cards plus material and passthrough data
 cards, and writes it back byte-identical when unedited — only cards touched
-through the setters re-render canonically:
+through the setters re-render canonically (paths are placeholders, so this
+snippet is excluded from code execution):
 
+<!-- code-test: skip -->
 ```python
 from nucleide.mcnp import read_deck
 
@@ -186,6 +191,7 @@ The same module covers the remaining legacy touchpoints (all Python-side
 except where noted):
 
 ```python
+import tempfile
 from nucleide.mcnp import (
     combine_ssw_files,
     meshtal_mesh_data,
@@ -194,16 +200,30 @@ from nucleide.mcnp import (
     write_ptrac_hdf5,
 )
 
+tmp = tempfile.mkdtemp(prefix="nucleide-mcnp-")
+ref_w = "fixtures/mcnp/ssw/mcnp_surfsrc_onetrack.w"
+
 lib = read_endl("fixtures/endl/synthetic_eedl.txt")
 print(lib.nuclides())  # [820000000]
 print(lib.get_rx(820000000, 9, 10, 0)[:1])  # integrated table rows
 
-combine_ssw_files("merged.w", ["part1.w", "part2.w"])
+combine_ssw_files(f"{tmp}/merged.w", [ref_w, ref_w])
 
-rows = ptrac_event_rows("run.ptrac")  # 19 PtracEvent columns, no HDF5 needed
-write_ptrac_hdf5("run.ptrac", "run.h5")  # needs h5py; bytes never asserted
+rows = ptrac_event_rows("fixtures/mcnp/ptrac/mcnp_ptrac_i4_little.ptrac")  # 19 PtracEvent columns, no HDF5 needed
+```
 
-mesh = meshtal_mesh_data("run_meshtal.txt", as_numpy=True)
+The HDF5 writer needs your `h5py` (bytes never asserted here; covered by
+`tests/test_mcnp_io.py`), so it is excluded from code execution:
+
+<!-- code-test: skip -->
+```python
+from nucleide.mcnp import write_ptrac_hdf5
+
+write_ptrac_hdf5("fixtures/mcnp/ptrac/mcnp_ptrac_i4_little.ptrac", "run.h5")
+```python
+from nucleide.mcnp import meshtal_mesh_data
+
+mesh = meshtal_mesh_data("fixtures/mcnp/meshtal/mcnp_meshtal_single_meshtal.txt", as_numpy=True)
 print(mesh["tallies"][4]["result"].shape)  # (ve, groups)
 ```
 

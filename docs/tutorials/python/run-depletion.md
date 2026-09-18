@@ -14,7 +14,7 @@ implementation lives in `crates/depletion`. For the physics and math, see the
 ```python
 from nucleide.depletion import read_chain
 
-chain = read_chain("path/to/chain.xml")
+chain = read_chain("fixtures/depletion/chain_simple.xml")
 print(chain.nuclides[:10])
 ```
 
@@ -102,7 +102,7 @@ step). With a synthetic decay chain on disk:
 ```python
 from nucleide.depletion import deplete_series, read_chain
 
-chain = read_chain("path/to/chain_synth.xml")
+chain = read_chain("fixtures/depletion/chain_abc.xml")
 out = deplete_series(chain, {"A": 1.0e15}, [1.0e5, 1.0e5, 1.0e5])
 print(out["times"])  # cumulative seconds: [1e5, 2e5, 3e5]
 print(out["atoms"][0])  # atom counts after the first step
@@ -128,9 +128,10 @@ plus fractions, readable half-lives, arithmetic, and CSV round-trip:
 ```python
 from nucleide.depletion import Inventory
 
-inv = Inventory(chain, {"Co60": 1.0}, units="Ci")
+chain = read_chain("fixtures/depletion/chain_abc.xml")
+inv = Inventory(chain, {"A": 1.0}, units="atoms")
 aged = inv.decay(1.0, time_unit="y")
-print(aged.activities("Bq"), aged.masses("g"))
+print(aged.activities("Bq"))
 print(inv.half_lives_readable())
 ```
 

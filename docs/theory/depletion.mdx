@@ -142,6 +142,12 @@ $$
 A_{ji} \;\mathrel{+}=\; \lambda_i \, b_{i \to j}.
 $$
 
+A decay entry may omit `target` (or set `target="nothing"`, the same
+convention as target-less reactions): the daughter falls outside the
+modeled chain, so the diagonal loss still applies but no gain term is
+built — pure loss. An explicit `target` naming a nuclide absent from the
+chain stays a loud error, never silent loss.
+
 ### Reactions
 
 For a one-group reaction rate $\sigma\phi$ of type $r$ on nuclide $i$:

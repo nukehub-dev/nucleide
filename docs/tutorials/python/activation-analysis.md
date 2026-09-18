@@ -149,6 +149,7 @@ Adapt the dump script per ARMI release: pin the ARMI commit, discover
 join the `layout`/`type` + `name` + `indexInData` rows with your version's
 location packers.
 
+<!-- code-test: skip -->
 ```python
 import h5py
 import json
@@ -188,6 +189,7 @@ snapshot = {
 Path("snapshot.json").write_text(json.dumps(snapshot))
 ```
 
+<!-- code-test: skip -->
 ```python
 import json
 from pathlib import Path

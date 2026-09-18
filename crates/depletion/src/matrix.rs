@@ -203,14 +203,17 @@ fn assemble_entries(
                     continue;
                 }
                 // Gain from explicit decay daughter (skip spontaneous fission).
+                // A target-less mode decays out of the modeled chain: the
+                // diagonal loss above still applies, but no gain term is
+                // built — mirroring the target-less reaction arm below.
                 if !mode.kind.contains("sf") {
-                    let j = chain
-                        .index_of(&mode.target)
-                        .ok_or_else(|| Error::UnknownNuclide {
-                            name: mode.target.clone(),
+                    if let Some(t) = &mode.target {
+                        let j = chain.index_of(t).ok_or_else(|| Error::UnknownNuclide {
+                            name: t.clone(),
                             context: "decay target",
                         })?;
-                    add(j, i, branch_val);
+                        add(j, i, branch_val);
+                    }
                 }
                 // Light-particle secondaries from alpha / proton decay,
                 // mirroring OpenMC chain.py:648-657.

@@ -42,6 +42,22 @@ def test_order16_and_48_agree() -> None:
         assert a[k] == pytest.approx(b[k], rel=1e-4)
 
 
+def test_ni_chain_out_of_chain_decay_is_pure_loss() -> None:
+    # Regression: chain_ni.xml carries decays whose daughters fall outside
+    # the modeled chain (Fe55→Mn55 and friends). They parse to target-less
+    # modes — pure diagonal loss, no gain — so CRAM and Bateman both
+    # reproduce the exact exponential, and progeny lists stay in-chain.
+    ni = Path(__file__).parent.parent / "fixtures" / "depletion" / "chain_ni.xml"
+    chain = nucleide.depletion.read_chain(str(ni))
+    assert nucleide.depletion.progeny(chain, "Fe55") == []
+    lam = math.log(2) / 86594050.0
+    dt = 1.0e7
+    want = 1.0e15 * math.exp(-lam * dt)
+    for method in ("cram48", "bateman"):
+        out = nucleide.depletion.deplete(chain, {"Fe55": 1.0e15}, dt, method=method)
+        assert out["Fe55"] == pytest.approx(want, rel=1e-9)
+
+
 def test_bad_order_rejected() -> None:
     chain = nucleide.depletion.read_chain(str(CHAIN))
     with pytest.raises(ValueError):

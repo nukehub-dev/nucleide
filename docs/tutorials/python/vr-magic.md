@@ -19,7 +19,7 @@ selects the array (`"total"` or `"per_group"`) and the tuning parameters
 from nucleide.mcnp import read_meshtal
 from nucleide.vr import magic, magic_with
 
-meshtal = read_meshtal("mcnp_meshtal_single_meshtal.txt")
+meshtal = read_meshtal("fixtures/mcnp/meshtal/mcnp_meshtal_single_meshtal.txt")
 tally = meshtal.tallies[4]
 
 out = magic(tally)

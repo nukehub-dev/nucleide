@@ -9,8 +9,9 @@ use std::path::Path;
 pub struct DecayMode {
     /// ENDF decay type ("beta", "alpha", "sf", ...).
     pub kind: String,
-    /// Daughter nuclide name.
-    pub target: String,
+    /// Daughter nuclide name; `None` means decay out of the modeled chain
+    /// (pure loss — the decay analogue of a target-less `<reaction>`).
+    pub target: Option<String>,
     /// Branching ratio for this decay channel.
     pub branching_ratio: f64,
 }
@@ -162,9 +163,20 @@ impl Chain {
             for child in n_el.children().filter(|c| c.is_element()) {
                 match child.tag_name().name() {
                     "decay" => {
+                        // An absent target (or `target="nothing"`) means
+                        // decay out of the modeled chain: the diagonal
+                        // loss still applies, but no gain term is built —
+                        // the decay analogue of a target-less `<reaction>`.
+                        let target = opt_attr(child, "target").and_then(|t| {
+                            if t.eq_ignore_ascii_case("nothing") {
+                                None
+                            } else {
+                                Some(t.to_string())
+                            }
+                        });
                         nuc.decay_modes.push(DecayMode {
                             kind: attr(child, "type")?.to_string(),
-                            target: attr(child, "target")?.to_string(),
+                            target,
                             branching_ratio: parse_f64(
                                 "branching_ratio",
                                 opt_attr(child, "branching_ratio").unwrap_or("1.0"),
