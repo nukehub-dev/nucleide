@@ -87,8 +87,10 @@ One triton (3.0160492 u) burns per 17.6 MeV of D-T fusion energy, scaled to
 grams per day per MW of fusion power:
 
 $$
-\mathrm{burn} = P_\mathrm{fusion}\,K\ \mathrm{[g/day]},
-\qquad
+\mathrm{burn} = P_\mathrm{fusion}\,K\ \mathrm{[g/day]}.
+$$
+
+$$
 K = \frac{10^6 \cdot 86400 \cdot (3.0160492\,\mathrm{u\ in\ kg}) \cdot 10^3}
 {17.6\,\mathrm{MeV\ in\ J}} = 0.153454\ \mathrm{g/day\ per\ MW},
 \tag{F1}
@@ -104,6 +106,14 @@ $$
 $$
 
 negative when sub-breakeven (a net deficit, never clamped).
+
+<SvgFigure
+  src="/theory/figures/burn-rate.svg"
+  alt="Tritium burn rate versus fusion power: straight line of slope K
+    through the origin, marked at the Point-A anchor"
+  caption="Burn is linear in fusion power with slope K = 0.153454 g/day per
+    MW; the Point-A anchor sits on the line."
+/>
 
 ## Algorithm
 

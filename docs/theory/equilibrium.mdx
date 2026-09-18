@@ -92,6 +92,14 @@ radial span (W3). Pure glue — no transport, no shadowing, no FEM/thermal,
 no CAD; shape mismatches and non-finite or negative densities/Jacobians
 are loud errors reusing the crate vocabulary.
 
+<SvgFigure
+  src="/theory/figures/wall-load.svg"
+  alt="Wall-load schematic: three radial voxels at one angle node each
+    contribute S times J times delta-s, summing to the wall flux q"
+  caption="One wall node sees its radial line integral (W1): three cells of
+    S·J·Δs = 1.0 sum to q = 3.0, the uniform-field value (W3)."
+/>
+
 ## Algorithm
 
 Probe the magic first (accept two variants, reject the rest with the

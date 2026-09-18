@@ -1,0 +1,11 @@
+/* Display-math overflow guard (KaTeX renders `.katex-display` blocks that
+ * never wrap, so long equations spill out of narrow content columns).
+ * Horizontal scrolling keeps the equation intact and the layout unbroken;
+ * light and dark themes both inherit surrounding text color.
+ */
+.prose .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.25em;
+}
