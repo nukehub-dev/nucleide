@@ -24,7 +24,9 @@ SKIP = re.compile(r"<!--\s*code-test:\s*skip\s*-->")
 
 def _blocks(page: Path) -> list[tuple[int, str, bool]]:
     """(index, code, runnable) triples for one tutorial page."""
-    text = page.read_text()
+    # Explicit UTF-8: tutorial prose carries non-ASCII symbols (⋅, ⟨⟩,
+    # subscripts) and Windows defaults to a locale codec that chokes on them.
+    text = page.read_text(encoding="utf-8")
     out: list[tuple[int, str, bool]] = []
     for i, match in enumerate(FENCE.finditer(text)):
         gap = text[: match.start()]
