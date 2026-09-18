@@ -62,4 +62,4 @@ pub use physics::{
     NRT_EFFICIENCY, ROBINSON_G1, ROBINSON_G16, ROBINSON_G34,
 };
 pub use specter::{specter_ed_ev, SpecterEntry, SpecterSpectrum, SpecterTable};
-pub use uq::{fold_uq, FoldMetric, UqSummary};
+pub use uq::{fold_uq, he_dpa_ratio_uq, FoldMetric, RatioUqSummary, UqSummary};

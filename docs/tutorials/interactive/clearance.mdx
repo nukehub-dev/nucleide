@@ -21,6 +21,24 @@ transposition of the directive.
 
 <InteractiveDemo kind="clearance" />
 
+## Radiological totals (S3–S7)
+
+The same activation inventories feed five more pure-arithmetic totals. The
+committed ingestion and inhalation hazards (S4/S5) fold per-nuclide
+activities with caller 50-year committed dose coefficients into total doses
+in Sv, each with an excluding-tritium companion. The transport ratio (S6)
+folds activities with caller A₂ limits into the dimensionless total Bq/A₂
+plus the effective A₂ it defines. The IAEA clearance-index variant (S7)
+folds activities with caller IAEA levels and the total mass into a
+dimensionless index screened at ≤ 1. The slab/point gamma dose (S3) folds a
+specific activity with caller group yields and attenuation coefficients into
+Sv/h, clamping short point distances loudly at 0.3 m. Every table behind
+these kernels — dose coefficients, A₂ limits, IAEA levels, attenuation data —
+stays a caller input and is never vendored. The demo below exercises all
+five over editable inventories.
+
+<InteractiveDemo kind="sublet" />
+
 ## Further reading
 
 - Theory: [Clearance screening](../../theory/clearance-screening.mdx)

@@ -43,7 +43,7 @@ rebuilds the high-value subset in memory-safe Rust with one-command
 | MCPL I/O (`nucleide-mcpl-io`) | Monte Carlo Particle List interchange reader/writer (format versions 2/3, single/double precision, gzip-transparent) plus SSW↔MCPL conversion and the merge/extract/stats/repair particle-list utilities |
 | Serpent I/O (`nucleide-serpent-io`) | `_res.m`, `_dep.m`, `_det.m` readers producing structured records |
 | FLUKA I/O (`nucleide-fluka-io`) | USRBIN tally reader, material/compound card generation |
-| ALARA I/O (`nucleide-alara-io`) | Deck/flux/matlib-elelib-WDR/output/photon/schedule-expansion glue; solver out of scope. Clearance / waste-classification analytics: clearance index CI = Σ Aᵢ/CLᵢ and the sum-of-fractions screening rule over parsed inventories, caller-supplied limit tables plus the EU 2013/59/Euratom Annex VII Table A vendored default and the Spanish CSN conditional NORM landfill tables as opt-in tables (screening arithmetic, never a compliance decision). Sublet S1+S2 totals: total activity with the IRT α/β/γ split and decay heat over caller-supplied decay energies, each with the excluding-tritium companion |
+| ALARA I/O (`nucleide-alara-io`) | Deck/flux/matlib-elelib-WDR/output/photon/schedule-expansion glue; solver out of scope. Clearance / waste-classification analytics: clearance index CI = Σ Aᵢ/CLᵢ and the sum-of-fractions screening rule over parsed inventories, caller-supplied limit tables plus the EU 2013/59/Euratom Annex VII Table A vendored default and the Spanish CSN conditional NORM landfill tables as opt-in tables (screening arithmetic, never a compliance decision). Sublet S1–S7 totals: total activity with the IRT α/β/γ split, decay heat over caller-supplied decay energies (each with the excluding-tritium companion), committed ingestion/inhalation hazards over caller 50-year dose coefficients (each with the companion), the transport Bq/A₂ ratio with its effective A₂, the IAEA clearance-index variant screened at ≤ 1, and the slab/point gamma dose over caller groups with the loud 0.3 m clamp |
 | Depletion (`nucleide-depletion`) | CRAM (orders 16/48) matrix exponential, analytic Bateman fast path (`method=` selector with CRAM-48 fallback), depletion-chain XML parsing, Predictor/CECM/CF4 time-series integrators with activity/decay-heat observables, unit-aware decay inventories, cumulative decays and chain-lineage queries |
 | Enrichment (`nucleide-enrichment`) | Multicomponent cascade solver (numeric), SWU closed-form helpers |
 | Point kinetics (`nucleide-kinetics`) | Prescribed-reactivity PKE solver, inhour roots, prompt-jump factor |
@@ -81,7 +81,7 @@ nucleide/
 │   ├── mcpl-io/       # MCPL interchange read/write + SSW conversion + merge/extract/stats/repair
 │   ├── serpent-io/    # res/dep/det readers
 │   ├── fluka-io/      # usrbin reader, material cards
-│   ├── alara-io/      # ALARA deck/flux/libs/output/photon/schedule glue + clearance + Sublet S1/S2 totals (no solver)
+│   ├── alara-io/      # ALARA deck/flux/libs/output/photon/schedule glue + clearance + Sublet S1–S7 totals (no solver)
 │   ├── cccc-io/       # ISOTXS/RTFLUX text-subset parsers + PARTISN writer (no solver)
 │   ├── fispact-io/    # FISPACT-II inventory output + CLEAR-keyword clearance table (output-only)
 │   ├── origen-io/     # scoped ORIGEN TAPE5/6/9 readers

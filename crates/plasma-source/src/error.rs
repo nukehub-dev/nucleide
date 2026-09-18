@@ -10,8 +10,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///
 /// Out-of-scope requests (T-T neutron transport, proton transport, reactant
 /// distributions beyond a single deuterium hot-tail fraction on a D/T fuel
-/// mixture, per-species ion
-/// temperatures without a D/T fuel mixture) are reported through
+/// mixture, a deuterium hot tail without a D/T fuel mixture, per-species ion
+/// temperatures without a D/T fuel mixture on lattice configs) are reported through
 /// [`Error::NotYetSupported`] — a loud named error, never a
 /// panic or a silent fallback. The D(d,p)T proton *rate* is not out of
 /// scope: it is accounted alongside the neutron source

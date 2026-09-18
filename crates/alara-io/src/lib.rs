@@ -14,9 +14,11 @@
 //! Clearance / waste-classification analytics (clearance index and the
 //! sum-of-fractions rule over parsed inventories) live in [`clearance`].
 //!
-//! Sublet S1+S2 radiological totals (total activity with the IRT α/β/γ split
-//! and decay heat per radiation class over caller inventories) live in
-//! [`sublet`].
+//! Sublet S1+S2+S4+S5 radiological totals (total activity with the IRT
+//! α/β/γ split, decay heat per radiation class, and committed
+//! ingestion/inhalation hazards over caller inventories) live in
+//! [`sublet`]; the S3 gamma dose-rate kernel (slab and point dose over
+//! caller gamma groups) lives in [`dose`].
 //!
 //! ## Out of scope (explicitly)
 //!
@@ -34,6 +36,7 @@
 
 pub mod clearance;
 pub mod deck;
+pub mod dose;
 pub mod error;
 pub mod flux;
 pub mod libs;
@@ -47,6 +50,10 @@ pub use clearance::{
     EsNormMaterial, SumOfFractions,
 };
 pub use deck::{AlaraDeck, KNOWN_BLOCKS};
+pub use dose::{
+    dose_point, dose_slab, mixture_mu, DoseGroup, PointDose, SlabDose, DOSE_CONVERSION_C,
+    ELEMENTARY_CHARGE, MIN_DISTANCE_M, SLAB_BUILDUP_B,
+};
 pub use error::{Error, Result};
 pub use flux::{FluxSpec, FluxSpectra};
 pub use libs::{
@@ -62,5 +69,7 @@ pub use schedule::{
     SchedItem, Schedule, ScheduleDef, ScheduleItem,
 };
 pub use sublet::{
-    decay_heat, total_activity, ActivityEntry, ActivityTotal, DecayHeat, DecayHeatEntry,
+    decay_heat, iaea_clearance_index, ingestion_hazard, inhalation_hazard, total_activity,
+    transport_ratio, ActivityEntry, ActivityTotal, DecayHeat, DecayHeatEntry, HazardDose,
+    HazardEntry, IaeaClearance, IaeaEntry, TransportEntry, TransportRatio, TBQ_TO_BQ,
 };

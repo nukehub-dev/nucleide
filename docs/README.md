@@ -119,10 +119,10 @@ status, and license.
 | [Interactive — spectroscopy](tutorials/interactive/spectroscopy.mdx) | Spectrum smoothing and peak counting |
 | [Interactive — UQ sampling](tutorials/interactive/uq.mdx) | Seeded MVN sampling over caller-supplied covariance blocks (Python API and theory add log-normal + LHS) |
 | [Interactive — MCPL particle lists](tutorials/interactive/mcpl-io.mdx) | Read and write MCPL particle lists |
-| [Interactive — damage metrics](tutorials/interactive/damage.mdx) | Fold a multigroup flux into dpa and gas production, plus coil fast-flux and lifetime |
-| [Interactive — fusion sources](tutorials/interactive/fusion-sources.mdx) | Sample D-D/D-T ring and lattice sources, emit SDEF cards, and check ECRH access |
+| [Interactive — damage metrics](tutorials/interactive/damage.mdx) | Fold a multigroup flux into dpa and gas production, propagate He/dpa ratio uncertainty, plus coil fast-flux and lifetime |
+| [Interactive — fusion sources](tutorials/interactive/fusion-sources.mdx) | Sample D-D/D-T ring, lattice, and parametric sources (mixtures, single-fuel species pairs), emit SDEF cards, and check ECRH access |
 | [Interactive — spectrum unfolding](tutorials/interactive/unfold.mdx) | SAND-II, least-squares, and GRAVEL adjustment over detector measurements |
-| [Interactive — clearance screening](tutorials/interactive/clearance.mdx) | Sum-of-fractions classification against EU or Spanish limits |
+| [Interactive — clearance screening](tutorials/interactive/clearance.mdx) | Sum-of-fractions classification against EU or Spanish limits, plus the S3–S7 radiological totals |
 | [Interactive — TBR bookkeeping](tutorials/interactive/blanket.mdx) | Raw and effective TBR, breeding margin, and daily burn and surplus |
 | [Interactive — equilibrium data](tutorials/interactive/equilibrium.mdx) | INDATA parsing and wall-load mapping in flux coordinates |
 
@@ -139,10 +139,10 @@ status, and license.
 | [Tritium transport](theory/tritium.mdx) | 1D diffusion-trapping equations, McNabb–Foster traps, surface taxonomy, multi-layer series stacks with Sieverts, Henry, or vented-sink recombination interfaces, and the closed-form permeation checks |
 | [Gamma-ray spectroscopy](theory/spectroscopy.mdx) | Smoothing, peak counting, energy/efficiency calibration, X-ray lines, and SPE readers |
 | [UQ-lite sampling](theory/uq-sampling.mdx) | Seeded MVN, log-normal, and LHS sampling over caller-supplied covariance blocks, SANDY-compatible estimators, and the decay perturbation consumer |
-| [Damage metrics](theory/damage-metrics.mdx) | NRT/arc-dpa displacement functions, the Lindhard partition, spectral folding conventions, and coil lifetime bookkeeping |
-| [Fusion neutron sources](theory/fusion-sources.mdx) | Ballabio fusion spectra, Bosch–Hale reactivity, the Miller-geometry parametric plasma map, D-T/D-D fuel mixtures, lattice sources, and ECRH accessibility |
+| [Damage metrics](theory/damage-metrics.mdx) | NRT/arc-dpa displacement functions, the Lindhard partition, spectral folding conventions, He/dpa ratio uncertainty, and coil lifetime bookkeeping |
+| [Fusion neutron sources](theory/fusion-sources.mdx) | Ballabio fusion spectra, Bosch–Hale reactivity, the Miller-geometry parametric plasma map, D-T/D-D fuel mixtures, single-fuel species temperatures, lattice sources, and ECRH accessibility |
 | [Neutron spectrum unfolding](theory/unfolding.mdx) | SAND-II, least-squares, GRAVEL, and maximum-entropy adjustment, convergence, and underdetermined systems |
-| [Clearance screening](theory/clearance-screening.mdx) | Clearance index, the sum-of-fractions rule, the Sublet S1+S2 totals, and the EU and Spanish clearance tables |
+| [Clearance screening](theory/clearance-screening.mdx) | Clearance index, the sum-of-fractions rule, the Sublet S1–S7 totals, and the EU and Spanish clearance tables |
 | [TBR and blanket bookkeeping](theory/blanket.mdx) | Raw TBR, port-penalty haircuts, energy multiplication, burn rate, and breeding margins |
 | [Equilibrium data readers](theory/equilibrium.mdx) | Classic-netCDF wout reading, the INDATA grammar, flux-surface Jacobians, and wall-load mapping |
 

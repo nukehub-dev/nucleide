@@ -49,7 +49,8 @@ pub enum Error {
         table_len: usize,
     },
     /// A clearance input value was rejected: negative or non-finite activity,
-    /// or a non-positive/non-finite limit.
+    /// a non-positive/non-finite limit (EU table insert, S6 A2, or S7 IAEA
+    /// level), or a non-positive/non-finite S7 total mass.
     #[error("bad clearance value for {nuclide}: {msg}")]
     BadClearanceValue {
         /// Name of the offending nuclide.
@@ -75,6 +76,15 @@ pub enum Error {
         /// What was expected versus what was found.
         msg: String,
     },
+    /// An S4/S5 hazard input value was rejected: negative or non-finite
+    /// activity or dose coefficient, or a non-finite overflowed dose sum.
+    #[error("bad hazard value for {nuclide}: {msg}")]
+    BadHazardValue {
+        /// Name of the offending nuclide (`total` for a sum overflow).
+        nuclide: String,
+        /// What was expected versus what was found.
+        msg: String,
+    },
     /// An S1 entry carried a Table VI IRT with no pinned α/β/γ mapping
     /// (unused 8, 9; unknown 10; unlisted 0, 5–7, 18, 21–27, 28+).
     #[error("nuclide {nuclide} has unmapped IRT {irt} (no pinned alpha/beta/gamma class)")]
@@ -93,6 +103,38 @@ pub enum Error {
         nuclide: String,
         /// The decay-type identifier the fraction was (or was not) for.
         irt: u8,
+        /// What was expected versus what was found.
+        msg: String,
+    },
+    /// An S3 gamma dose-rate scalar was rejected: negative or non-finite
+    /// specific activity or source mass, a non-finite distance, a negative
+    /// or non-finite group intensity, or a non-finite overflowed dose sum.
+    #[error("bad dose value for {field}: {msg}")]
+    BadDoseValue {
+        /// Name of the offending field (`total` for a sum overflow).
+        field: String,
+        /// What was expected versus what was found.
+        msg: String,
+    },
+    /// An S3 attenuation input was rejected: negative or non-finite air or
+    /// mixture coefficient, a zero mixture coefficient under the slab
+    /// kernel (which divides by it), or a malformed
+    /// fractions/element-table mixture fold.
+    #[error("bad attenuation value at group {group}: {msg}")]
+    BadAttenuation {
+        /// 0-based gamma group index (`usize::MAX` for whole-input mixture
+        /// shape errors with no single group to blame).
+        group: usize,
+        /// What was expected versus what was found.
+        msg: String,
+    },
+    /// An S6 transport-ratio input value was rejected: negative or
+    /// non-finite activity, a non-positive/non-finite A2 limit (zero A2 is
+    /// a loud division error, never `inf`), or a non-finite overflowed sum.
+    #[error("bad transport value for {nuclide}: {msg}")]
+    BadTransportValue {
+        /// Name of the offending nuclide (`total` for a sum overflow).
+        nuclide: String,
         /// What was expected versus what was found.
         msg: String,
     },
@@ -183,5 +225,40 @@ mod tests {
         let text = error.to_string();
         assert!(text.contains("U235"), "msg was `{text}`");
         assert!(text.contains("12"), "msg was `{text}`");
+
+        let error = Error::BadTransportValue {
+            nuclide: "Co60".to_string(),
+            msg: "A2 limit must be finite and > 0, got 0".to_string(),
+        };
+        let text = error.to_string();
+        assert!(text.contains("Co60"), "msg was `{text}`");
+        assert!(text.contains("0"), "msg was `{text}`");
+
+        let error = Error::BadHazardValue {
+            nuclide: "Co60".to_string(),
+            msg: "ingestion: coefficient must be finite and >= 0, got -1".to_string(),
+        };
+        let text = error.to_string();
+        assert!(text.contains("Co60"), "msg was `{text}`");
+        assert!(text.contains("-1"), "msg was `{text}`");
+    }
+
+    #[test]
+    fn dose_variants_display_key_context() {
+        let error = Error::BadDoseValue {
+            field: "activity_bq_per_kg".to_string(),
+            msg: "activity_bq_per_kg must be finite and >= 0, got -1".to_string(),
+        };
+        let text = error.to_string();
+        assert!(text.contains("activity_bq_per_kg"), "msg was `{text}`");
+        assert!(text.contains("-1"), "msg was `{text}`");
+
+        let error = Error::BadAttenuation {
+            group: 2,
+            msg: "mu must be finite and > 0 for the slab ratio, got 0".to_string(),
+        };
+        let text = error.to_string();
+        assert!(text.contains('2'), "msg was `{text}`");
+        assert!(text.contains("slab ratio"), "msg was `{text}`");
     }
 }

@@ -6,14 +6,14 @@
     "date": "2026-09-18",
     "python": "3.12.14",
     "platform": "Linux-7.2.6-arch2-1-x86_64-with-glibc2.39",
-    "nucleide": "0.14.0",
+    "nucleide": "0.16.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
   "sections": [
     {
       "kind": "prose",
-      "text": "Two-part oracle for `nucleide.damage`: analytic gates G1-G5 on synthetic inputs (always run \u2014 NRT/arc closed forms, fold conventions, invariants, and the pinned-seed MVN UQ gate), and a SPECTER cross-check (ANL/FPP/TM-197, US-gov PD) folding report-transcribed spots at print precision (container only; loud SKIP outside)."
+      "text": "Two-part oracle for `nucleide.damage`: analytic gates G1-G7 on synthetic inputs (always run \u2014 NRT/arc closed forms, fold conventions, invariants, the pinned-seed MVN UQ gate, the He/dpa ratio-UQ hand vector plus k-SE gate, and the 68% interval shape plus Fieller-quantile gate), and a SPECTER cross-check (ANL/FPP/TM-197, US-gov PD) folding report-transcribed spots at print precision (container only; loud SKIP outside)."
     },
     {
       "kind": "prose",
@@ -25,7 +25,7 @@
     },
     {
       "kind": "prose",
-      "text": "G5: seeded MVN over the caller [flux, response] block (linalg engine); exact bilinear expectation, first-order propagated std."
+      "text": "G7: the draw 16th/50th/84th percentiles gate against the Fieller-construction quantiles (ratio of the implied joint-normal He/dpa pair, inverted by bisection); the median stays within a percent of the nominal ratio and the interval skews upward."
     },
     {
       "kind": "table",
@@ -133,9 +133,33 @@
           "PASS"
         ],
         [
-          "G5 ratio UQ named-open",
+          "G5 ratio UQ two-response entry",
           "-",
-          "NotYetSupported",
+          "loud redirect",
+          "PASS"
+        ],
+        [
+          "G6 ratio-UQ hand vector",
+          "3.535534e-01",
+          "~ 0.3536",
+          "PASS"
+        ],
+        [
+          "G6 ratio-UQ k-SE gate (n=20000)",
+          "-",
+          "passed",
+          "PASS"
+        ],
+        [
+          "G7 interval shape (\u00b110%)",
+          "-",
+          "ordered, skew up",
+          "PASS"
+        ],
+        [
+          "G7 interval k-SE gate (\u00b110%, n=20000)",
+          "-",
+          "passed",
           "PASS"
         ]
       ]

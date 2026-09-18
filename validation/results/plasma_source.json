@@ -6,14 +6,14 @@
     "date": "2026-09-18",
     "python": "3.12.14",
     "platform": "Linux-7.2.6-arch2-1-x86_64-with-glibc2.39",
-    "nucleide": "0.14.0",
+    "nucleide": "0.16.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
   "sections": [
     {
       "kind": "prose",
-      "text": "Two-part oracle for `nucleide.plasma_source`: analytic gates P1-P4 on the synthetic ring spec (closed-form ring/spectrum moments, sampler determinism, card emission), P5-P7 on a parametric Miller-geometry plasma (flat-profile Jacobian closed forms, Bosch-Hale reactivity transcription, sampled moments vs fine quadrature), P8 on a pinned 70/30 D/T fuel blend (mixture-rule moments and the D-D branch share vs in-script mixture quadrature), and P9 on the D(d,p)T proton bookkeeping (exact pure-fuel ratios, the 70/30 share, the no-T recovery anchor, the loud pure-T error), and P10 on toroidal sectors (in-sector uniform births, bit-for-bit full-rotation recovery, the PHI=D4 marginal with its drift row), and P11 on per-species ion temperatures (pair-temperature moments and branch share, bit-for-bit equal-T recovery), and P12 on the arbitrary-3D birth-rate lattice (hand-vector totals and means, single-point recovery, ring-limit closure, symmetry-fold replication, card round trip, mixture branch fire), and P13 on the deuterium hot-tail fraction (sub-rate-rule moments and branch share, the drift tail-neutron share, zero-fraction recovery) \u2014 always run \u2014 plus container-only cross-checks O1-O13 against the upstream openmc-plasma-source package and NeSST (Ballabio helpers, sampled ring/point sources, Miller map, Fausser profiles, reactivities, end-to-end parametric moments, the pinned 70/30 blend, the tritium-rich 10/90 T-T divergence probe, the partial-sector moment cross-check, the distinct-temperature blend probe, the lattice ring-limit probe, and the hot-tail blend probe; protons have no oracle \u2014 upstream models neutrons only)."
+      "text": "Two-part oracle for `nucleide.plasma_source`: analytic gates P1-P4 on the synthetic ring spec (closed-form ring/spectrum moments, sampler determinism, card emission), P5-P7 on a parametric Miller-geometry plasma (flat-profile Jacobian closed forms, Bosch-Hale reactivity transcription, sampled moments vs fine quadrature), P8 on a pinned 70/30 D/T fuel blend (mixture-rule moments and the D-D branch share vs in-script mixture quadrature), and P9 on the D(d,p)T proton bookkeeping (exact pure-fuel ratios, the 70/30 share, the no-T recovery anchor, the loud pure-T error), and P10 on toroidal sectors (in-sector uniform births, bit-for-bit full-rotation recovery, the PHI=D4 marginal with its drift row), and P11 on per-species ion temperatures (pair-temperature moments and branch share, bit-for-bit equal-T recovery, plus the single-fuel pair arms at the same landed temperatures with their own equal-T recovery), and P12 on the arbitrary-3D birth-rate lattice (hand-vector totals and means, single-point recovery, ring-limit closure, symmetry-fold replication, card round trip, mixture branch fire), and P13 on the deuterium hot-tail fraction (sub-rate-rule moments and branch share, the drift tail-neutron share, zero-fraction recovery) \u2014 always run \u2014 plus container-only cross-checks O1-O13 against the upstream openmc-plasma-source package and NeSST (Ballabio helpers, sampled ring/point sources, Miller map, Fausser profiles, reactivities, end-to-end parametric moments, the pinned 70/30 blend, the tritium-rich 10/90 T-T divergence probe, the partial-sector moment cross-check, the distinct-temperature blend probe, the lattice ring-limit probe, and the hot-tail blend probe; protons have no oracle \u2014 upstream models neutrons only)."
     },
     {
       "kind": "prose",
@@ -145,6 +145,10 @@
     {
       "kind": "prose",
       "text": "P10 toroidal sector (start 0.5 rad, rotation 1.5 rad): uniform birth angles over the sector (n=200000), bit-for-bit full-rotation recovery of the landed kernel (stream and cards), and the PHI=D4 angle-bin marginal with its drift row."
+    },
+    {
+      "kind": "prose",
+      "text": "P11b single-fuel pair (T_D=20 keV, T_T=30 keV, n=200000): single-fuel D-T reacts at T_DT=24 keV (mean 14.077934372230146 MeV) and single-fuel D-D at T_D (sampled moments vs the uniform-reactivity quadrature); the equal pair on a flat 20 keV single-fuel plasma recovers the shared kernel bit-for-bit (stream and cards, D-T and D-D)."
     },
     {
       "kind": "prose",
@@ -305,6 +309,48 @@
         ],
         [
           "P11 equal-T card recovery",
+          "-",
+          "exact",
+          "PASS"
+        ],
+        [
+          "P11 single-fuel D-T pair mean E",
+          "2.820691e-05",
+          "< 1e-2",
+          "PASS"
+        ],
+        [
+          "P11 single-fuel D-T pair <r^2>",
+          "9.190376e-03",
+          "< 1e-2",
+          "PASS"
+        ],
+        [
+          "P11 single-fuel D-D pair mean E",
+          "1.528597e-05",
+          "< 1e-2",
+          "PASS"
+        ],
+        [
+          "P11 single-fuel DT equal-T stream",
+          "-",
+          "exact",
+          "PASS"
+        ],
+        [
+          "P11 single-fuel DT equal-T cards",
+          "-",
+          "exact",
+          "PASS"
+        ],
+        [
+          "P11 single-fuel DD equal-T stream",
+          "-",
+          "exact",
+          "PASS"
+        ],
+        [
+          "P11 single-fuel DD equal-T cards",
           "-",
           "exact",
           "PASS"

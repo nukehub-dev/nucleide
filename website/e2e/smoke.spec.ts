@@ -274,6 +274,7 @@ NUCLIDE PU239 94239 2
     button: "Compute damage metrics",
     output: "text=He production",
     chart: { button: "Compute damage metrics", selector: ".js-plotly-plot" },
+    extraSteps: [{ button: "Run He/dpa ratio UQ", output: "text=Interval k-SE gate" }],
   },
   {
     path: "tutorials/interactive/fusion-sources",
@@ -287,6 +288,19 @@ NUCLIDE PU239 94239 2
         output: "text=Sampled birth energies",
         chart: ".js-plotly-plot",
       },
+      // Single-fuel D-T with a (20, 30) keV species pair: blank the mixture
+      // and tail inputs across steps (tab clicks validate nothing), set the
+      // pair, then sample.
+      { fill: { label: "Fuel D fraction", text: "" }, button: "Parametric + tail" },
+      { fill: { label: "Fuel T fraction", text: "" }, button: "Parametric + tail" },
+      { fill: { label: "Tail fraction", text: "" }, button: "Parametric + tail" },
+      { fill: { label: "Tail T", text: "" }, button: "Parametric + tail" },
+      { fill: { label: "Species T_D", text: "20" }, button: "Parametric + tail" },
+      {
+        fill: { label: "Species T_T", text: "30" },
+        button: "Sample source",
+        output: "text=Sampled birth energies",
+      },
     ],
   },
   {
@@ -299,6 +313,16 @@ NUCLIDE PU239 94239 2
     path: "tutorials/interactive/clearance",
     button: "Screen inventory",
     output: "text=Screening class",
+    extraSteps: [
+      { button: "S4/S5 hazards" },
+      { button: "Compute hazards", output: "text=Ingestion total" },
+      { button: "S6 transport" },
+      { button: "Compute transport ratio", output: "text=Total Bq/A" },
+      { button: "S7 IAEA clearance" },
+      { button: "Compute IAEA clearance", output: "text=Screening class" },
+      { button: "S3 gamma dose" },
+      { button: "Compute gamma dose", output: "text=Slab dose" },
+    ],
   },
 ];
 

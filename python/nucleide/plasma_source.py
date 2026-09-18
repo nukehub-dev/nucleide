@@ -21,15 +21,17 @@ at the shared profile ion temperature: ``S = n²·[f_D·f_T·⟨σv⟩_DT +
 (f_D²/2)·⟨σv⟩_DD]`` with the ``1/(1+δ_ab)`` same-species guard (Eriksson
 et al. 2016, the DRESS rate construction). With a ``fuel`` dict the
 ``reaction`` key is optional and unused. An optional ``species_temperatures``
-dict ``{"D": T_D, "T": T_T}`` [keV] reacts a fuel mixture at distinct
-Maxwellian species temperatures — the D-T branch at the mass-weighted
-``T_DT = T_D + (2/5)·(T_T − T_D)``, the D-D branch at ``T_D`` (Eriksson et
-al. 2016, the full distinct-Maxwellian generalization); the profile ion
-temperature is then unused for rate and spectrum (still validated), while a
-uniform ``T_D = T_T`` pair reproduces the shared-temperature kernel
-exactly. Requires a ``fuel`` dict; non-finite or negative temperatures are
-loud errors. An optional ``deuterium_tail`` dict ``{"fraction": eta,
-"temperature_kev": T_tail}`` splits the deuterium population into a bulk
+dict ``{"D": T_D, "T": T_T}`` [keV] reacts at distinct Maxwellian species
+temperatures — the D-T arm at the mass-weighted
+``T_DT = T_D + (2/5)·(T_T − T_D)``, the D-D arm at ``T_D`` (Eriksson et
+al. 2016, the full distinct-Maxwellian generalization); on a mixture the
+profile ion temperature is then unused for rate and spectrum (still
+validated), while on a single-fuel config the same pair rule applies
+(single-fuel D-T at ``T_DT``, single-fuel D-D at ``T_D``). A uniform
+``T_D = T_T`` pair reproduces the shared-temperature kernel exactly.
+Non-finite or negative temperatures are loud errors. An optional
+``deuterium_tail`` dict ``{"fraction": eta, "temperature_kev": T_tail}``
+splits the deuterium population into a bulk
 ``(1 − eta)`` at ``T_D`` and a hot tail ``eta`` at ``T_tail`` [keV] — the one
 pinned single-tail-temperature non-Maxwellian shape (Eriksson et al. 2016
 arbitrary-distribution framework); each bulk/tail sub-pair reacts at its own
@@ -101,7 +103,8 @@ def particles(spec: dict[str, Any], n: int, seed: int) -> dict[str, Any]:
     plus either ``reaction`` (single fuel) or the ``fuel`` fraction dict
     (mixture; then ``reaction`` is optional and unused), plus the optional
     ``species_temperatures`` dict ``{"D": T_D, "T": T_T}`` [keV] for distinct
-    species temperatures on a mixture (both keys; requires ``fuel``), plus
+    species temperatures (both keys; single-fuel D-T reacts at ``T_DT``,
+    single-fuel D-D at ``T_D``, mixtures at the same pair temperatures), plus
     the optional ``deuterium_tail`` dict ``{"fraction": eta,
     "temperature_kev": T_tail}`` for the deuterium hot-tail fraction on a
     mixture (both keys; requires ``fuel``), plus

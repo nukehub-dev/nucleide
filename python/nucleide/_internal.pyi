@@ -566,6 +566,24 @@ def alara_sum_of_fractions(
 ) -> dict[str, Any]: ...
 def alara_total_activity(entries: list[dict[str, Any]]) -> dict[str, float]: ...
 def alara_decay_heat(entries: list[dict[str, Any]]) -> dict[str, float]: ...
+def alara_ingestion_hazard(entries: list[dict[str, Any]]) -> dict[str, float]: ...
+def alara_inhalation_hazard(entries: list[dict[str, Any]]) -> dict[str, float]: ...
+def alara_dose_slab(
+    activity_bq_per_kg: float, groups: list[dict[str, Any]]
+) -> dict[str, float]: ...
+def alara_dose_point(
+    activity_bq_per_kg: float,
+    source_mass_kg: float,
+    distance_m: float,
+    groups: list[dict[str, Any]],
+) -> dict[str, Any]: ...
+def alara_dose_mixture_mu(
+    fractions: list[float], element_mus: list[list[float]]
+) -> list[float]: ...
+def alara_transport_ratio(entries: list[dict[str, Any]]) -> dict[str, float]: ...
+def alara_iaea_clearance_index(
+    total_mass_kg: float, entries: list[dict[str, Any]]
+) -> dict[str, Any]: ...
 def read_chain(path: str) -> Chain: ...
 def build_depletion_system(chain: Chain, rates: dict[str, float]) -> DepletionSystem: ...
 def deplete(
@@ -848,6 +866,18 @@ def damage_fold_uq(
     metric: str,
     flux: list[float],
     response: list[float],
+    bounds: list[float],
+    seconds: float,
+    mean: list[float],
+    cov: list[list[float]],
+    n: int,
+    seed: int,
+    k: float,
+) -> dict[str, Any]: ...
+def damage_he_dpa_ratio_uq(
+    flux: list[float],
+    he_response: list[float],
+    damage_response: list[float],
     bounds: list[float],
     seconds: float,
     mean: list[float],

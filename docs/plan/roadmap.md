@@ -161,10 +161,23 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   changes): mesh/cell tally extraction through the caller-side OpenMC API
   into the plain arrays the damage folds accept, plus a CSV interchange
   for the same dict (HDF5 never read in Rust).
-- Sublet S1+S2 radiological totals (`alara`): total activity with the IRT
-  α/β/γ split and decay heat over caller-supplied decay energies, each
-  with the excluding-tritium companion, pinned to the open CCFE-PR(16)53
-  preprint and FISPACT-II open docs.
+- Sublet S1–S7 radiological totals (`alara`): total activity with the IRT
+  α/β/γ split and decay heat over caller-supplied decay energies (each
+  with the excluding-tritium companion), committed ingestion/inhalation
+  hazards over caller 50-year dose coefficients (each with the companion),
+  the transport Bq/A₂ ratio with its effective A₂, the IAEA
+  clearance-index variant screened at ≤ 1, and the slab/point gamma dose
+  over caller groups with the loud 0.3 m clamp — all pinned to the open
+  CCFE-PR(16)53 preprint and FISPACT-II open docs.
+- He/dpa ratio uncertainty propagation (`damage`): per-draw ratios over the
+  seeded joint MVN block with k-SE gates against the bias-corrected
+  expectation and the delta-propagated spread, plus the distribution-free
+  68% interval gated against the Fieller-construction quantiles (holds at
+  honestly-sized blocks); zero-dpa draws fail loudly.
+- Per-species ion temperatures on single-fuel parametric configs
+  (`plasma-source`): single-fuel D-T reacts at the mass-weighted T_DT,
+  single-fuel D-D at T_D, with per-branch Ballabio lines and bit-for-bit
+  equal-T recovery.
 
 ## Upcoming priorities
 

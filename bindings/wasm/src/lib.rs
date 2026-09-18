@@ -5465,6 +5465,10 @@ struct FusionParametricSpecJson {
     tail_fraction: Option<f64>,
     #[serde(rename = "tailTempKev", alias = "tail_temp_kev")]
     tail_temp_kev: Option<f64>,
+    #[serde(rename = "speciesDeuteriumKev", alias = "species_deuterium_kev")]
+    species_deuterium_kev: Option<f64>,
+    #[serde(rename = "speciesTritiumKev", alias = "species_tritium_kev")]
+    species_tritium_kev: Option<f64>,
 }
 
 /// Read one string field off a raw JS object.
@@ -5555,6 +5559,21 @@ fn parametric_config(
             ));
         }
     };
+    // Per-species ion temperatures compose with mixtures and with
+    // single-fuel configs (single-fuel D-T reacts at the mass-weighted
+    // T_DT, single-fuel D-D at T_D); the pair entries validate loudly in
+    // the core.
+    let species_temperatures = match (parsed.species_deuterium_kev, parsed.species_tritium_kev) {
+        (Some(d), Some(t)) => {
+            Some(nucleide_plasma_source::SpeciesIonTemperatures::new(d, t).map_err(js_err)?)
+        }
+        (None, None) => None,
+        _ => {
+            return Err(js_err(
+                "speciesDeuteriumKev and speciesTritiumKev must be given together",
+            ));
+        }
+    };
     Ok(ParametricPlasmaConfig {
         geometry: MillerGeometry {
             major_radius_cm: parsed.major_radius_cm,
@@ -5580,7 +5599,7 @@ fn parametric_config(
         pedestal_radius_cm: parsed.pedestal_radius_cm,
         fuel: parse_fusion_reaction(&parsed.fuel)?,
         fuel_mixture,
-        species_temperatures: None,
+        species_temperatures,
         tail,
         sector: None,
         weight: 1.0,
@@ -6271,6 +6290,348 @@ pub fn sublet_decay_heat(entries: JsValue) -> Result<JsValue, JsValue> {
         gamma_kw: out.gamma_kw,
         total_kw: out.total_kw,
         ex_tritium_kw: out.ex_tritium_kw,
+    })
+}
+
+#[derive(Deserialize)]
+struct SubletHazardEntryJson {
+    nuclide: String,
+    #[serde(rename = "activityBq")]
+    activity_bq: f64,
+    #[serde(rename = "coeffSvPerBq")]
+    coeff_sv_per_bq: f64,
+}
+
+fn sublet_hazard_entries(entries: JsValue) -> Result<Vec<nucleide_alara_io::HazardEntry>, JsValue> {
+    let rows: Vec<SubletHazardEntryJson> =
+        serde_wasm_bindgen::from_value(entries).map_err(js_err)?;
+    rows.iter()
+        .map(|r| {
+            Ok::<_, JsValue>(nucleide_alara_io::HazardEntry {
+                nuclide: r
+                    .nuclide
+                    .parse::<NuclideId>()
+                    .map_err(|e| js_err(format!("`{}`: {e}", r.nuclide)))?,
+                activity_bq: r.activity_bq,
+                coeff_sv_per_bq: r.coeff_sv_per_bq,
+            })
+        })
+        .collect::<Result<_, _>>()
+}
+
+/// Sublet S4 ingestion hazard `ΣAi·e^ing_i` (Sv, 50-year committed).
+///
+/// `entries` holds one `{nuclide, activityBq, coeffSvPerBq}` row per
+/// inventory nuclide (caller ingestion coefficients in Sv/Bq, never
+/// vendored). Returns `{totalSv, exTritiumSv}`.
+#[wasm_bindgen(js_name = subletIngestionHazard)]
+pub fn sublet_ingestion_hazard(entries: JsValue) -> Result<JsValue, JsValue> {
+    let parsed = sublet_hazard_entries(entries)?;
+    let out = nucleide_alara_io::sublet::ingestion_hazard(&parsed).map_err(js_err)?;
+    #[derive(Serialize)]
+    struct SubletHazardJson {
+        #[serde(rename = "totalSv")]
+        total_sv: f64,
+        #[serde(rename = "exTritiumSv")]
+        ex_tritium_sv: f64,
+    }
+    to_js(&SubletHazardJson {
+        total_sv: out.total_sv,
+        ex_tritium_sv: out.ex_tritium_sv,
+    })
+}
+
+/// Sublet S5 inhalation hazard `ΣAi·e^inh_i` (Sv, 50-year committed).
+///
+/// Same contract as [`sublet_ingestion_hazard`] with the caller inhalation
+/// coefficients. Returns `{totalSv, exTritiumSv}`.
+#[wasm_bindgen(js_name = subletInhalationHazard)]
+pub fn sublet_inhalation_hazard(entries: JsValue) -> Result<JsValue, JsValue> {
+    let parsed = sublet_hazard_entries(entries)?;
+    let out = nucleide_alara_io::sublet::inhalation_hazard(&parsed).map_err(js_err)?;
+    #[derive(Serialize)]
+    struct SubletHazardJson {
+        #[serde(rename = "totalSv")]
+        total_sv: f64,
+        #[serde(rename = "exTritiumSv")]
+        ex_tritium_sv: f64,
+    }
+    to_js(&SubletHazardJson {
+        total_sv: out.total_sv,
+        ex_tritium_sv: out.ex_tritium_sv,
+    })
+}
+
+#[derive(Deserialize)]
+struct SubletTransportEntryJson {
+    nuclide: String,
+    #[serde(rename = "activityBq")]
+    activity_bq: f64,
+    #[serde(rename = "a2Tbq")]
+    a2_tbq: f64,
+}
+
+/// Sublet S6 transport ratio `ΣAi/(A2,i·C2)` with the effective A2 (TBq).
+///
+/// `entries` holds one `{nuclide, activityBq, a2Tbq}` row per inventory
+/// nuclide (caller transport limits in TBq, never vendored). Returns
+/// `{ratio, totalBq, effectiveA2Tbq}` (the effective A2 is defined by the
+/// ratio, exactly).
+#[wasm_bindgen(js_name = subletTransportRatio)]
+pub fn sublet_transport_ratio(entries: JsValue) -> Result<JsValue, JsValue> {
+    let rows: Vec<SubletTransportEntryJson> =
+        serde_wasm_bindgen::from_value(entries).map_err(js_err)?;
+    let parsed: Vec<nucleide_alara_io::TransportEntry> = rows
+        .iter()
+        .map(|r| {
+            Ok::<_, JsValue>(nucleide_alara_io::TransportEntry {
+                nuclide: r
+                    .nuclide
+                    .parse::<NuclideId>()
+                    .map_err(|e| js_err(format!("`{}`: {e}", r.nuclide)))?,
+                activity_bq: r.activity_bq,
+                a2_tbq: r.a2_tbq,
+            })
+        })
+        .collect::<Result<_, _>>()?;
+    let out = nucleide_alara_io::sublet::transport_ratio(&parsed).map_err(js_err)?;
+    #[derive(Serialize)]
+    struct SubletTransportJson {
+        ratio: f64,
+        #[serde(rename = "totalBq")]
+        total_bq: f64,
+        #[serde(rename = "effectiveA2Tbq")]
+        effective_a2_tbq: f64,
+    }
+    to_js(&SubletTransportJson {
+        ratio: out.ratio,
+        total_bq: out.total_bq,
+        effective_a2_tbq: out.effective_a2_tbq,
+    })
+}
+
+#[derive(Deserialize)]
+struct SubletIaeaEntryJson {
+    nuclide: String,
+    #[serde(rename = "activityBq")]
+    activity_bq: f64,
+    #[serde(rename = "limitBqPerKg")]
+    limit_bq_per_kg: f64,
+}
+
+/// Sublet S7 IAEA clearance index `ΣAi/(Mtot·Li)` (dimensionless).
+///
+/// `totalMassKg` is the total mass `Mtot` (finite, `> 0`); `entries` holds
+/// one `{nuclide, activityBq, limitBqPerKg}` row per inventory nuclide
+/// (caller IAEA levels in Bq/kg, never vendored). Returns `{index,
+/// clearanceClass ("satisfied" at `index <= 1`, boundary included, else
+/// "exceeded"), maxFraction, maxNuclide}` (`maxNuclide` is `null` for an
+/// empty inventory). Screening arithmetic only, never a compliance decision.
+#[wasm_bindgen(js_name = subletIaeaClearance)]
+pub fn sublet_iaea_clearance(total_mass_kg: f64, entries: JsValue) -> Result<JsValue, JsValue> {
+    let rows: Vec<SubletIaeaEntryJson> = serde_wasm_bindgen::from_value(entries).map_err(js_err)?;
+    let parsed: Vec<nucleide_alara_io::IaeaEntry> = rows
+        .iter()
+        .map(|r| {
+            Ok::<_, JsValue>(nucleide_alara_io::IaeaEntry {
+                nuclide: r
+                    .nuclide
+                    .parse::<NuclideId>()
+                    .map_err(|e| js_err(format!("`{}`: {e}", r.nuclide)))?,
+                activity_bq: r.activity_bq,
+                limit_bq_per_kg: r.limit_bq_per_kg,
+            })
+        })
+        .collect::<Result<_, _>>()?;
+    let out =
+        nucleide_alara_io::sublet::iaea_clearance_index(total_mass_kg, &parsed).map_err(js_err)?;
+    #[derive(Serialize)]
+    struct SubletIaeaJson {
+        index: f64,
+        #[serde(rename = "clearanceClass")]
+        clearance_class: String,
+        #[serde(rename = "maxFraction")]
+        max_fraction: f64,
+        #[serde(rename = "maxNuclide")]
+        max_nuclide: Option<String>,
+    }
+    to_js(&SubletIaeaJson {
+        index: out.index,
+        clearance_class: out.class.to_string(),
+        max_fraction: out.max_fraction,
+        max_nuclide: out.max_nuclide.map(|id| id.to_name()),
+    })
+}
+
+#[derive(Deserialize)]
+struct SubletDoseGroupJson {
+    intensity: f64,
+    #[serde(rename = "muAir")]
+    mu_air: f64,
+    mu: f64,
+}
+
+fn sublet_dose_groups(groups: JsValue) -> Result<Vec<nucleide_alara_io::DoseGroup>, JsValue> {
+    let rows: Vec<SubletDoseGroupJson> = serde_wasm_bindgen::from_value(groups).map_err(js_err)?;
+    Ok(rows
+        .iter()
+        .map(|r| nucleide_alara_io::DoseGroup {
+            intensity: r.intensity,
+            mu_air: r.mu_air,
+            mu: r.mu,
+        })
+        .collect())
+}
+
+/// Sublet S3 slab dose `C·B/2·Σ μa/μm·Sγ` (Sv/h; `B = 2`, `C = 3.6e9·|e|`).
+///
+/// `activityBqPerKg` is the caller specific activity; `groups` holds one
+/// `{intensity, muAir, mu}` row per gamma group (caller attenuation,
+/// never vendored; the slab ratio divides by `mu`). Returns `{doseSvPerH}`.
+#[wasm_bindgen(js_name = subletDoseSlab)]
+pub fn sublet_dose_slab(activity_bq_per_kg: f64, groups: JsValue) -> Result<JsValue, JsValue> {
+    let parsed = sublet_dose_groups(groups)?;
+    let out = nucleide_alara_io::dose::dose_slab(activity_bq_per_kg, &parsed).map_err(js_err)?;
+    #[derive(Serialize)]
+    struct SubletDoseJson {
+        #[serde(rename = "doseSvPerH")]
+        dose_sv_per_h: f64,
+    }
+    to_js(&SubletDoseJson {
+        dose_sv_per_h: out.dose_sv_per_h,
+    })
+}
+
+/// Sublet S3 point dose `C·Σ μa/(4πr²)·e^(−μr)·mₛ·Sγ` (Sv/h).
+///
+/// Same group contract as [`sublet_dose_slab`], plus `sourceMassKg` (`mₛ`)
+/// and `distanceM` (`r`). A finite `r` below 0.3 m clamps to 0.3 m and the
+/// returned dict reports it loudly via `clamped: true` with the
+/// `distanceUsedM` actually used (never silent). Returns `{doseSvPerH,
+/// distanceUsedM, clamped}`.
+#[wasm_bindgen(js_name = subletDosePoint)]
+pub fn sublet_dose_point(
+    activity_bq_per_kg: f64,
+    source_mass_kg: f64,
+    distance_m: f64,
+    groups: JsValue,
+) -> Result<JsValue, JsValue> {
+    let parsed = sublet_dose_groups(groups)?;
+    let out = nucleide_alara_io::dose::dose_point(
+        activity_bq_per_kg,
+        source_mass_kg,
+        distance_m,
+        &parsed,
+    )
+    .map_err(js_err)?;
+    #[derive(Serialize)]
+    struct SubletPointDoseJson {
+        #[serde(rename = "doseSvPerH")]
+        dose_sv_per_h: f64,
+        #[serde(rename = "distanceUsedM")]
+        distance_used_m: f64,
+        clamped: bool,
+    }
+    to_js(&SubletPointDoseJson {
+        dose_sv_per_h: out.dose_sv_per_h,
+        distance_used_m: out.distance_used_m,
+        clamped: out.clamped,
+    })
+}
+
+/// Sublet S3 mixture fold `μm(Eᵢ) = Σⱼ fⱼ·μmⱼ(Eᵢ)`.
+///
+/// `fractions` weights every group of `elementMus` (fractions finite,
+/// `>= 0`, summing to 1). Returns one mixture coefficient per group.
+#[wasm_bindgen(js_name = subletDoseMixtureMu)]
+pub fn sublet_dose_mixture_mu(
+    fractions: Vec<f64>,
+    element_mus: JsValue,
+) -> Result<JsValue, JsValue> {
+    let rows: Vec<Vec<f64>> = serde_wasm_bindgen::from_value(element_mus).map_err(js_err)?;
+    let out = nucleide_alara_io::dose::mixture_mu(&fractions, &rows).map_err(js_err)?;
+    to_js(&out)
+}
+
+/// He/dpa ratio UQ: per-draw ratios over the seeded joint-MVN block.
+///
+/// `mean`/`cov` describe relative perturbations of the stacked `[flux,
+/// heResponse, damageResponse]` vector (dimension `3G`). Each draw refolds
+/// He and dpa and forms the ratio per draw; returns `{metric, nominal,
+/// mean, std, expected, analyticStd, k, n, seed, passed}` with the
+/// second-order bias-corrected expectation and the first-order
+/// delta-propagated std. A draw at non-positive dpa fails loudly.
+#[wasm_bindgen(js_name = damageHeDpaRatioUq)]
+#[allow(clippy::too_many_arguments)]
+pub fn damage_he_dpa_ratio_uq(
+    flux: Vec<f64>,
+    he_response: Vec<f64>,
+    damage_response: Vec<f64>,
+    bounds: Vec<f64>,
+    seconds: f64,
+    mean: Vec<f64>,
+    cov: JsValue,
+    n: usize,
+    seed: f64,
+    k: f64,
+) -> Result<JsValue, JsValue> {
+    let cov: Vec<Vec<f64>> = serde_wasm_bindgen::from_value(cov).map_err(js_err)?;
+    let out = nucleide_damage::he_dpa_ratio_uq(
+        &flux,
+        &he_response,
+        &damage_response,
+        &bounds,
+        seconds,
+        &mean,
+        &cov,
+        n,
+        check_seed(seed)?,
+        k,
+    )
+    .map_err(js_err)?;
+    #[derive(Serialize)]
+    struct RatioUqJson {
+        metric: String,
+        nominal: f64,
+        mean: f64,
+        std: f64,
+        expected: f64,
+        #[serde(rename = "analyticStd")]
+        analytic_std: f64,
+        q16: f64,
+        q50: f64,
+        q84: f64,
+        #[serde(rename = "expectedQ16")]
+        expected_q16: f64,
+        #[serde(rename = "expectedQ50")]
+        expected_q50: f64,
+        #[serde(rename = "expectedQ84")]
+        expected_q84: f64,
+        #[serde(rename = "quantilesPassed")]
+        quantiles_passed: bool,
+        k: f64,
+        n: usize,
+        seed: u64,
+        passed: bool,
+    }
+    to_js(&RatioUqJson {
+        metric: out.metric.name().to_string(),
+        nominal: out.nominal,
+        mean: out.mean,
+        std: out.std,
+        expected: out.expected,
+        analytic_std: out.analytic_std,
+        q16: out.q16,
+        q50: out.q50,
+        q84: out.q84,
+        expected_q16: out.expected_q16,
+        expected_q50: out.expected_q50,
+        expected_q84: out.expected_q84,
+        quantiles_passed: out.quantiles_passed,
+        k: out.k,
+        n: out.n,
+        seed: out.seed,
+        passed: out.passed,
     })
 }
 

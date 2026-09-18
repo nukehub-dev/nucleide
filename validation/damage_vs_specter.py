@@ -84,7 +84,7 @@ def _lindhard_partition_py(t_ev: float, z: float, a: float) -> float:
 
 
 def analytic_gates() -> tuple[list[list[str]], list[str]]:
-    """G1-G5 on synthetic inputs; returns (gate rows, prose notes)."""
+    """G1-G7 on synthetic inputs; returns (gate rows, prose notes)."""
     rows: list[list[str]] = []
     notes: list[str] = []
 
@@ -215,11 +215,100 @@ def analytic_gates() -> tuple[list[list[str]], list[str]]:
         dmg.fold_uq("he_dpa_ratio", flux2, resp2, bounds2, 1.0, mean4, cov4, 16, 1, 5.0)
         ok = False
     except ValueError as exc:
-        ok = "not yet supported" in str(exc)
-    rows.append(["G5 ratio UQ named-open", "-", "NotYetSupported", _check(ok, "G5 ratio open")])
+        ok = "damage_he_dpa_ratio_uq" in str(exc)
+    rows.append(
+        ["G5 ratio UQ two-response entry", "-", "loud redirect", _check(ok, "G5 ratio entry")]
+    )
+    # G6: He/dpa ratio UQ — per-draw ratios over the seeded joint
+    # [flux | he | dpa] block; draw mean/sd against the second-order
+    # bias-corrected expectation and the first-order delta std. The analytic
+    # spot pins the hand vector (independent He 5.0 +/- 0.5, dpa 2.0 +/-
+    # 0.2: ratio of means 2.5, propagated sd sqrt(0.125)); the k-SE gate
+    # runs in the small-perturbation regime (+/-2%).
+    ruq = dmg.he_dpa_ratio_uq(
+        [1.0e12],
+        [5.0e6],
+        [2.0e12],
+        [0.0, 20.0],
+        1.0,
+        [0.0, 0.0, 0.0],
+        [[0.0, 0.0, 0.0], [0.0, 0.01, 0.0], [0.0, 0.0, 0.01]],
+        64,
+        20260915,
+        5.0,
+    )
+    ok = (
+        abs(ruq["nominal"] - 2.5) <= 1e-12
+        and abs(ruq["analytic_std"] - math.sqrt(0.125)) <= 1e-12
+        and abs(ruq["expected"] - 2.525) <= 1e-12
+    )
+    rows.append(
+        ["G6 ratio-UQ hand vector", fmt(ruq["analytic_std"]), "~ 0.3536", _check(ok, "G6 pin")]
+    )
+    small6 = [[0.0, 0.0, 0.0], [0.0, 0.0004, 0.0], [0.0, 0.0, 0.0004]]
+    ruq = dmg.he_dpa_ratio_uq(
+        [1.0e12],
+        [5.0e6],
+        [2.0e12],
+        [0.0, 20.0],
+        1.0,
+        [0.0, 0.0, 0.0],
+        small6,
+        20_000,
+        20260915,
+        5.0,
+    )
+    rows.append(
+        ["G6 ratio-UQ k-SE gate (n=20000)", "-", "passed", _check(ruq["passed"], "G6 k-SE")]
+    )
+    # G7: He/dpa 68% interval — draw percentiles against the
+    # Fieller-construction quantiles. The interval verdict holds at the
+    # ±10% hand-vector block where the symmetric-spread gate honestly
+    # cannot (a skewed ratio needs asymmetric margins).
+    ruq10 = dmg.he_dpa_ratio_uq(
+        [1.0e12],
+        [5.0e6],
+        [2.0e12],
+        [0.0, 20.0],
+        1.0,
+        [0.0, 0.0, 0.0],
+        [[0.0, 0.0, 0.0], [0.0, 0.01, 0.0], [0.0, 0.0, 0.01]],
+        20_000,
+        20260915,
+        5.0,
+    )
+    ordered = ruq10["q16"] < ruq10["q50"] < ruq10["q84"]
+    ordered_e = ruq10["expected_q16"] < ruq10["expected_q50"] < ruq10["expected_q84"]
+    skew = (ruq10["q84"] - ruq10["q50"]) > (ruq10["q50"] - ruq10["q16"])
+    skew_e = (ruq10["expected_q84"] - ruq10["expected_q50"]) > (
+        ruq10["expected_q50"] - ruq10["expected_q16"]
+    )
+    brackets = ruq10["q16"] < 2.5 < ruq10["q84"]
+    median_ok = abs(ruq10["q50"] - 2.5) <= 0.025 and abs(ruq10["expected_q50"] - 2.5) <= 0.025
+    ok = ordered and ordered_e and skew and skew_e and brackets and median_ok
+    rows.append(["G7 interval shape (±10%)", "-", "ordered, skew up", _check(ok, "G7 shape")])
+    rows.append(
+        [
+            "G7 interval k-SE gate (±10%, n=20000)",
+            "-",
+            "passed",
+            _check(ruq10["quantiles_passed"], "G7 k-SE"),
+        ]
+    )
+    notes.append(
+        "G7: the draw 16th/50th/84th percentiles gate against the "
+        "Fieller-construction quantiles (ratio of the implied joint-normal "
+        "He/dpa pair, inverted by bisection); the median stays within a "
+        "percent of the nominal ratio and the interval skews upward."
+    )
+    return rows, notes
     notes.append(
         "G5: seeded MVN over the caller [flux, response] block (linalg "
-        "engine); exact bilinear expectation, first-order propagated std."
+        "engine); exact bilinear expectation, first-order propagated std. "
+        "G6: He/dpa ratio UQ forms the ratio per draw over the joint "
+        "[flux, he, dpa] block; the mean gate uses the second-order "
+        "bias-corrected expectation, the std gate the first-order delta "
+        "propagation; zero-dpa draws fail loudly."
     )
     return rows, notes
 
@@ -368,9 +457,11 @@ def oracle_check_specter() -> tuple[list[list[str]], list[str], bool]:
 def main() -> int:
     report = Report("damage", "Damage/gas metrics (`damage_vs_specter.py`)")
     report.prose(
-        "Two-part oracle for `nucleide.damage`: analytic gates G1-G5 on synthetic "
+        "Two-part oracle for `nucleide.damage`: analytic gates G1-G7 on synthetic "
         "inputs (always run — NRT/arc closed forms, fold conventions, invariants, "
-        "and the pinned-seed MVN UQ gate), and a SPECTER cross-check "
+        "the pinned-seed MVN UQ gate, the He/dpa ratio-UQ hand vector plus "
+        "k-SE gate, and the 68% interval shape plus Fieller-quantile gate), "
+        "and a SPECTER cross-check "
         "(ANL/FPP/TM-197, US-gov PD) folding report-transcribed spots at print "
         "precision (container only; loud SKIP outside)."
     )

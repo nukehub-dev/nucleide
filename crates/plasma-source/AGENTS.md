@@ -91,9 +91,11 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   stay neutron-only), reactant distributions beyond the one pinned
   deuterium hot-tail fraction on a D/T mixture (the rest of the full
   Eriksson generalization; the per-species-temperature form is supported via
-  `SpeciesIonTemperatures`, the single-tail-temperature form via
+  `SpeciesIonTemperatures` — including on single-fuel configs, which react
+  at the pair temperatures — the single-tail-temperature form via
   `DeuteriumTail` — both parametric-only, there is no tail spelling on
-  lattice configs), per-species temperatures without a fuel mixture, and profile
+  lattice configs), per-species temperatures without a fuel mixture on
+  lattice configs, and profile
   self-consistency (zero total strength). Mixture fractions, species
   temperatures, tail parameters, lattice clouds/symmetry, and sector angles carry their own loud errors
   (`Error::NonFinite`, `Error::InvalidFuelMixture`,

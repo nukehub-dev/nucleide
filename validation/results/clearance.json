@@ -6,14 +6,14 @@
     "date": "2026-09-18",
     "python": "3.12.14",
     "platform": "Linux-7.2.6-arch2-1-x86_64-with-glibc2.39",
-    "nucleide": "0.14.0",
+    "nucleide": "0.16.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
   "sections": [
     {
       "kind": "prose",
-      "text": "Two-part oracle for `nucleide.alara` clearance analytics and the `nucleide.fispact` clearance-block reader: analytic gates C1-C7 on synthetic fixtures and the vendored tables (always run), and a cross-check of the overlapping inventory columns (atoms, activity, clearance index) against the upstream Apache-2.0 pypact reader (oracle leg)."
+      "text": "Two-part oracle for `nucleide.alara` clearance analytics and the `nucleide.fispact` clearance-block reader: analytic gates C1-C10 on synthetic fixtures and the vendored tables (always run), and a cross-check of the overlapping inventory columns (atoms, activity, clearance index) against the upstream Apache-2.0 pypact reader (oracle leg)."
     },
     {
       "kind": "prose",
@@ -30,6 +30,18 @@
     {
       "kind": "prose",
       "text": "Sublet S2 decay heat (Table X Ai E C1, kW; C1 = eV to kJ): caller-supplied average decay energies, never vendored."
+    },
+    {
+      "kind": "prose",
+      "text": "Sublet S3 gamma dose rate (DOSE slab/point kernel, Sv/h): caller specific activity, group yields, and attenuation coefficients; mixture coefficients fold from elemental values; no table vendored."
+    },
+    {
+      "kind": "prose",
+      "text": "Sublet S4 ingestion / S5 inhalation hazards (Sigma Ai ei, Sv, 50-year committed): caller-supplied dose coefficients, never vendored; totals carry the excluding-tritium companion."
+    },
+    {
+      "kind": "prose",
+      "text": "Sublet S6 transport ratio (Sigma Ai/(A2i C2), dimensionless, plus the effective A2 it defines) and S7 IAEA clearance index (Sigma Ai/(Mtot Li), dimensionless, <= 1 satisfied): caller-supplied limits/levels, never vendored."
     },
     {
       "kind": "table",
@@ -122,6 +134,54 @@
           "C7 S2 hand vector",
           "4.806530e-06",
           "parts sum",
+          "PASS"
+        ],
+        [
+          "C8 S3 slab hand vector",
+          "2.883918e-10",
+          "2.883918e-10",
+          "PASS"
+        ],
+        [
+          "C8 mixture fold",
+          "7.000000e+00",
+          "== 7",
+          "PASS"
+        ],
+        [
+          "C8 S3 point hand vector",
+          "5.507878e-10",
+          "exact",
+          "PASS"
+        ],
+        [
+          "C8 clamp flag at r < 0.3 m",
+          "8.779026e-10",
+          "clamped",
+          "PASS"
+        ],
+        [
+          "C9 S4 hand vector",
+          "4.000000e+01",
+          "== 40",
+          "PASS"
+        ],
+        [
+          "C9 S5 hand vector",
+          "8.500000e+01",
+          "== 85",
+          "PASS"
+        ],
+        [
+          "C10 S6 hand vector",
+          "3.000000e+00",
+          "== 3",
+          "PASS"
+        ],
+        [
+          "C10 S7 hand vector",
+          "1.000000e+00",
+          "== 1",
           "PASS"
         ]
       ]

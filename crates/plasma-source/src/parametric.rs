@@ -162,10 +162,27 @@
 //! Exact recovery anchor (regression gate): `T_D = T_T` reproduces the
 //! shared-temperature mixture kernel bit-for-bit — strength densities and
 //! the axis spectrum summary — because `T_DT` computes to `T_D` exactly.
-//! The pair requires a fuel mixture (a single-fuel config with the pair set
-//! is a loud [`Error::NotYetSupported`]); the profile ion temperature is
-//! then unused for rate and spectrum (still validated), while the density
-//! profile keeps shaping `S(r) ∝ n(r)²`.
+//! The pair also applies to single-fuel configs (additive, mixture paths
+//! untouched): single-fuel D-T reacts at `T_DT`, single-fuel D-D at `T_D`,
+//! with the Ballabio lines following per branch — the D-T line at `T_DT`,
+//! the D-D line at `T_D`. The profile ion temperature is then unused for
+//! rate and spectrum (still validated), while the density profile keeps
+//! shaping `S(r) ∝ n(r)²`. Equal pair temperatures `(T, T)` on a
+//! single-fuel config reproduce the shared-temperature single-fuel kernel
+//! bit-for-bit (strengths, sampled stream, cards — regression gate).
+//!
+//! Single-fuel hand vectors (flat profile, `n = 1e20` m⁻³,
+//! `T_D = 20` keV, `T_T = 30` keV; `T_DT = 24.0` keV exactly, pinned
+//! reactivity `⟨σv⟩_DT(24) = 5.414667327922193e-22` m³/s alongside the
+//! landed `⟨σv⟩_DD(20) = 2.602582958721524e-24` m³/s):
+//!
+//! ```text
+//! single-fuel D-T + pair: S = 0.25·n²·⟨σv⟩_DT(24) = 1353666831980.5483
+//! single-fuel D-D + pair: S = 0.5·n²·⟨σv⟩_DD(20) = 13012914793.607618
+//!                         (the landed pure D-D hand vector: D-D reacts at T_D)
+//! D-T Ballabio at 24 keV: mean 14.077934372230146 MeV,
+//!                         sigma 0.3700390508551786 MeV
+//! ```
 //!
 //! # Deuterium hot tail (mixture v3)
 //!
@@ -452,10 +469,12 @@ impl ToroidalSector {
 /// see the module rustdoc for the pinned normalization, hand vectors, and
 /// recovery anchor).
 ///
+/// The pair also applies to single-fuel configs: single-fuel D-T reacts at
+/// the mass-weighted `T_DT`, single-fuel D-D at `T_D`, with the Ballabio
+/// lines following per branch (module rustdoc).
+///
 /// Construction is loud: NaN/infinite temperatures give [`Error::NonFinite`],
-/// negative temperatures give [`Error::NegativeIonTemperature`]. The pair
-/// requires [`ParametricPlasmaConfig::fuel_mixture`] (a single-fuel config
-/// with the pair set is [`Error::NotYetSupported`]).
+/// negative temperatures give [`Error::NegativeIonTemperature`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpeciesIonTemperatures {
     /// Deuterium ion temperature `T_D` \[keV\]; non-negative.
@@ -587,8 +606,9 @@ pub struct ParametricPlasmaConfig {
     pub fuel_mixture: Option<FuelMixture>,
     /// Optional per-species ion temperatures (module rustdoc normalization).
     /// `None` — the default — reacts at the shared profile ion temperature.
-    /// When set, a fuel mixture is required and the profile ion temperature
-    /// is unused for rate and spectrum (still validated).
+    /// When set on a mixture, the profile ion temperature is unused for rate
+    /// and spectrum (still validated); when set on a single-fuel config, D-T
+    /// reacts at the mass-weighted `T_DT` and D-D at `T_D` (module rustdoc).
     pub species_temperatures: Option<SpeciesIonTemperatures>,
     /// Optional deuterium hot-tail fraction (module rustdoc normalization).
     /// `None` — the default — keeps the landed mixture kernels bit-for-bit.
@@ -625,11 +645,6 @@ impl ParametricPlasmaConfig {
         }
         if let Some(pair) = &self.species_temperatures {
             pair.validate()?;
-            if self.fuel_mixture.is_none() {
-                return Err(Error::NotYetSupported(
-                    "per-species ion temperatures need a D/T fuel mixture",
-                ));
-            }
         }
         if let Some(tail) = &self.tail {
             tail.validate()?;
@@ -688,7 +703,11 @@ impl ParametricPlasmaConfig {
     /// mixture reacts the D-T branch at the pair effective temperature
     /// [`SpeciesIonTemperatures::dt_effective_kev`] and the D-D branch at
     /// `T_D` (module rustdoc); without a pair both reduce to the shared
-    /// profile temperature exactly. A [`DeuteriumTail`] splits the deuterium
+    /// profile temperature exactly. A single-fuel config with the pair set
+    /// reacts at the same landed pair temperatures — D-T at `T_DT`, D-D at
+    /// `T_D` — while the `None`-pair path keeps the landed expression tree
+    /// verbatim (equal `(T, T)` recovers it bit-for-bit since `T_DT`
+    /// computes to `T_D` exactly). A [`DeuteriumTail`] splits the deuterium
     /// population into bulk/tail sub-pairs at their own effective
     /// temperatures (module rustdoc); `η == 0` takes the landed mixture
     /// expressions verbatim (bit-for-bit recovery for any `T_tail`
@@ -729,10 +748,27 @@ impl ParametricPlasmaConfig {
                 Ok((s_dt, s_dd))
             }
             None => {
-                let reactivity = self.fuel.reactivity_m3_per_s(t_d)? * 1e6;
+                let has_pair = self.species_temperatures.is_some();
                 match self.fuel {
-                    FusionReaction::Dt => Ok((0.25 * n_cm3 * n_cm3 * reactivity, 0.0)),
-                    FusionReaction::Dd => Ok((0.0, 0.5 * n_cm3 * n_cm3 * reactivity)),
+                    FusionReaction::Dt => {
+                        // Single-fuel D-T + pair reacts at T_DT (the landed
+                        // mixture pair temperature); the None-pair path keeps
+                        // the landed tree verbatim, and equal (T, T) recovers
+                        // it bit-for-bit (T_DT computes to T_D exactly).
+                        let t_react = if has_pair {
+                            SpeciesIonTemperatures::dt_effective_kev(t_d, t_t)
+                        } else {
+                            t_d
+                        };
+                        let reactivity = FusionReaction::Dt.reactivity_m3_per_s(t_react)? * 1e6;
+                        Ok((0.25 * n_cm3 * n_cm3 * reactivity, 0.0))
+                    }
+                    FusionReaction::Dd => {
+                        // Single-fuel D-D reacts at T_D either way (t_d IS
+                        // T_D); the landed tree is verbatim on both paths.
+                        let reactivity = FusionReaction::Dd.reactivity_m3_per_s(t_d)? * 1e6;
+                        Ok((0.0, 0.5 * n_cm3 * n_cm3 * reactivity))
+                    }
                 }
             }
         }
@@ -792,7 +828,10 @@ impl ParametricPlasmaConfig {
 
     /// Neutron-branch spectra at species temperatures `(t_d, t_t)` \[keV\]:
     /// `(reaction, weight, mean, sigma)` tuples with weights summing to 1.
-    /// Single fuel → one unit-weight branch at the shared temperature; a
+    /// Single fuel → one unit-weight branch at the shared temperature, or —
+    /// with the pair set — at the landed pair temperature (D-T at `T_DT`,
+    /// D-D at `t_d`; the module rustdoc normalization); the `None`-pair path
+    /// keeps the landed expression verbatim. A
     /// mixture → D-T and D-D branches weighted by the rate rule, the D-T
     /// arm at the pair effective temperature and the D-D arm at `t_d`
     /// (the module rustdoc normalization). A [`DeuteriumTail`] expands the
@@ -811,7 +850,18 @@ impl ParametricPlasmaConfig {
     ) -> Result<Vec<(FusionReaction, f64, f64, f64)>> {
         match &self.fuel_mixture {
             None => {
-                let (mu, sigma) = self.fuel.moments_mev(t_d)?;
+                // Single-fuel + pair: the Ballabio line follows the landed
+                // pair temperature (D-T at T_DT, D-D at t_d); the None-pair
+                // path keeps the landed call verbatim. One branch either way,
+                // so the sampler draws no roulette uniform on any single-fuel
+                // path and equal (T, T) recovers bit-for-bit.
+                let t_line = match self.fuel {
+                    FusionReaction::Dt if self.species_temperatures.is_some() => {
+                        SpeciesIonTemperatures::dt_effective_kev(t_d, t_t)
+                    }
+                    _ => t_d,
+                };
+                let (mu, sigma) = self.fuel.moments_mev(t_line)?;
                 Ok(vec![(self.fuel, 1.0, mu, sigma)])
             }
             Some(mixture) => {
@@ -876,14 +926,21 @@ impl ParametricPlasmaConfig {
 
     /// Spectrum summary at the magnetic axis (`r = 0`): `(nominal, mean,
     /// sigma)` \[MeV\]. Single fuel → the reaction's nominal line and
-    /// Ballabio moments; a mixture → the two-branch Gaussian-mixture
+    /// Ballabio moments (at the landed pair temperature when the pair is
+    /// set: D-T at `T_DT`, D-D at `T_D`); a mixture → the two-branch Gaussian-mixture
     /// moments (between-branch variance included) and the dominant
     /// branch's nominal line (D-T preferred on exact ties).
     pub fn axis_spectrum_summary(&self) -> Result<(f64, f64, f64)> {
         let (t_d, t_t) = self.species_temperatures_at(0.0);
         match &self.fuel_mixture {
             None => {
-                let (mean, sigma) = self.fuel.moments_mev(t_d)?;
+                let t_line = match self.fuel {
+                    FusionReaction::Dt if self.species_temperatures.is_some() => {
+                        SpeciesIonTemperatures::dt_effective_kev(t_d, t_t)
+                    }
+                    _ => t_d,
+                };
+                let (mean, sigma) = self.fuel.moments_mev(t_line)?;
                 Ok((self.fuel.nominal_energy_mev(), mean, sigma))
             }
             Some(_) => {
@@ -1153,8 +1210,9 @@ impl ParametricSampler {
     /// temperatures `(t_d, t_t)`: the config fuel's Ballabio moments, or —
     /// for a fuel mixture — the branch roulette weighted by the rate rule
     /// (module rustdoc) followed by the chosen branch's moments.
-    /// The single-fuel path consumes no RNG, so the landed sampling stream
-    /// is preserved bit-for-bit; the mixture path draws one extra uniform
+    /// The single-fuel path consumes no RNG on either pair spelling (one
+    /// branch: shared `T_i`, or D-T at `T_DT` / D-D at `T_D` with the pair
+    /// set), so the landed sampling stream is preserved bit-for-bit; the mixture path draws one extra uniform
     /// per particle. Both reactivities zero (a cold annulus) degenerates to
     /// the D-T line by the documented convention of
     /// [`ParametricPlasmaConfig::spectrum_branches`].
@@ -1889,15 +1947,115 @@ pub(crate) mod tests {
             c.validate(),
             Err(Error::NegativeIonTemperature(_))
         ));
-        // The pair without a fuel mixture is a loud scope error, never a
-        // silent single-fuel fallback.
+        // The pair on a single-fuel config is allowed (module rustdoc): it
+        // validates and samples instead of raising a scope error.
         let mut single = iter_h_mode();
         single.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 30.0).unwrap());
-        assert!(matches!(single.validate(), Err(Error::NotYetSupported(_))));
-        assert!(matches!(
-            ParametricSampler::new(single, 7),
-            Err(Error::NotYetSupported(_))
-        ));
+        single.validate().unwrap();
+        ParametricSampler::new(single, 7).unwrap();
+    }
+
+    #[test]
+    fn single_fuel_pair_reacts_at_landed_pair_temperatures() {
+        // Flat L-mode profile: n = 1e20 m⁻³ everywhere; single-fuel D-T with
+        // (T_D, T_T) = (20, 30) keV reacts at T_DT = 24 keV exactly, D-D at
+        // T_D — the landed mixture pair temperatures (module rustdoc).
+        // Pinned anchors: T_DT, ⟨σv⟩_DT(24), and the D-T Ballabio line.
+        assert_eq!(SpeciesIonTemperatures::dt_effective_kev(20.0, 30.0), 24.0);
+        let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(24.0).unwrap();
+        assert_eq!(sv_dt, 5.414667327922193e-22);
+        let (mu_dt, sigma_dt) = FusionReaction::Dt.moments_mev(24.0).unwrap();
+        assert_eq!(mu_dt, 14.077934372230146);
+        assert_eq!(sigma_dt, 0.3700390508551786);
+        let flat = flat_config(1.85, 0.0, 0.0);
+        let n_cm3 = flat.density_m3(123.0) * 1e-6;
+        let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(20.0).unwrap() * 1e6;
+        let sv_dt_cm = sv_dt * 1e6;
+        // Single-fuel D-T + pair: the D-T arm at T_DT, exact tree.
+        let mut dt = flat;
+        dt.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 30.0).unwrap());
+        assert_eq!(dt.fuel, FusionReaction::Dt);
+        let (s_dt, s_dd) = dt.branch_strength_density(123.0).unwrap();
+        assert_eq!(s_dd, 0.0);
+        assert_eq!(s_dt, 0.25 * n_cm3 * n_cm3 * sv_dt_cm);
+        let want_dt = 1353666831980.5483_f64; // module rustdoc hand vector
+        assert!(
+            (s_dt - want_dt).abs() < 1e-12 * want_dt,
+            "{s_dt} vs {want_dt}"
+        );
+        assert_eq!(dt.strength_density(123.0).unwrap(), s_dt);
+        // The D-T spectrum arm sits at T_DT (per-branch precedent).
+        let branches = dt.spectrum_branches(20.0, 30.0).unwrap();
+        assert_eq!(branches.len(), 1);
+        assert_eq!(branches[0].0, FusionReaction::Dt);
+        assert_eq!((branches[0].2, branches[0].3), (mu_dt, sigma_dt));
+        assert_eq!(dt.axis_spectrum_summary().unwrap().1, mu_dt);
+        // Single-fuel D-D + pair: the D-D arm at T_D (the landed hand vector).
+        let mut dd = flat;
+        dd.fuel = FusionReaction::Dd;
+        dd.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 30.0).unwrap());
+        let (d_dt, d_dd) = dd.branch_strength_density(123.0).unwrap();
+        assert_eq!(d_dt, 0.0);
+        assert_eq!(d_dd, 0.5 * n_cm3 * n_cm3 * sv_dd);
+        assert_eq!(d_dd, 13012914793.607618_f64);
+        let (mu_dd, sigma_dd) = FusionReaction::Dd.moments_mev(20.0).unwrap();
+        let dd_branches = dd.spectrum_branches(20.0, 30.0).unwrap();
+        assert_eq!((dd_branches[0].2, dd_branches[0].3), (mu_dd, sigma_dd));
+        // D-T-only makes no protons even with the pair set; pure D-D keeps
+        // the exact proton/neutron identity.
+        assert_eq!(dt.proton_strength_density(123.0).unwrap(), 0.0);
+        assert_eq!(dt.total_proton_strength().unwrap(), 0.0);
+        assert_eq!(
+            dd.proton_strength_density(123.0).unwrap(),
+            dd.strength_density(123.0).unwrap(),
+        );
+    }
+
+    #[test]
+    fn single_fuel_equal_pair_recovers_shared_kernel_bit_for_bit() {
+        // Module-rustdoc anchor: equal pair (T, T) on a single-fuel config
+        // reproduces the shared-temperature kernel bit-for-bit — strengths,
+        // sampled stream, and emitted cards — for both fuels.
+        for fuel in [FusionReaction::Dt, FusionReaction::Dd] {
+            let mut shared = flat_config(1.85, 0.0, 0.0);
+            shared.fuel = fuel;
+            let mut paired = shared;
+            paired.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 20.0).unwrap());
+            for &r in &[0.0, 37.5, 100.0, 150.0, 199.9, 200.0] {
+                assert_eq!(
+                    paired.strength_density(r).unwrap(),
+                    shared.strength_density(r).unwrap(),
+                    "single-fuel equal-pair strength must match at r={r}"
+                );
+                assert_eq!(
+                    paired.proton_strength_density(r).unwrap(),
+                    shared.proton_strength_density(r).unwrap(),
+                );
+            }
+            assert_eq!(
+                paired.axis_spectrum_summary().unwrap(),
+                shared.axis_spectrum_summary().unwrap(),
+            );
+            assert_eq!(
+                paired.spectrum_branches(20.0, 20.0).unwrap(),
+                shared.spectrum_branches(20.0, 20.0).unwrap(),
+            );
+            let a = ParametricSampler::new(shared, 17).unwrap().sample_n(512);
+            let b = ParametricSampler::new(paired, 17).unwrap().sample_n(512);
+            assert_eq!(a, b);
+            assert_eq!(
+                emission_histograms(&paired, 15).unwrap(),
+                emission_histograms(&shared, 15).unwrap()
+            );
+            let cards_shared = crate::emit_sdef_parametric(&shared, 5, 15).unwrap();
+            let cards_paired = crate::emit_sdef_parametric(&paired, 5, 15).unwrap();
+            assert_eq!(cards_paired.text, cards_shared.text);
+            assert_eq!(cards_paired.drift, cards_shared.drift);
+            let serp_shared = crate::emit_serpent_parametric(&shared, 15).unwrap();
+            let serp_paired = crate::emit_serpent_parametric(&paired, 15).unwrap();
+            assert_eq!(serp_paired.text, serp_shared.text);
+            assert_eq!(serp_paired.drift, serp_shared.drift);
+        }
     }
 
     // --- G-tail: deuterium hot-tail fraction, recovery anchor, loud errors ---

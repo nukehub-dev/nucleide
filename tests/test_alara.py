@@ -285,3 +285,182 @@ class TestSubletS2:
             nucleide.alara.alara_decay_heat([s2_entry("Co60", 1.0, 0.0, -2.0, 0.0)])
         with pytest.raises(ValueError):
             nucleide.alara.alara_decay_heat([s2_entry("Xx999", 1.0, 0.0, 1e6, 0.0)])
+
+
+def hazard_entry(nuclide: str, activity_bq: float, coeff: float, key: str) -> dict[str, Any]:
+    return {"nuclide": nuclide, "activity_bq": activity_bq, key: coeff}
+
+
+def ing_entry(nuclide: str, activity_bq: float, coeff: float) -> dict[str, Any]:
+    return hazard_entry(nuclide, activity_bq, coeff, "e_ing_sv_per_bq")
+
+
+def inh_entry(nuclide: str, activity_bq: float, coeff: float) -> dict[str, Any]:
+    return hazard_entry(nuclide, activity_bq, coeff, "e_inh_sv_per_bq")
+
+
+class TestSubletS4S5:
+    def test_hand_vectors_at_exact_equality(self) -> None:
+        out = nucleide.alara.alara_ingestion_hazard(
+            [ing_entry("Co60", 10.0, 3.0), ing_entry("H3", 5.0, 2.0)]
+        )
+        assert out["total_sv"] == 40.0
+        assert out["ex_tritium_sv"] == 30.0
+        out = nucleide.alara.alara_inhalation_hazard(
+            [inh_entry("Co60", 10.0, 5.0), inh_entry("H3", 5.0, 7.0)]
+        )
+        assert out["total_sv"] == 85.0
+        assert out["ex_tritium_sv"] == 50.0
+
+    def test_ex_tritium(self) -> None:
+        out = nucleide.alara.alara_ingestion_hazard([ing_entry("Co60", 10.0, 2.0)])
+        assert out["total_sv"] == 20.0
+        assert out["ex_tritium_sv"] == out["total_sv"]
+        out = nucleide.alara.alara_inhalation_hazard([inh_entry("Co60", 10.0, 2.0)])
+        assert out["ex_tritium_sv"] == out["total_sv"]
+        for kernel, entry in [
+            (nucleide.alara.alara_ingestion_hazard, ing_entry("Fe55", 3.0, 0.0)),
+            (nucleide.alara.alara_inhalation_hazard, inh_entry("Fe55", 3.0, 0.0)),
+        ]:
+            out = kernel([entry])
+            assert out["total_sv"] == 0.0
+            out = kernel([])
+            assert out["total_sv"] == 0.0
+            assert out["ex_tritium_sv"] == 0.0
+
+    def test_malformed_is_loud(self) -> None:
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_ingestion_hazard([ing_entry("Co60", -1.0, 1.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_ingestion_hazard([ing_entry("Co60", 1.0, -1.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_ingestion_hazard([ing_entry("Xx999", 1.0, 1.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_inhalation_hazard([inh_entry("Co60", -1.0, 1.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_inhalation_hazard([inh_entry("Co60", 1.0, -1.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_inhalation_hazard([inh_entry("Xx999", 1.0, 1.0)])
+
+
+def s3_group(intensity: float, mu_air: float, mu: float) -> dict[str, Any]:
+    return {"intensity": intensity, "mu_air": mu_air, "mu": mu}
+
+
+class TestSubletS3:
+    def test_slab_hand_vectors_at_exact_equality(self) -> None:
+        c = 3.6e9 * 1.602176634e-19
+        out = nucleide.alara.alara_dose_slab(2.0, [s3_group(0.5, 1.0, 2.0)])
+        assert out["dose_sv_per_h"] == c * 0.5
+        out = nucleide.alara.alara_dose_slab(
+            4.0, [s3_group(0.25, 2.0, 1.0), s3_group(0.5, 1.0, 2.0)]
+        )
+        assert out["dose_sv_per_h"] == c * 3.0
+        out = nucleide.alara.alara_dose_slab(4.0, [])
+        assert out["dose_sv_per_h"] == 0.0
+
+    def test_point_hand_vectors_and_loud_clamp(self) -> None:
+        import math
+
+        c = 3.6e9 * 1.602176634e-19
+        out = nucleide.alara.alara_dose_point(4.0, 3.0, 1.0, [s3_group(0.5, 2.0, 0.0)])
+        denom = 4.0 * math.pi
+        assert out["dose_sv_per_h"] == c * ((2.0 / denom) * 1.0 * 3.0 * 2.0)
+        assert out["clamped"] is False
+        assert out["distance_used_m"] == 1.0
+        near = nucleide.alara.alara_dose_point(2.0, 1.0, 0.1, [s3_group(1.0, 1.0, 0.5)])
+        at_floor = nucleide.alara.alara_dose_point(2.0, 1.0, 0.3, [s3_group(1.0, 1.0, 0.5)])
+        assert near["clamped"] is True
+        assert near["distance_used_m"] == 0.3
+        assert near["dose_sv_per_h"] == at_floor["dose_sv_per_h"]
+
+    def test_mixture_fold(self) -> None:
+        out = nucleide.alara.alara_dose_mixture_mu([0.25, 0.75], [[4.0, 2.0], [8.0, 6.0]])
+        assert out == [7.0, 5.0]
+
+    def test_malformed_is_loud(self) -> None:
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_dose_slab(-1.0, [s3_group(0.5, 1.0, 2.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_dose_slab(1.0, [s3_group(0.5, 1.0, 0.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_dose_slab(1.0, [s3_group(0.5, -1.0, 2.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_dose_point(1.0, 1.0, float("nan"), [s3_group(0.5, 1.0, 0.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_dose_point(1.0, -1.0, 1.0, [s3_group(0.5, 1.0, 0.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_dose_mixture_mu([0.5, 0.25], [[1.0], [2.0]])
+
+
+def transport_entry(nuclide: str, activity_bq: float, a2_tbq: float) -> dict[str, Any]:
+    return {"nuclide": nuclide, "activity_bq": activity_bq, "a2_tbq": a2_tbq}
+
+
+class TestSubletS6:
+    def test_hand_vectors_at_exact_equality(self) -> None:
+        out = nucleide.alara.alara_transport_ratio([transport_entry("Co60", 1e12, 1.0)])
+        assert out["ratio"] == 1.0
+        assert out["total_bq"] == 1e12
+        assert out["effective_a2_tbq"] == 1.0
+        out = nucleide.alara.alara_transport_ratio(
+            [transport_entry("Co60", 1e12, 1.0), transport_entry("H3", 2e12, 1.0)]
+        )
+        assert out["ratio"] == 3.0
+        assert out["total_bq"] == 3e12
+        assert out["effective_a2_tbq"] == 1.0
+        out = nucleide.alara.alara_transport_ratio([transport_entry("Fe55", 5e11, 2.0)])
+        assert out["ratio"] == 0.25
+        assert out["effective_a2_tbq"] == 2.0
+        out = nucleide.alara.alara_transport_ratio([])
+        assert out["ratio"] == 0.0
+        assert out["effective_a2_tbq"] == 0.0
+
+    def test_malformed_is_loud(self) -> None:
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_transport_ratio([transport_entry("Co60", -1.0, 1.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_transport_ratio([transport_entry("Co60", 1.0, 0.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_transport_ratio([transport_entry("Xx999", 1.0, 1.0)])
+
+
+def iaea_entry(nuclide: str, activity_bq: float, limit: float) -> dict[str, Any]:
+    return {"nuclide": nuclide, "activity_bq": activity_bq, "limit_bq_per_kg": limit}
+
+
+class TestSubletS7:
+    def test_hand_vectors_at_exact_equality(self) -> None:
+        out = nucleide.alara.alara_iaea_clearance_index(2.0, [iaea_entry("Co60", 10.0, 10.0)])
+        assert out["index"] == 0.5
+        assert out["clearance_class"] == "satisfied"
+        assert out["max_fraction"] == 0.5
+        assert out["max_nuclide"] == "Co60"
+        out = nucleide.alara.alara_iaea_clearance_index(
+            2.0, [iaea_entry("Co60", 10.0, 10.0), iaea_entry("H3", 5.0, 5.0)]
+        )
+        assert out["index"] == 1.0
+        assert out["clearance_class"] == "satisfied"
+        out = nucleide.alara.alara_iaea_clearance_index(2.0, [])
+        assert out["index"] == 0.0
+        assert out["clearance_class"] == "satisfied"
+        assert out["max_nuclide"] is None
+
+    def test_boundary_probes_both_sides(self) -> None:
+        out = nucleide.alara.alara_iaea_clearance_index(2.0, [iaea_entry("Co60", 20.0, 10.0)])
+        assert out["clearance_class"] == "satisfied"
+        out = nucleide.alara.alara_iaea_clearance_index(
+            2.0, [iaea_entry("Co60", 20.000000000000004, 10.0)]
+        )
+        assert out["index"] > 1.0
+        assert out["clearance_class"] == "exceeded"
+
+    def test_malformed_is_loud(self) -> None:
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_iaea_clearance_index(0.0, [iaea_entry("Co60", 1.0, 10.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_iaea_clearance_index(2.0, [iaea_entry("Co60", -1.0, 10.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_iaea_clearance_index(2.0, [iaea_entry("Co60", 1.0, 0.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_iaea_clearance_index(2.0, [iaea_entry("Xx999", 1.0, 10.0)])

@@ -15,7 +15,9 @@ Two parts:
    P10 on toroidal sectors (in-sector uniform births, bit-for-bit
    full-rotation recovery, the PHI=D4 card marginal with its drift row),
    plus P11 on per-species ion temperatures (pair-temperature sampled
-   moments and branch share vs quadrature, bit-for-bit equal-T recovery),
+   moments and branch share vs quadrature, bit-for-bit equal-T recovery,
+   plus the single-fuel pair arms at the same landed pair temperatures
+   with their own bit-for-bit equal-T recovery),
    plus P12 on the arbitrary-3D birth-rate lattice (hand-vector totals and
    means, single-point bit-for-bit recovery of the point source, ring-limit
    moment closure, symmetry-fold replication and totals, card round trip
@@ -305,6 +307,29 @@ def _quadrature_moments_mixture_species(
             num_e += w * (p_dd * mu_dd + (1.0 - p_dd) * mu_dt)
             num_dd += w * p_dd
     return {"<r^2>": num_r2 / den, "mean_e": num_e / den, "p_dd": num_dd / den}
+
+
+def _quadrature_moments_single_species(
+    spec: dict, reaction: str, t_react: float, n_r: int = 400, n_t: int = 400
+) -> dict[str, float]:
+    """Fine-quadrature reference for a single-fuel config with the pair set:
+    uniform reactivity at ``t_react`` (D-T at ``T_DT``, D-D at ``T_D``), so
+    the strength weight is ``n^2`` times the landed fuel factor. Returns the
+    strength-weighted ``<r^2>`` and the uniform Ballabio mean birth energy."""
+    am = spec["minor_radius"]
+    dr = am / n_r
+    dt = 2.0 * math.pi / n_t
+    mu, _ = _ballabio_moments(reaction, t_react)
+    num_r2 = den = 0.0
+    for i in range(n_r):
+        r = (i + 0.5) * dr
+        n_cm3 = _profile_density(spec, r) * 1e-6
+        for j in range(n_t):
+            theta = (j + 0.5) * dt
+            w = n_cm3 * n_cm3 * _volume_element(spec, r, theta) * dr * dt
+            den += w
+            num_r2 += w * r * r
+    return {"<r^2>": num_r2 / den, "mean_e": mu}
 
 
 def _quadrature_moments_mixture_tail(
@@ -744,6 +769,85 @@ def parametric_gates() -> tuple[list[list[str]], list[str]]:
         and cards_b11["serpent"]["card"] == cards_a11["serpent"]["card"]
     )
     rows.append(["P11 equal-T card recovery", "-", "exact", _check(same_cards11, "P11 cards")])
+    # P11b: single-fuel configs with the pair set (same report). Single-fuel
+    # D-T reacts at T_DT = 24 keV, single-fuel D-D at T_D = 20 keV: sampled
+    # mean energy and radius moment sit on the uniform-reactivity quadrature.
+    quad_dt11 = _quadrature_moments_single_species(PARAMETRIC_SPEC, "dt", 24.0)
+    single_dt11 = dict(PARAMETRIC_SPEC, species_temperatures={"D": t_d11, "T": t_t11})
+    ours_dt11 = ps.particles(single_dt11, N, seed=86)
+    err_dt11 = rel_diff(float(np.mean(ours_dt11["energy"])), quad_dt11["mean_e"])
+    rows.append(
+        [
+            "P11 single-fuel D-T pair mean E",
+            fmt(err_dt11),
+            "< 1e-2",
+            _check(err_dt11 < 1e-2, "P11 single DT E"),
+        ]
+    )
+    major_dt11 = np.hypot(ours_dt11["x"], ours_dt11["y"])
+    r_dt11 = _recover_minor_radius(PARAMETRIC_SPEC, major_dt11, ours_dt11["z"])
+    err_rdt11 = rel_diff(float(np.mean(r_dt11**2)), quad_dt11["<r^2>"])
+    rows.append(
+        [
+            "P11 single-fuel D-T pair <r^2>",
+            fmt(err_rdt11),
+            "< 1e-2",
+            _check(err_rdt11 < 1e-2, "P11 single DT r2"),
+        ]
+    )
+    quad_dd11 = _quadrature_moments_single_species(PARAMETRIC_SPEC, "dd", 20.0)
+    single_dd11 = dict(single_dt11, reaction="dd")
+    ours_dd11 = ps.particles(single_dd11, N, seed=87)
+    err_dd11 = rel_diff(float(np.mean(ours_dd11["energy"])), quad_dd11["mean_e"])
+    rows.append(
+        [
+            "P11 single-fuel D-D pair mean E",
+            fmt(err_dd11),
+            "< 1e-2",
+            _check(err_dd11 < 1e-2, "P11 single DD E"),
+        ]
+    )
+    # P11c: equal pair (T, T) on a flat single-fuel plasma reproduces the
+    # shared-temperature kernel bit-for-bit (stream and cards, both fuels).
+    for reaction11 in ("dt", "dd"):
+        base_sf11 = dict(flat11, reaction=reaction11)
+        base_sf11.pop("fuel", None)
+        pair_sf11 = dict(base_sf11, species_temperatures={"D": 20.0, "T": 20.0})
+        a_sf11 = ps.particles(base_sf11, 512, seed=17)
+        b_sf11 = ps.particles(pair_sf11, 512, seed=17)
+        rec_sf11 = all(
+            bool((a_sf11[key] == b_sf11[key]).all()) for key in ("x", "y", "z", "energy")
+        )
+        rows.append(
+            [
+                f"P11 single-fuel {reaction11.upper()} equal-T stream",
+                "-",
+                "exact",
+                _check(rec_sf11, f"P11 single {reaction11} stream"),
+            ]
+        )
+        cards_c11 = ps.emit_source_cards(base_sf11, bins=15)
+        cards_d11 = ps.emit_source_cards(pair_sf11, bins=15)
+        same_sf11 = (
+            cards_d11["sdef"]["card"] == cards_c11["sdef"]["card"]
+            and cards_d11["serpent"]["card"] == cards_c11["serpent"]["card"]
+        )
+        rows.append(
+            [
+                f"P11 single-fuel {reaction11.upper()} equal-T cards",
+                "-",
+                "exact",
+                _check(same_sf11, f"P11 single {reaction11} cards"),
+            ]
+        )
+    notes.append(
+        f"P11b single-fuel pair (T_D={t_d11:g} keV, T_T={t_t11:g} keV, n={N}): "
+        f"single-fuel D-T reacts at T_DT={t_d11 + 0.4 * (t_t11 - t_d11):g} keV "
+        f"(mean 14.077934372230146 MeV) and single-fuel D-D at T_D "
+        f"(sampled moments vs the uniform-reactivity quadrature); "
+        f"the equal pair on a flat 20 keV single-fuel plasma recovers the "
+        f"shared kernel bit-for-bit (stream and cards, D-T and D-D)."
+    )
     notes.append(
         f"P11 per-species ion temperatures (T_D={t_d11:g} keV, T_T={t_t11:g} keV, "
         f"70/30 blend, n={N}): D-T reacts at T_DT={t_d11 + 0.4 * (t_t11 - t_d11):g} keV, "
@@ -1828,7 +1932,8 @@ def main() -> int:
         "on toroidal sectors (in-sector uniform births, bit-for-bit "
         "full-rotation recovery, the PHI=D4 marginal with its drift row), and P11 "
         "on per-species ion temperatures (pair-temperature moments and branch "
-        "share, bit-for-bit equal-T recovery), and P12 "
+        "share, bit-for-bit equal-T recovery, plus the single-fuel pair arms "
+        "at the same landed temperatures with their own equal-T recovery), and P12 "
         "on the arbitrary-3D birth-rate lattice (hand-vector totals and "
         "means, single-point recovery, ring-limit closure, symmetry-fold "
         "replication, card round trip, mixture branch fire), and P13 "

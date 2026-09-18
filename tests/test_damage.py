@@ -171,12 +171,64 @@ def test_fold_uq_gate_and_determinism() -> None:
         assert abs(out["std"] - out["analytic_std"]) <= 5.0 * std_se
         again = dmg.fold_uq(metric, flux, resp, bounds, 2.0, mean, cov, 20_000, 20260915, 5.0)
         assert again == out
-    # The ratio UQ is a loud named-open.
-    with pytest.raises(ValueError, match="not yet supported"):
+    # The single-response UQ entry point rejects the ratio loudly and names
+    # the two-response function.
+    with pytest.raises(ValueError, match="damage_he_dpa_ratio_uq"):
         dmg.fold_uq("he_dpa_ratio", flux, resp, bounds, 1.0, mean, cov, 16, 1, 5.0)
     # Unknown metric names are rejected loudly too.
     with pytest.raises(ValueError, match="unknown fold metric"):
         dmg.fold_uq("dpa", flux, resp, bounds, 1.0, mean, cov, 16, 1, 5.0)
+
+
+def test_he_dpa_ratio_uq_pins_hand_vector_and_converges() -> None:
+    # Single group: flux 1e12, He response 5e6 -> He = 5.0; damage response
+    # 2e12 -> dpa = 2.0. Block [flux | he | dpa]: flux exact, +/-10%
+    # uncorrelated on both responses (independent He = 5.0 +/- 0.5,
+    # dpa = 2.0 +/- 0.2, 1-sigma).
+    flux = [1.0e12]
+    he = [5.0e6]
+    dpa_xs = [2.0e12]
+    bounds = [0.0, 20.0]
+    mean = [0.0, 0.0, 0.0]
+    cov = [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.01, 0.0],
+        [0.0, 0.0, 0.01],
+    ]
+    out = dmg.he_dpa_ratio_uq(flux, he, dpa_xs, bounds, 1.0, mean, cov, 64, 20260915, 5.0)
+    assert out["metric"] == "he_dpa_ratio"
+    assert out["nominal"] == pytest.approx(2.5, rel=1e-12)
+    # First-order propagated sd: 2.5*sqrt(0.01 + 0.01) = sqrt(0.125).
+    assert out["analytic_std"] == pytest.approx(0.3535533905932738, rel=1e-12)
+    # Mean of ratios carries the second-order Var(dpa) bias: 2.5 * 1.01.
+    assert out["expected"] == pytest.approx(2.525, rel=1e-12)
+    # The 68% interval brackets the nominal; ordering holds at any n, but
+    # skew needs large-n to beat quantile noise (asserted on the 20k run).
+    assert out["q16"] < out["q50"] < out["q84"]
+    assert out["expected_q16"] < out["expected_q50"] < out["expected_q84"]
+    assert out["expected_q84"] - out["expected_q50"] > out["expected_q50"] - out["expected_q16"]
+    assert out["q16"] < 2.5 < out["q84"]
+    # Convergence in the small-perturbation regime (+/-2%): the honest k-SE
+    # gates pass and the stream is deterministic under the pinned seed.
+    small = [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0004, 0.0],
+        [0.0, 0.0, 0.0004],
+    ]
+    out = dmg.he_dpa_ratio_uq(flux, he, dpa_xs, bounds, 1.0, mean, small, 20_000, 20260915, 5.0)
+    assert out["passed"] is True
+    assert out["quantiles_passed"] is True
+    again = dmg.he_dpa_ratio_uq(flux, he, dpa_xs, bounds, 1.0, mean, small, 20_000, 20260915, 5.0)
+    assert again == out
+    # At +/-10% the spread gate honestly fails while the interval gates
+    # pass with upward skew (mirrors the in-crate G7 gate).
+    out = dmg.he_dpa_ratio_uq(flux, he, dpa_xs, bounds, 1.0, mean, cov, 20_000, 20260915, 5.0)
+    assert out["passed"] is False
+    assert out["quantiles_passed"] is True
+    assert out["q84"] - out["q50"] > out["q50"] - out["q16"]
+    # Zero nominal dpa is loud, never inf with a spread.
+    with pytest.raises(ValueError, match="zero dpa"):
+        dmg.he_dpa_ratio_uq(flux, he, [0.0], bounds, 1.0, mean, small, 8, 1, 5.0)
 
 
 def test_error_paths_name_their_cause() -> None:

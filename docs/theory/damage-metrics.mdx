@@ -334,8 +334,56 @@ deviation over the draws, the exact expectation (U1), the first-order propagatio
 within `k·std/√n`, and the sample standard deviation against (U2) within
 `k·std/√(2(n−1))`. A draw that leaves the physical domain (negative flux or response)
 raises the fold's named error, never a silent clip — callers keep covariance blocks
-in the small-perturbation regime. The He/dpa ratio is a nonlinear statistic: its UQ
-is not yet supported and raises a clear named error.
+in the small-perturbation regime.
+
+The He/dpa ratio is a nonlinear statistic, so its UQ forms the ratio per
+draw instead of reusing the linear-fold machinery: each seeded draw over the
+joint `[flux, he, dpa]` block refolds He and dpa and reports
+$r_i = \mathrm{He}_i / \mathrm{dpa}_i$, and the kernel reports the draw mean
+± draw standard deviation. The honest gates need the ratio moments — with
+$r_0 = E[H]/E[D]$, $V_H$/$V_D$ the first-order fold variances, and $C_{HD}$
+their cross term:
+
+$$
+E[r] = r_0 \left(1 + \frac{V_D}{E[D]^2} - \frac{C_{HD}}{E[H]\,E[D]}\right),
+\qquad
+\mathrm{std}[r] = r_0 \sqrt{\frac{V_H}{E[H]^2} + \frac{V_D}{E[D]^2}
+      - \frac{2\,C_{HD}}{E[H]\,E[D]}}.
+\tag{U3}
+$$
+
+The mean of ratios carries the second-order $V_D$ bias, so gating the sample
+mean against the bare ratio of means would fail honestly-sized blocks — the
+gate compares against (U3) instead. At ±10% input uncertainty the heavy
+$1/(1+\delta_d)$ tails already inflate the sample spread past any honest
+first-order width, so the committed hand vector (independent $5.0 \pm 0.5$
+appm He over $2.0 \pm 0.2$ dpa → $2.5$, spread $\sqrt{0.125} = 0.3536$) pins
+the analytics exactly while the seeded $k$-SE convergence gate runs in the
+small-perturbation regime. Any draw at non-positive dpa fails loudly with
+the landed zero-dpa error — never infinity with a spread, never silently
+dropped draws.
+
+Because a skewed ratio needs asymmetric margins, the summary also carries
+the distribution-free 68% interval: the draw 16th/50th/84th percentiles
+(linear-interpolating order statistics) gated against the quantiles of the
+Fieller construction — the ratio of the implied joint-normal $(H, D)$ pair,
+whose CDF at $t$ is the ordinary normal CDF of $H - tD$:
+
+$$
+F(t) = \Phi\!\left(\frac{t\,E[D] - E[H]}
+      {\sqrt{V_H - 2t\,C_{HD} + t^2\,V_D}}\right),
+\tag{U4}
+$$
+
+inverted by bisection, with the quantile standard error
+$\sqrt{p(1-p)/(n\,f^2)}$ at the closed-form density $f = F'$. The
+$\Phi$ evaluation is the Abramowitz–Stegun 7.1.26 rational approximation
+($|\varepsilon| \le 7.5\times 10^{-8}$, pinned by reference values
+in-crate). The interval verdict holds at the ±10% hand-vector block where
+the symmetric-spread gate honestly cannot: draws $[2.167, 2.880]$ against
+$[2.171, 2.879]$ analytic at $n = 20000$, skewing upward as a ratio must.
+The construction assumes negligible non-positive-dpa mass — the regime the
+loud per-draw zero-dpa check enforces.
 
 ## Algorithm
 
@@ -354,13 +402,16 @@ layer validates the shared `(flux, bounds)` shape once, then accumulates (C1)–
 and takes the channel minimum (C3) — zero rates skipped, spent limits clamped.
 
 Correctness checks: in-crate tests and the `damage_vs_specter.py` harness replay the
-synthetic checks labeled G1–G5 — G1 the partition and NRT branches against an
+synthetic checks labeled G1–G7 — G1 the partition and NRT branches against an
 independent in-script transcription of the published Robinson-fit constants
 (tolerance 10⁻¹²), G2 the arc construction (junction value exactly 1, saturation at
 `c_arc`, monotone decrease, high branch = NRT × ξ), G3 the folds against hand sums,
 G4 the invariants (zero-flux groups exact; the zero-dpa ratio and malformed inputs
-raising named errors), and G5 the pinned-seed UQ checks including bit-identical
-reruns. The coil gates are the same style: threshold hand vectors on the three-group
+raising named errors), G5 the pinned-seed UQ checks including bit-identical
+reruns, G6 the ratio-UQ hand vector plus its seeded k-SE gate, and G7 the
+68% interval shape plus its Fieller-quantile k-SE gate at the ±10% block.
+The coil
+gates are the same style: threshold hand vectors on the three-group
 grid (a cut-through threshold keeps the whole group), the dpa-rate feed (a 7.0e-10
 limit against the hand fold rate is exactly 1.0 s of life), the weakest-link / zero /
 clamp vectors, and the Stellaris-class anchor above. The external SPECTER cross-check is described under Related work.

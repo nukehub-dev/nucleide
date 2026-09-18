@@ -20,7 +20,14 @@ numbers are synthetic round values — no evaluated nuclear data is bundled.
 The arc-efficiency chart shows the Nordlund correction ξ falling with PKA
 energy for the material constants you set. The coil section below reuses the
 same group grid for fast-flux/fluence above your threshold and the
-weakest-link lifetime across your limit/rate channels.
+weakest-link lifetime across your limit/rate channels. The ratio-UQ block below
+propagates an uncorrelated relative uncertainty over the flux and both
+responses through per-draw He/dpa ratios: the reported mean and spread gate
+against the bias-corrected expectation and the first-order propagated spread
+at five standard errors, the draw 68% interval gates against the
+Fieller-construction quantiles (which hold at honestly-sized blocks), and a
+draw at non-positive dpa fails loudly instead of returning infinity with a
+spread.
 
 <InteractiveDemo kind="damage" />
 

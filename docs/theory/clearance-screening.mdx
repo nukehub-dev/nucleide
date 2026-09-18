@@ -1,7 +1,8 @@
 ---
 title: Clearance Screening
 description: The clearance index CI = sum of A_i/CL_i fractions, the sum-of-fractions release
-  rule, the Sublet S1+S2 radiological totals (activity and decay heat), classification
+  rule, the Sublet S1–S7 radiological totals (activity, decay heat, committed
+  hazards, transport ratio, IAEA clearance index, gamma dose), classification
   against the vendored EU Annex VII default table, and the inventory
   readers that feed them.
 sidebar:
@@ -72,10 +73,13 @@ Nucleide keeps the arithmetic table-driven and the inputs pluggable:
   (the limit table, the screening functions, and inventory extraction from
   parsed response frames) and `nucleide-fispact-io` (the reader for the wide
   FISPACT-II inventory table), plus the `sublet` module (`nucleide-alara-io`)
-  for the S1+S2 radiological totals below. The Python surface is thin: `nucleide.alara`
+  for the S1–S7 radiological totals below. The Python surface is thin: `nucleide.alara`
   re-exports the clearance helpers (`alara_clearance_index`,
   `alara_sum_of_fractions`, `alara_clearance_eu_table`) and the totals
-  (`alara_total_activity`, `alara_decay_heat`), and `nucleide.fispact`
+  (`alara_total_activity`, `alara_decay_heat`, `alara_ingestion_hazard`,
+  `alara_inhalation_hazard`, `alara_transport_ratio`,
+  `alara_iaea_clearance_index`, `alara_dose_slab`, `alara_dose_point`,
+  `alara_dose_mixture_mu`), and `nucleide.fispact`
   re-exports the clearance-block reader (`fispact_parse_clearance`).
 </Callout>
 
@@ -177,9 +181,9 @@ code-printed and Nucleide-recomputed indices stay distinguishable; the
 screening functions themselves always recompute `f_i` against the caller's
 table.
 
-### Sublet S1+S2 radiological totals
+### Sublet S1–S7 radiological totals
 
-Inventories also feed two radiological totals, pinned to the open
+Inventories also feed seven radiological totals, pinned to the open
 CCFE-PR(16)53 author preprint of the FISPACT-II system paper — Tables X
 (inventory/power row definitions), VI (decay-type identifiers), VII
 (radiation types), and XVII (validation anchors) — and the open FISPACT-II
@@ -210,11 +214,69 @@ $$
 the Table X `Ai·E·C1` rows (radiation classes are Table VII, STYP 0–9).
 Both totals carry the excluding-tritium companion (total minus the
 tritium entry), and parts sum to the total exactly by construction.
-Decay energies stay caller-supplied, never vendored; S3–S7, dose-rate and
-ingestion/inhalation indices, bremsstrahlung, DPA/KERMA/gas, and fission
-counts stay out. Gates are hand-computed vectors at exact equality
-(Table XVII copper total-activity anchor) plus always-run C7 gates in the
-same `clearance` validation report.
+Decay energies stay caller-supplied, never vendored.
+
+The ingestion and inhalation hazards fold the same Table X row with
+caller-supplied 50-year committed dose coefficients (Sv/Bq, never
+vendored — the ICRP tables are copyrighted) into the wide-table dose
+columns 8/9 and their `HAZARDS` totals, each with the excluding-tritium
+companion:
+
+$$
+D_\mathrm{ing} = \sum_i A_i\,e^\mathrm{ing}_i\ \mathrm{[Sv]},
+\qquad
+D_\mathrm{inh} = \sum_i A_i\,e^\mathrm{inh}_i\ \mathrm{[Sv]}.
+\tag{S4–S5}
+$$
+
+The transport ratio folds the Table X row with caller A2 limits (TBq,
+never vendored) through Eqs. 78/79 into the `ATWO`-block total, with the
+effective A2 defined by it exactly:
+
+$$
+R = \sum_i \frac{A_i}{A_{2,i}\,C_2},
+\qquad
+h_{A2} = \frac{\sum_i A_i}{R}\ \mathrm{[TBq]},
+\qquad
+C_2 = 10^{12}\ \mathrm{TBq{\to}Bq}.
+\tag{S6}
+$$
+
+The IAEA clearance-index variant folds the Table X row with caller IAEA
+levels (Bq/kg, never vendored — the IAEA tables are permission-gated) and
+the total mass through Eq. 80 into the `CLEAR` index, screened at the
+landed `<= 1` boundary exactly like the EU-table variant above:
+
+$$
+\mathrm{CI}_\mathrm{IAEA} = \sum_i \frac{A_i}{M_\mathrm{tot}\,L_i},
+\tag{S7}
+$$
+
+dimensionless, with the dominant per-nuclide term reported alongside.
+
+The gamma dose rate sums over energy groups rather than nuclides, with the
+`DOSE`-page buildup $B = 2$ and conversion $C = 3.6\times 10^9\,|e|$
+(MeV/kg/s → Sv/h):
+
+$$
+D_\mathrm{slab} = C\,\frac{B}{2}\sum_g \frac{\mu_a(E_g)}{\mu_m(E_g)}\,S_\gamma(E_g),
+\qquad
+S_\gamma(E_g) = I_g\,A(t),
+\tag{S3a}
+$$
+
+$$
+D_\mathrm{point} = C\sum_g \frac{\mu_a(E_g)}{4\pi r^2}\,
+      e^{-\mu(E_g)\,r}\,m_s\,S_\gamma(E_g),
+\tag{S3b}
+$$
+
+with the mixture rule $\mu_m = \sum_j f_j\,\mu_{m,j}$. Every attenuation
+input stays caller-supplied; distances below 0.3 m clamp loudly, never
+silently. Bremsstrahlung, DPA/KERMA/gas, and fission counts stay out.
+Gates are hand-computed vectors at exact equality (Table XVII copper
+total-activity anchor) plus always-run C7–C10 gates in the same
+`clearance` validation report.
 
 ## Algorithm
 
@@ -320,25 +382,30 @@ one float-ulp above as exceeded.
   the code's internal library ratios, not EU-table fractions, and are read
   back as printed; Nucleide screening always recomputes against the caller's
   table.
-- **Further indices stay recorded, not implemented.** Sublet et al.'s wider
-  radiological indices (dose rate, ingestion, inhalation, Bq/A2) appear as
-  columns in the wide table and are parsed where present, but only the
-  clearance screen plus the S1+S2 totals above are implemented as metrics<Citation id="sublet-2017" />.
-- **S1+S2 input discipline.** Per-nuclide activities and decay energies are
+- **Further indices stay recorded, not implemented.** Bremsstrahlung,
+  DPA/KERMA/gas, and fission counts appear as columns in the wide table and
+  are parsed where present, but only the clearance screen plus the S1–S7
+  totals above are implemented as metrics<Citation id="sublet-2017" />.
+- **S1–S7 input discipline.** Per-nuclide activities and decay energies are
   caller data (finite, non-negative); the α branch fraction is required for
   the split IRTs 12, 13, 15 and rejected elsewhere; IRTs with no pinned
-  mapping raise a clear error, never a silent bucket.
+  mapping raise a clear error, never a silent bucket. Dose coefficients, A2
+  limits, IAEA levels, and attenuation tables are caller data too (finite,
+  non-negative; limits/levels strictly positive; mixture fractions summing
+  to 1); the total mass is strictly positive and the slab ratio divides by
+  a strictly positive mixture coefficient.
 - **Time and stability conventions.** FISPACT-II step times convert with
   `y = 365 d`; `Stable` half-lives store as `-1.0`.
 - **Correctness checks.** The arithmetic is pinned by hand-computed vectors
   at exact equality (CI values, boundary probes both sides, EU and ES spot
   values, ES chain-expansion members) and by an end-to-end parse of the
   synthetic fixture in the real FISPACT-II grammar, in
-  `tests/test_clearance.py` and `validation/clearance_vs_pypact.py`. The S1+S2
-  totals are pinned the same way: hand-computed activity/heat vectors at exact
-  equality (parts-to-total conservation, ex-tritium companions, split-IRT
-  fractions, loud-error vectors) plus the always-run C7 gates in the same
-  report.
+  `tests/test_clearance.py` and `validation/clearance_vs_pypact.py`. The S1–S7
+  totals are pinned the same way: hand-computed activity/heat/hazard/ratio/
+  index/dose vectors at exact equality (parts-to-total conservation,
+  ex-tritium companions, split-IRT fractions, the =1 boundaries, the loud
+  0.3 m clamp, loud-error vectors) plus the always-run C7–C10 gates in the
+  same report.
 
 ## Related work beyond Nucleide
 

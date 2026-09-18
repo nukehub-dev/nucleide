@@ -9,7 +9,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///
 /// Every rejection names its cause; out-of-scope capabilities (PKA-spectra
 /// solving, further displacement tables beyond the vendored SPECTER Table
-/// VII fallback, UQ on nonlinear ratios) report through
+/// VII fallback) report through
 /// [`Error::NotYetSupported`] — a loud named error, never a panic or
 /// a silent fallback.
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -31,7 +31,9 @@ pub enum Error {
     },
     /// A non-finite value in the named input (`"flux"`, `"response"`,
     /// `"bounds"`, `"seconds"`, `"pka_energy_ev"`, `"ed_ev"`, `"t_dam_ev"`,
-    /// `"b_arc"`, `"c_arc"`, `"k"`, `"mean_delta"`, `"covariance"`).
+    /// `"b_arc"`, `"c_arc"`, `"k"`, `"mean_delta"`, `"covariance"`) or in
+    /// the analytically propagated ratio-UQ moments (`"propagated moments"`,
+    /// reachable only with absurd-magnitude blocks that overflow them).
     #[error("damage: non-finite value in {0}")]
     NonFinite(&'static str),
     /// A physical quantity that must be non-negative holds a negative value.

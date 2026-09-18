@@ -88,6 +88,8 @@ export function FusionSourceDemo() {
   const [fuelTText, setFuelTText] = useState(DEFAULT_FUEL_T);
   const [tailFracText, setTailFracText] = useState(DEFAULT_TAIL_FRAC);
   const [tailTempText, setTailTempText] = useState(DEFAULT_TAIL_TEMP);
+  const [speciesDText, setSpeciesDText] = useState("");
+  const [speciesTText, setSpeciesTText] = useState("");
   const [moments, setMoments] = useState<FusionSpectrumMoments | null>(null);
   const [cards, setCards] = useState<FusionCardsResult | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -153,8 +155,18 @@ export function FusionSourceDemo() {
     const centreTempKev = parseEntry(paramTiText, "centre ion temperature");
     if (centreTempKev < 0)
       throw new Error(`bad centre ion temperature \`${paramTiText}\` (expected >= 0)`);
-    const fuelDeuterium = parseEntry(fuelDText, "fuel D");
-    const fuelTritium = parseEntry(fuelTText, "fuel T");
+    // Blank mixture fractions select the single-fuel kernel at the chosen
+    // reaction above; a blank species pair reacts at the shared profile
+    // temperature, while a set pair reacts single-fuel D-T at the
+    // mass-weighted T_DT and single-fuel D-D at T_D.
+    const dBlank = fuelDText.trim() === "";
+    const tBlank = fuelTText.trim() === "";
+    let fuelDeuterium: number | undefined;
+    let fuelTritium: number | undefined;
+    if (!dBlank || !tBlank) {
+      fuelDeuterium = parseEntry(fuelDText, "fuel D");
+      fuelTritium = parseEntry(fuelTText, "fuel T");
+    }
     const fracBlank = tailFracText.trim() === "";
     const tempBlank = tailTempText.trim() === "";
     let tailFraction: number | undefined;
@@ -163,14 +175,25 @@ export function FusionSourceDemo() {
       tailFraction = parseEntry(tailFracText, "tail fraction");
       tailTempKev = parseEntry(tailTempText, "tail temperature");
     }
+    const spDBlank = speciesDText.trim() === "";
+    const spTBlank = speciesTText.trim() === "";
+    let speciesDeuteriumKev: number | undefined;
+    let speciesTritiumKev: number | undefined;
+    if (!spDBlank || !spTBlank) {
+      speciesDeuteriumKev = parseEntry(speciesDText, "species D temperature");
+      speciesTritiumKev = parseEntry(speciesTText, "species T temperature");
+    }
     return {
       kind: "parametric",
       ...PARAM_PRESET,
+      fuel: reaction,
       centreTempKev,
       fuelDeuterium,
       fuelTritium,
       tailFraction,
       tailTempKev,
+      speciesDeuteriumKev,
+      speciesTritiumKev,
       n,
       seed,
     };
@@ -284,7 +307,11 @@ export function FusionSourceDemo() {
               <p className="text-sm text-muted-foreground">
                 Synthetic H-mode parametric plasma (fixed Miller geometry and profiles, no machine
                 data): a D/T fuel mixture with an optional deuterium hot-tail fraction. Leave the
-                tail fraction blank for a pure Maxwellian mix.
+                tail fraction blank for a pure Maxwellian mix. Blank both mixture fractions for the
+                single-fuel kernel at the reaction selected above; an optional species pair (T
+                <sub>D</sub>, T<sub>T</sub>) then reacts single-fuel D-T at the mass-weighted T
+                <sub>DT</sub> and single-fuel D-D at T<sub>D</sub> (blank pair = shared profile
+                temperature).
               </p>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <div className="space-y-1">
@@ -299,8 +326,11 @@ export function FusionSourceDemo() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="flex min-h-10 items-end">Fuel D fraction</Label>
+                  <Label htmlFor="fusion-fuel-d" className="flex min-h-10 items-end">
+                    Fuel D fraction (blank = single-fuel)
+                  </Label>
                   <Input
+                    id="fusion-fuel-d"
                     value={fuelDText}
                     onChange={(e) => {
                       setFuelDText(e.target.value);
@@ -310,8 +340,11 @@ export function FusionSourceDemo() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="flex min-h-10 items-end">Fuel T fraction</Label>
+                  <Label htmlFor="fusion-fuel-t" className="flex min-h-10 items-end">
+                    Fuel T fraction (blank = single-fuel)
+                  </Label>
                   <Input
+                    id="fusion-fuel-t"
                     value={fuelTText}
                     onChange={(e) => {
                       setFuelTText(e.target.value);
@@ -321,8 +354,11 @@ export function FusionSourceDemo() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="flex min-h-10 items-end">Tail fraction (blank = none)</Label>
+                  <Label htmlFor="fusion-tail-frac" className="flex min-h-10 items-end">
+                    Tail fraction (blank = none)
+                  </Label>
                   <Input
+                    id="fusion-tail-frac"
                     value={tailFracText}
                     onChange={(e) => {
                       setTailFracText(e.target.value);
@@ -332,11 +368,42 @@ export function FusionSourceDemo() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="flex min-h-10 items-end">Tail T [keV]</Label>
+                  <Label htmlFor="fusion-tail-temp" className="flex min-h-10 items-end">
+                    Tail T [keV]
+                  </Label>
                   <Input
+                    id="fusion-tail-temp"
                     value={tailTempText}
                     onChange={(e) => {
                       setTailTempText(e.target.value);
+                      clearError();
+                    }}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="fusion-species-d" className="flex min-h-10 items-end">
+                    Species T_D [keV] (blank = shared Tᵢ)
+                  </Label>
+                  <Input
+                    id="fusion-species-d"
+                    value={speciesDText}
+                    onChange={(e) => {
+                      setSpeciesDText(e.target.value);
+                      clearError();
+                    }}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="fusion-species-t" className="flex min-h-10 items-end">
+                    Species T_T [keV] (blank = shared Tᵢ)
+                  </Label>
+                  <Input
+                    id="fusion-species-t"
+                    value={speciesTText}
+                    onChange={(e) => {
+                      setSpeciesTText(e.target.value);
                       clearError();
                     }}
                     className="font-mono text-xs"

@@ -23,6 +23,7 @@ import { BlanketDemo } from "./BlanketDemo";
 import { EquilibDemo } from "./EquilibDemo";
 import { UnfoldDemo } from "./UnfoldDemo";
 import { ClearanceDemo } from "./ClearanceDemo";
+import { SubletDemo } from "./SubletDemo";
 
 interface InteractiveDemoProps {
   kind:
@@ -50,7 +51,8 @@ interface InteractiveDemoProps {
     | "blanket"
     | "equilibrium"
     | "unfold"
-    | "clearance";
+    | "clearance"
+    | "sublet";
 }
 
 export function InteractiveDemo({ kind }: InteractiveDemoProps) {
@@ -105,6 +107,8 @@ export function InteractiveDemo({ kind }: InteractiveDemoProps) {
       return <UnfoldDemo />;
     case "clearance":
       return <ClearanceDemo />;
+    case "sublet":
+      return <SubletDemo />;
     default:
       return <div className="text-sm text-muted-foreground">Unknown demo kind: {kind}</div>;
   }

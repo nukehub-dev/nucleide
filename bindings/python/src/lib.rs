@@ -7172,12 +7172,12 @@ fn parse_plasma_basic_spec(
 /// errors for non-finite or out-of-range angles.
 ///
 /// Per-species ion temperatures: the optional `species_temperatures` dict
-/// `{"D": T_D_kev, "T": T_T_kev}` reacts a fuel mixture at distinct
-/// Maxwellian species temperatures (the D-T branch at the mass-weighted
-/// `T_DT`, the D-D branch at `T_D`; see `nucleide-plasma-source`
-/// `SpeciesIonTemperatures`) — the profile ion temperature is then unused
-/// for rate and spectrum (still validated). Both keys are required when the
-/// dict is present, a `fuel` mixture is required with it, and non-finite or
+/// `{"D": T_D_kev, "T": T_T_kev}` reacts at distinct Maxwellian species
+/// temperatures (single-fuel D-T at the mass-weighted `T_DT`, single-fuel
+/// D-D at `T_D`, and a fuel mixture at the same landed pair temperatures;
+/// see `nucleide-plasma-source` `SpeciesIonTemperatures`) — the profile ion
+/// temperature is then unused for rate and spectrum (still validated).
+/// Both keys are required when the dict is present, and non-finite or
 /// negative temperatures are loud errors.
 ///
 /// Deuterium hot tail: the optional `deuterium_tail` dict
@@ -7295,7 +7295,8 @@ fn parse_plasma_parametric_spec(
     // Per-species ion temperatures, upstream spelling: species_temperatures=
     // {"D": T_D_kev, "T": T_T_kev}. Both keys are required when the dict is
     // present; SpeciesIonTemperatures::new carries the loud temperature
-    // errors, and config validation requires a fuel mixture alongside.
+    // errors. The pair also applies to single-fuel parametric specs (D-T at
+    // T_DT, D-D at T_D).
     let species_temperatures = match spec.get("species_temperatures") {
         Some(value) => {
             let temps: BTreeMap<String, f64> = value.extract(py).map_err(|_| {
@@ -8200,7 +8201,11 @@ fn damage_fold_uq(
         "nrt_dpa" => M::NrtDpa,
         "arc_dpa" => M::ArcDpa,
         "gas_appm" => M::GasAppm,
-        "he_dpa_ratio" => M::HeDpaRatio,
+        "he_dpa_ratio" => {
+            return Err(PyValueError::new_err(
+                "he_dpa_ratio UQ needs both responses; use damage_he_dpa_ratio_uq",
+            ))
+        }
         other => {
             return Err(PyValueError::new_err(format!(
                 "unknown fold metric `{other}` (supported: nrt_dpa, arc_dpa, gas_appm)"
@@ -8226,8 +8231,64 @@ fn damage_fold_uq(
     Ok(out.into_any().unbind())
 }
 
-/// Vendored SPECTER Table VII displacement cross sections (barns) for one
-/// spectrum, keyed by element symbol.
+/// He/dpa ratio UQ: per-draw ratios over the seeded joint-MVN block.
+///
+/// Same report shape as [`damage_fold_uq`], but the block perturbs the
+/// stacked `[flux, he_response, damage_response]` vector (dimension `3G`)
+/// and each draw refolds He and dpa before forming the ratio. A draw
+/// landing at non-positive dpa fails loudly (never `inf`/`NaN` with a
+/// spread, never silent dropping of draws). `FoldMetric::HeDpaRatio`
+/// through [`damage_fold_uq`] stays a loud error naming this function:
+/// one response cannot carry the ratio.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)] // mirrors the core he_dpa_ratio_uq signature plus the PyO3 py handle
+fn damage_he_dpa_ratio_uq(
+    py: Python<'_>,
+    flux: Vec<f64>,
+    he_response: Vec<f64>,
+    damage_response: Vec<f64>,
+    bounds: Vec<f64>,
+    seconds: f64,
+    mean: Vec<f64>,
+    cov: Vec<Vec<f64>>,
+    n: usize,
+    seed: u64,
+    k: f64,
+) -> PyResult<Py<PyAny>> {
+    let s = nucleide_damage::he_dpa_ratio_uq(
+        &flux,
+        &he_response,
+        &damage_response,
+        &bounds,
+        seconds,
+        &mean,
+        &cov,
+        n,
+        seed,
+        k,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    out.set_item("metric", s.metric.name())?;
+    out.set_item("nominal", s.nominal)?;
+    out.set_item("mean", s.mean)?;
+    out.set_item("std", s.std)?;
+    out.set_item("expected", s.expected)?;
+    out.set_item("analytic_std", s.analytic_std)?;
+    out.set_item("q16", s.q16)?;
+    out.set_item("q50", s.q50)?;
+    out.set_item("q84", s.q84)?;
+    out.set_item("expected_q16", s.expected_q16)?;
+    out.set_item("expected_q50", s.expected_q50)?;
+    out.set_item("expected_q84", s.expected_q84)?;
+    out.set_item("quantiles_passed", s.quantiles_passed)?;
+    out.set_item("k", s.k)?;
+    out.set_item("n", s.n)?;
+    out.set_item("seed", s.seed)?;
+    out.set_item("passed", s.passed)?;
+    Ok(out.into_any().unbind())
+}
 ///
 /// Transcribed from Greenwood & Smither, ANL/FPP/TM-197 Table VII (US-gov
 /// PD): spectrum-averaged damage-energy cross sections converted with the
@@ -10124,6 +10185,251 @@ fn alara_decay_heat(entries: Vec<Bound<'_, PyAny>>) -> PyResult<BTreeMap<String,
     ]))
 }
 
+/// Build one S4/S5 [`nucleide_alara_io::HazardEntry`] from a caller dict with
+/// `nuclide` (any shared-dialect spelling), `activity_bq` (float, Bq), and
+/// the caller-supplied 50-year committed dose coefficient `coeff_key` (float,
+/// Sv/Bq, never vendored — the ICRP tables are copyrighted).
+fn sublet_hazard_entry(
+    entry: &Bound<'_, PyAny>,
+    coeff_key: &str,
+) -> PyResult<nucleide_alara_io::HazardEntry> {
+    let name = sublet_str(entry, "nuclide")?;
+    let nuclide = clearance_key(&name)?;
+    Ok(nucleide_alara_io::HazardEntry {
+        nuclide,
+        activity_bq: sublet_f64(entry, "activity_bq")?,
+        coeff_sv_per_bq: sublet_f64(entry, coeff_key)?,
+    })
+}
+
+/// S4 ingestion hazard `ΣAi·e^ing_i` (Sv, 50-year committed).
+///
+/// `entries` is a list of dicts with `nuclide`, `activity_bq` (Bq), and the
+/// caller-supplied `e_ing_sv_per_bq` ingestion coefficient (Sv/Bq, never
+/// vendored). Returns a dict with `total_sv` (`TOTAL ... FOR ALL MATERIALS`)
+/// and `ex_tritium_sv` (total minus tritium). Negative/non-finite inputs and
+/// overflow raise `ValueError`.
+#[pyfunction]
+fn alara_ingestion_hazard(entries: Vec<Bound<'_, PyAny>>) -> PyResult<BTreeMap<String, f64>> {
+    let parsed: Vec<nucleide_alara_io::HazardEntry> = entries
+        .iter()
+        .map(|e| sublet_hazard_entry(e, "e_ing_sv_per_bq"))
+        .collect::<PyResult<_>>()?;
+    let out = nucleide_alara_io::ingestion_hazard(&parsed)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(BTreeMap::from([
+        ("total_sv".to_string(), out.total_sv),
+        ("ex_tritium_sv".to_string(), out.ex_tritium_sv),
+    ]))
+}
+
+/// S5 inhalation hazard `ΣAi·e^inh_i` (Sv, 50-year committed).
+///
+/// Same contract as [`alara_ingestion_hazard`] with the caller-supplied
+/// `e_inh_sv_per_bq` inhalation coefficient (Sv/Bq, never vendored).
+/// Returns a dict with `total_sv` and `ex_tritium_sv`.
+#[pyfunction]
+fn alara_inhalation_hazard(entries: Vec<Bound<'_, PyAny>>) -> PyResult<BTreeMap<String, f64>> {
+    let parsed: Vec<nucleide_alara_io::HazardEntry> = entries
+        .iter()
+        .map(|e| sublet_hazard_entry(e, "e_inh_sv_per_bq"))
+        .collect::<PyResult<_>>()?;
+    let out = nucleide_alara_io::inhalation_hazard(&parsed)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(BTreeMap::from([
+        ("total_sv".to_string(), out.total_sv),
+        ("ex_tritium_sv".to_string(), out.ex_tritium_sv),
+    ]))
+}
+
+/// S6 transport ratio `ΣAi/(A2,i·C2)` with the effective A2 (TBq).
+///
+/// `entries` is a list of dicts with `nuclide`, `activity_bq` (Bq), and the
+/// caller-supplied `a2_tbq` transport limit (TBq, never vendored). Returns a
+/// dict with `ratio` (dimensionless `Total Bq/A2`), `total_bq`, and
+/// `effective_a2_tbq` (defined by the ratio, exactly). Negative/non-finite
+/// activities, non-positive/non-finite limits, and overflow raise
+/// `ValueError`.
+#[pyfunction]
+fn alara_transport_ratio(entries: Vec<Bound<'_, PyAny>>) -> PyResult<BTreeMap<String, f64>> {
+    let parsed: Vec<nucleide_alara_io::TransportEntry> = entries
+        .iter()
+        .map(|e| {
+            let name = sublet_str(e, "nuclide")?;
+            let nuclide = clearance_key(&name)?;
+            Ok(nucleide_alara_io::TransportEntry {
+                nuclide,
+                activity_bq: sublet_f64(e, "activity_bq")?,
+                a2_tbq: sublet_f64(e, "a2_tbq")?,
+            })
+        })
+        .collect::<PyResult<_>>()?;
+    let out = nucleide_alara_io::transport_ratio(&parsed)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(BTreeMap::from([
+        ("ratio".to_string(), out.ratio),
+        ("total_bq".to_string(), out.total_bq),
+        ("effective_a2_tbq".to_string(), out.effective_a2_tbq),
+    ]))
+}
+
+/// S7 IAEA clearance index `ΣAi/(Mtot·Li)` (dimensionless).
+///
+/// `total_mass_kg` is the total mass `Mtot` (finite, `> 0`); `entries` is a
+/// list of dicts with `nuclide`, `activity_bq` (Bq), and the caller-supplied
+/// `limit_bq_per_kg` IAEA level (Bq/kg, never vendored — the IAEA tables are
+/// permission-gated). Returns a dict with `index`, `clearance_class`
+/// (`"satisfied"` at `index <= 1`, boundary included, else `"exceeded"`),
+/// `max_fraction` (dominant term), and `max_nuclide` (dominant nuclide name,
+/// `None` for an empty inventory). Bad inputs and overflow raise
+/// `ValueError`. Screening arithmetic only, never a compliance decision.
+#[pyfunction]
+#[pyo3(signature = (total_mass_kg, entries))]
+fn alara_iaea_clearance_index(
+    py: Python<'_>,
+    total_mass_kg: f64,
+    entries: Vec<Bound<'_, PyAny>>,
+) -> PyResult<BTreeMap<String, Py<PyAny>>> {
+    let parsed: Vec<nucleide_alara_io::IaeaEntry> = entries
+        .iter()
+        .map(|e| {
+            let name = sublet_str(e, "nuclide")?;
+            let nuclide = clearance_key(&name)?;
+            Ok(nucleide_alara_io::IaeaEntry {
+                nuclide,
+                activity_bq: sublet_f64(e, "activity_bq")?,
+                limit_bq_per_kg: sublet_f64(e, "limit_bq_per_kg")?,
+            })
+        })
+        .collect::<PyResult<_>>()?;
+    let out = nucleide_alara_io::iaea_clearance_index(total_mass_kg, &parsed)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let mut d = BTreeMap::new();
+    d.insert(
+        "index".to_string(),
+        out.index.into_pyobject(py).unwrap().unbind().into_any(),
+    );
+    d.insert(
+        "clearance_class".to_string(),
+        out.class
+            .to_string()
+            .into_pyobject(py)
+            .unwrap()
+            .unbind()
+            .into_any(),
+    );
+    d.insert(
+        "max_fraction".to_string(),
+        out.max_fraction
+            .into_pyobject(py)
+            .unwrap()
+            .unbind()
+            .into_any(),
+    );
+    d.insert(
+        "max_nuclide".to_string(),
+        match out.max_nuclide {
+            Some(nuc) => nuc.to_name().into_pyobject(py).unwrap().unbind().into_any(),
+            None => py.None(),
+        },
+    );
+    Ok(d)
+}
+
+/// Build one S3 [`nucleide_alara_io::DoseGroup`] from a caller dict with
+/// `intensity` (group yield `Iᵢ`, photons/decay), `mu_air` (`μa(Eᵢ)`), and
+/// `mu` (mixture `μm(Eᵢ)`, or one [`alara_dose_mixture_mu`] row entry).
+fn dose_group(entry: &Bound<'_, PyAny>) -> PyResult<nucleide_alara_io::DoseGroup> {
+    Ok(nucleide_alara_io::DoseGroup {
+        intensity: sublet_f64(entry, "intensity")?,
+        mu_air: sublet_f64(entry, "mu_air")?,
+        mu: sublet_f64(entry, "mu")?,
+    })
+}
+
+/// S3 slab dose `D = C·B/2·Σᵢ μa(Eᵢ)/μm(Eᵢ)·Sγ(Eᵢ)` (Sv/h; `B = 2`,
+/// `C = 3.6e9·|e|`, `Sγ(Eᵢ) = Iᵢ·A`).
+///
+/// `activity_bq_per_kg` is the caller specific activity `A(t)`; `groups` is
+/// a list of dicts with `intensity` / `mu_air` / `mu` (no nuclide split;
+/// attenuation tables stay caller-supplied, never vendored). Returns a dict
+/// with `dose_sv_per_h`. Negative/non-finite inputs, a zero mixture `mu`
+/// (the slab ratio divides by it), and overflow raise `ValueError`.
+#[pyfunction]
+#[pyo3(signature = (activity_bq_per_kg, groups))]
+fn alara_dose_slab(
+    activity_bq_per_kg: f64,
+    groups: Vec<Bound<'_, PyAny>>,
+) -> PyResult<BTreeMap<String, f64>> {
+    let parsed: Vec<nucleide_alara_io::DoseGroup> =
+        groups.iter().map(dose_group).collect::<PyResult<_>>()?;
+    let out = nucleide_alara_io::dose_slab(activity_bq_per_kg, &parsed)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(BTreeMap::from([(
+        "dose_sv_per_h".to_string(),
+        out.dose_sv_per_h,
+    )]))
+}
+
+/// S3 point dose `D = C·Σᵢ μa(Eᵢ)/(4πr²)·e^(−μ(Eᵢ)r)·mₛ·Sγ(Eᵢ)` (Sv/h).
+///
+/// Same group contract as [`alara_dose_slab`], plus `source_mass_kg` (`mₛ`)
+/// and `distance_m` (`r`). A finite `r` below 0.3 m clamps to 0.3 m and the
+/// returned dict reports it LOUD via `clamped: true` with the `distance_used_m`
+/// actually used (never silent). Returns a dict with `dose_sv_per_h`,
+/// `distance_used_m`, and `clamped`. Bad inputs and overflow raise `ValueError`.
+#[pyfunction]
+#[pyo3(signature = (activity_bq_per_kg, source_mass_kg, distance_m, groups))]
+fn alara_dose_point(
+    py: Python<'_>,
+    activity_bq_per_kg: f64,
+    source_mass_kg: f64,
+    distance_m: f64,
+    groups: Vec<Bound<'_, PyAny>>,
+) -> PyResult<BTreeMap<String, Py<PyAny>>> {
+    let parsed: Vec<nucleide_alara_io::DoseGroup> =
+        groups.iter().map(dose_group).collect::<PyResult<_>>()?;
+    let out =
+        nucleide_alara_io::dose_point(activity_bq_per_kg, source_mass_kg, distance_m, &parsed)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let mut d = BTreeMap::new();
+    d.insert(
+        "dose_sv_per_h".to_string(),
+        out.dose_sv_per_h
+            .into_pyobject(py)
+            .unwrap()
+            .unbind()
+            .into_any(),
+    );
+    d.insert(
+        "distance_used_m".to_string(),
+        out.distance_used_m
+            .into_pyobject(py)
+            .unwrap()
+            .unbind()
+            .into_any(),
+    );
+    d.insert(
+        "clamped".to_string(),
+        pyo3::types::PyBool::new(py, out.clamped)
+            .to_owned()
+            .into_any()
+            .unbind(),
+    );
+    Ok(d)
+}
+
+/// S3 mixture fold `μm(Eᵢ) = Σⱼ fⱼ·μmⱼ(Eᵢ)` (one value per gamma group).
+///
+/// `fractions[j]` weights every group of `element_mus[j]`; fractions must be
+/// finite, `>= 0`, and sum to 1 within `1e-9`, and every element row must hold
+/// the same group count. Violations raise `ValueError`.
+#[pyfunction]
+fn alara_dose_mixture_mu(fractions: Vec<f64>, element_mus: Vec<Vec<f64>>) -> PyResult<Vec<f64>> {
+    nucleide_alara_io::mixture_mu(&fractions, &element_mus)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
 /// Find a TAPE6 record by nuclide name, or None.
 #[pyfunction]
 fn origen_tape6_find(py: Python<'_>, text: &str, nuclide: &str) -> PyResult<Option<Py<PyAny>>> {
@@ -10519,6 +10825,13 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(alara_sum_of_fractions, m)?)?;
     m.add_function(wrap_pyfunction!(alara_total_activity, m)?)?;
     m.add_function(wrap_pyfunction!(alara_decay_heat, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_ingestion_hazard, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_inhalation_hazard, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_transport_ratio, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_iaea_clearance_index, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_dose_slab, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_dose_point, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_dose_mixture_mu, m)?)?;
     m.add_function(wrap_pyfunction!(isotxs_parse, m)?)?;
     m.add_function(wrap_pyfunction!(rtflux_parse, m)?)?;
     m.add_function(wrap_pyfunction!(cccc_rtflux_npoints, m)?)?;
@@ -10581,6 +10894,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(damage_arc_efficiency, m)?)?;
     m.add_function(wrap_pyfunction!(damage_arc_displacements, m)?)?;
     m.add_function(wrap_pyfunction!(damage_fold_uq, m)?)?;
+    m.add_function(wrap_pyfunction!(damage_he_dpa_ratio_uq, m)?)?;
     m.add_function(wrap_pyfunction!(damage_specter_table, m)?)?;
     m.add_function(wrap_pyfunction!(damage_specter_damage_energy, m)?)?;
     m.add_function(wrap_pyfunction!(damage_specter_ed, m)?)?;

@@ -751,6 +751,8 @@ export interface FusionParametricSpec {
   fuelTritium?: number;
   tailFraction?: number;
   tailTempKev?: number;
+  speciesDeuteriumKev?: number;
+  speciesTritiumKev?: number;
   n: number;
   seed: number;
 }
@@ -842,6 +844,78 @@ export interface SubletHeat {
   gammaKw: number;
   totalKw: number;
   exTritiumKw: number;
+}
+
+export interface SubletHazardEntry {
+  nuclide: string;
+  activityBq: number;
+  coeffSvPerBq: number;
+}
+
+export interface SubletHazard {
+  totalSv: number;
+  exTritiumSv: number;
+}
+
+export interface SubletTransportEntry {
+  nuclide: string;
+  activityBq: number;
+  a2Tbq: number;
+}
+
+export interface SubletTransport {
+  ratio: number;
+  totalBq: number;
+  effectiveA2Tbq: number;
+}
+
+export interface SubletIaeaEntry {
+  nuclide: string;
+  activityBq: number;
+  limitBqPerKg: number;
+}
+
+export interface SubletIaea {
+  index: number;
+  clearanceClass: string;
+  maxFraction: number;
+  maxNuclide: string | null;
+}
+
+export interface SubletDoseGroup {
+  intensity: number;
+  muAir: number;
+  mu: number;
+}
+
+export interface SubletDose {
+  doseSvPerH: number;
+}
+
+export interface SubletPointDose {
+  doseSvPerH: number;
+  distanceUsedM: number;
+  clamped: boolean;
+}
+
+export interface RatioUq {
+  metric: string;
+  nominal: number;
+  mean: number;
+  std: number;
+  expected: number;
+  analyticStd: number;
+  q16: number;
+  q50: number;
+  q84: number;
+  expectedQ16: number;
+  expectedQ50: number;
+  expectedQ84: number;
+  quantilesPassed: boolean;
+  k: number;
+  n: number;
+  seed: number;
+  passed: boolean;
 }
 
 export type IndataValue = { Int: number } | { Float: number } | { Bool: boolean } | { Str: string };
@@ -1137,6 +1211,30 @@ export interface WasmApi {
   coilLifetime(limits: number[], rates: number[]): CoilLifetime;
   subletActivity(entries: SubletActivityEntry[]): SubletActivity;
   subletDecayHeat(entries: SubletHeatEntry[]): SubletHeat;
+  subletIngestionHazard(entries: SubletHazardEntry[]): SubletHazard;
+  subletInhalationHazard(entries: SubletHazardEntry[]): SubletHazard;
+  subletTransportRatio(entries: SubletTransportEntry[]): SubletTransport;
+  subletIaeaClearance(totalMassKg: number, entries: SubletIaeaEntry[]): SubletIaea;
+  subletDoseSlab(activityBqPerKg: number, groups: SubletDoseGroup[]): SubletDose;
+  subletDosePoint(
+    activityBqPerKg: number,
+    sourceMassKg: number,
+    distanceM: number,
+    groups: SubletDoseGroup[],
+  ): SubletPointDose;
+  subletDoseMixtureMu(fractions: number[], elementMus: number[][]): number[];
+  damageHeDpaRatioUq(
+    flux: number[],
+    heResponse: number[],
+    damageResponse: number[],
+    bounds: number[],
+    seconds: number,
+    mean: number[],
+    cov: number[][],
+    n: number,
+    seed: number,
+    k: number,
+  ): RatioUq;
   parseIndata(text: string): IndataDoc;
   wallLoad(
     sEdges: number[],

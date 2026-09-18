@@ -39,6 +39,7 @@ from nucleide._internal import (
     damage_fold_uq,
     damage_gas_appm,
     damage_he_dpa_ratio,
+    damage_he_dpa_ratio_uq,
     damage_lindhard_partition,
     damage_nrt_displacements,
     damage_nrt_dpa,
@@ -59,6 +60,7 @@ __all__ = [
     "arc_efficiency",
     "arc_displacements",
     "fold_uq",
+    "he_dpa_ratio_uq",
     "specter_table",
     "specter_damage_energy",
     "specter_ed",
@@ -177,7 +179,8 @@ def fold_uq(
     ``mean``/``cov`` describe relative perturbations of the stacked
     ``[flux, response]`` vector (dimension 2G). ``metric`` is one of
     ``"nrt_dpa"``, ``"arc_dpa"``, ``"gas_appm"`` (``"he_dpa_ratio"`` is a
-    loud named-open: the ratio is nonlinear). Draws are seeded and
+    loud error naming :func:`he_dpa_ratio_uq`: the ratio needs both
+    responses). Draws are seeded and
     reproducible; the returned dict carries the sample moments (``mean``,
     ``std``), the exact expectation (``expected``), the first-order
     propagated standard deviation (``analytic_std``), and the ``k``-SE gate
@@ -185,6 +188,42 @@ def fold_uq(
     samplers.
     """
     return damage_fold_uq(metric, flux, response, bounds, seconds, mean, cov, n, seed, k)
+
+
+def he_dpa_ratio_uq(
+    flux: list[float],
+    he_response: list[float],
+    damage_response: list[float],
+    bounds: list[float],
+    seconds: float,
+    mean: list[float],
+    cov: list[list[float]],
+    n: int,
+    seed: int,
+    k: float,
+) -> dict[str, Any]:
+    """Uncertainty propagation through the He/dpa ratio (per-draw ratios).
+
+    ``mean``/``cov`` describe relative perturbations of the stacked
+    ``[flux, he_response, damage_response]`` vector (dimension 3G). Each
+    seeded draw refolds He and dpa and forms the ratio per draw; the
+    returned dict carries the draw moments (``mean``, ``std``), the
+    second-order bias-corrected expectation (``expected`` — the mean of
+    ratios carries the ``Var(dpa)`` bias, so the bare ratio of means is
+    reported as ``nominal`` instead), the first-order delta-propagated
+    standard deviation (``analytic_std``), and the ``k``-SE gate verdict
+    (``passed``). Because a skewed ratio needs asymmetric margins, the dict
+    also carries the distribution-free 68% interval — draw percentiles
+    (``q16``, ``q50``, ``q84``) with the Fieller-construction quantiles
+    (``expected_q16``, ``expected_q50``, ``expected_q84``) and their own
+    ``k``-SE gate verdict (``quantiles_passed``), which holds at
+    honestly-sized blocks where the symmetric-spread gate cannot. A draw
+    landing at non-positive dpa fails loudly, never ``inf``/``NaN`` with a
+    spread.
+    """
+    return damage_he_dpa_ratio_uq(
+        flux, he_response, damage_response, bounds, seconds, mean, cov, n, seed, k
+    )
 
 
 def specter_spectra() -> list[str]:

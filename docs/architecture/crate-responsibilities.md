@@ -115,10 +115,12 @@ library, activation-output, photon-source, and schedule-expansion glue, plus
 clearance / waste-classification analytics (clearance index and the
 sum-of-fractions rule over parsed inventories, with the EU 2013/59/Euratom
 Annex VII Table A vendored as the default limit table and the Spanish CSN
-conditional NORM landfill tables as opt-in tables) and Sublet S1+S2
-radiological totals (total activity with the IRT α/β/γ split and decay heat
-over caller-supplied decay energies, each with the excluding-tritium
-companion). Depends
+conditional NORM landfill tables as opt-in tables) and Sublet S1–S7
+radiological totals (total activity with the IRT α/β/γ split, decay heat
+over caller-supplied decay energies, committed ingestion/inhalation hazards,
+the transport Bq/A₂ ratio, the IAEA clearance-index variant, and the
+slab/point gamma dose — all over caller inventories with caller-supplied
+coefficients, never vendored). Depends
 on `nucleide-nuclei` only among workspace crates; the solver stays inside ALARA.
 
 ### `nucleide-enrichment`
@@ -287,7 +289,9 @@ fit) and the arc-dpa efficiency correction (Nordlund et al. 2018,
 CC BY 4.0) as closed forms over caller-supplied material constants; He/H
 production in appm and He/dpa ratios from piecewise-constant-per-group
 folds of caller `(flux, response, bounds)` slices; UQ on the folds over
-caller MVN blocks through `linalg::sample` (pinned-seed, k-SE gates).
+caller MVN blocks through `linalg::sample` (pinned-seed, k-SE gates),
+including per-draw He/dpa ratio UQ over the joint flux/He/dpa block with
+the bias-corrected expectation gate (zero-dpa draws fail loudly).
 Zero-flux groups contribute exactly 0; the He/dpa ratio at zero dpa is a
 named error, never `inf`. Caller-supplied response functions stay the core;
 the one opt-in exception is the vendored SPECTER Table VII fallback

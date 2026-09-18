@@ -515,9 +515,8 @@ def test_species_equal_temperatures_recover_shared_mixture() -> None:
 
 
 def test_species_temperatures_are_loud() -> None:
-    # Non-finite or negative species temperatures never reach the sampler;
-    # the dict needs both D and T keys; and the pair without a fuel mixture
-    # is a loud scope error, never a silent single-fuel fallback.
+    # Non-finite or negative species temperatures never reach the sampler,
+    # and the dict needs both D and T keys with known key spellings.
     blend = dict(PARAMETRIC_SPEC, fuel={"D": 0.5, "T": 0.5})
     with pytest.raises(ValueError, match=">= 0"):
         ps.particles(dict(blend, species_temperatures={"D": -1.0, "T": 20.0}), 4, seed=0)
@@ -531,8 +530,67 @@ def test_species_temperatures_are_loud() -> None:
         ps.particles(dict(blend, species_temperatures={"D": 20.0}), 4, seed=0)
     with pytest.raises(ValueError, match="supported keys"):
         ps.particles(dict(blend, species_temperatures={"D": 20.0, "T": 20.0, "H": 1.0}), 4, seed=0)
-    with pytest.raises(ValueError, match="not yet supported"):
-        ps.particles(dict(PARAMETRIC_SPEC, species_temperatures={"D": 20.0, "T": 30.0}), 4, seed=0)
+    # Single-fuel configs accept the pair (pinned anchors below); loud
+    # errors still cover non-finite and negative entries there.
+    with pytest.raises(ValueError, match=">= 0"):
+        ps.particles(dict(PARAMETRIC_SPEC, species_temperatures={"D": -1.0, "T": 30.0}), 4, seed=0)
+    with pytest.raises(ValueError, match="non-finite"):
+        ps.particles(
+            dict(PARAMETRIC_SPEC, species_temperatures={"D": float("nan"), "T": 30.0}),
+            4,
+            seed=0,
+        )
+
+
+def test_single_fuel_species_temperatures_react_at_pair_temperatures() -> None:
+    # Single-fuel + pair reacts at the landed mixture pair temperatures:
+    # D-T at T_DT = 24 keV for (T_D, T_T) = (20, 30) keV, D-D at T_D.
+    # Pinned anchors: T_DT, <sv>_DT(24), and the D-T Ballabio line.
+    assert 20.0 + 0.4 * (30.0 - 20.0) == 24.0
+    assert ps.reactivity("dt", 24.0) == 5.414667327922193e-22
+    mu_dt, sigma_dt = _ballabio_moments("dt", 24.0)
+    assert mu_dt == pytest.approx(14.077934372230146, rel=1e-12)
+    assert sigma_dt == pytest.approx(0.3700390508551786, rel=1e-12)
+    flat_dt = dict(_flat_l_mode_spec(), reaction="dt")
+    pair_dt = dict(flat_dt, species_temperatures={"D": 20.0, "T": 30.0})
+    # The D-T arm strength is the landed 1/4 factor at T_DT (reactivity in
+    # m3/s converts to the internal cm3/s convention with 1e6).
+    n_cm3 = 1.0e20 * 1e-6
+    want_dt = 0.25 * n_cm3 * n_cm3 * ps.reactivity("dt", 24.0) * 1e6
+    cards_pair = ps.emit_source_cards(pair_dt, bins=15)
+    cards_none = ps.emit_source_cards(flat_dt, bins=15)
+    assert cards_pair["spectrum"]["mean_mev"] == pytest.approx(mu_dt, rel=1e-12)
+    assert cards_pair["spectrum"]["sigma_mev"] == pytest.approx(sigma_dt, rel=1e-12)
+    assert cards_pair["spectrum"]["mean_mev"] != pytest.approx(
+        cards_none["spectrum"]["mean_mev"], rel=1e-9
+    )
+    # Single-fuel D-D + pair reacts at T_D: identical cards to the None path
+    # when T_D equals the profile temperature.
+    flat_dd = dict(_flat_l_mode_spec(), reaction="dd")
+    pair_dd = dict(flat_dd, species_temperatures={"D": 20.0, "T": 30.0})
+    cards_dd_pair = ps.emit_source_cards(pair_dd, bins=15)
+    cards_dd_none = ps.emit_source_cards(flat_dd, bins=15)
+    assert cards_dd_pair["sdef"]["card"] == cards_dd_none["sdef"]["card"]
+    assert cards_dd_pair["serpent"]["card"] == cards_dd_none["serpent"]["card"]
+    assert want_dt == pytest.approx(1353666831980.5483, rel=1e-12)
+
+
+def test_single_fuel_species_equal_temperatures_recover_shared_kernel() -> None:
+    # Equal pair (T, T) on a single-fuel config reproduces the
+    # shared-temperature kernel bit-for-bit end to end: the same seeded
+    # stream and the same cards, for both fuels.
+    for reaction in ("dt", "dd"):
+        flat = dict(_flat_l_mode_spec(), reaction=reaction)
+        pair = dict(flat, species_temperatures={"D": 20.0, "T": 20.0})
+        a = ps.particles(flat, 512, seed=17)
+        b = ps.particles(pair, 512, seed=17)
+        for key in ("x", "y", "z", "u", "v", "w", "energy", "weight"):
+            assert bool((a[key] == b[key]).all())
+        cards_a = ps.emit_source_cards(flat, bins=15)
+        cards_b = ps.emit_source_cards(pair, bins=15)
+        assert cards_b["sdef"]["card"] == cards_a["sdef"]["card"]
+        assert cards_b["sdef"]["drift"] == cards_a["sdef"]["drift"]
+        assert cards_b["serpent"]["card"] == cards_a["serpent"]["card"]
 
 
 def _tail_spec() -> dict[str, object]:

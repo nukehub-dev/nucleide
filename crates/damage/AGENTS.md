@@ -59,7 +59,14 @@ Owns `crates/damage/src/` (`physics.rs`, `fold.rs`, `coil.rs`, `uq.rs`,
 - UQ reuses `linalg::sample` exclusively (seeded MVN, relative
   perturbations, `k`-SE gates against the exact bilinear expectation and
   the first-order propagated standard deviation). No new sampling
-  machinery; UQ on the He/dpa ratio is a named-open (`NotYetSupported`).
+  machinery. UQ on the He/dpa ratio forms the ratio per draw over the
+  joint `[flux, he, dpa]` block (`he_dpa_ratio_uq`): the draw mean ± draw
+  sd gate against the second-order bias-corrected expectation and the
+  first-order delta-propagated sd (small-perturbation verdict), plus the
+  distribution-free 68% interval (draw 16th/50th/84th percentiles) gated
+  against the Fieller-construction quantiles (all-regime verdict). Any
+  draw at non-positive dpa fails loudly with `Error::ZeroDpa` (never
+  `inf`/`NaN` with a spread).
 - Out of scope (do not expand here): PKA-spectra solving, transport
   solving, group-wise displacement-table vendoring (Appendix A stays
   image-only), gas-production columns, IAEA/IRDFF/TENDL consumption

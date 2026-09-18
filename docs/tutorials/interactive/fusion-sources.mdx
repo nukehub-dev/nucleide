@@ -20,7 +20,12 @@ Identical inputs always reproduce the identical particle stream. The 3D
 lattice tab samples a five-node base-sector cloud replicated by field-period
 symmetry instead — the stellarator-style spelling with the same spectrum.
 The parametric tab samples a synthetic H-mode plasma volume with an editable
-D/T fuel mixture and an optional deuterium hot-tail fraction.
+D/T fuel mixture and an optional deuterium hot-tail fraction. Blank both
+mixture fractions for the single-fuel kernel at the selected reaction, with
+an optional per-species temperature pair: single-fuel D-T then reacts at the
+mass-weighted pair temperature while single-fuel D-D reacts at the deuterium
+temperature, and an equal pair reproduces the shared-temperature kernel
+exactly.
 
 <InteractiveDemo kind="fusion-sources" />
 

@@ -142,7 +142,8 @@ caller-supplied limit tables (defaulting to a documented transcription of EU
 2013/59/Euratom Annex VII Table A). The WebAssembly build exposes
 the same surface, with interactive tutorials covering activation analysis,
 deterministic I/O, point-kinetics transients, gamma-ray spectroscopy,
-fusion sources, damage metrics, spectrum unfolding, clearance screening, and
+fusion sources, damage metrics, spectrum unfolding, clearance screening,
+radiological totals, and
 tritium permeation alongside the existing depletion, enrichment, MAGIC, and
 file-parsing demos.
 
@@ -189,11 +190,21 @@ The repository contains a runnable cross-code validation harness
   deuterium hot tail at 60 keV matches quadrature to $<10^{-2}$ in mean birth
   energy and $\langle r^2\rangle$, and the closed-form ECRH accessibility
   scalars (cold resonance, relativistic shift, O1/X1 cut-offs) are pinned by
-  hand vectors at $10^{-9}$ in the unit suite.
+  hand vectors at $10^{-9}$ in the unit suite. Single-fuel configs with a
+  per-species pair react at the landed pair temperatures (D-T at $T_{DT}$,
+  D-D at $T_D$) with sampled moments matching quadrature to $<10^{-2}$ and
+  equal-pair streams and cards recovering the shared-temperature kernel
+  exactly.
 - **Damage metrics**: SPECTER-report-transcribed spots (Fe/Ti/Cu dpa, C/Li/B/N
   He/H appm, Fe He/dpa) fold within the $10^{-4}$ print precision; analytic
   NRT/arc gates match closed forms to $<10^{-15}$; coil fast-flux and
-  lifetime analytics carry exact hand-vector gates in the unit suite.
+  lifetime analytics carry exact hand-vector gates in the unit suite. The
+  He/dpa ratio UQ pins the $2.5 \pm 0.3536$ hand vector (independent
+  $5.0 \pm 0.5$ appm He over $2.0 \pm 0.2$ dpa) and passes the seeded
+  $k$-SE gate at $n = 20000$ in the small-perturbation regime; the
+  distribution-free 68% draw interval gates against the
+  Fieller-construction quantiles and passes at the ±10% block (draws
+  $[2.167, 2.880]$ vs $[2.171, 2.879]$ analytic, skewing upward).
 - **Spectrum unfolding**: synthetic forward-fold round-trips recover spectra
   to $\sim10^{-16}$ (determined) and reproduce rates to $10^{-9}$ with the
   guess error halved (6-detector/24-group underdetermined case); IRDFF-II
@@ -203,7 +214,10 @@ The repository contains a runnable cross-code validation harness
   clearance-index vectors match exactly and the $=1$ boundary classifies both
   sides correctly; the Sublet S1+S2 hand vectors match exactly (124 Bq total
   activity with the IRT $\alpha$/$\beta$/$\gamma$ split, decay-heat parts
-  summing to the total).
+  summing to the total); the S3 slab/point dose, S4/S5 hazard, S6 transport,
+  and S7 IAEA-clearance hand vectors match exactly (slab $C \times 0.5$ Sv/h,
+  $40$/$85$ Sv hazards, ratio $3$ with effective A2 of $1$ TBq, index $1$
+  satisfied).
 - **Equilibrium data**: the classic-netCDF `wout` magic probe, HDF5/CDF-5
   rejection, reader-minimum round-trip, Jacobian hand vectors, INDATA grammar
   vectors, and flux-coordinate wall-load gates (axisymmetric $12\pi^2$ and

@@ -13,6 +13,77 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-18
+
+### Added
+
+- Per-species ion temperatures on single-fuel parametric configs in
+  `nucleide-plasma-source` (exposed through the `species_temperatures`
+  dict without a `fuel` dict): single-fuel D-T reacts at the landed
+  mass-weighted `T_DT = T_D + (2/5)·(T_T − T_D)`, single-fuel D-D at `T_D`,
+  with the Ballabio lines following per branch (D-T at `T_DT`, D-D at
+  `T_D`). Equal pair temperatures `(T, T)` reproduce the
+  shared-temperature single-fuel kernel bit-for-bit (strengths, sampled
+  stream, cards). Anchors: `(T_D, T_T) = (20, 30)` keV gives `T_DT = 24`
+  keV with `⟨σv⟩_DT = 5.414667327922193e-22` m³/s and the D-T line at mean
+  14.077934372230146 MeV, sigma 0.3700390508551786 MeV. Mixture paths are
+  untouched; the `None`-pair path keeps the landed expression trees
+  verbatim (no new RNG draws); the deuterium tail still requires a fuel
+  mixture.
+
+- Sublet S4 ingestion and S5 inhalation hazard kernels in
+  `nucleide-alara-io` (one shared `HAZARDS` shape): each folds per-nuclide
+  activities with the caller-supplied 50-year committed dose coefficients
+  (`e_ing` / `e_inh`, Sv/Bq, never vendored) into the `TOTAL ... HAZARD
+  FOR ALL MATERIALS` dose (Sv) plus the excluding-tritium companion, with
+  no split key. Pure arithmetic over caller inventories; negative /
+  non-finite inputs and overflow are loud errors. Exposed as
+  `nucleide.alara.alara_ingestion_hazard` / `alara_inhalation_hazard`
+  (entry keys `nuclide`, `activity_bq`, `e_ing_sv_per_bq` /
+  `e_inh_sv_per_bq`), with hand-vector gates in `tests/test_alara.py` and
+  C9 rows in `validation/clearance_vs_pypact.py`.
+
+- Sublet S3 gamma dose-rate kernel in `nucleide-alara-io` (new `dose`
+  module): the slab dose `C·B/2·Σ μa/μm·Sγ` (`B = 2`) and the point dose
+  `C·Σ μa/(4πr²)·e^(−μr)·mₛ·Sγ` (Sv/h, `C = 3.6e9·|e|`, `Sγ = I·A`) over
+  caller gamma groups — specific activity, group yields, and air/mixture
+  attenuation all caller-supplied, never vendored (`mixture_mu` folds
+  elemental values with mass fractions). Point distances below 0.3 m clamp
+  to 0.3 m and report it loudly via the `clamped` flag, never silently.
+  Exposed as `nucleide.alara.alara_dose_slab` / `alara_dose_point` /
+  `alara_dose_mixture_mu`, with hand-vector gates in `tests/test_alara.py`
+  and C8 rows in `validation/clearance_vs_pypact.py`.
+
+- Sublet S6 transport-ratio and S7 IAEA clearance-index kernels in
+  `nucleide-alara-io`: S6 folds per-nuclide activities with the
+  caller-supplied `A2` limits (TBq, never vendored) into the dimensionless
+  `Total Bq/A2` ratio plus the effective A2 it defines
+  (`nucleide.alara.alara_transport_ratio`, entry keys `nuclide`,
+  `activity_bq`, `a2_tbq`); S7 folds activities with the caller-supplied
+  IAEA levels (Bq/kg, never vendored) and the total mass into the
+  dimensionless clearance index with its `<= 1` screening class (boundary
+  included) and dominant contributor
+  (`nucleide.alara.alara_iaea_clearance_index`, entry keys `nuclide`,
+  `activity_bq`, `limit_bq_per_kg`). Pure arithmetic; bad inputs and
+  overflow are loud errors. Hand-vector gates in `tests/test_alara.py` and
+  C10 rows in `validation/clearance_vs_pypact.py`.
+
+- He/dpa ratio uncertainty propagation in `nucleide-damage`
+  (`he_dpa_ratio_uq`, exposed as `nucleide.damage.he_dpa_ratio_uq`):
+  per-draw ratios over the seeded joint `[flux, he, dpa]` MVN block (the
+  landed `linalg` engine, no new sampling machinery), reporting the draw
+  mean ± draw standard deviation with `k`-SE gates against the
+  second-order bias-corrected expectation and the first-order
+  delta-propagated standard deviation, plus the distribution-free 68%
+  interval (draw 16th/50th/84th percentiles) gated against the
+  Fieller-construction quantiles — the all-regime verdict that holds at
+  honestly-sized blocks where the symmetric-spread gate cannot. Any draw
+  at non-positive dpa fails loudly with the landed `ZeroDpa` vocabulary,
+  never `inf`/`NaN` with a spread. The single-response
+  `fold_uq("he_dpa_ratio")` spelling stays a loud error naming the
+  two-response function. Gates in `tests/test_damage.py` and G6–G7 rows in
+  `validation/damage_vs_specter.py`.
+
 ## [0.15.0] - 2026-09-18
 
 ### Added

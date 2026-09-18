@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useWasm } from "../../lib/wasm";
-import type { CoilFlux, CoilLifetime } from "../../types/nucleide-wasm";
+import type { CoilFlux, CoilLifetime, RatioUq } from "../../types/nucleide-wasm";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
@@ -22,6 +22,9 @@ const DEFAULT_C_ARC = "0.3";
 const DEFAULT_THRESHOLD = "0.1";
 const DEFAULT_LIMITS = "1e20, 5e20";
 const DEFAULT_RATES = "1e12, 1e12";
+const DEFAULT_REL_STD = "0.02";
+const DEFAULT_DRAWS = "4000";
+const DEFAULT_UQ_SEED = "20260915";
 
 const GROUP_LABELS = GROUP_BOUNDS.slice(0, 3).map((lo, i) => `${lo}-${GROUP_BOUNDS[i + 1]} MeV`);
 
@@ -58,6 +61,10 @@ export function DamageDemo() {
   const [ratesText, setRatesText] = useState(DEFAULT_RATES);
   const [coilFlux, setCoilFlux] = useState<CoilFlux | null>(null);
   const [coilLife, setCoilLife] = useState<CoilLifetime | null>(null);
+  const [relStdText, setRelStdText] = useState(DEFAULT_REL_STD);
+  const [drawsText, setDrawsText] = useState(DEFAULT_DRAWS);
+  const [uqSeedText, setUqSeedText] = useState(DEFAULT_UQ_SEED);
+  const [ratioUq, setRatioUq] = useState<RatioUq | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function clearError() {
@@ -127,6 +134,61 @@ export function DamageDemo() {
       setCurve(null);
       setCoilFlux(null);
       setCoilLife(null);
+      setRatioUq(null);
+    }
+  }
+
+  function runRatioUq() {
+    if (!wasm) return;
+    try {
+      const flux = fluxText.map((t, i) => parseEntry(t, `flux group ${i + 1}`));
+      const dpaResponse = dpaText.map((t, i) => parseEntry(t, `dpa response group ${i + 1}`));
+      const heResponse = heText.map((t, i) => parseEntry(t, `He response group ${i + 1}`));
+      for (const [values, label] of [
+        [flux, "flux"],
+        [dpaResponse, "dpa response"],
+        [heResponse, "He response"],
+      ] as const) {
+        if (values.some((v) => v < 0)) throw new Error(`${label} entries must be >= 0`);
+      }
+      const seconds = parseEntry(secondsText, "seconds");
+      if (seconds <= 0) throw new Error(`bad seconds \`${secondsText}\` (expected > 0)`);
+      const rel = parseEntry(relStdText, "relative std");
+      if (!(rel > 0) || rel >= 1)
+        throw new Error(`bad relative std \`${relStdText}\` (expected in (0, 1))`);
+      const n = parseEntry(drawsText, "draws");
+      if (!Number.isInteger(n) || n < 8)
+        throw new Error(`bad draws \`${drawsText}\` (expected an integer >= 8)`);
+      const seed = parseEntry(uqSeedText, "seed");
+      if (!Number.isInteger(seed) || seed < 0)
+        throw new Error(`bad seed \`${uqSeedText}\` (expected an integer >= 0)`);
+      // Uncorrelated diagonal block over [flux | He | dpa] with the one
+      // relative std on every group (small-perturbation regime); the mean
+      // gate uses the bias-corrected expectation, never the bare ratio.
+      const g = flux.length;
+      const mean = new Array(3 * g).fill(0);
+      const v = rel * rel;
+      const cov = Array.from({ length: 3 * g }, (_, i) =>
+        Array.from({ length: 3 * g }, (_, j) => (i === j && i >= g ? v : 0)),
+      );
+      setRatioUq(
+        wasm.damageHeDpaRatioUq(
+          flux,
+          heResponse,
+          dpaResponse,
+          GROUP_BOUNDS,
+          seconds,
+          mean,
+          cov,
+          n,
+          seed,
+          5,
+        ),
+      );
+      setLocalError(null);
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : String(e));
+      setRatioUq(null);
     }
   }
 
@@ -386,6 +448,99 @@ export function DamageDemo() {
                         ? `${fmt(coilLife.seconds)} s (channel ${coilLife.limiting})`
                         : "infinite (no ageing channel)"}
                     </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <p className="text-sm text-muted-foreground">
+            He/dpa ratio uncertainty reuses the flux and both responses above: each seeded draw
+            refolds He and dpa and forms the ratio per draw. The block is uncorrelated with one
+            relative std on the He/dpa responses (flux exact); the mean gate uses the second-order
+            bias-corrected expectation, and a draw at non-positive dpa fails loudly.
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1">
+              <Label className="flex min-h-10 items-end">Relative std (0, 1)</Label>
+              <Input
+                value={relStdText}
+                onChange={(e) => {
+                  setRelStdText(e.target.value);
+                  clearError();
+                }}
+                className="font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="flex min-h-10 items-end">Draws (≥ 8)</Label>
+              <Input
+                value={drawsText}
+                onChange={(e) => {
+                  setDrawsText(e.target.value);
+                  clearError();
+                }}
+                className="font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="flex min-h-10 items-end">Seed</Label>
+              <Input
+                value={uqSeedText}
+                onChange={(e) => {
+                  setUqSeedText(e.target.value);
+                  clearError();
+                }}
+                className="font-mono text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={runRatioUq}>Run He/dpa ratio UQ</Button>
+          </div>
+
+          {ratioUq && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">He/dpa ratio UQ</p>
+              <table className="text-sm">
+                <tbody className="font-mono text-xs">
+                  <tr>
+                    <td className="pr-4">Nominal ratio</td>
+                    <td>{fmt(ratioUq.nominal)} appm/dpa</td>
+                  </tr>
+                  <tr>
+                    <td className="pr-4">Draw mean ± std</td>
+                    <td>
+                      {fmt(ratioUq.mean)} ± {fmt(ratioUq.std)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="pr-4">Expected (bias-corrected)</td>
+                    <td>{fmt(ratioUq.expected)}</td>
+                  </tr>
+                  <tr>
+                    <td className="pr-4">Analytic std</td>
+                    <td>{fmt(ratioUq.analyticStd)}</td>
+                  </tr>
+                  <tr>
+                    <td className="pr-4">Draw median (q50)</td>
+                    <td>{fmt(ratioUq.q50)}</td>
+                  </tr>
+                  <tr>
+                    <td className="pr-4">68% interval [q16, q84]</td>
+                    <td>
+                      [{fmt(ratioUq.q16)}, {fmt(ratioUq.q84)}]
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="pr-4">Moment k-SE gate</td>
+                    <td>{ratioUq.passed ? `passed (k = ${ratioUq.k})` : "FAILED"}</td>
+                  </tr>
+                  <tr>
+                    <td className="pr-4">Interval k-SE gate</td>
+                    <td>{ratioUq.quantilesPassed ? `passed (k = ${ratioUq.k})` : "FAILED"}</td>
                   </tr>
                 </tbody>
               </table>

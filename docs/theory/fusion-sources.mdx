@@ -305,6 +305,20 @@ global scale, but ratios between configurations are meaningful. Because
 $\langle\sigma v\rangle \to 0$ as $T_i \to 0$, a cold separatrix makes no
 neutrons.
 
+### S5-P — Per-species temperatures without a fuel mixture
+
+A single-fuel config carrying a species pair $(T_D, T_T)$ reacts at the
+landed mixture pair temperatures — single-fuel D-T at the mass-weighted
+$T_{DT} = T_D + \tfrac{2}{5}(T_T - T_D)$, single-fuel D-D at $T_D$ — with
+the Ballabio lines following per branch (D-T at $T_{DT}$, D-D at $T_D$).
+No new temperature concept enters; the pair composes with tail and sector
+exactly as in mixtures, and the profile ion temperature is then unused for
+rate and spectrum (still validated). An equal pair $(T, T)$ reproduces the
+shared-temperature kernel bit-for-bit. Hand vector: $(T_D, T_T) = (20, 30)$
+keV gives $T_{DT} = 24$ keV with $\langle\sigma v\rangle_{DT} =
+5.414667327922193\times 10^{-22}$ m³/s and the D-T line at mean
+$14.077934372230146$ MeV, sigma $0.3700390508551786$ MeV.
+
 ### S5-T — Deuterium hot-tail fraction
 
 Auxiliary-heated plasmas carry a non-thermal tail that a pure Maxwellian
@@ -612,7 +626,9 @@ byte-identically through `nucleide.mcnp.parse_sdef` (the typed `SDEF` reader).
   ($\langle r^2\rangle = a^2/2$, $\langle z\rangle = 0$, and the outboard
   volume bias $\langle R\rangle = R_0 + a^2/(4R_0)$), the reactivity
   transcription (< 1e-12), and H-mode sampled birth moments against independent
-  fine quadrature of $S\,R\,|J|$, plus the P12 lattice gates (two-point hand
+  fine quadrature of $S\,R\,|J|$, plus the P11 species gates (pair-temperature
+  branch fire, single-fuel pair arms at the landed pair temperatures,
+  equal-T stream/card recovery) and the P12 lattice gates (two-point hand
   vectors, single-point recovery, ring-limit closure, symmetry-fold
   replication, card round trip, mixture branch fire) and the P13 hot-tail
   gates (sub-rate-rule moments and branch share, the drift tail-neutron
