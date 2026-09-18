@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useWasm } from "../../lib/wasm";
 import type { IndataDoc, WallLoadResult } from "../../types/nucleide-wasm";
+import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
 
@@ -144,6 +145,23 @@ export function EquilibDemo() {
                 Every wall node carries the same load here because the birth field and Jacobian are
                 uniform; the total conserves the discrete births.
               </p>
+              <Plotly
+                aspect="video"
+                data={[
+                  {
+                    type: "bar",
+                    name: "wall load",
+                    x: wall.loads.flatMap((row, j) => row.map((_, k) => `θ${j}ζ${k}`)),
+                    y: wall.loads.flat(),
+                  },
+                ]}
+                layout={{
+                  xaxis: { title: { text: "Wall node" }, type: "category" },
+                  yaxis: { title: { text: "Load" }, type: "linear" },
+                  margin: { t: 16, r: 24, b: 48, l: 64 },
+                  legend: { orientation: "h", y: -0.25 },
+                }}
+              />
             </div>
           )}
         </>

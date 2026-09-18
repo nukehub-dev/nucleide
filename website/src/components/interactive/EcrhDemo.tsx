@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useWasm } from "../../lib/wasm";
 import type { EcrhScalars } from "../../types/nucleide-wasm";
+import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
@@ -19,6 +20,7 @@ export function EcrhDemo() {
   const [bText, setBText] = useState(DEFAULT_B);
   const [teText, setTeText] = useState(DEFAULT_TE);
   const [scalars, setScalars] = useState<EcrhScalars | null>(null);
+  const [sweep, setSweep] = useState<{ freq: number[]; resonantT: number[] } | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function clearError() {
@@ -39,10 +41,21 @@ export function EcrhDemo() {
       const bT = parseEntry(bText, "field");
       const teKev = teText.trim() === "" ? undefined : parseEntry(teText, "electron temperature");
       setScalars(wasm.ecrhScalars(frequencyGhz, harmonic, bT, teKev));
+      // Live cold-resonance sweep over frequency at this harmonic (one
+      // ecrhScalars call per point, never hardcoded).
+      const freq: number[] = [];
+      const resonantT: number[] = [];
+      for (let i = 0; i <= 40; i++) {
+        const f = 20 + (280 * i) / 40;
+        freq.push(f);
+        resonantT.push(wasm.ecrhScalars(f, harmonic, bT, undefined).resonantFieldT);
+      }
+      setSweep({ freq, resonantT });
       setLocalError(null);
     } catch (e) {
       setLocalError(e instanceof Error ? e.message : String(e));
       setScalars(null);
+      setSweep(null);
     }
   }
 
@@ -158,6 +171,32 @@ export function EcrhDemo() {
                   </tr>
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {sweep && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">
+                Cold resonant field vs frequency (live WASM sweep)
+              </p>
+              <Plotly
+                aspect="video"
+                data={[
+                  {
+                    type: "scatter",
+                    mode: "lines",
+                    name: "B_res [T]",
+                    x: sweep.freq,
+                    y: sweep.resonantT,
+                  },
+                ]}
+                layout={{
+                  xaxis: { title: { text: "Frequency [GHz]" }, type: "linear" },
+                  yaxis: { title: { text: "Cold resonant field [T]" }, type: "linear" },
+                  margin: { t: 16, r: 24, b: 48, l: 64 },
+                  legend: { orientation: "h", y: -0.25 },
+                }}
+              />
             </div>
           )}
         </>

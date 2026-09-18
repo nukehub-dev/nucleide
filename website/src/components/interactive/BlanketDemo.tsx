@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useWasm } from "../../lib/wasm";
 import type { TbrScalars } from "../../types/nucleide-wasm";
+import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
@@ -20,6 +21,9 @@ export function BlanketDemo() {
   const [powerText, setPowerText] = useState(DEFAULT_POWER);
   const [requiredText, setRequiredText] = useState(DEFAULT_REQUIRED);
   const [scalars, setScalars] = useState<TbrScalars | null>(null);
+  const [sweep, setSweep] = useState<{ power: number[]; burn: number[]; surplus: number[] } | null>(
+    null,
+  );
   const [localError, setLocalError] = useState<string | null>(null);
 
   function clearError() {
@@ -52,10 +56,26 @@ export function BlanketDemo() {
       setScalars(
         wasm.tbrScalars(tritonsBred, sourceNeutrons, portFractions, fusionPowerMw, requiredTbr),
       );
+      // Live burn/surplus sweep over fusion power (pure arithmetic in WASM —
+      // one tbrScalars call per point, never hardcoded; power stays
+      // strictly positive per the facade contract).
+      const span = Math.max(fusionPowerMw * 2, 1);
+      const power: number[] = [];
+      const burn: number[] = [];
+      const surplus: number[] = [];
+      for (let i = 1; i <= 40; i++) {
+        const p = (span * i) / 40;
+        const s = wasm.tbrScalars(tritonsBred, sourceNeutrons, portFractions, p, requiredTbr);
+        power.push(p);
+        burn.push(s.burnGPerDay);
+        surplus.push(s.surplusGPerDay);
+      }
+      setSweep({ power, burn, surplus });
       setLocalError(null);
     } catch (e) {
       setLocalError(e instanceof Error ? e.message : String(e));
       setScalars(null);
+      setSweep(null);
     }
   }
 
@@ -184,6 +204,39 @@ export function BlanketDemo() {
                   </tr>
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {sweep && scalars && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">
+                Burn and surplus vs fusion power (live WASM sweep)
+              </p>
+              <Plotly
+                aspect="video"
+                data={[
+                  {
+                    type: "scatter",
+                    mode: "lines",
+                    name: "burn [g/day]",
+                    x: sweep.power,
+                    y: sweep.burn,
+                  },
+                  {
+                    type: "scatter",
+                    mode: "lines",
+                    name: "net surplus [g/day]",
+                    x: sweep.power,
+                    y: sweep.surplus,
+                  },
+                ]}
+                layout={{
+                  xaxis: { title: { text: "Fusion power [MW]" }, type: "linear" },
+                  yaxis: { title: { text: "g/day" }, type: "linear" },
+                  margin: { t: 16, r: 24, b: 48, l: 64 },
+                  legend: { orientation: "h", y: -0.25 },
+                }}
+              />
             </div>
           )}
         </>
