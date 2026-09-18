@@ -55,6 +55,24 @@ references:
     date: "1985"
     type: techreport
     doi: "10.2172/6022143"
+  - id: fieller-1954
+    title: "Some problems in interval estimation"
+    url: https://doi.org/10.1111/j.2517-6161.1954.tb00159.x
+    authors: ["E. C. Fieller"]
+    source: Journal of the Royal Statistical Society, Series B
+    journal: Journal of the Royal Statistical Society, Series B
+    volume: "16"
+    pages: "175–185"
+    date: "1954"
+    type: article
+    doi: "10.1111/j.2517-6161.1954.tb00159.x"
+  - id: abramowitz-stegun-1964
+    title: "Handbook of Mathematical Functions with Formulas, Graphs, and Mathematical Tables"
+    url: https://www.nist.gov/mathematics-statistics/handbook-mathematical-functions-abramowitz-and-stegun
+    authors: ["M. Abramowitz", "I. A. Stegun"]
+    source: National Bureau of Standards Applied Mathematics Series 55
+    date: "1964"
+    type: book
 ---
 
 Nucleide computes activation inventories and gamma sources; the matching first-wall
@@ -366,8 +384,9 @@ dropped draws.
 Because a skewed ratio needs asymmetric margins, the summary also carries
 the distribution-free 68% interval: the draw 16th/50th/84th percentiles
 (linear-interpolating order statistics) gated against the quantiles of the
-Fieller construction — the ratio of the implied joint-normal $(H, D)$ pair,
-whose CDF at $t$ is the ordinary normal CDF of $H - tD$:
+Fieller construction<Citation id="fieller-1954" /> — the ratio of the implied
+joint-normal $(H, D)$ pair, whose CDF at $t$ is the ordinary normal CDF of
+$H - tD$:
 
 $$
 F(t) = \Phi\!\left(\frac{t\,E[D] - E[H]}
@@ -377,7 +396,8 @@ $$
 
 inverted by bisection, with the quantile standard error
 $\sqrt{p(1-p)/(n\,f^2)}$ at the closed-form density $f = F'$. The
-$\Phi$ evaluation is the Abramowitz–Stegun 7.1.26 rational approximation
+$\Phi$ evaluation is the Abramowitz–Stegun 7.1.26 rational
+approximation<Citation id="abramowitz-stegun-1964" />
 ($|\varepsilon| \le 7.5\times 10^{-8}$, pinned by reference values
 in-crate). The interval verdict holds at the ±10% hand-vector block where
 the symmetric-spread gate honestly cannot: draws $[2.167, 2.880]$ against

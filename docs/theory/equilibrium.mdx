@@ -3,6 +3,39 @@ title: Equilibrium Data Readers
 description: Classic-netCDF VMEC wout reading, the INDATA namelist grammar, flux-surface Jacobians, and wall-load mapping in flux coordinates.
 sidebar:
   order: 14
+references:
+  - id: hirshman-whitson-1983
+    title: "Steepest-descent moment method for three-dimensional magnetohydrodynamic equilibria"
+    url: https://doi.org/10.1063/1.864116
+    authors: ["S. P. Hirshman", "J. C. Whitson"]
+    source: Physics of Fluids
+    journal: Physics of Fluids
+    volume: "26"
+    date: "1983"
+    type: article
+    doi: "10.1063/1.864116"
+  - id: dudt-kolemen-2020
+    title: "DESC: A stellarator equilibrium solver"
+    url: https://doi.org/10.1063/5.0020743
+    authors: ["D. W. Dudt", "E. Kolemen"]
+    source: Physics of Plasmas
+    journal: Physics of Plasmas
+    volume: "27"
+    pages: "102513"
+    date: "2020"
+    type: article
+    doi: "10.1063/5.0020743"
+  - id: landreman-2021
+    title: "SIMSOPT: A flexible framework for stellarator optimization"
+    url: https://doi.org/10.21105/joss.03525
+    authors: ["M. Landreman", "B. Medasani", "F. Wechsung", "A. Giuliani", "R. Jorge", "C. Zhu"]
+    source: Journal of Open Source Software
+    journal: Journal of Open Source Software
+    volume: "6"
+    pages: "3525"
+    date: "2021"
+    type: article
+    doi: "10.21105/joss.03525"
 ---
 
 Equilibrium codes solve the plasma shape; everything downstream — volume
@@ -157,7 +190,9 @@ $Q = 8 \times 3.0 \times \pi^2/4 = 6\pi^2$.
 
 ## Related work beyond Nucleide
 
-The file formats originate with VMEC; the DESC and simsopt packages are
+The file formats originate with VMEC<Citation id="hirshman-whitson-1983" />;
+the DESC<Citation id="dudt-kolemen-2020" /> and
+simsopt<Citation id="landreman-2021" /> packages are
 runtime cross-check oracles only (never ported). What Nucleide does not
 implement: equilibrium solving, VMEC++-era outputs, stellarator
 optimization, and anything CAD, FEM, or HDF5-shaped in Rust.

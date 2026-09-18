@@ -3,6 +3,18 @@ title: TBR and Blanket Bookkeeping
 description: Raw TBR from caller tallies, multiplicative port-penalty haircuts, energy multiplication, tritium burn rate, and breeding-margin metrics.
 sidebar:
   order: 13
+references:
+  - id: stellaris-2025
+    title: "Stellaris: A high-field quasi-isodynamic stellarator for a prototypical fusion power plant"
+    url: https://doi.org/10.1016/j.fusengdes.2025.114868
+    authors: ["J. Lion", "et al."]
+    source: Fusion Engineering and Design
+    journal: Fusion Engineering and Design
+    volume: "214"
+    pages: "114868"
+    date: "2025"
+    type: article
+    doi: "10.1016/j.fusengdes.2025.114868"
 ---
 
 Blanket studies need TBR bookkeeping, not transport: the tallies come from
@@ -10,7 +22,8 @@ the caller's transport runs, and the penalties, multiplications, and
 margins below are closed-form arithmetic over those caller values. This
 page pins the equation set of `nucleide.blanket` (labels B1–B4, P1–P2,
 F1–F2, matching the crate rustdoc) and the reported stellarator Point-A
-values that gate it as regression vectors.
+values from the Stellaris concept paper<Citation id="stellaris-2025" />
+that gate it as regression vectors.
 
 ## Overview
 
