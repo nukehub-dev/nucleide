@@ -13,10 +13,10 @@
 //! 611) and Ballabio-broadened spectra. Profiles are caller inputs — nothing
 //! computes profiles and no equilibrium is solved. What stays out (loud
 //! [`Error::NotYetSupported`], never a guess): reactant distributions beyond
-//! distinct-temperature Maxwellians ([`parametric`] — non-Maxwellian tails
-//! stay out; the per-species-temperature Eriksson et al., Comput. Phys.
-//! Commun. **199** (2016) 40 generalization is supported on D/T mixtures via
-//! [`SpeciesIonTemperatures`]), T-T neutron transport (the pinned
+//! a single deuterium hot-tail fraction on D/T mixtures ([`parametric`] —
+//! the one pinned single-tail-temperature Eriksson et al., Comput. Phys.
+//! Commun. **199** (2016) 40 shape is supported via [`DeuteriumTail`]; the
+//! rest of the full Eriksson generalization stays out), T-T neutron transport (the pinned
 //! three-branch normalization lives in [`parametric`], but no publishable
 //! T-T reactivity fit or Ballabio-class line exists — the oracle's vendored
 //! tables stay out — so the sampler and the cards run the landed two
@@ -85,10 +85,18 @@
 //! The parametric plasma builds the same way via
 //! [`ParametricPlasmaConfig`] + [`ParametricSampler`] /
 //! `emit_sdef_parametric` / `emit_serpent_parametric` (see [`parametric`]).
+//!
+//! The arbitrary-3D birth-rate lattice ([`lattice`]) drops the last tokamak
+//! assumption (axisymmetry): a caller-supplied point cloud (positions ×
+//! rates × ion temperatures) with field-period symmetry reduction, sampled by
+//! [`LatticeSampler`] and emitted by `emit_sdef_lattice` /
+//! `emit_serpent_lattice` as product-form marginals with drift rows.
 
+pub mod ecrh;
 pub mod emit_sdef;
 pub mod emit_serpent;
 pub mod error;
+pub mod lattice;
 pub mod miller;
 pub mod parametric;
 pub mod profile;
@@ -99,14 +107,19 @@ pub mod sample;
 pub mod source;
 pub mod spectrum;
 
+pub use ecrh::{EcrhAccessibility, EcrhError};
 pub use emit_sdef::EmittedCard;
-pub use emit_sdef::{emit_sdef, emit_sdef_parametric};
-pub use emit_serpent::{emit_serpent, emit_serpent_parametric};
+pub use emit_sdef::{emit_sdef, emit_sdef_lattice, emit_sdef_parametric};
+pub use emit_serpent::{emit_serpent, emit_serpent_lattice, emit_serpent_parametric};
 pub use error::{Error, Result};
+pub use lattice::{
+    expand_lattice, fold_lattice, lattice_emission_histograms, rotate_xy,
+    LatticeEmissionHistograms, LatticePoint, LatticeSampler, LatticeSourceConfig, LatticeSymmetry,
+};
 pub use miller::MillerGeometry;
 pub use parametric::{
-    BinnedDistribution, EmissionHistograms, FuelMixture, ParametricPlasmaConfig, ParametricSampler,
-    SpeciesIonTemperatures, ToroidalSector,
+    BinnedDistribution, DeuteriumTail, EmissionHistograms, FuelMixture, ParametricPlasmaConfig,
+    ParametricSampler, SpeciesIonTemperatures, ToroidalSector,
 };
 pub use profile::{DensityProfile, ProfileMode, TemperatureProfile};
 pub use reaction::FusionReaction;

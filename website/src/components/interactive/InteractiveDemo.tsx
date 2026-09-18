@@ -18,6 +18,9 @@ import { SpectroscopyDemo } from "./SpectroscopyDemo";
 import { UqDemo } from "./UqDemo";
 import { DamageDemo } from "./DamageDemo";
 import { FusionSourceDemo } from "./FusionSourceDemo";
+import { EcrhDemo } from "./EcrhDemo";
+import { BlanketDemo } from "./BlanketDemo";
+import { EquilibDemo } from "./EquilibDemo";
 import { UnfoldDemo } from "./UnfoldDemo";
 import { ClearanceDemo } from "./ClearanceDemo";
 
@@ -43,6 +46,9 @@ interface InteractiveDemoProps {
     | "uq"
     | "damage"
     | "fusion-sources"
+    | "ecrh"
+    | "blanket"
+    | "equilibrium"
     | "unfold"
     | "clearance";
 }
@@ -89,6 +95,12 @@ export function InteractiveDemo({ kind }: InteractiveDemoProps) {
       return <DamageDemo />;
     case "fusion-sources":
       return <FusionSourceDemo />;
+    case "ecrh":
+      return <EcrhDemo />;
+    case "blanket":
+      return <BlanketDemo />;
+    case "equilibrium":
+      return <EquilibDemo />;
     case "unfold":
       return <UnfoldDemo />;
     case "clearance":

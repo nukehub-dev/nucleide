@@ -1,0 +1,11 @@
+[package]
+name = "nucleide-equilib-io"
+description = "Equilibrium data readers (classic-netCDF VMEC wout files plus VMEC INDATA namelist text); reads data, never solves equilibria"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror.workspace = true

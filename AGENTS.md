@@ -173,7 +173,8 @@ High-level layout; see the Child NAD Index below for domain-specific details.
   `nuclei`, `material`, `mcnp-io`, `mcpl-io`, `serpent-io`, `fluka-io`,
   `alara-io`, `cccc-io`, `fispact-io`, `origen-io`, `r2s`, `vr-tools`,
   `enrichment`, `depletion`, `linalg`, `emit`, `kinetics`, `spectroscopy`,
-  `plasma-source`, `damage`, `unfold`.
+  `plasma-source`, `damage`, `unfold`, `csg-xlate`, `tritium`, `blanket`,
+  `equilib-io`.
 - `bindings/python/` — PyO3 crate exposing `nucleide._internal`; thin facade,
   no business logic.
 - `bindings/wasm/` — `wasm-bindgen` crate that lets tutorials run Nucleide in
@@ -323,12 +324,17 @@ Use `scripts/bump-version.sh X.Y.Z` to bump the workspace version and stamp
   provenance stance, MCPL-caller-side rule, two-part oracle pattern).
 - `crates/damage/AGENTS.md` — damage/gas metrics (NRT/arc-dpa closed forms,
   fold conventions, SPECTER-oracle-only stance, UQ over caller blocks).
+- `crates/blanket/AGENTS.md` — TBR/blanket bookkeeping (raw TBR, port-penalty
+  haircuts, energy multiplication, burn and fuel-cycle margin; Stellaris
+  hand-vector gates; no transport, no `tritium` coupling).
 - `crates/spectroscopy/AGENTS.md` — spectroscopy toolkit (smoothing, counting, calibration, X-ray, SPE readers).
 - `crates/unfold/AGENTS.md` — neutron spectrum unfolding (SAND-II S1–S3
   equations, convergence contract, one-method-per-cycle rule, IRDFF
   caller-supplied provenance stance).
 - `crates/nuclei/AGENTS.md` — EPA FGR 15 external-dosimetry tables
   (runtime hash-pinned download, strict parser gates, synthetic-only tests).
+- `crates/equilib-io/AGENTS.md` — classic-netCDF `wout` + `&INDATA`
+  readers with Jacobian helpers (gate pins, Nyquist-map rule, OUT list).
 - `website/AGENTS.md` — website build, preview, sync, and E2E test workflow.
 - `validation/AGENTS.md` — cross-code validation harness workflow and the
   generated-results contract.

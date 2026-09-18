@@ -9,16 +9,20 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// or rendering source cards.
 ///
 /// Out-of-scope requests (T-T neutron transport, proton transport, reactant
-/// distributions beyond distinct-temperature Maxwellians, per-species ion
+/// distributions beyond a single deuterium hot-tail fraction on a D/T fuel
+/// mixture, per-species ion
 /// temperatures without a D/T fuel mixture) are reported through
 /// [`Error::NotYetSupported`] — a loud named error, never a
 /// panic or a silent fallback. The D(d,p)T proton *rate* is not out of
 /// scope: it is accounted alongside the neutron source
 /// (`proton_strength_density` / `total_proton_strength`, 50/50 with the D-D
 /// neutron branch) while the sampler and the cards stay neutron-only.
-/// Invalid fuel-mixture fractions and invalid
+/// Invalid fuel-mixture fractions, invalid deuterium-tail parameters,
+/// invalid lattice clouds and symmetry folds, and invalid
 /// toroidal-sector angles carry their own named errors ([`Error::NonFinite`],
-/// [`Error::InvalidFuelMixture`], [`Error::InvalidSector`]); out-of-range
+/// [`Error::InvalidFuelMixture`], [`Error::InvalidTail`],
+/// [`Error::InvalidLattice`], [`Error::InvalidSymmetry`],
+/// [`Error::InvalidSector`]); out-of-range
 /// species temperatures reuse [`Error::NonFinite`] and
 /// [`Error::NegativeIonTemperature`].
 
@@ -63,11 +67,24 @@ pub enum Error {
     /// (within the documented 1e-12 tolerance): `{0}`.
     #[error("plasma-source: invalid fuel mixture: {0}")]
     InvalidFuelMixture(&'static str),
+    /// A deuterium hot-tail parameter is out of range (fraction outside
+    /// `[0, 1]`): `{0}`.
+    #[error("plasma-source: invalid deuterium tail: {0}")]
+    InvalidTail(&'static str),
     /// A toroidal-sector angle fails its documented range check
     /// (`start_angle` outside `[0, 2π)`, `rotation_angle` outside `(0, 2π]`):
     /// `{0}`.
     #[error("plasma-source: invalid toroidal sector: {0}")]
     InvalidSector(&'static str),
+    /// A lattice birth-rate cloud fails its documented range check (empty
+    /// cloud, negative point rate, zero total rate): `{0}`.
+    #[error("plasma-source: invalid lattice source: {0}")]
+    InvalidLattice(&'static str),
+    /// A lattice symmetry fold fails its documented precondition (zero field
+    /// periods, a point count that is not a multiple of the period count, or
+    /// mismatched ion temperatures across a fold orbit): `{0}`.
+    #[error("plasma-source: invalid lattice symmetry: {0}")]
+    InvalidSymmetry(&'static str),
     /// The emitted card failed to re-parse through the typed `SDEF` reader
     /// (an internal emission invariant; surfaced loudly rather than
     /// delivered unverified).

@@ -8,9 +8,17 @@ Functionality is grouped into domain submodules mirroring the Rust crates:
 `nucleide.tritium`, `nucleide.alara`, `nucleide.cccc`,
 `nucleide.fispact`, `nucleide.origen`, `nucleide.r2s`,
 `nucleide.plasma_source`, and `nucleide.damage`.
+`nucleide.blanket` books TBR and blanket power over caller transport
+tallies (port penalties, energy multiplication, tritium burn and
+fuel-cycle margin).
 `nucleide.mcpl` reads/writes MCPL particle lists.
 `nucleide.unfold` adjusts a guess neutron spectrum against measured
 activation rates (SAND-II).
+`nucleide.openmc` bridges OpenMC statepoint tallies to plain arrays
+(caller-side OpenMC, never a hard dependency).
+`nucleide.equilib` reads equilibrium data (classic-netCDF VMEC `wout`
+files and `&INDATA` input text) with flux-surface Jacobian helpers —
+reads data, never solves equilibria.
 `nucleide.uq` is the seeded UQ-lite sampling kernel (caller-supplied blocks).
 `nucleide.data` fetches repo data files (compendium, sample chains) pinned
 to the installed release.
@@ -18,12 +26,14 @@ to the installed release.
 
 from nucleide import (
     alara,
+    blanket,
     cccc,
     damage,
     data,
     depletion,
     emit,
     enrichment,
+    equilib,
     fispact,
     fluka,
     kinetics,
@@ -31,6 +41,7 @@ from nucleide import (
     mcnp,
     mcpl,
     nuclei,
+    openmc,
     origen,
     plasma_source,
     r2s,
@@ -69,4 +80,7 @@ __all__ = [
     "plasma_source",
     "damage",
     "unfold",
+    "blanket",
+    "equilib",
+    "openmc",
 ]

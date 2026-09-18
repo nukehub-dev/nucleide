@@ -1,6 +1,7 @@
 """Python-side tests for the tokamak fusion-source core (analytic gates + errors)."""
 
 import math
+from typing import Any
 
 import pytest
 
@@ -532,3 +533,307 @@ def test_species_temperatures_are_loud() -> None:
         ps.particles(dict(blend, species_temperatures={"D": 20.0, "T": 20.0, "H": 1.0}), 4, seed=0)
     with pytest.raises(ValueError, match="not yet supported"):
         ps.particles(dict(PARAMETRIC_SPEC, species_temperatures={"D": 20.0, "T": 30.0}), 4, seed=0)
+
+
+def _tail_spec() -> dict[str, object]:
+    """Pinned tail spec: 70/30 blend at T_D = 20 keV, T_T = 30 keV with a 5%
+    deuterium hot tail at 60 keV (sub-pairs at T_DT = 24, T_DTt = 48,
+    T_D = 20, T_mix = 40, T_tail = 60 keV)."""
+    return dict(
+        PARAMETRIC_SPEC,
+        fuel={"D": 0.7, "T": 0.3},
+        species_temperatures={"D": 20.0, "T": 30.0},
+        deuterium_tail={"fraction": 0.05, "temperature_kev": 60.0},
+    )
+
+
+def _tail_sub_weights() -> tuple[list[float], list[tuple[str, float]]]:
+    """Sub-rate-rule weights and (reaction, temperature) pairs of the pinned
+    tail spec, from the in-script Bosch-Hale-independent reactivity facade."""
+    eta = 0.05
+    sv_dt = ps.reactivity("dt", 24.0)
+    sv_dt_tail = ps.reactivity("dt", 48.0)
+    sv_dd = ps.reactivity("dd", 20.0)
+    sv_dd_mix = ps.reactivity("dd", 40.0)
+    sv_dd_tail = ps.reactivity("dd", 60.0)
+    w = [
+        0.7 * 0.3 * (1.0 - eta) * sv_dt,
+        0.7 * 0.3 * eta * sv_dt_tail,
+        0.7 * 0.7 / 2.0 * (1.0 - eta) ** 2 * sv_dd,
+        0.7 * 0.7 / 2.0 * 2.0 * eta * (1.0 - eta) * sv_dd_mix,
+        0.7 * 0.7 / 2.0 * eta**2 * sv_dd_tail,
+    ]
+    total = sum(w)
+    return (
+        [x / total for x in w],
+        [("dt", 24.0), ("dt", 48.0), ("dd", 20.0), ("dd", 40.0), ("dd", 60.0)],
+    )
+
+
+def test_deuterium_tail_fires_all_sub_branches() -> None:
+    # All five bulk/tail sub-lines fire in the stream at the sub-rate-rule
+    # shares, and the mean energy matches the five-branch weighted mean.
+    spec = _tail_spec()
+    n = 20_000
+    out = ps.particles(spec, n, seed=13)
+    energy = out["energy"]
+    p, branches = _tail_sub_weights()
+    p_dd = p[2] + p[3] + p[4]
+    frac_dd = float((energy < 10.0).mean())
+    se = math.sqrt(p_dd * (1.0 - p_dd) / n)
+    assert abs(frac_dd - p_dd) < 8.0 * se
+    moments = [_ballabio_moments(reaction, ti) for reaction, ti in branches]
+    want = sum(pi * mu for pi, (mu, _) in zip(p, moments, strict=True))
+    var = sum(pi * (sigma**2 + mu**2) for pi, (mu, sigma) in zip(p, moments, strict=True)) - want**2
+    assert abs(float(energy.mean()) - want) < 6.0 * math.sqrt(var / n)
+
+
+def test_deuterium_tail_zero_fraction_recovers_no_tail() -> None:
+    # eta = 0 reproduces the no-tail mixture kernel bit-for-bit end to end:
+    # the same seeded stream and the same emitted cards.
+    base = dict(
+        PARAMETRIC_SPEC,
+        fuel={"D": 0.7, "T": 0.3},
+        species_temperatures={"D": 20.0, "T": 30.0},
+    )
+    zero = dict(base, deuterium_tail={"fraction": 0.0, "temperature_kev": 60.0})
+    a = ps.particles(base, 512, seed=17)
+    b = ps.particles(zero, 512, seed=17)
+    for key in ("x", "y", "z", "u", "v", "w", "energy", "weight"):
+        assert bool((a[key] == b[key]).all())
+    cards_a = ps.emit_source_cards(base, bins=15)
+    cards_b = ps.emit_source_cards(zero, bins=15)
+    assert cards_b["sdef"]["card"] == cards_a["sdef"]["card"]
+    assert cards_b["sdef"]["drift"] == cards_a["sdef"]["drift"]
+    assert cards_b["serpent"]["card"] == cards_a["serpent"]["card"]
+
+
+def test_deuterium_tail_card_carries_drift_row() -> None:
+    # A nonzero tail folds its Ballabio sub-lines into the energy marginal
+    # and appends the deuterium-tail drift row; the SDEF card still
+    # round-trips through the typed reader.
+    out = ps.emit_source_cards(_tail_spec(), bins=15)
+    card = out["sdef"]["card"]
+    parsed = mcnp.parse_sdef(card)
+    assert parsed["card"] == card
+    assert parsed["rad"] == "D1"
+    assert parsed["ext"] == "D2"
+    assert parsed["erg"] == "D3"
+    quantities = [row["quantity"] for row in out["sdef"]["drift"]]
+    assert quantities == [
+        "emission probability",
+        "spatial marginals",
+        "joint correlation",
+        "deuterium tail",
+    ]
+    tail_row = out["sdef"]["drift"][3]
+    assert tail_row["reparsed"] is True
+    assert "0.050000" in tail_row["note"] and "60.000000" in tail_row["note"]
+    assert out["serpent"]["drift"][-1]["quantity"] == "deuterium tail"
+    assert out["serpent"]["drift"][-1]["reparsed"] is False
+
+
+def test_deuterium_tail_is_loud() -> None:
+    # Non-finite, out-of-range, or negative tail parameters never reach the
+    # sampler; the dict needs both fraction and temperature_kev keys; and the
+    # tail without a fuel mixture is a loud scope error, never a silent
+    # single-fuel fallback.
+    blend = dict(PARAMETRIC_SPEC, fuel={"D": 0.5, "T": 0.5})
+    bad_tails = [
+        {"fraction": -0.1, "temperature_kev": 60.0},
+        {"fraction": 1.1, "temperature_kev": 60.0},
+        {"fraction": 0.05, "temperature_kev": -1.0},
+        {"fraction": float("nan"), "temperature_kev": 60.0},
+        {"fraction": 0.05, "temperature_kev": float("inf")},
+        {"fraction": 0.05},  # missing temperature_kev
+        {"temperature_kev": 60.0},  # missing fraction
+        {"fraction": 0.05, "temperature_kev": 60.0, "shape": "slowing-down"},
+        {"fraction": 0.05, "temperature_kev": 60.0, "species": "T"},
+    ]
+    for tail in bad_tails:
+        with pytest.raises(ValueError):
+            ps.particles(dict(blend, deuterium_tail=tail), 4, seed=0)
+    with pytest.raises(ValueError, match="not yet supported"):
+        ps.particles(
+            dict(PARAMETRIC_SPEC, deuterium_tail={"fraction": 0.05, "temperature_kev": 60.0}),
+            4,
+            seed=0,
+        )
+
+
+def _two_point_lattice_spec() -> dict[str, Any]:
+    """Hand-vector lattice: A=(300,0,25) rate 2, B=(-300,0,25) rate 1, D-T mono."""
+    return {
+        "kind": "lattice",
+        "reaction": "dt",
+        "points": [
+            {"position": [300.0, 0.0, 25.0], "rate": 2.0, "ion_temperature_kev": 0.0},
+            {"position": [-300.0, 0.0, 25.0], "rate": 1.0, "ion_temperature_kev": 0.0},
+        ],
+    }
+
+
+def _ring_lattice_spec(k: int = 64) -> dict[str, object]:
+    """Uniform ring lattice: k unit-rate D-T mono nodes at R=300 cm, z=25 cm."""
+    import math as _math
+
+    return {
+        "kind": "lattice",
+        "reaction": "dt",
+        "points": [
+            {
+                "position": [
+                    300.0 * _math.cos(2.0 * _math.pi * i / k),
+                    300.0 * _math.sin(2.0 * _math.pi * i / k),
+                    25.0,
+                ],
+                "rate": 1.0,
+                "ion_temperature_kev": 0.0,
+            }
+            for i in range(k)
+        ],
+    }
+
+
+def test_lattice_hand_vectors_total_mean_and_mono_energy() -> None:
+    # total = 3.0; mean birth position = (100, 0, 25); mono D-T line.
+    out = ps.particles(_two_point_lattice_spec(), 90_000, seed=42)
+    n = len(out["x"])
+    assert out["energy"] == pytest.approx(14.021, rel=1e-12)
+    assert abs(float(out["x"].mean()) - 100.0) < 8.0 * 200.0 / math.sqrt(n)
+    assert abs(float(out["y"].mean())) < 8.0 * 200.0 / math.sqrt(n)
+    assert abs(float(out["z"].mean()) - 25.0) < 1e-9
+    # Rate-2 node fires twice as often (8-sigma multinomial gate).
+    frac_a = float((out["x"] > 0).mean())
+    se = math.sqrt((2.0 / 3.0) * (1.0 / 3.0) / n)
+    assert abs(frac_a - 2.0 / 3.0) < 8.0 * se
+
+
+def test_lattice_single_point_recovers_point_source() -> None:
+    # One node reproduces the landed point-source stream bit-for-bit.
+    lattice = {
+        "kind": "lattice",
+        "reaction": "dt",
+        "points": [{"position": [1.0, -2.0, 3.5], "rate": 1.0, "ion_temperature_kev": 20.0}],
+    }
+    point = {
+        "kind": "point",
+        "position": [1.0, -2.0, 3.5],
+        "reaction": "dt",
+        "ion_temperature_kev": 20.0,
+    }
+    a = ps.particles(lattice, 512, seed=9)
+    b = ps.particles(point, 512, seed=9)
+    for key in ("x", "y", "z", "u", "v", "w", "energy", "weight"):
+        assert bool((a[key] == b[key]).all())
+
+
+def test_lattice_ring_limit_matches_closed_form() -> None:
+    # Axisymmetric limit converges to the analytic ring moments.
+    out = ps.particles(_ring_lattice_spec(), N, seed=42)
+    radius = (out["x"] ** 2 + out["y"] ** 2) ** 0.5
+    assert radius == pytest.approx(300.0, rel=1e-9)
+    assert bool((out["z"] == 25.0).all())
+    assert out["energy"] == pytest.approx(14.021, rel=1e-12)
+    se = 300.0 / math.sqrt(2 * N)
+    assert abs(float(out["x"].mean())) < 8 * se
+    assert abs(float(out["y"].mean())) < 8 * se
+
+
+def test_lattice_sdef_card_round_trips_with_lattice_row() -> None:
+    out = ps.emit_source_cards(_two_point_lattice_spec(), bins=8)
+    card = out["sdef"]["card"]
+    parsed = mcnp.parse_sdef(card)
+    assert parsed["card"] == card
+    assert parsed["rad"] == "D1"
+    assert parsed["ext"] == "D2"
+    assert parsed["erg"] == "D3"
+    assert len(parsed["distributions"]) == 3
+    quantities = [row["quantity"] for row in out["sdef"]["drift"]]
+    assert quantities == [
+        "emission probability",
+        "spatial marginals",
+        "joint correlation",
+        "lattice discretization",
+    ]
+    assert out["sdef"]["drift"][0]["reparsed"] is True
+    assert "2 nodes" in out["sdef"]["drift"][3]["note"]
+    assert out["spectrum"]["mean_mev"] == pytest.approx(14.021, rel=1e-9)
+    assert out["spectrum"]["mono"] is True
+    lines = out["serpent"]["card"].splitlines()
+    assert lines[0] == "src 1 pos 0 0 0"
+    assert lines[1] == "src 1 rad d1"
+    assert lines[4] == "src 1 wgt 1"
+    assert out["serpent"]["drift"][-1]["quantity"] == "lattice discretization"
+    assert out["serpent"]["drift"][-1]["reparsed"] is False
+
+
+def test_lattice_symmetry_fold_conserves_and_replicates() -> None:
+    # Base-sector cloud (one node) with 4 field periods: births spread
+    # uniformly over the 4 copies and the mean energy stays the Ballabio line.
+    base = {
+        "kind": "lattice",
+        "reaction": "dt",
+        "field_periods": 4,
+        "base_angle": 0.0,
+        "points": [{"position": [300.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 20.0}],
+    }
+    n = 20_000
+    out = ps.particles(base, n, seed=5)
+    radius = (out["x"] ** 2 + out["y"] ** 2) ** 0.5
+    assert radius == pytest.approx(300.0, rel=1e-9)
+    mean, _sigma = _ballabio_moments("dt", 20.0)
+    assert abs(float(out["energy"].mean()) - mean) < 0.01
+    # Quadrant occupancy is uniform (8-sigma multinomial gate per quadrant).
+    quad = ((out["x"] > 0).astype(int) + 2 * (out["y"] > 0).astype(int)).astype(int)
+    for q in range(4):
+        frac = float((quad == q).mean())
+        se = math.sqrt(0.25 * 0.75 / n)
+        assert abs(frac - 0.25) < 8.0 * se
+    # Proton bookkeeping on a D-T lattice: no protons, caller neutron total.
+    acc = ps.proton_accounting(base)
+    assert acc["proton_total"] == 0.0
+    assert acc["neutron_total"] == pytest.approx(4.0)
+    assert acc["proton_per_neutron"] == 0.0
+
+
+def test_lattice_mixture_fires_both_branches() -> None:
+    spec = {
+        "kind": "lattice",
+        "fuel": {"D": 0.7, "T": 0.3},
+        "points": [{"position": [0.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 20.0}],
+    }
+    out = ps.particles(spec, 200_000, seed=11)
+    frac_dd = float((out["energy"] < 10.0).mean())
+    assert 0.002 < frac_dd < 0.015
+    acc = ps.proton_accounting(spec)
+    assert 0.0 < acc["proton_per_neutron"] < 0.05
+
+
+def test_lattice_errors_are_loud() -> None:
+    with pytest.raises(ValueError, match="kind"):
+        ps.particles(dict(_two_point_lattice_spec(), kind="cloud"), 4, seed=0)
+    with pytest.raises(ValueError, match="points"):
+        ps.particles({"kind": "lattice", "reaction": "dt"}, 4, seed=0)
+    with pytest.raises(ValueError, match="at least one point"):
+        ps.particles({"kind": "lattice", "reaction": "dt", "points": []}, 4, seed=0)
+    bad_rate = _two_point_lattice_spec()
+    bad_rate["points"][0]["rate"] = -1.0
+    with pytest.raises(ValueError):
+        ps.particles(bad_rate, 4, seed=0)
+    bad_pos = _two_point_lattice_spec()
+    bad_pos["points"][1]["position"] = [0.0, 0.0]
+    with pytest.raises(ValueError, match="three entries"):
+        ps.particles(bad_pos, 4, seed=0)
+    with pytest.raises(ValueError, match="together"):
+        ps.particles(dict(_two_point_lattice_spec(), field_periods=4), 4, seed=0)
+    with pytest.raises(ValueError, match="together"):
+        ps.particles(dict(_two_point_lattice_spec(), base_angle=0.0), 4, seed=0)
+    with pytest.raises(ValueError, match="periods"):
+        ps.particles(dict(_two_point_lattice_spec(), field_periods=0, base_angle=0.0), 4, seed=0)
+    with pytest.raises(ValueError, match="not yet supported"):
+        ps.particles(
+            dict(_two_point_lattice_spec(), species_temperatures={"D": 20.0, "T": 20.0}),
+            4,
+            seed=0,
+        )

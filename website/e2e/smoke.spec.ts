@@ -175,6 +175,8 @@ end`,
       { button: "Parse", output: "text=Top schedule:" },
       { button: "Parse", output: "text=Decks:" },
       { button: "Tag voxels", output: "text=Voxel tags:", chart: ".js-plotly-plot" },
+      { button: "Sublet S1+S2" },
+      { button: "Parse", output: "text=S1 total activity:" },
     ],
   },
   {
@@ -278,6 +280,14 @@ NUCLIDE PU239 94239 2
     button: "Sample source",
     output: "text=Emitted source cards",
     chart: { button: "Sample source", selector: ".js-plotly-plot" },
+    extraSteps: [
+      { button: "Parametric + tail" },
+      {
+        button: "Sample source",
+        output: "text=Sampled birth energies",
+        chart: ".js-plotly-plot",
+      },
+    ],
   },
   {
     path: "tutorials/interactive/unfold",

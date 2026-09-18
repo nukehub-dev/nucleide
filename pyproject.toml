@@ -77,6 +77,13 @@ module = ["h5py", "h5py.*"]
 follow_imports = "skip"
 ignore_missing_imports = true
 
+# `openmc` is a caller-side optional dependency of the tally bridge only
+# (imported lazily inside functions); treat it as opaque like h5py.
+[[tool.mypy.overrides]]
+module = ["openmc", "openmc.*"]
+follow_imports = "skip"
+ignore_missing_imports = true
+
 [tool.coverage.run]
 source = ["nucleide", "tests"]
 

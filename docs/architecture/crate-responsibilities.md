@@ -115,7 +115,10 @@ library, activation-output, photon-source, and schedule-expansion glue, plus
 clearance / waste-classification analytics (clearance index and the
 sum-of-fractions rule over parsed inventories, with the EU 2013/59/Euratom
 Annex VII Table A vendored as the default limit table and the Spanish CSN
-conditional NORM landfill tables as opt-in tables). Depends
+conditional NORM landfill tables as opt-in tables) and Sublet S1+S2
+radiological totals (total activity with the IRT α/β/γ split and decay heat
+over caller-supplied decay energies, each with the excluding-tritium
+companion). Depends
 on `nucleide-nuclei` only among workspace crates; the solver stays inside ALARA.
 
 ### `nucleide-enrichment`
@@ -241,7 +244,25 @@ Gaussian spectra (Brysk 1973; Ballabio et al. 1998 coefficients), plus a
 parametric Miller-geometry plasma: caller-supplied L/H/A-mode density and
 temperature profiles (Fausser et al. 2012) over closed-form flux surfaces,
 reactivity-weighted emission (Bosch & Hale 1992), and a seeded sampler to
-particle vectors (position, direction, energy, weight). MCNP `SDEF` +
+particle vectors (position, direction, energy, weight). Fuel is equimolar
+D-T, pure D-D, a D/T mixture at the shared profile ion temperature
+(`S = n²·[f_D·f_T·⟨σv⟩_DT + (f_D²/2)·⟨σv⟩_DD]`, the Eriksson/DRESS rate
+rule with exact equimolar/pure recovery anchors), at per-species ion
+temperatures (D-T at the mass-weighted `T_DT`, D-D at `T_D`), or with the
+one pinned deuterium hot-tail fraction (bulk plus tail sub-pairs at their
+own effective temperatures, five sub-branches through strengths, sampler,
+cards, and drift row; `eta = 0` recovers exactly). Toroidal sectors
+restrict births with totals scaled by `rotation/2π` (full rotation
+recovers the full torus bit-for-bit; partial sectors add a PHI marginal).
+An arbitrary-3D birth-rate lattice drops axisymmetry for
+stellarator-class callers (caller point cloud with field-period symmetry
+reduction, same machinery per node). The D(d,p)T proton *rate* is
+accounted alongside the neutron source (sampler and cards stay
+neutron-only); the T-T neutron term is pinned as the third mixture term
+but not transported. Closed-form ECRH accessibility (cold resonance,
+relativistic shift, O1/X1 cut-offs, beamline locators) reports
+heating-access positions for blanket bookkeeping — no ray tracing, no
+launcher design. MCNP `SDEF` +
 Serpent `src` card emission with a drift report: ring/point cards
 round-trip byte-identically through the typed `nucleide-mcnp-io` reader
 (whose accepted subset carries the ring's `AXS`/`RAD`/`EXT` keywords);
@@ -249,12 +270,10 @@ parametric cards carry the radial/vertical/energy marginals as histograms
 and the drift report quantifies the tabulation truncation and the
 joint-correlation distance a product-form card cannot carry; Serpent rows
 are analytic by design. Profiles are caller inputs — nothing computes them.
-Fuel is equimolar D-T, pure D-D, or a D/T mixture at the shared profile
-ion temperature (`S = n²·[f_D·f_T·⟨σv⟩_DT + (f_D²/2)·⟨σv⟩_DD]`, the
-Eriksson/DRESS rate rule; exact equimolar/pure recovery anchors are
-regression gates). Out of scope (loud `NotYetSupported`): reactant
-distributions beyond the shared-temperature Maxwellian mixture (the full
-Eriksson generalization), toroidal sectors, the T-T and D(d,p)T branches.
+Out of scope (loud `NotYetSupported`): T-T neutron transport, proton
+transport, reactant distributions beyond the one pinned tail shape (the
+rest of the full Eriksson generalization; no tail spelling on lattice
+configs), and per-species temperatures without a fuel mixture.
 MCPL projection stays caller-side (`vr-tools` KDE layering rule). Depends on
 `nucleide-mcnp-io` and `nucleide-nuclei`; never on `mcpl-io`, never on
 bindings.
@@ -276,15 +295,55 @@ the one opt-in exception is the vendored SPECTER Table VII fallback
 Table II `E_d` column, displacement XS only — never consulted implicitly).
 ASTM E693/E521 are designation-only, SPECTER (ANL/FPP/TM-197, US-gov PD) is
 the validation oracle behind that fallback, and PKA-spectra solving stays
-out (the fispact-org PKA evaluator is GPL-3.0, never read). Depends on
-`nucleide-linalg` and `nucleide-nuclei`; bindings depend on it, never the
-reverse.
+out (the fispact-org PKA evaluator is GPL-3.0, never read). Coil
+fast-fluence / lifetime bookkeeping lives here too (fast-flux sums above a
+caller threshold, history accumulation, weakest-link life over
+caller-supplied limit tables; dpa weighting reuses the folds) —
+magnetics/quench/structural analysis and vendored limit tables stay out.
+Depends on `nucleide-linalg` and `nucleide-nuclei`; bindings depend on it,
+never the reverse.
 
 ### `nucleide-emit`
 
 Single-material emission to MCNP/Serpent/FLUKA/ALARA/PARTISN cards plus a
 mass-drift report. Pure glue: depends on `nucleide-material` and the five
 `*-io` crates, never the reverse, and never on bindings.
+
+### `nucleide-blanket`
+
+TBR and blanket power bookkeeping over caller transport tallies: the raw
+TBR ratio from caller `(bred, source)` pairs, multiplicative per-port
+coverage haircuts, blanket energy multiplication, the tritium burn rate
+from the pinned `17.6` MeV / `3.0160492` u constants, and the
+breeding-margin / net-surplus fuel-cycle metrics. Pure arithmetic —
+Stellaris Point-A values (raw TBR `1.1070`, `1.074` after the 3% ECRH-port
+haircut, multiplication `1.20`, burn `416.6` g/day) gate the kernel as
+regression vectors. Transport solving, TBR target solving, and any
+coupling into `tritium` stay out (that crate keeps its
+no-breeding-coupling scope line; this companion owns the breeding-side
+arithmetic). No workspace dependencies; bindings depend on it, never the
+reverse.
+
+### `nucleide-equilib-io`
+
+Equilibrium data readers (never a solver): a pure classic-netCDF `wout`
+reader (CDF-1/CDF-2 accepted per magic probe; HDF5-backed netCDF-4 and
+CDF-5 rejected loudly as `WrongVariant` for facade-side conversion) over
+the documented variable lists (dims `radius`/`mn_mode`/`mn_mode_nyq`;
+`nfp`, `ns`, `xm`, `xn`, `rmnc`, `zmns`, `lmns`, `gmnc` minimum plus
+later-use `bmnc`/`bsubumnc`/`bsubvmnc`/`bsubsmns`/`currumnc`/`currvmnc`
+and optional `mpol`/`ntor`/`phiedge`/`volume_p`), the VMEC `&INDATA`
+namelist text grammar (power-series profiles, `NCURR = 1` as the `I'(s)`
+profile, fixed-boundary stance, scalar indices only), and flux-surface
+Jacobian helpers (J1 point sum, J2 tensor grid over one field period,
+J3 surface average) for volume weighting, plus closed-form wall-load
+mapping in flux coordinates (per-cell `q[j][k]` accumulation plus the
+discrete-conserving angle-weighted total — no transport, no shadowing).
+Synthetic fixtures are built
+from the published variable lists only — never solver output; the
+on-disk variant of DESC-saved files and VMEC++-era outputs stays out
+until re-probed. No workspace dependencies; bindings depend on it,
+never the reverse.
 
 ## Binding crates
 
@@ -329,14 +388,16 @@ When publishing to crates.io, publish in dependency order:
 14. `nucleide-tritium`
 15. `nucleide-plasma-source`
 16. `nucleide-damage`
-17. `nucleide-vr-tools`
-18. `nucleide-alara-io`
-19. `nucleide-cccc-io`
-20. `nucleide-fispact-io`
-21. `nucleide-origen-io`
-22. `nucleide-r2s`
-23. `nucleide-emit`
-24. `nucleide-bindings`
+17. `nucleide-blanket`
+18. `nucleide-equilib-io`
+19. `nucleide-vr-tools`
+20. `nucleide-alara-io`
+21. `nucleide-cccc-io`
+22. `nucleide-fispact-io`
+23. `nucleide-origen-io`
+24. `nucleide-r2s`
+25. `nucleide-emit`
+26. `nucleide-bindings`
 
 (`nucleide-wasm` is cdylib-only and never published; keep this list in
 sync with the publish list in `.github/workflows/release.yml`.)

@@ -8,7 +8,7 @@ Nucleide is pre-alpha. APIs may change without notice.
 
 ## Current status
 
-The workspace is bootstrapped with twenty crates, PyO3 and WASM bindings, a
+The workspace is bootstrapped with twenty-five crates, PyO3 and WASM bindings, a
 typed Python facade, and golden-byte fixtures. The canonical CI checks (format,
 clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 
@@ -66,7 +66,7 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   cell-`FILL` cap, Bateman `n0` validation, snapshot-mixture error.
 - Rust API stability pass (all crates): every public error enum is
   `#[non_exhaustive]` (new variants are no longer breaking), crate-root
-  error re-exports and `Result` aliases complete the surface, and all 20
+  error re-exports and `Result` aliases complete the surface, and all 25
   crates carry `#![warn(missing_docs)]`.
 - Point-kinetics solver (`kinetics`): prescribed-reactivity PKE with inhour
   and prompt-jump analyses (no transport, no feedback).
@@ -102,8 +102,10 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   reactivity-weighted emission (Bosch–Hale 1992), Miller-Jacobian volume
   gates, and marginal-histogram source cards with joint-correlation drift.
   Fuel is equimolar D-T, pure D-D, or a D/T mixture at the shared ion
-  temperature (Eriksson/DRESS two-branch rate); toroidal sectors stay loud
-  errors.
+  temperature (Eriksson/DRESS two-branch rate); toroidal sectors, per-species
+  ion temperatures, the D(d,p)T proton branch, and the pinned T-T
+  normalization also landed (sectors scale totals by rotation/2π with a PHI
+  marginal; sampler and cards stay neutron-only).
 - Damage and gas-production metrics (`damage`): NRT-dpa and arc-dpa
   displacement functions (NRT 1975; Nordlund 2018), He/H appm and He/dpa
   ratios by spectral folding of caller flux with caller response functions,
@@ -122,6 +124,47 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   and a hard `NotConverged` past the explicit iteration cap (MAXED adds a
   caller chi-square target to the acceptance leg); the IRDFF-II response
   pack (v1 foil subset + v2 extension) ships as a runtime hash-pinned download, never vendored.
+- TBR and blanket power bookkeeping (`blanket`): raw TBR from caller
+  tallies, multiplicative per-port coverage haircuts, blanket energy
+  multiplication, the tritium burn rate from pinned constants, and the
+  breeding-margin / net-surplus fuel-cycle metrics — pure arithmetic over
+  caller transport tallies (no transport solving, no geometry
+  optimization, no coupling into `tritium`).
+- Equilibrium data readers (`equilib`): classic-netCDF VMEC `wout`
+  files (CDF-1/CDF-2 only; netCDF-4/CDF-5 convert facade-side) plus the
+  `&INDATA` input-text grammar, with flux-surface Jacobian helpers for
+  volume weighting — reads data, never solves equilibria.
+- Wall-load mapping in flux coordinates (`equilib`): closed-form per-cell
+  accumulation of a caller birth-rate density field onto the caller wall
+  surface sharing the same flux coordinates, plus the angle-weighted
+  one-field-period total that conserves the discrete births (pure glue —
+  no transport, no shadowing).
+- Arbitrary-3D birth-rate lattice source (`plasma-source`): the caller
+  supplies the full 3D birth distribution as a point cloud with optional
+  field-period symmetry (base-sector cloud replicated uniformly, totals
+  scaled by the period count), sampled and emitted through the landed
+  mixture/spectrum/card machinery.
+- Deuterium hot-tail fraction (`plasma-source`): the one pinned
+  single-tail-temperature non-Maxwellian shape on a D/T fuel mixture (bulk
+  plus hot tail reacting at their own effective temperatures, five
+  sub-branches through strengths, sampler, cards, and drift row).
+- Closed-form ECRH accessibility kernel (`plasma-source`): cold
+  electron-cyclotron resonance, the weakly-relativistic thermal shift, and
+  the O1/X1 cut-off densities located by interpolation along a caller
+  beamline — the per-port penalty inputs for blanket bookkeeping (no ray
+  tracing, no launcher design).
+- Coil fast-fluence / lifetime bookkeeping (`damage`): fast-flux sums above
+  a caller threshold, fluence as flux × time, piecewise-constant history
+  accumulation, and weakest-link life over caller-supplied limit tables
+  (dpa weighting reuses the folds).
+- OpenMC statepoint tally bridge (`nucleide.openmc`, pure Python — no Rust
+  changes): mesh/cell tally extraction through the caller-side OpenMC API
+  into the plain arrays the damage folds accept, plus a CSV interchange
+  for the same dict (HDF5 never read in Rust).
+- Sublet S1+S2 radiological totals (`alara`): total activity with the IRT
+  α/β/γ split and decay heat over caller-supplied decay energies, each
+  with the excluding-tritium companion, pinned to the open CCFE-PR(16)53
+  preprint and FISPACT-II open docs.
 
 ## Upcoming priorities
 

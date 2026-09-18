@@ -41,6 +41,8 @@ nucleide-linalg = { workspace = true, default-features = false }
 nucleide-damage.workspace = true
 nucleide-plasma-source.workspace = true
 nucleide-unfold.workspace = true
+nucleide-blanket.workspace = true
+nucleide-equilib-io.workspace = true
 
 [features]
 default = []

@@ -252,6 +252,117 @@ pub fn emit_sdef_parametric(
             ),
         ));
     }
+    if let Some(tail) = &config.tail {
+        if tail.fraction > 0.0 {
+            let share = config.total_tail_strength().unwrap_or(f64::NAN)
+                / config.total_strength().unwrap_or(f64::NAN);
+            report.push(DriftRow::new(
+                "deuterium tail",
+                1.0,
+                true,
+                format!(
+                    "deuterium hot-tail fraction {:.6} at {:.6} keV folded into the \
+                     marginal energy spectrum as Ballabio sub-lines \
+                     (effective-temperature convention); tail neutron share of the \
+                     volume-integrated source = {:.6}",
+                    tail.fraction, tail.temperature_kev, share,
+                ),
+            ));
+        }
+    }
+    Ok(EmittedCard {
+        text,
+        drift: report,
+    })
+}
+
+/// Render a lattice source as an MCNP `SDEF` card plus drift report.
+///
+/// The card carries the cloud's *marginals* as discrete histograms —
+/// `RAD=D1` (cylindrical-`R` birth profile over `[0, R_max]`), `EXT=D2`
+/// (vertical profile over the cloud `z` span), and `ERG=D3` (global
+/// rate-weighted marginal energy spectrum) — the same product-form shape as
+/// [`emit_sdef_parametric`]. The drift report quantifies the truncation, the
+/// joint-correlation information the card cannot carry, and the lattice
+/// discretization itself (node count, total rate, symmetry spelling); the
+/// card round-trips byte-identically through the typed reader.
+pub fn emit_sdef_lattice(
+    config: &crate::lattice::LatticeSourceConfig,
+    version: u32,
+    n_bins: usize,
+) -> Result<EmittedCard> {
+    config.validate()?;
+    let bins = if n_bins >= 2 { n_bins } else { 21 };
+    let hist = crate::lattice::lattice_emission_histograms(config, bins)?;
+    let par = neutron_designator(version)?;
+
+    let dist = |number: u32, dist: &crate::BinnedDistribution| SdefDist {
+        number,
+        si: dist.centers.clone(),
+        sp: Some(dist.masses.clone()),
+        sb: None,
+        line: 0,
+    };
+    let dists = vec![
+        dist(1, &hist.radial),
+        dist(2, &hist.vertical),
+        dist(3, &hist.energy),
+    ];
+    let card = SdefCard {
+        pos: Some(SdefRef::Literal([0.0, 0.0, 0.0])),
+        axs: Some(SdefRef::Literal([0.0, 0.0, 1.0])),
+        rad: Some(SdefRef::Dist(1)),
+        ext: Some(SdefRef::Dist(2)),
+        erg: Some(SdefRef::Dist(3)),
+        wgt: Some(SdefRef::Literal(config.weight)),
+        par: Some(SdefRef::Literal(par.to_string())),
+        ..SdefCard::default()
+    };
+    let text = SdefProblem { card, dists }.emit();
+
+    let mut report = DriftReport::new();
+    report.push(DriftRow::new(
+        "emission probability",
+        hist.energy_coverage,
+        true,
+        format!(
+            "rate-weighted marginal energy spectrum tabulated ({} lines, +/-4 sigma window); \
+             tail mass is dropped and the local T_i correlation with birth \
+             position is not representable on the card",
+            hist.energy.centers.len(),
+        ),
+    ));
+    report.push(DriftRow::new(
+        "spatial marginals",
+        1.0,
+        true,
+        "cylindrical-R and vertical birth-profile marginals preserved as discrete histograms",
+    ));
+    report.push(DriftRow::new(
+        "joint correlation",
+        1.0 - hist.joint_correlation,
+        true,
+        "product-form card: half the L1 distance between the true (R, z) birth \
+         joint and the product of its marginals is lost (0 = independent)",
+    ));
+    let symmetry_note = match &config.symmetry {
+        None => "no symmetry fold".to_string(),
+        Some(symmetry) => format!(
+            "field-period symmetry: {} periods about {:.6} rad (base-sector cloud \
+             of {} nodes; folded stream reproduces the expanded stream bit-for-bit)",
+            symmetry.field_periods, symmetry.base_angle, hist.node_count,
+        ),
+    };
+    report.push(DriftRow::new(
+        "lattice discretization",
+        1.0,
+        true,
+        format!(
+            "arbitrary-3D cloud of {} nodes at total relative rate {:.6e} rendered \
+             as product-form marginals; {symmetry_note}",
+            hist.node_count, hist.total_rate,
+        ),
+    ));
     Ok(EmittedCard {
         text,
         drift: report,
@@ -449,5 +560,49 @@ mod tests {
         let b = emit_sdef_parametric(&sector, 5, 15).unwrap();
         assert_eq!(a.text, b.text);
         assert_eq!(a.drift, b.drift);
+    }
+
+    #[test]
+    fn lattice_card_carries_three_marginals_and_round_trips() {
+        let config = crate::lattice::tests::two_point_lattice();
+        let card = emit_sdef_lattice(&config, 5, 8).unwrap();
+        let head = "SDEF POS=0 0 0\n     AXS=0 0 1\n     RAD=D1\n     EXT=D2\n     ERG=D3\n     WGT=1\n     PAR=n";
+        assert!(card.text.starts_with(head), "card head:\n{}", card.text);
+        for line in card.text.lines() {
+            assert!(line.len() <= 80, "line over 80 columns: {line:?}");
+        }
+        card.verify_round_trip().unwrap();
+        let quantities: Vec<&str> = card
+            .drift
+            .rows
+            .iter()
+            .map(|row| row.quantity.as_str())
+            .collect();
+        assert_eq!(
+            quantities,
+            [
+                "emission probability",
+                "spatial marginals",
+                "joint correlation",
+                "lattice discretization"
+            ]
+        );
+        assert!(card.drift.rows[3].note.contains("2 nodes"));
+        let parsed = nucleide_mcnp_io::sdef::parse_sdef_text(&card.text).unwrap();
+        assert_eq!(parsed.dists.len(), 3);
+        let sp1: f64 = parsed.dists[0].sp.as_ref().unwrap().iter().sum();
+        assert!((sp1 - 1.0).abs() < 1e-4, "radial masses {sp1}");
+    }
+
+    #[test]
+    fn lattice_bad_version_and_config_are_loud() {
+        let config = crate::lattice::tests::two_point_lattice();
+        assert_eq!(
+            emit_sdef_lattice(&config, 4, 8),
+            Err(Error::UnsupportedMcnpVersion(4))
+        );
+        let mut bad = config;
+        bad.points[0].rate = -1.0;
+        assert!(emit_sdef_lattice(&bad, 5, 8).is_err());
     }
 }

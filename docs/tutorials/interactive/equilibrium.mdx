@@ -1,0 +1,23 @@
+---
+title: Equilibrium data
+description: Parse a VMEC INDATA namelist and map a birth-rate field onto the wall in flux coordinates.
+sidebar:
+  order: 21
+---
+
+Stellarator and tokamak equilibria arrive as data files, never as something
+Nucleide solves: a classic-netCDF `wout` file carries the Fourier geometry
+and an `&INDATA` namelist carries the input switches. The data layer reads
+both (HDF5 variants convert caller-side first) and maps caller birth-rate
+fields onto the wall in flux coordinates.
+
+The demo below parses an editable `&INDATA` block — grammar only, nothing is
+solved — and maps a uniform birth-rate field onto a small wall grid so the
+conservation shape is visible. All values are synthetic.
+
+<InteractiveDemo kind="equilibrium" />
+
+## Further reading
+
+- Theory: [Equilibrium data](../../theory/equilibrium.mdx)
+- Crate docs: [`crates/equilib-io/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/equilib-io/src/lib.rs)

@@ -21,10 +21,12 @@ understand *why* the code behaves the way it does, not just *how* to call it.
 | [Tritium transport](tritium.mdx) | Running 1D diffusion-trapping permeation and want the McNabb–Foster system, the surface taxonomy, and the closed-form permeation checks. |
 | [Gamma-ray spectroscopy](spectroscopy.mdx) | Smoothing spectra, counting peaks, calibrating energy/efficiency, X-ray lines, SDEF decay-source cards, and the SPE readers. |
 | [UQ-lite sampling](uq-sampling.mdx) | Seeded MVN, log-normal, and LHS sampling over caller-supplied covariance blocks, SANDY-compatible estimators, and the decay and fission-yield perturbation consumers. |
-| [Damage metrics](damage-metrics.mdx) | Folding multigroup fluxes into NRT-dpa and arc-dpa, gas production, and He/dpa ratios, with uncertainty propagation through the fold. |
-| [Fusion neutron sources](fusion-sources.mdx) | Building D-D/D-T ring, point, and parametric tokamak sources — including fuel mixtures — and want the Ballabio spectra, Bosch–Hale reactivity, and the Miller-geometry map. |
+| [Damage metrics](damage-metrics.mdx) | Folding multigroup fluxes into NRT-dpa and arc-dpa, gas production, and He/dpa ratios, with uncertainty propagation through the fold and coil lifetime bookkeeping. |
+| [Fusion neutron sources](fusion-sources.mdx) | Building D-D/D-T ring, point, lattice, and parametric tokamak sources — including fuel mixtures, the hot-tail shape, and ECRH accessibility — and want the Ballabio spectra, Bosch–Hale reactivity, and the Miller-geometry map. |
 | [Neutron spectrum unfolding](unfolding.mdx) | Recovering a spectrum from activation detector measurements with SAND-II, least-squares, or GRAVEL adjustment, including the IRDFF response pack. |
-| [Clearance screening](clearance-screening.mdx) | Classifying activation inventories against the EU or Spanish clearance-limit tables. |
+| [Clearance screening](clearance-screening.mdx) | Classifying activation inventories against the EU or Spanish clearance-limit tables, plus the S1+S2 activity and decay-heat totals. |
+| [TBR and blanket bookkeeping](blanket.mdx) | Raw TBR from caller tallies, port-penalty haircuts, energy multiplication, burn rate, and breeding margins. |
+| [Equilibrium data readers](equilibrium.mdx) | Classic-netCDF wout reading, the INDATA grammar, flux-surface Jacobians, and wall-load mapping. |
 
 <Mermaid
   chart={`
@@ -48,6 +50,10 @@ flowchart LR
     Y --> Z2[Miller map]
     AA[Unfolding] --> AB[SAND-II iteration]
     AC[Clearance screening] --> AD[Sum of fractions]
+    AC --> ADS[Sublet S1+S2 totals]
+    AE[Blanket books] --> AF[TBR and burn margins]
+    AG[Equilibrium data] --> AH[Flux-surface Jacobians]
+    AG --> AI[Wall-load mapping]
   `.trim()}
 />
 

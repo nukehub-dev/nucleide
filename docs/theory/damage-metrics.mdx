@@ -1,8 +1,8 @@
 ---
 title: Damage Metrics
 description: NRT-dpa and arc-dpa displacement functions, the Lindhard damage-energy partition,
-  He/H gas production in appm, spectral folding conventions, and uncertainty propagation
-  through the folds.
+  He/H gas production in appm, spectral folding conventions, uncertainty propagation
+  through the folds, and coil fast-fluence / lifetime bookkeeping.
 sidebar:
   order: 9
 references:
@@ -83,12 +83,15 @@ inputs:
 
 A third module, `fold_uq`, propagates caller-block uncertainty through the folds by
 reusing the shared seeded-sampler machinery documented on the UQ-lite page — no new
-sampling code.
+sampling code. A fourth module, `coil.rs`, books magnet fast-fluence and lifetime over
+caller spectra, reusing the folds as the dpa spectral weight (C1–C3 below).
 
 <Callout type="info" title="Code shape">
   The crate mirrors the kinetics layout: `physics.rs` (the closed-form damage
   functions with validating inputs), `fold.rs` (the multigroup folds with documented
-  conventions), `uq.rs` (MVN uncertainty propagation), and `error.rs` (a
+  conventions), `uq.rs` (MVN uncertainty propagation), `coil.rs` (fast-fluence sums,
+  history accumulation, and weakest-link magnet life over caller spectra), `specter.rs`
+  (the opt-in Table VII fallback), and `error.rs` (a
   `#[non_exhaustive]` error enum whose every variant names its cause — out-of-scope
   capabilities report "not yet supported", never a silent fallback).
 </Callout>
@@ -251,6 +254,55 @@ counts, one nuclide's production per target atom. `he_dpa_ratio` folds the He an
 damage responses over the same flux and divides; a damage fold of exactly zero raises
 a clear error, never `inf`.
 
+### Coil fast-fluence and lifetime bookkeeping
+
+Magnet lifetime is arithmetic once spectra exist: accumulate a damage
+metric over the operating history, compare each channel against its
+caller-supplied limit, and report the weakest link. The fast-flux sum is
+the piecewise-constant group sum over groups whose upper edge clears a
+caller threshold (a common fast-neutron choice is 0.1 MeV):
+
+$$
+\Phi_\mathrm{fast} = \sum_{g:\,b_{g+1} > E_\mathrm{th}} \phi_g,
+\qquad
+F = \Phi_\mathrm{fast}\,t_\mathrm{exp}.
+\tag{C1}
+$$
+
+A threshold cutting through a group includes the whole group — callers
+align the grid so the threshold sits on a group boundary when that
+conservatism matters. Units are caller-consistent: whatever area
+normalization `flux` uses, the fluence and the limit table share it. The
+dpa spectral weighting stays in the landed folds (the NRT/arc fold at one
+second is the rate the life kernel consumes); an irradiation history
+accumulates piecewise-constantly,
+
+$$
+A = \sum_i r_i\,\Delta t_i,
+\tag{C2}
+$$
+
+and the weakest-link life is the minimum over channels of limit over rate
+— or limit-minus-accumulated over rate for remaining life, clamped at zero
+once a limit is reached:
+
+$$
+T = \min_c \frac{L_c}{r_c},
+\qquad
+T_\mathrm{rem} = \min_c \frac{\max(L_c - A_c, 0)}{r_c}.
+\tag{C3}
+$$
+
+A zero rate never breaches and is skipped (an all-zero history is infinite
+life with no limiting channel); all shapes, signs, and orderings are clear
+named errors reusing the fold vocabulary. Limit tables are always
+caller-supplied: published design numbers are gates, never defaults — the
+99th-percentile coil fast flux $9.5\times 10^{13}$ m⁻²s⁻¹ against
+fast-fluence limits $3\times 10^{22}$ / $1.5\times 10^{23}$ m⁻² gives a
+$\sim$10 full-power-year life on the first channel (the hand quotient at
+$10^{-9}$; ten full-power years at that flux lands back on the limit
+within $10^{-3}$; the second channel alone is $\sim$50 FPY).
+
 ### Uncertainty propagation
 
 `fold_uq` perturbs the stacked `[flux, response]` vector (dimension `2G`) with seeded
@@ -297,7 +349,9 @@ accumulates `Σ f·r` in one pass with the metric scale. There is no division an
 in the fold, so a zero-flux group contributes exactly `0.0` and cannot produce
 `NaN`/`inf`; the ratio computes two folds and checks the denominator. The UQ layer
 draws once (Cholesky factorization primary, eigenvalue-clip fallback), perturbs and
-refolds per draw, and compares unbiased sample moments against (U1)–(U2).
+refolds per draw, and compares unbiased sample moments against (U1)–(U2). The coil
+layer validates the shared `(flux, bounds)` shape once, then accumulates (C1)–(C2)
+and takes the channel minimum (C3) — zero rates skipped, spent limits clamped.
 
 Correctness checks: in-crate tests and the `damage_vs_specter.py` harness replay the
 synthetic checks labeled G1–G5 — G1 the partition and NRT branches against an
@@ -306,7 +360,10 @@ independent in-script transcription of the published Robinson-fit constants
 `c_arc`, monotone decrease, high branch = NRT × ξ), G3 the folds against hand sums,
 G4 the invariants (zero-flux groups exact; the zero-dpa ratio and malformed inputs
 raising named errors), and G5 the pinned-seed UQ checks including bit-identical
-reruns. The external SPECTER cross-check is described under Related work.
+reruns. The coil gates are the same style: threshold hand vectors on the three-group
+grid (a cut-through threshold keeps the whole group), the dpa-rate feed (a 7.0e-10
+limit against the hand fold rate is exactly 1.0 s of life), the weakest-link / zero /
+clamp vectors, and the Stellaris-class anchor above. The external SPECTER cross-check is described under Related work.
 
 ## Worked example: Fe-56 anchors and a three-group fold
 
@@ -419,6 +476,11 @@ Hand verification:
   draws that leave the physical domain surface as the fold's named error, never a
   silent clip — keep covariance blocks small (the first-order (U2) neglects a
   quartic term ~3×10⁻⁴ of the linear term at the in-crate sizing).
+- **Coil bookkeeping scope**: fast flux, fluence, history, and weakest-link life are
+  the only coil metrics; dpa weighting reuses the folds unchanged. Limit tables are
+  caller data (published design numbers gate, never default), flux/limit units must
+  match by caller discipline, and magnetics, quench, structural analysis, and
+  transport solving stay out.
 - **Out of scope**: PKA-spectrum solving, displacement-table vendoring, transport
   solving, and evaluated-data consumption (TENDL/JEFF/EAF/IRDFF) — callers bring
   their own response tables. ASTM E693/E521 are paywalled standards referenced by

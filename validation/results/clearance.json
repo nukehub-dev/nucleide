@@ -3,17 +3,17 @@
   "name": "clearance",
   "title": "Clearance / waste-classification (`clearance_vs_pypact.py`)",
   "environment": {
-    "date": "2026-09-16",
+    "date": "2026-09-18",
     "python": "3.12.14",
     "platform": "Linux-7.2.6-arch2-1-x86_64-with-glibc2.39",
-    "nucleide": "0.12.0",
+    "nucleide": "0.14.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
   "sections": [
     {
       "kind": "prose",
-      "text": "Two-part oracle for `nucleide.alara` clearance analytics and the `nucleide.fispact` clearance-block reader: analytic gates C1-C5 on the synthetic fixture in the real FISPACT-II wide-table grammar (always run), and a cross-check of the overlapping inventory columns (atoms, activity, clearance index) against the upstream Apache-2.0 pypact reader (oracle leg)."
+      "text": "Two-part oracle for `nucleide.alara` clearance analytics and the `nucleide.fispact` clearance-block reader: analytic gates C1-C7 on synthetic fixtures and the vendored tables (always run), and a cross-check of the overlapping inventory columns (atoms, activity, clearance index) against the upstream Apache-2.0 pypact reader (oracle leg)."
     },
     {
       "kind": "prose",
@@ -22,6 +22,14 @@
     {
       "kind": "prose",
       "text": "Spanish CSN NORM landfill tables (draft technical opinion CSN/PDT/AICD/TGE/2503/02, TGE/VAR/2025/1, csn.es, accessed 2026-09-16): Tablas 1-3 per landfill type and NORM material nature, Tabla 4 chain keys expanded to members at the parent value."
+    },
+    {
+      "kind": "prose",
+      "text": "Sublet S1 total activity (Table X Ai = Ni li, Bq; IRT split per the open output_interpretation Activity break-down section): IRT 4 alpha; IRT 1 beta; IRT 3 gamma; IRT 12 split alpha/beta."
+    },
+    {
+      "kind": "prose",
+      "text": "Sublet S2 decay heat (Table X Ai E C1, kW; C1 = eV to kJ): caller-supplied average decay energies, never vendored."
     },
     {
       "kind": "table",
@@ -102,6 +110,18 @@
           "C6 ES screening vector",
           "2.000000e+00",
           "== 2",
+          "PASS"
+        ],
+        [
+          "C7 S1 hand vector",
+          "1.240000e+02",
+          "== 124",
+          "PASS"
+        ],
+        [
+          "C7 S2 hand vector",
+          "4.806530e-06",
+          "parts sum",
           "PASS"
         ]
       ]

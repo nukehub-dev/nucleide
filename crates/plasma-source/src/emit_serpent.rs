@@ -207,6 +207,99 @@ pub fn emit_serpent_parametric(
             ),
         ));
     }
+    if let Some(tail) = &config.tail {
+        if tail.fraction > 0.0 {
+            let share = config.total_tail_strength().unwrap_or(f64::NAN)
+                / config.total_strength().unwrap_or(f64::NAN);
+            drift.push(crate::report::DriftRow::new(
+                "deuterium tail",
+                1.0,
+                false,
+                format!(
+                    "deuterium hot-tail fraction {:.6} at {:.6} keV folded into the \
+                     marginal energy spectrum as Ballabio sub-lines \
+                     (effective-temperature convention); tail neutron share of the \
+                     volume-integrated source = {:.6} (analytic by design)",
+                    tail.fraction, tail.temperature_kev, share,
+                ),
+            ));
+        }
+    }
+    Ok(EmittedCard { text, drift })
+}
+
+/// Render a lattice source as Serpent `src` card lines plus drift report.
+///
+/// The card carries the same three marginals as the MCNP direction —
+/// `rad d1` (cylindrical-`R` profile), `ext d2` (vertical profile), and
+/// `erg d3` (global rate-weighted marginal energy spectrum) — see
+/// [`emit_sdef_lattice`](crate::emit_sdef::emit_sdef_lattice) for the
+/// product-form caveat. Drift rows are analytic by design (no Serpent
+/// source reader in the workspace).
+pub fn emit_serpent_lattice(
+    config: &crate::lattice::LatticeSourceConfig,
+    n_bins: usize,
+) -> Result<EmittedCard> {
+    config.validate()?;
+    let bins = if n_bins >= 2 { n_bins } else { 21 };
+    let hist = crate::lattice::lattice_emission_histograms(config, bins)?;
+
+    let mut lines: Vec<String> = vec![
+        "src 1 pos 0 0 0".to_string(),
+        "src 1 rad d1".to_string(),
+        "src 1 ext d2".to_string(),
+        "src 1 erg d3".to_string(),
+    ];
+    lines.push(format!("src 1 wgt {}", fmt_g6(config.weight)));
+    let numbered: Vec<(u32, &crate::BinnedDistribution)> =
+        vec![(1, &hist.radial), (2, &hist.vertical), (3, &hist.energy)];
+    for (number, dist) in numbered {
+        let centers: Vec<String> = dist.centers.iter().map(|&c| fmt_g6(c)).collect();
+        let masses: Vec<String> = dist.masses.iter().map(|&m| fmt_g6(m)).collect();
+        lines.push(format!("SI{number} {}", centers.join(" ")));
+        lines.push(format!("SP{number} {}", masses.join(" ")));
+    }
+    let text = lines.join("\n");
+
+    let mut drift = crate::report::DriftReport::new();
+    drift.push(crate::report::DriftRow::new(
+        "emission probability",
+        hist.energy_coverage,
+        false,
+        "rate-weighted marginal energy spectrum tabulated; tail mass dropped, local T_i \
+         correlation with position not representable on the card",
+    ));
+    drift.push(crate::report::DriftRow::new(
+        "spatial marginals",
+        1.0,
+        false,
+        "cylindrical-R and vertical birth-profile marginals preserved as discrete histograms",
+    ));
+    drift.push(crate::report::DriftRow::new(
+        "joint correlation",
+        1.0 - hist.joint_correlation,
+        false,
+        "product-form card: half the L1 distance between the true (R, z) birth \
+         joint and the product of its marginals is lost (analytic by design)",
+    ));
+    let symmetry_note = match &config.symmetry {
+        None => "no symmetry fold".to_string(),
+        Some(symmetry) => format!(
+            "field-period symmetry: {} periods about {:.6} rad (base-sector cloud \
+             of {} nodes; folded stream reproduces the expanded stream bit-for-bit)",
+            symmetry.field_periods, symmetry.base_angle, hist.node_count,
+        ),
+    };
+    drift.push(crate::report::DriftRow::new(
+        "lattice discretization",
+        1.0,
+        false,
+        format!(
+            "arbitrary-3D cloud of {} nodes at total relative rate {:.6e} rendered \
+             as product-form marginals; {symmetry_note} (analytic by design)",
+            hist.node_count, hist.total_rate,
+        ),
+    ));
     Ok(EmittedCard { text, drift })
 }
 
@@ -335,5 +428,38 @@ mod tests {
         let b = emit_serpent_parametric(&sector, 12).unwrap();
         assert_eq!(a.text, b.text);
         assert_eq!(a.drift, b.drift);
+    }
+
+    #[test]
+    fn lattice_card_carries_three_marginals() {
+        let config = crate::lattice::tests::two_point_lattice();
+        let card = emit_serpent_lattice(&config, 8).unwrap();
+        let lines: Vec<&str> = card.text.lines().collect();
+        assert_eq!(lines[0], "src 1 pos 0 0 0");
+        assert_eq!(lines[1], "src 1 rad d1");
+        assert_eq!(lines[2], "src 1 ext d2");
+        assert_eq!(lines[3], "src 1 erg d3");
+        assert_eq!(lines[4], "src 1 wgt 1");
+        for number in 1..=3 {
+            assert!(lines[3 + 2 * number].starts_with(&format!("SI{number} ")));
+            assert!(lines[4 + 2 * number].starts_with(&format!("SP{number} ")));
+        }
+        assert_eq!(lines.len(), 11);
+        let quantities: Vec<&str> = card
+            .drift
+            .rows
+            .iter()
+            .map(|row| row.quantity.as_str())
+            .collect();
+        assert_eq!(
+            quantities,
+            [
+                "emission probability",
+                "spatial marginals",
+                "joint correlation",
+                "lattice discretization"
+            ]
+        );
+        assert!(!card.drift.rows[0].reparsed, "analytic by design");
     }
 }

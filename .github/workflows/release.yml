@@ -154,7 +154,7 @@ jobs:
           # Dependency order: every crate appears only after its workspace
           # dependencies. `nucleide-wasm` is deliberately absent (cdylib-only
           # browser artifact, never published to crates.io).
-          publish_list="nucleide-linalg nucleide-nuclei nucleide-material nucleide-mcnp-io nucleide-csg-xlate nucleide-mcpl-io nucleide-serpent-io nucleide-fluka-io nucleide-enrichment nucleide-depletion nucleide-kinetics nucleide-spectroscopy nucleide-unfold nucleide-tritium nucleide-plasma-source nucleide-damage nucleide-vr-tools nucleide-alara-io nucleide-cccc-io nucleide-fispact-io nucleide-origen-io nucleide-r2s nucleide-emit nucleide-bindings"
+          publish_list="nucleide-linalg nucleide-nuclei nucleide-material nucleide-mcnp-io nucleide-csg-xlate nucleide-mcpl-io nucleide-serpent-io nucleide-fluka-io nucleide-enrichment nucleide-depletion nucleide-kinetics nucleide-spectroscopy nucleide-unfold nucleide-tritium nucleide-plasma-source nucleide-damage nucleide-blanket nucleide-equilib-io nucleide-vr-tools nucleide-alara-io nucleide-cccc-io nucleide-fispact-io nucleide-origen-io nucleide-r2s nucleide-emit nucleide-bindings"
           # Fail fast if a publishable workspace member is missing from the
           # list: `cargo publish` reports that as "no matching package named",
           # which the retry loop below would otherwise mistake for

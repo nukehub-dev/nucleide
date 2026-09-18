@@ -1,0 +1,11 @@
+[package]
+name = "nucleide-blanket"
+description = "TBR and blanket power bookkeeping over caller transport tallies (port-penalty haircuts, energy multiplication, tritium burn and fuel-cycle margin)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror.workspace = true

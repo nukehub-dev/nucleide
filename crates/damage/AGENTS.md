@@ -4,13 +4,16 @@
 
 Damage and gas-production metrics by spectral folding: the closed-form
 NRT-dpa and arc-dpa displacement functions, He/H production in appm, He/dpa
-ratios, and MVN uncertainty propagation through the folds. The first-wall
-engineering metric set for the fusion workstream.
+ratios, and MVN uncertainty propagation through the folds, plus coil
+fast-fluence / lifetime bookkeeping (fast-flux sums, history accumulation,
+weakest-link life over caller-supplied limit tables) reusing those folds
+as the dpa spectral weight. The first-wall and magnet engineering metric
+set for the fusion workstream.
 
 ## Ownership
 
-Owns `crates/damage/src/` (`physics.rs`, `fold.rs`, `uq.rs`, `error.rs`,
-`specter.rs`, `data/specter_table_vii.tsv`), the Python surface
+Owns `crates/damage/src/` (`physics.rs`, `fold.rs`, `coil.rs`, `uq.rs`,
+`error.rs`, `specter.rs`, `data/specter_table_vii.tsv`), the Python surface
 (`nucleide.damage`, `damage_*` in `_internal`), and the
 `validation/damage_vs_specter.py` oracle.
 
@@ -60,7 +63,15 @@ Owns `crates/damage/src/` (`physics.rs`, `fold.rs`, `uq.rs`, `error.rs`,
 - Out of scope (do not expand here): PKA-spectra solving, transport
   solving, group-wise displacement-table vendoring (Appendix A stays
   image-only), gas-production columns, IAEA/IRDFF/TENDL consumption
-  (caller-supplied or runtime-download only).
+  (caller-supplied or runtime-download only), magnetics/quench/structural
+  analysis, and vendored coil limit tables (limits stay caller-supplied;
+  published design numbers are gates, never defaults).
+- Coil bookkeeping (`coil.rs`) is arithmetic over caller spectra reusing
+  the fold conventions: fast fluence sums groups whose upper edge clears
+  the caller threshold (whole-group inclusion when the threshold cuts a
+  group), dpa rates come from the landed folds at one second, and life is
+  the weakest-link `min` of limit/rate (remaining life clamps at zero;
+  all-zero rates are infinite life, never `inf` from a division).
 
 ## Work Guidance
 

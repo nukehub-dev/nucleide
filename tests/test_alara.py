@@ -1,6 +1,7 @@
 """Golden tests for the alara-io readers against vendored fixtures."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -167,3 +168,120 @@ class TestSchedule:
     def test_expand_unknown_top_raises(self) -> None:
         with pytest.raises(ValueError):
             nucleide.alara.alara_expand_schedule(read_fixture("decks", "sample2"), top="missing")
+
+
+def s1_entry(
+    nuclide: str, activity_bq: float, irt: int, alpha_frac: float | None = None
+) -> dict[str, Any]:
+    entry: dict[str, Any] = {"nuclide": nuclide, "activity_bq": activity_bq, "irt": irt}
+    if alpha_frac is not None:
+        entry["alpha_frac"] = alpha_frac
+    return entry
+
+
+def s2_entry(
+    nuclide: str, activity_bq: float, e_alpha: float, e_beta: float, e_gamma: float
+) -> dict[str, Any]:
+    return {
+        "nuclide": nuclide,
+        "activity_bq": activity_bq,
+        "e_alpha_ev": e_alpha,
+        "e_beta_ev": e_beta,
+        "e_gamma_ev": e_gamma,
+    }
+
+
+class TestSubletS1:
+    def test_hand_vectors_at_exact_equality(self) -> None:
+        out = nucleide.alara.alara_total_activity([s1_entry("Co60", 10.0, 1)])
+        assert out["total_bq"] == 10.0
+        assert out["beta_bq"] == 10.0
+        assert out["alpha_bq"] == 0.0
+        assert out["gamma_bq"] == 0.0
+        out = nucleide.alara.alara_total_activity(
+            [
+                s1_entry("Co60", 10.0, 1),
+                s1_entry("Po210", 5.0, 4),
+                s1_entry("Tc99_m1", 4.0, 3),
+            ]
+        )
+        assert out["total_bq"] == 19.0
+        assert out["alpha_bq"] == 5.0
+        assert out["beta_bq"] == 10.0
+        assert out["gamma_bq"] == 4.0
+
+    def test_split_irts_and_conservation(self) -> None:
+        out = nucleide.alara.alara_total_activity([s1_entry("U235", 100.0, 12, 0.25)])
+        assert out["alpha_bq"] == 25.0
+        assert out["beta_bq"] == 75.0
+        out = nucleide.alara.alara_total_activity([s1_entry("Pu240", 10.0, 15, 0.5)])
+        assert out["alpha_bq"] == 5.0
+        assert out["gamma_bq"] == 5.0
+        out = nucleide.alara.alara_total_activity(
+            [
+                s1_entry("Co60", 10.0, 1),
+                s1_entry("Po210", 5.0, 4),
+                s1_entry("U235", 100.0, 12, 0.25),
+                s1_entry("Pu240", 10.0, 15, 0.5),
+            ]
+        )
+        assert out["total_bq"] == out["alpha_bq"] + out["beta_bq"] + out["gamma_bq"]
+
+    def test_ex_tritium(self) -> None:
+        out = nucleide.alara.alara_total_activity(
+            [s1_entry("Co60", 10.0, 1), s1_entry("H3", 5.0, 1)]
+        )
+        assert out["total_bq"] == 15.0
+        assert out["ex_tritium_bq"] == 10.0
+
+    def test_malformed_is_loud(self) -> None:
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_total_activity([s1_entry("Co60", -1.0, 1)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_total_activity([s1_entry("Co60", 1.0, 10)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_total_activity([s1_entry("U235", 1.0, 12)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_total_activity([s1_entry("Co60", 1.0, 1, 0.5)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_total_activity([s1_entry("U235", 1.0, 12, 1.5)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_total_activity([s1_entry("Xx999", 1.0, 1)])
+
+
+class TestSubletS2:
+    def test_hand_vectors_at_exact_equality(self) -> None:
+        c1 = 1.602176634e-22
+        out = nucleide.alara.alara_decay_heat([s2_entry("Co60", 1e10, 0.0, 1e6, 1e6)])
+        assert out["beta_kw"] == 1e10 * 1e6 * c1
+        assert out["gamma_kw"] == 1e10 * 1e6 * c1
+        assert out["alpha_kw"] == 0.0
+        assert out["total_kw"] == out["alpha_kw"] + out["beta_kw"] + out["gamma_kw"]
+        out = nucleide.alara.alara_decay_heat(
+            [
+                s2_entry("Po210", 2e10, 5e6, 0.0, 0.0),
+                s2_entry("Co60", 1e10, 0.0, 1e6, 2e6),
+            ]
+        )
+        assert out["alpha_kw"] == 2e10 * 5e6 * c1
+        assert out["beta_kw"] == 1e10 * 1e6 * c1
+        assert out["gamma_kw"] == 1e10 * 2e6 * c1
+
+    def test_ex_tritium(self) -> None:
+        c1 = 1.602176634e-22
+        out = nucleide.alara.alara_decay_heat(
+            [
+                s2_entry("Co60", 10.0, 0.0, 1e6, 0.0),
+                s2_entry("H3", 5.0, 0.0, 6e3, 0.0),
+            ]
+        )
+        assert out["total_kw"] == 10.0 * 1e6 * c1 + 5.0 * 6e3 * c1
+        assert out["ex_tritium_kw"] == 10.0 * 1e6 * c1
+
+    def test_malformed_is_loud(self) -> None:
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_decay_heat([s2_entry("Co60", -1.0, 0.0, 1e6, 0.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_decay_heat([s2_entry("Co60", 1.0, 0.0, -2.0, 0.0)])
+        with pytest.raises(ValueError):
+            nucleide.alara.alara_decay_heat([s2_entry("Xx999", 1.0, 0.0, 1e6, 0.0)])

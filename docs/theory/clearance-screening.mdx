@@ -1,7 +1,8 @@
 ---
 title: Clearance Screening
 description: The clearance index CI = sum of A_i/CL_i fractions, the sum-of-fractions release
-  rule, classification against the vendored EU Annex VII default table, and the inventory
+  rule, the Sublet S1+S2 radiological totals (activity and decay heat), classification
+  against the vendored EU Annex VII default table, and the inventory
   readers that feed them.
 sidebar:
   order: 12
@@ -70,9 +71,11 @@ Nucleide keeps the arithmetic table-driven and the inputs pluggable:
   The screening arithmetic lives in two `clearance` modules: `nucleide-alara-io`
   (the limit table, the screening functions, and inventory extraction from
   parsed response frames) and `nucleide-fispact-io` (the reader for the wide
-  FISPACT-II inventory table). The Python surface is thin: `nucleide.alara`
+  FISPACT-II inventory table), plus the `sublet` module (`nucleide-alara-io`)
+  for the S1+S2 radiological totals below. The Python surface is thin: `nucleide.alara`
   re-exports the clearance helpers (`alara_clearance_index`,
-  `alara_sum_of_fractions`, `alara_clearance_eu_table`) and `nucleide.fispact`
+  `alara_sum_of_fractions`, `alara_clearance_eu_table`) and the totals
+  (`alara_total_activity`, `alara_decay_heat`), and `nucleide.fispact`
   re-exports the clearance-block reader (`fispact_parse_clearance`).
 </Callout>
 
@@ -173,6 +176,45 @@ table. Nucleide's reader carries that column verbatim (and can total it), so
 code-printed and Nucleide-recomputed indices stay distinguishable; the
 screening functions themselves always recompute `f_i` against the caller's
 table.
+
+### Sublet S1+S2 radiological totals
+
+Inventories also feed two radiological totals, pinned to the open
+CCFE-PR(16)53 author preprint of the FISPACT-II system paper — Tables X
+(inventory/power row definitions), VI (decay-type identifiers), VII
+(radiation types), and XVII (validation anchors) — and the open FISPACT-II
+`output_interpretation` reference, never the paywalled journal pages:
+
+$$
+A_i = N_i\,\lambda_i\ \mathrm{[Bq]},
+\qquad
+A_\mathrm{tot} = \sum_i A_i,
+\tag{S1}
+$$
+
+with the FISPACT-II IRT α/β/γ split from the `output_interpretation`
+activity-breakdown section: IRT 4 → alpha; IRT 1, 2, 11, 14, 16, 17, 19,
+20 → beta; IRT 3 → gamma; IRT 12, 13 split α/β and IRT 15 splits α/γ by
+caller-supplied branch fractions (IRT classes are Table VI, identifiers
+1–27 with 8, 9 unused and 10 unknown; unmapped IRTs are a clear error).
+Decay heat folds caller-supplied average decay energies into per-class
+power:
+
+$$
+H_c = \sum_i A_i\,E_{c,i}\,C_1\ \mathrm{[kW]},
+\qquad
+C_1 = 1.602176634\times 10^{-22}\ \mathrm{kJ/eV},
+\tag{S2}
+$$
+
+the Table X `Ai·E·C1` rows (radiation classes are Table VII, STYP 0–9).
+Both totals carry the excluding-tritium companion (total minus the
+tritium entry), and parts sum to the total exactly by construction.
+Decay energies stay caller-supplied, never vendored; S3–S7, dose-rate and
+ingestion/inhalation indices, bremsstrahlung, DPA/KERMA/gas, and fission
+counts stay out. Gates are hand-computed vectors at exact equality
+(Table XVII copper total-activity anchor) plus always-run C7 gates in the
+same `clearance` validation report.
 
 ## Algorithm
 
@@ -281,14 +323,22 @@ one float-ulp above as exceeded.
 - **Further indices stay recorded, not implemented.** Sublet et al.'s wider
   radiological indices (dose rate, ingestion, inhalation, Bq/A2) appear as
   columns in the wide table and are parsed where present, but only the
-  clearance screen is implemented as a metric<Citation id="sublet-2017" />.
+  clearance screen plus the S1+S2 totals above are implemented as metrics<Citation id="sublet-2017" />.
+- **S1+S2 input discipline.** Per-nuclide activities and decay energies are
+  caller data (finite, non-negative); the α branch fraction is required for
+  the split IRTs 12, 13, 15 and rejected elsewhere; IRTs with no pinned
+  mapping raise a clear error, never a silent bucket.
 - **Time and stability conventions.** FISPACT-II step times convert with
   `y = 365 d`; `Stable` half-lives store as `-1.0`.
 - **Correctness checks.** The arithmetic is pinned by hand-computed vectors
   at exact equality (CI values, boundary probes both sides, EU and ES spot
   values, ES chain-expansion members) and by an end-to-end parse of the
   synthetic fixture in the real FISPACT-II grammar, in
-  `tests/test_clearance.py` and `validation/clearance_vs_pypact.py`.
+  `tests/test_clearance.py` and `validation/clearance_vs_pypact.py`. The S1+S2
+  totals are pinned the same way: hand-computed activity/heat vectors at exact
+  equality (parts-to-total conservation, ex-tritium companions, split-IRT
+  fractions, loud-error vectors) plus the always-run C7 gates in the same
+  report.
 
 ## Related work beyond Nucleide
 

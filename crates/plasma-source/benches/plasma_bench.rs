@@ -38,6 +38,7 @@ fn iter_h_mode() -> ParametricPlasmaConfig {
         fuel: FusionReaction::Dt,
         fuel_mixture: None,
         species_temperatures: None,
+        tail: None,
         sector: None,
         weight: 1.0,
     }

@@ -3,17 +3,17 @@
   "name": "unfold",
   "title": "Neutron spectrum unfolding (`unfold_vs_analytic.py`)",
   "environment": {
-    "date": "2026-09-16",
+    "date": "2026-09-18",
     "python": "3.12.14",
     "platform": "Linux-7.2.6-arch2-1-x86_64-with-glibc2.39",
-    "nucleide": "0.12.0",
+    "nucleide": "0.14.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
   "sections": [
     {
       "kind": "prose",
-      "text": "Four-part oracle for `nucleide.unfold`, all parts always run: analytic gates U1-U4 on synthetic forward folds (fold identity, exact fixed point, determined and underdetermined round-trips at pinned tolerances), IRDFF-II analytical benchmark-shape probes U5 (Trkov et al. 2020, published facts with citation), STAYSL-class least-squares gates U9-U13, and GRAVEL chi-square-weighted gates U14-U18. No external unfolding oracle exists, so no container dependency is added and no check can SKIP."
+      "text": "Five-part oracle for `nucleide.unfold`, all parts always run: analytic gates U1-U4 on synthetic forward folds (fold identity, exact fixed point, determined and underdetermined round-trips at pinned tolerances), IRDFF-II analytical benchmark-shape probes U5 (Trkov et al. 2020, published facts with citation), STAYSL-class least-squares gates U9-U13, GRAVEL chi-square-weighted gates U14-U18, and MAXED maximum-entropy gates U19-U23. No external unfolding oracle exists, so no container dependency is added and no check can SKIP."
     },
     {
       "kind": "prose",
@@ -324,6 +324,103 @@
           "U18 named contract errors",
           "-",
           "5 cases",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "U19 determined 6x6 recovery from a 3x-biased guess: 20 adjustments; caller-supplied per-detector sigmas are the chi-square weights (a redundant reading with 100x the sigma loses to the precise one)."
+    },
+    {
+      "kind": "prose",
+      "text": "U20 underdetermined case (6 detectors, 24 groups) under counting-statistics sigmas: rates reproduced (17 adjustments), spectrum error 7.196e-01 vs guess error 1.000e+00."
+    },
+    {
+      "kind": "prose",
+      "text": "U21 shapes are the IRDFF-II analytical benchmark fields named in Trkov et al., Nucl. Data Sheets 163 (2020) 1 (arXiv:1909.03336), re-derived from their closed forms with group bounds bracketing each shape's support; the IAEA-copyright tabulated spectra are never used."
+    },
+    {
+      "kind": "prose",
+      "text": "U22: both methods consume the same fold \u2014 at a fixed point the dual residual is zero, so MAXED holds the SAND-II point (and vice versa) after one confirming adjustment."
+    },
+    {
+      "kind": "prose",
+      "text": "U23: non-convergence raises (never a partial spectrum) \u2014 both on cap exhaustion and when the chi-square bottoms out above an unreachable target on disagreeing redundant readings; malformed sigmas, targets, and unreachable rates name their cause."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Value",
+        "Tol",
+        "Status"
+      ],
+      "rows": [
+        [
+          "U19 caller sigmas weight",
+          "-",
+          "precise wins",
+          "PASS"
+        ],
+        [
+          "U19 determined recovery",
+          "5.921038e-13",
+          "< 1e-6",
+          "PASS"
+        ],
+        [
+          "U19 rate factors",
+          "7.771561e-16",
+          "< 1e-9",
+          "PASS"
+        ],
+        [
+          "U20 underdetermined rate repro",
+          "4.440892e-16",
+          "< 1e-6",
+          "PASS"
+        ],
+        [
+          "U20 spectrum error reduction",
+          "7.195573e-01",
+          "< guess err",
+          "PASS"
+        ],
+        [
+          "U21 thermal Maxwellian 293.6 K",
+          "7.495237e-14",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U21 pure 1/E",
+          "1.366716e-12",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U21 Maxwellian 25 keV",
+          "5.446515e-15",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U22 SAND-II fp is a MAXED fp",
+          "0.000000e+00",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U22 MAXED fp is a SAND-II fp",
+          "1.789810e-16",
+          "< 1e-5",
+          "PASS"
+        ],
+        [
+          "U23 named contract errors",
+          "-",
+          "7 cases",
           "PASS"
         ]
       ]

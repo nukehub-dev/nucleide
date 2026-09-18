@@ -14,6 +14,10 @@
 //! Clearance / waste-classification analytics (clearance index and the
 //! sum-of-fractions rule over parsed inventories) live in [`clearance`].
 //!
+//! Sublet S1+S2 radiological totals (total activity with the IRT α/β/γ split
+//! and decay heat per radiation class over caller inventories) live in
+//! [`sublet`].
+//!
 //! ## Out of scope (explicitly)
 //!
 //! - ALARA solver core (activation/transmutation mathematics)
@@ -36,6 +40,7 @@ pub mod libs;
 pub mod output;
 pub mod photon;
 pub mod schedule;
+pub mod sublet;
 
 pub use clearance::{
     clearance_index, inventory_from_frame, sum_of_fractions, ClearanceClass, ClearanceTable,
@@ -55,4 +60,7 @@ pub use photon::{PhotonGroup, PhotonSource};
 pub use schedule::{
     expand, expand_from, parse_time_to_seconds, total_time, FlatStep, PulseHistory, PulseLevel,
     SchedItem, Schedule, ScheduleDef, ScheduleItem,
+};
+pub use sublet::{
+    decay_heat, total_activity, ActivityEntry, ActivityTotal, DecayHeat, DecayHeatEntry,
 };

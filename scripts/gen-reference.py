@@ -99,6 +99,8 @@ CRATE_ORDER = [
     "nucleide-tritium",
     "nucleide-plasma-source",
     "nucleide-damage",
+    "nucleide-blanket",
+    "nucleide-equilib-io",
     "nucleide-vr-tools",
     "nucleide-r2s",
     "nucleide-emit",
@@ -122,6 +124,8 @@ MODULE_ORDER = [
     "tritium",
     "plasma_source",
     "damage",
+    "blanket",
+    "equilib",
     "alara",
     "cccc",
     "fispact",
@@ -130,6 +134,7 @@ MODULE_ORDER = [
     "emit",
     "uq",
     "data",
+    "openmc",
 ]
 
 LONG_THRESHOLD = 110

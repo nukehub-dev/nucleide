@@ -15,7 +15,14 @@ Two parts:
    P10 on toroidal sectors (in-sector uniform births, bit-for-bit
    full-rotation recovery, the PHI=D4 card marginal with its drift row),
    plus P11 on per-species ion temperatures (pair-temperature sampled
-   moments and branch share vs quadrature, bit-for-bit equal-T recovery).
+   moments and branch share vs quadrature, bit-for-bit equal-T recovery),
+   plus P12 on the arbitrary-3D birth-rate lattice (hand-vector totals and
+   means, single-point bit-for-bit recovery of the point source, ring-limit
+   moment closure, symmetry-fold replication and totals, card round trip
+   with the lattice drift row, mixture branch fire, loud errors),
+   plus P13 on the deuterium hot-tail fraction (sub-rate-rule moments and
+   branch share vs quadrature, the card drift tail-neutron share, bit-for-bit
+   zero-fraction recovery, loud errors).
 2. openmc-plasma-source cross-check (container oracle): O1-O3 on the
    ring/point legs (Ballabio helpers, D-D energy moments, ring geometry),
    O4-O7 on the parametric leg (Miller map, L/H profiles, reactivity vs
@@ -29,7 +36,12 @@ Two parts:
    partial toroidal sector ((r, z, E) moments vs the upstream quadrature
    plus the uniform angle marginal) — and O11 on a 70/30 blend at distinct
    species temperatures (moments vs the upstream quadrature with the NeSST
-   reactivities evaluated at the pair temperatures). The
+   reactivities evaluated at the pair temperatures) — and O12 on the lattice
+    ring limit (dense monoenergetic ring cloud vs the upstream ring geometry
+    and Ballabio helpers, where those models apply) — and O13 on the
+    deuterium hot tail (pinned tail blend vs the upstream quadrature with
+    the NeSST reactivities evaluated at the five bulk/tail sub-pair
+    temperatures). The
    upstream package is an optional oracle dependency: if it cannot be
    imported, the oracle checks are reported as SKIP with their reason (never
    silently).
@@ -293,6 +305,73 @@ def _quadrature_moments_mixture_species(
             num_e += w * (p_dd * mu_dd + (1.0 - p_dd) * mu_dt)
             num_dd += w * p_dd
     return {"<r^2>": num_r2 / den, "mean_e": num_e / den, "p_dd": num_dd / den}
+
+
+def _quadrature_moments_mixture_tail(
+    spec: dict,
+    f_d: float,
+    f_t: float,
+    t_d: float,
+    t_t: float,
+    eta: float,
+    t_tail: float,
+    n_r: int = 400,
+    n_t: int = 400,
+) -> dict[str, float]:
+    """Fine-quadrature reference under the deuterium hot-tail sub-rate rule
+    (module-rustdoc mixture v3): the bulk/tail sub-pairs react at T_DT, T_DTt
+    (D-T) and T_D, T_mix, T_tail (D-D) with the sub-rate weights. Returns the
+    strength-weighted <r^2>, the sub-branch-weighted mean birth energy, the
+    total D-D branch share, and the tail neutron share (the eta-scaled
+    sub-rate over the total)."""
+    t_dt = t_d + 0.4 * (t_t - t_d)
+    t_dtt = t_tail + 0.4 * (t_t - t_tail)
+    t_mix = 0.5 * (t_d + t_tail)
+    am = spec["minor_radius"]
+    dr = am / n_r
+    dt = 2.0 * math.pi / n_t
+    num_r2 = den = num_e = num_dd = num_tail = 0.0
+    for i in range(n_r):
+        r = (i + 0.5) * dr
+        n_cm3 = _profile_density(spec, r) * 1e-6
+        sv_dt = _reactivity_m3_s("dt", t_dt) * 1e6
+        sv_dt_tail = _reactivity_m3_s("dt", t_dtt) * 1e6
+        sv_dd = _reactivity_m3_s("dd", t_d) * 1e6
+        sv_dd_mix = _reactivity_m3_s("dd", t_mix) * 1e6
+        sv_dd_tail = _reactivity_m3_s("dd", t_tail) * 1e6
+        w = [
+            f_d * f_t * (1.0 - eta) * sv_dt,
+            f_d * f_t * eta * sv_dt_tail,
+            f_d * f_d / 2.0 * (1.0 - eta) ** 2 * sv_dd,
+            f_d * f_d / 2.0 * 2.0 * eta * (1.0 - eta) * sv_dd_mix,
+            f_d * f_d / 2.0 * eta**2 * sv_dd_tail,
+        ]
+        mus = [
+            _ballabio_moments("dt", t_dt)[0],
+            _ballabio_moments("dt", t_dtt)[0],
+            _ballabio_moments("dd", t_d)[0],
+            _ballabio_moments("dd", t_mix)[0],
+            _ballabio_moments("dd", t_tail)[0],
+        ]
+        total = sum(w)
+        p = [x / total for x in w] if total > 0.0 else [1.0, 0.0, 0.0, 0.0, 0.0]
+        mean_e = sum(pi * mu for pi, mu in zip(p, mus, strict=True))
+        p_dd = p[2] + p[3] + p[4]
+        p_tail = (w[1] + w[3] + w[4]) / total if total > 0.0 else 0.0
+        for j in range(n_t):
+            theta = (j + 0.5) * dt
+            cell = n_cm3 * n_cm3 * total * _volume_element(spec, r, theta) * dr * dt
+            den += cell
+            num_r2 += cell * r * r
+            num_e += cell * mean_e
+            num_dd += cell * p_dd
+            num_tail += cell * p_tail
+    return {
+        "<r^2>": num_r2 / den,
+        "mean_e": num_e / den,
+        "p_dd": num_dd / den,
+        "p_tail": num_tail / den,
+    }
 
 
 def analytic_gates() -> tuple[list[list[str]], list[str]]:
@@ -675,8 +754,284 @@ def parametric_gates() -> tuple[list[list[str]], list[str]]:
     return rows, notes
 
 
+LATTICE_TWO_POINT = {
+    "kind": "lattice",
+    "reaction": "dt",
+    "points": [
+        {"position": [300.0, 0.0, 25.0], "rate": 2.0, "ion_temperature_kev": 0.0},
+        {"position": [-300.0, 0.0, 25.0], "rate": 1.0, "ion_temperature_kev": 0.0},
+    ],
+}
+
+
+def _ring_lattice_spec(k: int = 64) -> dict:
+    """Uniform ring lattice: k unit-rate D-T mono nodes at R=300 cm, z=25 cm."""
+    return {
+        "kind": "lattice",
+        "reaction": "dt",
+        "points": [
+            {
+                "position": [
+                    300.0 * math.cos(2.0 * math.pi * i / k),
+                    300.0 * math.sin(2.0 * math.pi * i / k),
+                    25.0,
+                ],
+                "rate": 1.0,
+                "ion_temperature_kev": 0.0,
+            }
+            for i in range(k)
+        ],
+    }
+
+
+def lattice_gates() -> tuple[list[list[str]], list[str]]:
+    """P12 on the arbitrary-3D birth-rate lattice; returns (gate rows, prose notes)."""
+    rows: list[list[str]] = []
+    notes: list[str] = []
+
+    # P12a: hand-vector totals and means on the two-point cloud (D-T mono).
+    out = ps.particles(LATTICE_TWO_POINT, 90_000, seed=42)
+    n12 = len(out["x"])
+    ok_e = bool((out["energy"] == 14.021).all())
+    rows.append(["P12 hand-vector mono energy", "-", "exact", _check(ok_e, "P12 energy")])
+    se_x = 200.0 / math.sqrt(n12)
+    mean_x = float(np.mean(out["x"]))
+    rows.append(
+        [
+            "P12 hand-vector mean x",
+            fmt(mean_x - 100.0),
+            "< 8 sigma",
+            _check(abs(mean_x - 100.0) < 8.0 * se_x, "P12 mean x"),
+        ]
+    )
+    frac_a = float(np.mean(out["x"] > 0))
+    se_a = math.sqrt((2.0 / 3.0) * (1.0 / 3.0) / n12)
+    rows.append(
+        [
+            "P12 rate-2 node share",
+            fmt(frac_a - 2.0 / 3.0),
+            "< 8 sigma",
+            _check(abs(frac_a - 2.0 / 3.0) < 8.0 * se_a, "P12 share"),
+        ]
+    )
+
+    # P12b: single-point lattice reproduces the point source bit-for-bit.
+    lattice_1 = {
+        "kind": "lattice",
+        "reaction": "dt",
+        "points": [{"position": [1.0, -2.0, 3.5], "rate": 1.0, "ion_temperature_kev": 20.0}],
+    }
+    point_1 = {
+        "kind": "point",
+        "position": [1.0, -2.0, 3.5],
+        "reaction": "dt",
+        "ion_temperature_kev": 20.0,
+    }
+    a = ps.particles(lattice_1, 512, seed=9)
+    b = ps.particles(point_1, 512, seed=9)
+    recovered = all(bool((a[key] == b[key]).all()) for key in ("x", "y", "z", "energy"))
+    rows.append(["P12 single-point recovery", "-", "exact", _check(recovered, "P12 recovery")])
+
+    # P12c: ring-limit moment closure (axisymmetric convergence anchor).
+    out = ps.particles(_ring_lattice_spec(), N, seed=42)
+    radius = np.hypot(out["x"], out["y"])
+    ok = bool(np.all(out["z"] == 25.0)) and bool(np.all(np.abs(radius - 300.0) < 1e-9 * 300.0))
+    rows.append(["P12 ring radius/height", "-", "exact", _check(ok, "P12 ring")])
+    se = 300.0 / math.sqrt(2 * N)
+    mean_x = float(np.mean(out["x"]))
+    rows.append(
+        [
+            "P12 ring <x>",
+            fmt(mean_x),
+            "< 8 sigma",
+            _check(abs(mean_x) < 8.0 * se, "P12 ring x"),
+        ]
+    )
+
+    # P12d: symmetry-fold replication — one base node with 4 field periods
+    # spreads uniformly over the 4 copies; totals carry the period factor.
+    base4 = {
+        "kind": "lattice",
+        "reaction": "dt",
+        "field_periods": 4,
+        "base_angle": 0.0,
+        "points": [{"position": [300.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 20.0}],
+    }
+    m = 20_000
+    out = ps.particles(base4, m, seed=5)
+    radius = np.hypot(out["x"], out["y"])
+    ok = bool(np.all(np.abs(radius - 300.0) < 1e-9 * 300.0))
+    rows.append(["P12 fold radius", "-", "exact", _check(ok, "P12 fold r")])
+    quad = ((out["x"] > 0).astype(int) + 2 * (out["y"] > 0).astype(int)).astype(int)
+    quad_ok = True
+    for q in range(4):
+        frac = float(np.mean(quad == q))
+        if abs(frac - 0.25) >= 8.0 * math.sqrt(0.25 * 0.75 / m):
+            quad_ok = False
+    rows.append(["P12 fold uniform copies", "-", "uniform", _check(quad_ok, "P12 copies")])
+    acc = ps.proton_accounting(base4)
+    totals_ok = acc["proton_total"] == 0.0 and abs(acc["neutron_total"] - 4.0) < 1e-12
+    rows.append(["P12 fold totals", "-", "4x base", _check(totals_ok, "P12 totals")])
+
+    # P12e: card round trip with the lattice drift row; mixture branch fire.
+    cards = ps.emit_source_cards(LATTICE_TWO_POINT, bins=8)
+    sec_parsed = mcnp.parse_sdef(cards["sdef"]["card"])
+    card_ok = (
+        sec_parsed["card"] == cards["sdef"]["card"]
+        and sec_parsed["rad"] == "D1"
+        and sec_parsed["ext"] == "D2"
+        and sec_parsed["erg"] == "D3"
+        and len(sec_parsed["distributions"]) == 3
+    )
+    rows.append(["P12 lattice card round trip", "-", "byte-identical", _check(card_ok, "P12 card")])
+    quantities = [row["quantity"] for row in cards["sdef"]["drift"]]
+    drift_ok = quantities == [
+        "emission probability",
+        "spatial marginals",
+        "joint correlation",
+        "lattice discretization",
+    ]
+    rows.append(["P12 lattice drift rows", "-", "four rows", _check(drift_ok, "P12 drift")])
+    blend = {
+        "kind": "lattice",
+        "fuel": {"D": 0.7, "T": 0.3},
+        "points": [{"position": [0.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 20.0}],
+    }
+    out = ps.particles(blend, N, seed=11)
+    frac_dd = float(np.mean(out["energy"] < 10.0))
+    rows.append(
+        [
+            "P12 mixture D-D branch fires",
+            fmt(frac_dd),
+            "0.002-0.015",
+            _check(0.002 < frac_dd < 0.015, "P12 branches"),
+        ]
+    )
+    notes.append(
+        f"P12 arbitrary-3D birth-rate lattice: two-point hand vectors (total 3, "
+        f"mean x 100 cm, mono 14.021 MeV), single-point bit-for-bit recovery of "
+        f"the landed point source, ring-limit moment closure (n={N}), 4-period "
+        f"symmetry-fold replication with period-scaled totals, card round trip "
+        f"with the lattice drift row, and 70/30 mixture branch fire."
+    )
+    return rows, notes
+
+
+def tail_gates() -> tuple[list[list[str]], list[str]]:
+    """P13 on the deuterium hot-tail fraction; returns (gate rows, prose notes)."""
+    rows: list[list[str]] = []
+    notes: list[str] = []
+
+    # P13a: pinned tail spec — 70/30 blend at T_D = 20 keV, T_T = 30 keV with
+    # a 5% deuterium hot tail at 60 keV. Sampled mean energy, radius moment,
+    # and D-D branch share sit on the sub-rate-rule quadrature.
+    t_d13, t_t13, eta13, t_tail13 = 20.0, 30.0, 0.05, 60.0
+    tail13 = dict(
+        PARAMETRIC_SPEC,
+        fuel={"D": 0.7, "T": 0.3},
+        species_temperatures={"D": t_d13, "T": t_t13},
+        deuterium_tail={"fraction": eta13, "temperature_kev": t_tail13},
+    )
+    ours13 = ps.particles(tail13, N, seed=84)
+    quad13 = _quadrature_moments_mixture_tail(
+        PARAMETRIC_SPEC, 0.7, 0.3, t_d13, t_t13, eta13, t_tail13
+    )
+    err_e13 = rel_diff(float(np.mean(ours13["energy"])), quad13["mean_e"])
+    rows.append(
+        ["P13 tail mean birth energy", fmt(err_e13), "< 1e-2", _check(err_e13 < 1e-2, "P13 E")]
+    )
+    major13 = np.hypot(ours13["x"], ours13["y"])
+    r13 = _recover_minor_radius(PARAMETRIC_SPEC, major13, ours13["z"])
+    err_r13 = rel_diff(float(np.mean(r13**2)), quad13["<r^2>"])
+    rows.append(["P13 tail birth <r^2>", fmt(err_r13), "< 1e-2", _check(err_r13 < 1e-2, "P13 r2")])
+    frac_dd13 = float(np.mean(ours13["energy"] < 10.0))
+    se_dd13 = math.sqrt(quad13["p_dd"] * (1.0 - quad13["p_dd"]) / N)
+    rows.append(
+        [
+            "P13 tail D-D branch share",
+            fmt(frac_dd13 - quad13["p_dd"]),
+            "< 8 sigma",
+            _check(abs(frac_dd13 - quad13["p_dd"]) < 8.0 * se_dd13, "P13 share"),
+        ]
+    )
+
+    # P13b: the card drift row's tail neutron share reproduces the
+    # independent quadrature share (cross-checks total_tail_strength; the
+    # note prints 6 decimals, so the 1e-6 window covers the rounding).
+    cards13 = ps.emit_source_cards(tail13, bins=15)
+    tail_row13 = next(
+        row for row in cards13["sdef"]["drift"] if row["quantity"] == "deuterium tail"
+    )
+    share13 = float(tail_row13["note"].split("volume-integrated source = ")[1])
+    rows.append(
+        [
+            "P13 tail neutron share",
+            fmt(share13 - quad13["p_tail"]),
+            "< 1e-6",
+            _check(abs(share13 - quad13["p_tail"]) < 1e-6, "P13 tail share"),
+        ]
+    )
+    drift_ok13 = [row["quantity"] for row in cards13["sdef"]["drift"]] == [
+        "emission probability",
+        "spatial marginals",
+        "joint correlation",
+        "deuterium tail",
+    ] and bool(tail_row13["reparsed"])
+    rows.append(["P13 tail drift row", "-", "present", _check(drift_ok13, "P13 drift")])
+
+    # P13c: eta = 0 reproduces the no-tail mixture kernel bit-for-bit.
+    base13 = dict(
+        PARAMETRIC_SPEC,
+        fuel={"D": 0.7, "T": 0.3},
+        species_temperatures={"D": t_d13, "T": t_t13},
+    )
+    zero13 = dict(base13, deuterium_tail={"fraction": 0.0, "temperature_kev": t_tail13})
+    a13 = ps.particles(base13, 512, seed=17)
+    b13 = ps.particles(zero13, 512, seed=17)
+    recovered13 = all(bool((a13[key] == b13[key]).all()) for key in ("x", "y", "z", "energy"))
+    rows.append(["P13 zero-tail stream recovery", "-", "exact", _check(recovered13, "P13 stream")])
+    cards_a13 = ps.emit_source_cards(base13, bins=15)
+    cards_b13 = ps.emit_source_cards(zero13, bins=15)
+    same_cards13 = (
+        cards_b13["sdef"]["card"] == cards_a13["sdef"]["card"]
+        and cards_b13["serpent"]["card"] == cards_a13["serpent"]["card"]
+    )
+    rows.append(["P13 zero-tail card recovery", "-", "exact", _check(same_cards13, "P13 cards")])
+
+    # P13d: tail parameters are loud — out-of-range fraction, negative tail
+    # temperature, and a tail without a fuel mixture never reach the sampler.
+    loud13 = True
+    for bad in (
+        {"fraction": 1.5, "temperature_kev": 60.0},
+        {"fraction": 0.05, "temperature_kev": -1.0},
+    ):
+        try:
+            ps.particles(dict(base13, deuterium_tail=bad), 4, seed=0)
+            loud13 = False
+        except ValueError:
+            pass
+    try:
+        ps.particles(
+            dict(PARAMETRIC_SPEC, deuterium_tail={"fraction": 0.05, "temperature_kev": 60.0}),
+            4,
+            seed=0,
+        )
+        loud13 = False
+    except ValueError:
+        pass
+    rows.append(["P13 tail loud errors", "-", "raise", _check(loud13, "P13 loud")])
+    notes.append(
+        f"P13 deuterium hot tail (70/30 blend, T_D={t_d13:g} keV, T_T={t_t13:g} keV, "
+        f"eta={eta13:g} at T_tail={t_tail13:g} keV, n={N}): sampled moments and "
+        f"D-D branch share vs the sub-rate-rule quadrature, the card drift "
+        f"tail-neutron share vs the same quadrature, bit-for-bit zero-fraction "
+        f"recovery of the no-tail kernel (stream and cards), and loud tail errors."
+    )
+    return rows, notes
+
+
 def oracle_check_openmc_plasma_source() -> tuple[list[list[str]], list[str], bool]:
-    """O1-O11 vs the upstream MIT-licensed package. Returns (rows, notes, skipped)."""
+    """O1-O13 vs the upstream MIT-licensed package. Returns (rows, notes, skipped)."""
     # NeSST (< 1.2) still imports scipy.integrate.cumtrapz, removed in scipy
     # 1.14; the modern spelling is a drop-in for its usage. Shim the alias in
     # this oracle process only (never in the shipped library).
@@ -831,9 +1186,9 @@ def oracle_check_openmc_plasma_source() -> tuple[list[list[str]], list[str], boo
                 triangularity=g["triangularity"],
                 elongation=g["elongation"],
             )
-            r_ref, z_ref = _map_rz(g, a_cm, theta)
+            r_map, z_map = _map_rz(g, a_cm, theta)
             worst = max(
-                worst, rel_diff(float(r_ref), float(r_up)), rel_diff(float(z_ref), float(z_up))
+                worst, rel_diff(float(r_map), float(r_up)), rel_diff(float(z_map), float(z_up))
             )
     rows.append(
         ["O4 Miller map transcription", fmt(worst), "< 1e-12", _check(worst < 1e-12, "O4 map")]
@@ -1065,6 +1420,61 @@ def oracle_check_openmc_plasma_source() -> tuple[list[list[str]], list[str], boo
         f"sampled moments vs quadrature over the upstream map/profiles with "
         f"NeSST reac_DT + reac_DD evaluated at the pair temperatures."
     )
+    # O12: lattice ring limit vs the upstream models where they apply. A dense
+    # monoenergetic ring cloud (360 unit-rate D-T nodes at R = 3 m, z = 0.5 m)
+    # sits on the upstream ring geometry (r delta at R, uniform azimuth via
+    # <x^2> = R^2/2) and the Ballabio mean helper (Ti = 0 line).
+    ring_lat = _ring_lattice_spec(360)
+    ours12 = ps.particles(ring_lat, N, seed=83)
+    err_r12 = rel_diff(float(np.mean(np.hypot(ours12["x"], ours12["y"]))), r_ref)
+    rows.append(
+        ["O12 lattice ring radius", fmt(err_r12), "< 1e-9", _check(err_r12 < 1e-9, "O12 radius")]
+    )
+    err_phi12 = rel_diff(float(np.mean(ours12["x"] ** 2)), float(np.mean(up_x**2)))
+    rows.append(
+        ["O12 lattice azimuth <x^2>", fmt(err_phi12), "< 1e-2", _check(err_phi12 < 1e-2, "O12 phi")]
+    )
+    mean_ev12 = neutron_energy_mean(ion_temperature=0.0, reaction="DT")
+    err_e12 = rel_diff(float(np.mean(ours12["energy"])), mean_ev12 / 1e6)
+    rows.append(
+        ["O12 lattice mono energy", fmt(err_e12), "< 1e-12", _check(err_e12 < 1e-12, "O12 E")]
+    )
+    notes.append(
+        f"O12 lattice ring limit (360-node monoenergetic cloud, n={N}): radius "
+        f"and azimuth moments vs the upstream ring CylindricalIndependent "
+        f"parameters, mean birth energy vs the upstream Ballabio mean helper."
+    )
+    # O13: deuterium hot tail vs the upstream quadrature. A 70/30 blend at
+    # T_D = 20 keV, T_T = 30 keV with a 5% tail at 60 keV reacts the five
+    # bulk/tail sub-pairs through the scalar NeSST reactivity functions at
+    # the sub-pair temperatures (the upstream package has no tail spelling —
+    # the O11 stance: the cross-check is the independent NeSST transcription
+    # plus the upstream profiles and map).
+    t_d13, t_t13, eta13, t_tail13 = 20.0, 30.0, 0.05, 60.0
+    blend13 = dict(
+        PARAMETRIC_SPEC,
+        fuel={"D": 0.7, "T": 0.3},
+        species_temperatures={"D": t_d13, "T": t_t13},
+        deuterium_tail={"fraction": eta13, "temperature_kev": t_tail13},
+    )
+    ours13 = ps.particles(blend13, N, seed=85)
+    quad13 = _quadrature_upstream_mixture_tail(
+        g, tokamak_ion_density, reac_DT, reac_DD, 0.7, 0.3, t_d13, t_t13, eta13, t_tail13
+    )
+    err_e13 = rel_diff(float(np.mean(ours13["energy"])), quad13["mean_e"])
+    rows.append(
+        ["O13 tail mean birth energy", fmt(err_e13), "< 1e-2", _check(err_e13 < 1e-2, "O13 E")]
+    )
+    major13 = np.hypot(ours13["x"], ours13["y"])
+    r13 = _recover_minor_radius(g, major13, ours13["z"])
+    err_r13 = rel_diff(float(np.mean(r13**2)), quad13["<r^2>"])
+    rows.append(["O13 tail birth <r^2>", fmt(err_r13), "< 1e-2", _check(err_r13 < 1e-2, "O13 r2")])
+    notes.append(
+        f"O13 70/30 D/T blend with a 5% deuterium hot tail at T_tail={t_tail13:g} keV "
+        f"(T_D={t_d13:g} keV, T_T={t_t13:g} keV, n={N}): sampled moments vs "
+        f"quadrature over the upstream map/profiles with NeSST reac_DT + "
+        f"reac_DD evaluated at the five bulk/tail sub-pair temperatures."
+    )
     return rows, notes, False
 
 
@@ -1187,6 +1597,79 @@ def _quadrature_upstream_mixture_species(
             den += w
             num_r2 += w * r * r
             num_e += w * mean_e
+    return {"<r^2>": num_r2 / den, "mean_e": num_e / den}
+
+
+def _quadrature_upstream_mixture_tail(
+    g: dict,
+    density_fn,
+    reac_dt,
+    reac_dd,
+    f_d: float,
+    f_t: float,
+    t_d: float,
+    t_t: float,
+    eta: float,
+    t_tail: float,
+    n_r: int = 400,
+    n_t: int = 400,
+) -> dict[str, float]:
+    """Quadrature of the deuterium hot-tail sub-rate rule using the upstream
+    density profile and NeSST reactivities at the sub-pair temperatures
+    (T_DT, T_DTt for D-T; T_D, T_mix, T_tail for D-D). The upstream package
+    has no tail spelling — like O11, the sub-pair temperatures enter through
+    its scalar reactivity functions, so the cross-check is the independent
+    NeSST transcription plus the upstream profiles. Returns the
+    strength-weighted <r^2> and the sub-branch-weighted mean birth energy."""
+    t_dt = t_d + 0.4 * (t_t - t_d)
+    t_dtt = t_tail + 0.4 * (t_t - t_tail)
+    t_mix = 0.5 * (t_d + t_tail)
+    am = g["minor_radius"]
+    dr = am / n_r
+    dt = 2.0 * math.pi / n_t
+    num_r2 = den = num_e = 0.0
+    sv_dt = float(reac_dt(t_dt * 1e3)) * 1e6  # m^3/s -> cm^3/s
+    sv_dt_tail = float(reac_dt(t_dtt * 1e3)) * 1e6
+    sv_dd = float(reac_dd(t_d * 1e3)) * 1e6
+    sv_dd_mix = float(reac_dd(t_mix * 1e3)) * 1e6
+    sv_dd_tail = float(reac_dd(t_tail * 1e3)) * 1e6
+    w = [
+        f_d * f_t * (1.0 - eta) * sv_dt,
+        f_d * f_t * eta * sv_dt_tail,
+        f_d * f_d / 2.0 * (1.0 - eta) ** 2 * sv_dd,
+        f_d * f_d / 2.0 * 2.0 * eta * (1.0 - eta) * sv_dd_mix,
+        f_d * f_d / 2.0 * eta**2 * sv_dd_tail,
+    ]
+    total = sum(w)
+    mus = [
+        _ballabio_moments("dt", t_dt)[0],
+        _ballabio_moments("dt", t_dtt)[0],
+        _ballabio_moments("dd", t_d)[0],
+        _ballabio_moments("dd", t_mix)[0],
+        _ballabio_moments("dd", t_tail)[0],
+    ]
+    mean_e = sum(x / total * mu for x, mu in zip(w, mus, strict=True))
+    for i in range(n_r):
+        r = (i + 0.5) * dr
+        n_m3 = float(
+            density_fn(
+                mode=g["mode"],
+                ion_density_centre=g["ion_density_centre"],
+                ion_density_peaking_factor=g["ion_density_peaking_factor"],
+                ion_density_pedestal=g["ion_density_pedestal"],
+                minor_radius=am,
+                pedestal_radius=g["pedestal_radius"],
+                ion_density_separatrix=g["ion_density_separatrix"],
+                r=r,
+            )
+        )
+        strength = n_m3 * n_m3 * 1e-12 * total
+        for j in range(n_t):
+            theta = (j + 0.5) * dt
+            cell = strength * _volume_element(g, r, theta) * dr * dt
+            den += cell
+            num_r2 += cell * r * r
+            num_e += cell * mean_e
     return {"<r^2>": num_r2 / den, "mean_e": num_e / den}
 
 
@@ -1345,13 +1828,20 @@ def main() -> int:
         "on toroidal sectors (in-sector uniform births, bit-for-bit "
         "full-rotation recovery, the PHI=D4 marginal with its drift row), and P11 "
         "on per-species ion temperatures (pair-temperature moments and branch "
-        "share, bit-for-bit equal-T recovery) — "
-        "always run — plus container-only cross-checks O1-O11 against the upstream "
+        "share, bit-for-bit equal-T recovery), and P12 "
+        "on the arbitrary-3D birth-rate lattice (hand-vector totals and "
+        "means, single-point recovery, ring-limit closure, symmetry-fold "
+        "replication, card round trip, mixture branch fire), and P13 "
+        "on the deuterium hot-tail fraction (sub-rate-rule moments and "
+        "branch share, the drift tail-neutron share, zero-fraction "
+        "recovery) — "
+        "always run — plus container-only cross-checks O1-O13 against the upstream "
         "openmc-plasma-source package and NeSST (Ballabio helpers, sampled "
         "ring/point sources, Miller map, Fausser profiles, reactivities, "
         "end-to-end parametric moments, the pinned 70/30 blend, the "
         "tritium-rich 10/90 T-T divergence probe, the partial-sector "
-        "moment cross-check, and the distinct-temperature blend probe; protons have no oracle — "
+        "moment cross-check, the distinct-temperature blend probe, "
+        "the lattice ring-limit probe, and the hot-tail blend probe; protons have no oracle — "
         "upstream models neutrons only)."
     )
     rows1, notes1 = analytic_gates()
@@ -1362,13 +1852,35 @@ def main() -> int:
     for note in notes2:
         report.prose(note)
     report.table(["Gate", "Value", "Tol", "Status"], rows2)
+    rows2b, notes2b = lattice_gates()
+    for note in notes2b:
+        report.prose(note)
+    report.table(["Gate", "Value", "Tol", "Status"], rows2b)
+    rows2c, notes2c = tail_gates()
+    for note in notes2c:
+        report.prose(note)
+    report.table(["Gate", "Value", "Tol", "Status"], rows2c)
     rows3, notes3, skipped = oracle_check_openmc_plasma_source()
     for note in notes3:
         report.prose(note)
     if skipped:
         skip_rows = [
             [f"{gate}", "SKIP (openmc-plasma-source unavailable)"]
-            for gate in ("O1", "O2", "O3", "O4", "O5", "O6", "O7", "O8", "O9", "O10", "O11")
+            for gate in (
+                "O1",
+                "O2",
+                "O3",
+                "O4",
+                "O5",
+                "O6",
+                "O7",
+                "O8",
+                "O9",
+                "O10",
+                "O11",
+                "O12",
+                "O13",
+            )
         ]
         report.table(["Gate", "Status"], skip_rows)
     else:

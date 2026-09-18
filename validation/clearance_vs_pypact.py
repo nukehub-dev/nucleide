@@ -1,12 +1,15 @@
-"""Clearance / waste-classification cross-check (Cycle 04).
+"""Clearance / waste-classification cross-check.
 
 Two parts:
 
 1. Analytic gates (always run): hand-computed clearance-index vectors at
    exact equality, sum-of-fractions boundary probes at == 1 on both sides,
    EU 2013/59/Euratom Annex VII Table A vendored-transcription spot values,
-   and the FISPACT-II clearance-block parse of the synthetic fixture in the
-   real wide-table grammar (HAZARDS + CLEAR keywords).
+   the FISPACT-II clearance-block parse of the synthetic fixture in the
+   real wide-table grammar (HAZARDS + CLEAR keywords), the Spanish CSN
+   table spots, and the Sublet S1+S2 hand vectors (total activity with the
+   IRT split, decay heat over caller decay energies) at exact equality
+   plus parts-to-total conservation.
 2. pypact cross-check: the same fixture parsed with the upstream Apache-2.0
    ``pypact`` reader (the citable grammar's reference consumer), comparing
    the overlapping per-nuclide columns (atoms, activity, clearance index).
@@ -190,6 +193,73 @@ def synthetic_gates() -> tuple[list[list[str]], list[str], float]:
             _check(es_ci == 2.0, "C6 vector"),
         ]
     )
+
+    # C7: Sublet S1+S2 radiological totals (Table X rows Ai / Ai·E·C1 with the
+    # IRT alpha/beta/gamma split; open output_interpretation pin, no NDS
+    # pages): hand-computed vectors at exact equality plus parts-to-total
+    # conservation and the excluding-tritium companions.
+    def _s1(nuclide: str, activity: float, irt: int, frac: float | None = None) -> dict:
+        entry: dict = {"nuclide": nuclide, "activity_bq": activity, "irt": irt}
+        if frac is not None:
+            entry["alpha_frac"] = frac
+        return entry
+
+    s1 = alara.alara_total_activity(
+        [
+            _s1("Co-60", 10.0, 1),
+            _s1("Po-210", 5.0, 4),
+            _s1("Tc-99m", 4.0, 3),
+            _s1("U-235", 100.0, 12, 0.25),
+            _s1("H-3", 5.0, 1),
+        ]
+    )
+    notes.append(
+        "Sublet S1 total activity (Table X Ai = Ni li, Bq; IRT split per the "
+        "open output_interpretation Activity break-down section): IRT 4 "
+        "alpha; IRT 1 beta; IRT 3 gamma; IRT 12 split alpha/beta."
+    )
+    s1_ok = (
+        s1["total_bq"] == 124.0
+        and s1["alpha_bq"] == 30.0
+        and s1["beta_bq"] == 90.0
+        and s1["gamma_bq"] == 4.0
+        and s1["ex_tritium_bq"] == 119.0
+        and s1["total_bq"] == s1["alpha_bq"] + s1["beta_bq"] + s1["gamma_bq"]
+    )
+    rows.append(["C7 S1 hand vector", fmt(s1["total_bq"]), "== 124", _check(s1_ok, "C7 S1")])
+
+    c1 = 1.602176634e-22
+    s2 = alara.alara_decay_heat(
+        [
+            {
+                "nuclide": "Co-60",
+                "activity_bq": 1e10,
+                "e_alpha_ev": 0.0,
+                "e_beta_ev": 1e6,
+                "e_gamma_ev": 2e6,
+            },
+            {
+                "nuclide": "H-3",
+                "activity_bq": 5.0,
+                "e_alpha_ev": 0.0,
+                "e_beta_ev": 6e3,
+                "e_gamma_ev": 0.0,
+            },
+        ]
+    )
+    notes.append(
+        "Sublet S2 decay heat (Table X Ai E C1, kW; C1 = eV to kJ): "
+        "caller-supplied average decay energies, never vendored."
+    )
+    s2_ok = (
+        s2["alpha_kw"] == 0.0
+        and s2["beta_kw"] == 1e10 * 1e6 * c1 + 5.0 * 6e3 * c1
+        and s2["gamma_kw"] == 1e10 * 2e6 * c1
+        and s2["total_kw"] == s2["alpha_kw"] + s2["beta_kw"] + s2["gamma_kw"]
+        # Ex-tritium subtracts the tritium heat, so allow one rounding step.
+        and rel_diff(s2["ex_tritium_kw"], 1e10 * 1e6 * c1 + 1e10 * 2e6 * c1) < 1e-15
+    )
+    rows.append(["C7 S2 hand vector", fmt(s2["total_kw"]), "parts sum", _check(s2_ok, "C7 S2")])
     return rows, notes, total_ci
 
 
@@ -254,8 +324,8 @@ def main() -> int:
     report = Report("clearance", "Clearance / waste-classification (`clearance_vs_pypact.py`)")
     report.prose(
         "Two-part oracle for `nucleide.alara` clearance analytics and the "
-        "`nucleide.fispact` clearance-block reader: analytic gates C1-C5 on the "
-        "synthetic fixture in the real FISPACT-II wide-table grammar (always run), "
+        "`nucleide.fispact` clearance-block reader: analytic gates C1-C7 on "
+        "synthetic fixtures and the vendored tables (always run), "
         "and a cross-check of the overlapping inventory columns (atoms, activity, "
         "clearance index) against the upstream Apache-2.0 pypact reader (oracle leg)."
     )

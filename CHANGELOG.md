@@ -13,6 +13,210 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-18
+
+### Added
+
+- OpenMC statepoint tally bridge (`nucleide.openmc`, pure Python — no Rust
+  changes). Statepoint files are HDF5 and are never read in Rust; the
+  facade drives the caller-side OpenMC Python API (call sequence pinned
+  against OpenMC 0.16.0, the validation-container build:
+  `StatePoint(path, autolink=False)` with an explicit `close()`, then
+  `tally.get_reshaped_data(value=..., expand_dims=True)` for `"mean"`
+  and `"std_dev"`) and returns plain nested lists the landed folds
+  already accept: `tally_arrays` / `read_statepoint` yield `[voxel][group]`
+  `flux` plus matching `rel_err` (`std_dev / mean`, 0.0 where the mean is
+  0) and the `G+1` MeV energy edges (`[]` unbinned — a single total
+  group), with `cell_flux` / `voxel_flux` selecting the group vector the
+  `damage` folds take alongside the edges as `bounds`. `tally_to_csv` /
+  `tally_from_csv` move the same dict through a commented CSV with stock
+  stdlib only, so an OpenMC machine exports and any machine reads back
+  bit-identically. Mesh tallies are `RegularMesh`-only (C-order voxels,
+  centimetre bounds); a missing file, missing OpenMC, missing
+  tally/score, multi-nuclide tallies, multi-bin non-energy filters, a
+  second mesh/energy filter, and non-regular meshes are all loud errors
+  naming the remedy — never silent empties. OpenMC stays a caller-side
+  lazy import (the base package never depends on it). Gates are
+  synthetic-statepoint unit tests in `tests/test_openmc_bridge.py`
+  (pinned fetch sequence, mesh C-order and unit conversion, singleton
+  cell-filter transparency, CSV round-trips, loud-error vectors, and the
+  `cell_flux` → `nrt_dpa` feed check).
+
+- Wall-load mapping in flux coordinates in `nucleide-equilib-io` (exposed
+  through `nucleide.equilib` as `wall_load`): closed-form per-cell
+  accumulation `q[j][k] = Σ_i S·J·Δs` of a caller birth-rate density
+  field onto the caller wall surface sharing the same flux coordinates
+  (radial-major voxels, one-field-period toroidal convention, Jacobian
+  voxels from the landed `fourier_jacobian` kernel) plus the
+  angle-weighted one-field-period total, which conserves the discrete
+  births to roundoff. Pure glue — no transport, no shadowing, no
+  FEM/thermal, no CAD, no HDF5; shape mismatches and non-finite or
+  negative densities/Jacobians are loud named errors reusing the crate
+  vocabulary. Gates are hand-computed toy geometries at 1e-12 relative
+  (axisymmetric uniform field vs the analytic `S·J0` wall flux with the
+  `12π²` total, a cosine-Jacobian vector, radial weighting, and discrete
+  conservation) in `wall.rs` unit tests and `tests/test_equilib.py`, with
+  always-run E9–E10 rows in the same `equilib` validation report.
+
+- Closed-form ECRH accessibility kernel in `nucleide-plasma-source`
+  (exposed through `nucleide.plasma_source` as `ecrh_scalars` /
+  `ecrh_accessibility`): cold electron-cyclotron resonance
+  (`B_res = 2π·m_e·f/(n·e)`), the weakly-relativistic Maxwell–Jüttner
+  shift (`B_res(T_e) = γ·B_res`, `γ = 1 + T_e/511 keV`), and the O1/X1
+  cut-off densities (`n_c,O1 = ε₀·m_e·(2π·f)²/e²`,
+  `n_c,X1 = n_c,O1·(f − f_ce)/f`, evanescent `None` where `f ≤ f_ce`)
+  from the published ECRH/dispersion facts (Bornatici et al., Nucl. Fusion
+  23 (1983) 1153; Stix, Waves in Plasmas (1992) Ch. 1), located by linear
+  interpolation along a caller beamline (`s` [m] strictly increasing,
+  `B` [T], `n_e` [m⁻³]) into plain-float resonance/cut-off positions —
+  the per-port penalty inputs for blanket bookkeeping. Pure functions
+  with named loud errors (empty/ragged/non-monotonic beamlines, negative
+  densities, bad frequency/harmonic/temperature); no ray tracing, no
+  launcher design, no HDF5. Gates are hand-computed vectors at 1e-9
+  relative (170 GHz ITER-class resonance/shift/cut-offs plus beamline
+  crossings) in `ecrh.rs` unit tests and `tests/test_ecrh_access.py`.
+
+- Sublet S1+S2 radiological totals in `nucleide-alara-io` (exposed through
+  `nucleide.alara` as `alara_total_activity` / `alara_decay_heat`). S1 sums
+  per-nuclide activities `Ai = Ni λi` (Bq) with the FISPACT-II IRT
+  α/β/γ split (IRT 4 → alpha; IRT 1, 2, 11, 14, 16, 17, 19, 20 → beta;
+  IRT 3 → gamma; IRT 12, 13 split α/β and IRT 15 splits α/γ by
+  caller-supplied branch fractions); S2 folds caller-supplied average decay
+  energies into per-class decay heat `Ai·E·C1` (kW, C1 = eV→kJ). Both carry
+  the excluding-tritium companion and conserve parts-to-total exactly;
+  unmapped IRTs and bad values are loud named errors. Pinned to the open
+  CCFE-PR(16)53 preprint (Table X, Tables VI–VII) and the open FISPACT-II
+  `output_interpretation` reference — never the paywalled journal pages;
+  decay energies stay caller-supplied, never vendored. S3–S7, ICRP/IAEA
+  coefficients, bremsstrahlung, DPA/KERMA/gas, and fission counts stay out.
+  `validation/clearance_vs_pypact.py` gains always-run C7 gates
+  (hand-computed vectors at exact equality) in the same `clearance` report.
+
+- TBR and blanket power bookkeeping (`nucleide-blanket`,
+  `nucleide.blanket`): raw TBR from caller `(bred, source)` tallies,
+  multiplicative per-port coverage haircuts, blanket energy
+  multiplication, the tritium burn rate from pinned `17.6` MeV /
+  `3.0160492` u constants, and the breeding-margin / net-surplus
+  fuel-cycle metrics. Pure arithmetic over caller transport tallies —
+  no transport solving, no geometry optimization, and no coupling into
+  the `tritium` permeation kernel (which keeps its no-breeding-coupling
+  scope line). Stellaris Point-A values gate the kernel as regression
+  vectors: raw TBR `1.1070`, `1.074` after the 3% ECRH-port haircut,
+  multiplication `1.20`, burn `416.6` g/day.
+
+- Coil fast-fluence / lifetime analytics in `nucleide-damage` (exposed
+  through `nucleide.damage` as `coil_fast_flux` / `coil_fast_fluence` /
+  `coil_accumulate` / `coil_lifetime` / `coil_remaining` plus
+  `FPY_SECONDS`): magnet lifetime bookkeeping over caller spectra — the
+  fast-flux sum above a caller threshold (groups count iff their upper edge
+  clears the threshold; a threshold cutting through a group includes the
+  whole group), fluence as flux × time, piecewise-constant history
+  accumulation, and weakest-link life (`min` of limit/rate, or
+  limit-minus-accumulated over rate clamped at zero). dpa spectral
+  weighting stays in the landed folds (the NRT/arc fold at one second is
+  the rate the life kernel consumes). Zero rates never breach and are
+  skipped (all zero is infinite life with a `None` limiting channel); all
+  shapes, signs, and orderings are loud named errors reusing the fold
+  vocabulary. Limit tables are always caller-supplied — published design
+  numbers (3e22 / 1.5e23 m⁻² fast-fluence limits at a 99th-percentile coil
+  fast flux of 9.5e13 m⁻²s⁻¹ → ~10 FPY, limited by the first channel) are
+  gates at pinned tolerance, never defaults. Magnetics, quench,
+  structural analysis, and transport solving stay out.
+
+- Equilibrium data readers in `nucleide-equilib-io` (exposed through
+  `nucleide.equilib` as `probe_variant` / `read_wout` / `jacobian` /
+  `jacobian_grid` / `parse_indata` plus typed `indata_*` helpers). A
+  pure classic-netCDF `wout` reader accepts CDF-1 (`43 44 46 01`) and
+  CDF-2 (`43 44 46 02`) per magic probe (`ncdump -k` must report
+  `classic` / `64-bit offset`) and rejects HDF5-backed netCDF-4 and
+  CDF-5 loudly for facade-side conversion (no HDF5 in Rust); it reads
+  the documented variable lists (`nfp`, `ns`, `xm`, `xn`, `rmnc`,
+  `zmns`, `lmns`, `gmnc` minimum with dims
+  `radius`/`mn_mode`/`mn_mode_nyq`, later-use `bmnc`/`bsubumnc`/
+  `bsubvmnc`/`bsubsmns`/`currumnc`/`currvmnc`, optional
+  `mpol`/`ntor`/`phiedge`/`volume_p`). The `&INDATA` namelist grammar
+  covers scalar switches, power-series profiles, and boundary Fourier
+  tables (sliced indices like `RBC(0:4,2)` are a loud error;
+  `NCURR = 1` reads as the `I'(s)` profile; absent `LFREEB` reads
+  fixed boundary). Flux-surface Jacobian helpers evaluate the `gmnc`
+  Fourier sum at points and over one-field-period grids for volume
+  weighting. Reads data, never solves equilibria; synthetic fixtures
+  are built from the published variable lists only (never solver
+  output). Gates are magic-byte accept/reject vectors, Jacobian hand
+  vectors, and INDATA grammar vectors in-crate plus
+  `tests/test_equilib.py` and the `validation/equilib_vs_desc.py`
+  oracle (DESC/simsopt legs SKIP loudly outside the container).
+
+- Arbitrary-3D / stellarator birth-rate lattice source in
+  `nucleide-plasma-source` (exposed through `nucleide.plasma_source`
+  with `kind="lattice"`): the caller supplies the full 3D birth
+  distribution as a point list — `points` of `{"position": [x, y, z]
+  [cm], "rate": w >= 0, "ion_temperature_kev": Ti}` (relative
+  birth-rate weights, arbitrary global scale; `Ti = 0` is the
+  monoenergetic nominal line) — with the landed machinery applied per
+  node (D/T mixture rates, Ballabio spectra, seeded sampling, card
+  emission with drift reports; MCPL projection stays caller-side).
+  The optional `field_periods`/`base_angle` pair declares field-period
+  symmetry (both keys or neither): the points are the base-sector cloud,
+  replicated uniformly around the machine axis, with the symmetric total
+  scaled by the period count. A two-point hand vector pins the contract
+  (total 3, mean birth position `(100, 0, 25)`, mono 14.021 MeV line); a
+  single node reproduces the landed point source bit-for-bit; a uniform
+  ring cloud converges to the analytic ring moments; the folded
+  base-sector stream reproduces the expanded full-cloud stream bit-for-bit
+  (including the single-node case: one base node fans out over all
+  copies); cards carry the cloud's cylindrical-`R`/vertical/energy
+  marginals with the same drift rows plus a `lattice discretization` row
+  and still round-trip byte-identically through the typed SDEF reader.
+  Non-finite positions, negative rates, empty or zero-total clouds, and
+  non-symmetric fold inputs are loud named errors (`InvalidLattice` /
+  `InvalidSymmetry`). The Stellaris-class precedent (30 radial × 50
+  poloidal × 100 toroidal point sources, 14.06 MeV monoenergetic) is the
+  named design point; equilibrium solving, transport solving, CAD/DAGMC,
+  tabulated plasma data, and HDF5 stay out. `validation/
+  plasma_source_vs_openmc.py` adds always-run P12 gates (hand vectors,
+  single-point recovery, ring-limit closure, fold replication and totals,
+  card round trip, mixture branch fire) and a container-only O12 probe on
+  a dense monoenergetic ring cloud vs the upstream ring geometry and
+  Ballabio helpers.
+
+- Deuterium hot-tail fraction for the D/T fuel mixture in
+  `nucleide-plasma-source` (exposed through `nucleide.plasma_source`
+  as the `deuterium_tail={"fraction": eta, "temperature_kev": T_tail}`
+  dict [keV] on a parametric `fuel` blend): the one pinned
+  single-tail-temperature non-Maxwellian shape within the Eriksson et
+  al., Comput. Phys. Commun. 199 (2016) 40 arbitrary-distribution
+  framework — the bulk `(1 − eta)` deuterium at `T_D` plus a hot tail
+  `eta` at `T_tail`, each sub-pair reacting at its own mass-weighted
+  relative temperature (D-T at `T_DT`/`T_DTt`, D-D at `T_D`/`T_mix`/
+  `T_tail`) with the Ballabio lines following per sub-branch through the
+  strength rule, the sampler's branch roulette, the card energy
+  marginals, and a `deuterium tail` drift row carrying the tail neutron
+  share. The pinned 70/30 hand vector (`T_D = 20`, `T_T = 30` keV,
+  `eta = 0.05` at `T_tail = 60` keV) gates the rate at 1e-12 relative;
+  `eta = 0` reproduces the no-tail mixture kernel bit-for-bit (strengths,
+  sampled stream, cards — regression gates); the tail requires a `fuel`
+  mixture and composes with species temperatures and toroidal sectors.
+  Non-finite, out-of-range, or negative tail parameters are loud named
+  errors (`NonFinite` / `InvalidTail` / `NegativeIonTemperature`). The
+  effective-temperature line convention carries the same error stance as
+  the species pair (the residual against the full Eriksson numerical
+  integration is out of scope); the rest of the full Eriksson
+  generalization stays a loud boundary. `validation/
+  plasma_source_vs_openmc.py` adds always-run P13 gates (sub-rate-rule
+  moments and branch share, the drift tail-neutron share, zero-fraction
+  recovery, loud errors) and a container-only O13 probe against the
+  upstream quadrature with the NeSST reactivities evaluated at the five
+  sub-pair temperatures.
+- Interactive demos for the new surfaces: the fusion-source demo gains a
+  parametric + hot-tail tab, the activation demo a Sublet S1+S2 tab, plus
+  new ECRH, blanket, equilibrium, coil (damage), and wall-load demos.
+  Fixed the WASM `sampleFusionSource` parametric path, which rejected the
+  `kind`/`n`/`seed` sampling envelope its own dispatcher requires
+  (`FusionParametricSpecJson` denies unknown fields to keep stray
+  `fuel_mixture`/`species_temperatures`/`sector` keys loud — only the
+  envelope keys are stripped before parsing).
+
 ## [0.14.0] - 2026-09-17
 
 ### Added
@@ -308,7 +512,7 @@ workspace crates from tags.
 
 ### Added
 
-- Clearance / waste-classification analytics (0.12.0 cycle 04) in
+- Clearance / waste-classification analytics in
   `nucleide-alara-io` and `nucleide-fispact-io` (exposed through
   `nucleide.alara` and `nucleide.fispact`). The clearance index
   CI = Σ Aᵢ/CLᵢ and the sum-of-fractions screening rule (RS-G-1.7 §5,
@@ -350,8 +554,8 @@ workspace crates from tags.
   in this direction (Geant4 expresses boundaries through wrapper code, not
   geometry markup). New `fixtures/mcnp/inp/deck_csg_cylinders.txt` extends
   the `deck_csg_*` family.
-- Parametric tokamak plasma source in `nucleide-plasma-source` (Cycle 01
-  second landing, exposed through `nucleide.plasma_source` with
+- Parametric tokamak plasma source in `nucleide-plasma-source`
+  (exposed through `nucleide.plasma_source` with
   `kind="parametric"`): Miller-geometry flux surfaces (Fausser et al., Fus.
   Eng. Des. 87 (2012) 787 — `major_radius`/`minor_radius`/`elongation`/
   `triangularity`/`shafranov_factor`) carrying caller-supplied L/H/A-mode
@@ -492,7 +696,7 @@ workspace crates from tags.
   dependency is added). New-crate checklist applied (workspace/release
   wiring, `gen-reference` entries, crate-responsibilities section, README
   feature table).
-- Multi-layer tritium permeation in `nucleide-tritium` (Cycle 08, exposed
+- Multi-layer tritium permeation in `nucleide-tritium` (exposed
   through `nucleide.tritium` as `steady_layers`/`transient_layers`):
   series stacks of caller-specified layers (thickness, cells, Arrhenius
   `D`, solubility `K_S`, per-layer traps/temperature/source — e.g.

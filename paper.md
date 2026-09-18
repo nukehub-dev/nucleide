@@ -45,20 +45,30 @@ deterministic-transport file glue (CCCC cross-section and flux readers with a
 transient analysis, gamma-measurement analytics (spectrum smoothing, counting,
 calibration, and X-ray lines), single-material card emission across five code
 dialects, ENDL electron-library reading, and NumPy tally bridges. It creates
-tokamak fusion-neutron sources — ring, point, and parametric Miller-geometry
-plasmas with ion-temperature-broadened D-D/D-T spectra, sampled to particle
+tokamak fusion-neutron sources — ring, point, parametric Miller-geometry, and
+arbitrary-3D caller-lattice plasmas with field-period symmetry, carrying
+ion-temperature-broadened D-D/D-T spectra plus one pinned deuterium hot-tail
+shape, sampled to particle
 vectors and emitted as MCNP `SDEF` and Serpent source cards
-[@brysk1973; @ballabio1998; @fausser2012; @boschhale1992] — and scores their
+[@brysk1973; @ballabio1998; @fausser2012; @boschhale1992; @eriksson2016] — with
+closed-form ECRH accessibility (cold resonance, relativistic shift, O1/X1
+cut-offs) [@bornatici1983] — and scores their
 first-wall impact with NRT and arc-dpa displacements plus He/H gas production
-folded over caller spectra [@norgett1975; @nordlund2018]. Further analytics
+folded over caller spectra, with coil fast-flux and lifetime analytics
+[@norgett1975; @nordlund2018]. Blanket bookkeeping derives effective TBR from
+port-penalty haircuts, energy multiplication, and the tritium burn/surplus
+margin. Further analytics
 cover foil-activation spectrum unfolding (SAND-II iteration [@mcelroy1967]),
 clearance screening against nuclide limit tables with the sum-of-fractions rule
-[@sublet2017], and 1D tritium diffusion-trapping transport through single- and
-multi-layer walls. Geometry glue translates MCNP CSG to OpenMC, Serpent, PHITS,
+[@sublet2017] (plus Sublet S1+S2 activity and decay-heat totals), and 1D tritium
+diffusion-trapping transport through single- and
+multi-layer walls. A read-only equilibrium layer parses classic-netCDF VMEC
+`wout` files and STELLOPT `&INDATA` blocks and maps wall loads in flux
+coordinates. Geometry glue translates MCNP CSG to OpenMC, Serpent, PHITS,
 and GDML inputs, and MCPL utilities merge, extract, profile, and repair
-particle lists.
+particle lists, with a caller-side OpenMC tally bridge for statepoint spectra.
 
-The core is written in Rust as a composable workspace of twenty-three crates. A thin
+The core is written in Rust as a composable workspace of twenty-five crates. A thin
 PyO3 layer exposes a typed Python API (wheels for Linux, macOS, and Windows via
 PyPI), and a `wasm-bindgen` build powers interactive tutorials that run
 entirely in the browser. Correctness is anchored by byte-exact golden fixtures,
@@ -104,7 +114,8 @@ The Rust workspace enforces strict layering: capability crates (`nucleide-nuclei
 `nucleide-alara-io`, `nucleide-cccc-io`, `nucleide-fispact-io`, `nucleide-origen-io`,
 `nucleide-r2s`, `nucleide-kinetics`, `nucleide-spectroscopy`, `nucleide-emit`,
 `nucleide-mcpl-io`, `nucleide-csg-xlate`, `nucleide-tritium`,
-`nucleide-plasma-source`, `nucleide-damage`, `nucleide-unfold`)
+`nucleide-plasma-source`, `nucleide-damage`, `nucleide-unfold`,
+`nucleide-blanket`, `nucleide-equilib-io`)
  never depend on the bindings; `bindings/python` and
 `bindings/wasm` are thin facades with no business logic; the pure-Python
 package re-exports the compiled module behind `.pyi` stubs so the public API is
@@ -172,10 +183,17 @@ The repository contains a runnable cross-code validation harness
   moments match an independent Table III transcription to $<10^{-12}$, the
   Miller map matches the upstream `openmc-plasma-source` implementation
   exactly, reactivities match NeSST to $5.8\times10^{-9}$, and end-to-end
-  parametric birth moments match fine quadrature to $<10^{-2}$.
+  parametric birth moments match fine quadrature to $<10^{-2}$. The
+  arbitrary-3D lattice closes on the ring limit (radius exact, monoenergetic
+  line to $1.3\times10^{-16}$), the pinned 70/30 D/T blend with a 5%
+  deuterium hot tail at 60 keV matches quadrature to $<10^{-2}$ in mean birth
+  energy and $\langle r^2\rangle$, and the closed-form ECRH accessibility
+  scalars (cold resonance, relativistic shift, O1/X1 cut-offs) are pinned by
+  hand vectors at $10^{-9}$ in the unit suite.
 - **Damage metrics**: SPECTER-report-transcribed spots (Fe/Ti/Cu dpa, C/Li/B/N
   He/H appm, Fe He/dpa) fold within the $10^{-4}$ print precision; analytic
-  NRT/arc gates match closed forms to $<10^{-15}$.
+  NRT/arc gates match closed forms to $<10^{-15}$; coil fast-flux and
+  lifetime analytics carry exact hand-vector gates in the unit suite.
 - **Spectrum unfolding**: synthetic forward-fold round-trips recover spectra
   to $\sim10^{-16}$ (determined) and reproduce rates to $10^{-9}$ with the
   guess error halved (6-detector/24-group underdetermined case); IRDFF-II
@@ -183,7 +201,14 @@ The repository contains a runnable cross-code validation harness
 - **Clearance screening**: the inventory overlap with the Apache-2.0 `pypact`
   reader agrees exactly (7 nuclide-steps, $0.0$ difference); hand-computed
   clearance-index vectors match exactly and the $=1$ boundary classifies both
-  sides correctly.
+  sides correctly; the Sublet S1+S2 hand vectors match exactly (124 Bq total
+  activity with the IRT $\alpha$/$\beta$/$\gamma$ split, decay-heat parts
+  summing to the total).
+- **Equilibrium data**: the classic-netCDF `wout` magic probe, HDF5/CDF-5
+  rejection, reader-minimum round-trip, Jacobian hand vectors, INDATA grammar
+  vectors, and flux-coordinate wall-load gates (axisymmetric $12\pi^2$ and
+  cosine hand vectors) all pass on synthetic inputs; the DESC/simsopt oracle
+  legs report loud skips (optional dependencies absent from the container).
 - **Nuclear data**: natural abundances and half-lives match OpenMC exactly
 (both derive from IUPAC 2013 [@meija2016iupac] and ENDF/B-VIII.0
   [@brown2018endf]); masses match OpenMC's AME2020 [@huang2021ame2020;
@@ -219,7 +244,9 @@ MCPL merge/extract/stats utilities, GDML schema validation, and OpenMC/Serpent
 weight-window emission likewise run as golden-text and re-parse/load probes.
 Committed results regenerate through the same
 container entry point as the rest of the harness (`run_container.sh`). No
-numeric agreement claims are made here.
+numeric agreement claims are made here. TBR bookkeeping and the caller-side
+OpenMC tally bridge carry synthetic hand-vector gates in the unit suite
+(`tests/test_blanket.py`, `tests/test_openmc_bridge.py`).
 
 ![Per-nuclide final densities after one 30-day CRAM-48 step, Nucleide vs OpenMC, for the nickel activation chain (left) and the full CASL/VERA chain (right). Points lie on the identity line; the lower strips show the per-nuclide relative differences, all at the $10^{-15}$ level (maximum $8.3\times10^{-15}$ and $8.9\times10^{-15}$, respectively).](validation/figures/depletion_agreement.png)
 
@@ -233,7 +260,7 @@ numeric agreement claims are made here.
 
 The documentation website (built with Astro, deployed to GitHub Pages) provides
 tutorials, an API reference, and theory pages deriving the implemented
-mathematics, plus twenty-two interactive browser tutorials powered by the WebAssembly
+mathematics, plus twenty-three interactive browser tutorials powered by the WebAssembly
  build that let users run depletion, enrichment, MAGIC, file-parsing,
  activation-analysis, deterministic-transport, point-kinetics, and
  gamma-spectroscopy examples with no installation.

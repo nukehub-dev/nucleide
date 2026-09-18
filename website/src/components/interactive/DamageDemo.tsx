@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useWasm } from "../../lib/wasm";
+import type { CoilFlux, CoilLifetime } from "../../types/nucleide-wasm";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
@@ -18,6 +19,9 @@ const DEFAULT_TARGET = "Fe56";
 const DEFAULT_ED = "40";
 const DEFAULT_B_ARC = "-0.55";
 const DEFAULT_C_ARC = "0.3";
+const DEFAULT_THRESHOLD = "0.1";
+const DEFAULT_LIMITS = "1e20, 5e20";
+const DEFAULT_RATES = "1e12, 1e12";
 
 const GROUP_LABELS = GROUP_BOUNDS.slice(0, 3).map((lo, i) => `${lo}-${GROUP_BOUNDS[i + 1]} MeV`);
 
@@ -49,6 +53,11 @@ export function DamageDemo() {
   const [cArcText, setCArcText] = useState(DEFAULT_C_ARC);
   const [metrics, setMetrics] = useState<DamageMetrics | null>(null);
   const [curve, setCurve] = useState<ArcCurve | null>(null);
+  const [thresholdText, setThresholdText] = useState(DEFAULT_THRESHOLD);
+  const [limitsText, setLimitsText] = useState(DEFAULT_LIMITS);
+  const [ratesText, setRatesText] = useState(DEFAULT_RATES);
+  const [coilFlux, setCoilFlux] = useState<CoilFlux | null>(null);
+  const [coilLife, setCoilLife] = useState<CoilLifetime | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function clearError() {
@@ -104,11 +113,20 @@ export function DamageDemo() {
 
       setMetrics({ nrtDpa, arcDpa, heAppm, heDpaRatio });
       setCurve({ tEv, xi });
+
+      // Coil fast-flux / weakest-link lifetime over the same group grid.
+      const thresholdMeV = parseEntry(thresholdText, "fast threshold");
+      const limits = limitsText.split(",").map((t, i) => parseEntry(t.trim(), `limit ${i + 1}`));
+      const rates = ratesText.split(",").map((t, i) => parseEntry(t.trim(), `rate ${i + 1}`));
+      setCoilFlux(wasm.coilFastFlux(flux, GROUP_BOUNDS, thresholdMeV, seconds));
+      setCoilLife(wasm.coilLifetime(limits, rates));
       setLocalError(null);
     } catch (e) {
       setLocalError(e instanceof Error ? e.message : String(e));
       setMetrics(null);
       setCurve(null);
+      setCoilFlux(null);
+      setCoilLife(null);
     }
   }
 
@@ -247,6 +265,48 @@ export function DamageDemo() {
             <Button onClick={run}>Compute damage metrics</Button>
           </div>
 
+          <p className="text-sm text-muted-foreground">
+            Coil fast-flux and weakest-link lifetime use the same group grid: the fast flux sums
+            groups above the threshold, and each limit/rate pair is one ageing channel in shared
+            units (comma-separated lists must match in length).
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1">
+              <Label className="flex min-h-10 items-end">Fast threshold [MeV]</Label>
+              <Input
+                value={thresholdText}
+                onChange={(e) => {
+                  setThresholdText(e.target.value);
+                  clearError();
+                }}
+                className="font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="flex min-h-10 items-end">Channel limits</Label>
+              <Input
+                value={limitsText}
+                onChange={(e) => {
+                  setLimitsText(e.target.value);
+                  clearError();
+                }}
+                className="font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="flex min-h-10 items-end">Channel rates [/s]</Label>
+              <Input
+                value={ratesText}
+                onChange={(e) => {
+                  setRatesText(e.target.value);
+                  clearError();
+                }}
+                className="font-mono text-xs"
+              />
+            </div>
+          </div>
+
           {metrics && (
             <div className="space-y-2">
               <p className="text-sm font-medium">Spectral-fold results</p>
@@ -303,6 +363,32 @@ export function DamageDemo() {
                   legend: { orientation: "h", y: -0.25 },
                 }}
               />
+            </div>
+          )}
+
+          {coilFlux && coilLife && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Coil fast-flux and lifetime</p>
+              <table className="text-sm">
+                <tbody className="font-mono text-xs">
+                  <tr>
+                    <td className="pr-4">Fast flux</td>
+                    <td>{fmt(coilFlux.fastFlux)} n/cm²/s</td>
+                  </tr>
+                  <tr>
+                    <td className="pr-4">Fast fluence</td>
+                    <td>{fmt(coilFlux.fastFluence)} n/cm²</td>
+                  </tr>
+                  <tr>
+                    <td className="pr-4">Weakest-link life</td>
+                    <td>
+                      {Number.isFinite(coilLife.seconds)
+                        ? `${fmt(coilLife.seconds)} s (channel ${coilLife.limiting})`
+                        : "infinite (no ageing channel)"}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           )}
         </>

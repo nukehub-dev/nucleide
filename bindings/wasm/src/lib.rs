@@ -5457,6 +5457,14 @@ struct FusionParametricSpecJson {
     separatrix_temp_kev: f64,
     #[serde(rename = "pedestalRadiusCm", alias = "pedestal_radius_cm")]
     pedestal_radius_cm: f64,
+    #[serde(rename = "fuelDeuterium", alias = "fuel_deuterium")]
+    fuel_deuterium: Option<f64>,
+    #[serde(rename = "fuelTritium", alias = "fuel_tritium")]
+    fuel_tritium: Option<f64>,
+    #[serde(rename = "tailFraction", alias = "tail_fraction")]
+    tail_fraction: Option<f64>,
+    #[serde(rename = "tailTempKev", alias = "tail_temp_kev")]
+    tail_temp_kev: Option<f64>,
 }
 
 /// Read one string field off a raw JS object.
@@ -5507,12 +5515,46 @@ fn point_config(spec: &JsValue) -> Result<nucleide_plasma_source::PlasmaSourceCo
 fn parametric_config(
     spec: &JsValue,
 ) -> Result<nucleide_plasma_source::ParametricPlasmaConfig, JsValue> {
+    // The sampling envelope (`kind` dispatch, `n`/`seed` counts) rides on the
+    // same object `sample_fusion_source` matches on, but the spec struct
+    // denies unknown fields (so a stray `fuel_mixture`/`species_temperatures`/
+    // `sector` key fails loudly instead of silently sampling the wrong
+    // plasma). Strip just the envelope keys before struct parsing.
+    let body: js_sys::Object = spec.clone().into();
+    for key in ["kind", "n", "seed"] {
+        let _ = js_sys::Reflect::delete_property(&body, &JsValue::from_str(key));
+    }
     let parsed: FusionParametricSpecJson =
-        serde_wasm_bindgen::from_value(spec.clone()).map_err(js_err)?;
+        serde_wasm_bindgen::from_value(JsValue::from(body)).map_err(js_err)?;
     use nucleide_plasma_source::{
         DensityProfile, MillerGeometry, ParametricPlasmaConfig, ProfileMode, TemperatureProfile,
     };
     let mode = ProfileMode::parse(&parsed.mode).map_err(js_err)?;
+    let fuel_mixture = match (parsed.fuel_deuterium, parsed.fuel_tritium) {
+        (Some(d), Some(t)) => Some(nucleide_plasma_source::FuelMixture::new(d, t).map_err(js_err)?),
+        (None, None) => None,
+        _ => {
+            return Err(js_err(
+                "fuelDeuterium and fuelTritium must be given together",
+            ));
+        }
+    };
+    let tail = match (parsed.tail_fraction, parsed.tail_temp_kev) {
+        (Some(f), Some(t)) => {
+            if fuel_mixture.is_none() {
+                return Err(js_err(
+                    "tailFraction/tailTempKev need a D/T fuel mixture (fuelDeuterium + fuelTritium)",
+                ));
+            }
+            Some(nucleide_plasma_source::DeuteriumTail::new(f, t).map_err(js_err)?)
+        }
+        (None, None) => None,
+        _ => {
+            return Err(js_err(
+                "tailFraction and tailTempKev must be given together",
+            ));
+        }
+    };
     Ok(ParametricPlasmaConfig {
         geometry: MillerGeometry {
             major_radius_cm: parsed.major_radius_cm,
@@ -5537,8 +5579,9 @@ fn parametric_config(
         },
         pedestal_radius_cm: parsed.pedestal_radius_cm,
         fuel: parse_fusion_reaction(&parsed.fuel)?,
-        fuel_mixture: None,
+        fuel_mixture,
         species_temperatures: None,
+        tail,
         sector: None,
         weight: 1.0,
     })
@@ -5835,5 +5878,494 @@ pub fn clearance_sum_of_fractions(inventory: JsValue) -> Result<JsValue, JsValue
         class: out.class.to_string(),
         max_fraction: out.max_fraction,
         max_nuclide: out.max_nuclide.map(|id| id.to_name()),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Heating, lattice, blanket, coil, sublet, and equilibrium facades
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct EcrhScalarsJson {
+    #[serde(rename = "gyrofrequencyGhz")]
+    gyrofrequency_ghz: f64,
+    #[serde(rename = "resonantFieldT")]
+    resonant_field_t: f64,
+    #[serde(rename = "relativisticFieldT")]
+    relativistic_field_t: Option<f64>,
+    #[serde(rename = "o1CutoffDensityM3")]
+    o1_cutoff_density_m3: f64,
+    #[serde(rename = "x1CutoffDensityM3")]
+    x1_cutoff_density_m3: Option<f64>,
+}
+
+fn check_harmonic(harmonic: f64) -> Result<u32, JsValue> {
+    if !harmonic.is_finite() || harmonic.fract() != 0.0 || harmonic < 1.0 || harmonic > 10.0 {
+        return Err(js_err(format!(
+            "harmonic must be an integer in [1, 10] (got {harmonic})"
+        )));
+    }
+    Ok(harmonic as u32)
+}
+
+/// Closed-form ECRH scalar quantities (ECRH-1–ECRH-5).
+///
+/// `frequencyGhz` is the wave frequency in GHz, `harmonic` the cyclotron
+/// harmonic (integer 1–10), `bT` the local field in tesla, and `teKev` the
+/// optional electron temperature in keV (relativistic shift). Returns
+/// `{gyrofrequencyGhz, resonantFieldT, relativisticFieldT,
+/// o1CutoffDensityM3, x1CutoffDensityM3}` (densities in m⁻³; the X1 cut-off
+/// is `null` where the wave is evanescent, `f ≤ f_ce`).
+#[wasm_bindgen(js_name = ecrhScalars)]
+pub fn ecrh_scalars(
+    frequency_ghz: f64,
+    harmonic: f64,
+    b_t: f64,
+    te_kev: Option<f64>,
+) -> Result<JsValue, JsValue> {
+    use nucleide_plasma_source::ecrh;
+    let n = check_harmonic(harmonic)?;
+    let cold = ecrh::cold_resonant_field_t(frequency_ghz, n).map_err(js_err)?;
+    let rel = te_kev
+        .map(ecrh::relativistic_gamma)
+        .transpose()
+        .map_err(js_err)?
+        .map(|g| cold * g);
+    to_js(&EcrhScalarsJson {
+        gyrofrequency_ghz: ecrh::gyrofrequency_ghz(b_t).map_err(js_err)?,
+        resonant_field_t: cold,
+        relativistic_field_t: rel,
+        o1_cutoff_density_m3: ecrh::o1_cutoff_density_m3(frequency_ghz).map_err(js_err)?,
+        x1_cutoff_density_m3: ecrh::x1_cutoff_density_m3(frequency_ghz, b_t).map_err(js_err)?,
+    })
+}
+
+/// Whole-beamline ECRH accessibility report.
+///
+/// `sM`/`bT`/`neM3` are the caller beamline (positions in metres, fields in
+/// tesla, densities in m⁻³); `frequencyGhz`/`harmonic` select the wave and
+/// `teKev` the optional electron temperature. Returns
+/// `{resonantFieldT, relativisticFieldT, o1CutoffDensityM3, resonanceM,
+/// o1CutoffM, x1CutoffM}` with located positions in metres.
+#[wasm_bindgen(js_name = ecrhAccessibility)]
+pub fn ecrh_accessibility(
+    s_m: Vec<f64>,
+    b_t: Vec<f64>,
+    ne_m3: Vec<f64>,
+    frequency_ghz: f64,
+    harmonic: f64,
+    te_kev: Option<f64>,
+) -> Result<JsValue, JsValue> {
+    use nucleide_plasma_source::ecrh;
+    let n = check_harmonic(harmonic)?;
+    let out = ecrh::accessibility(&s_m, &b_t, &ne_m3, frequency_ghz, n, te_kev).map_err(js_err)?;
+    #[derive(Serialize)]
+    struct AccessibilityJson {
+        #[serde(rename = "resonantFieldT")]
+        resonant_field_t: f64,
+        #[serde(rename = "relativisticFieldT")]
+        relativistic_field_t: Option<f64>,
+        #[serde(rename = "o1CutoffDensityM3")]
+        o1_cutoff_density_m3: f64,
+        #[serde(rename = "resonanceM")]
+        resonance_m: Vec<f64>,
+        #[serde(rename = "o1CutoffM")]
+        o1_cutoff_m: Vec<f64>,
+        #[serde(rename = "x1CutoffM")]
+        x1_cutoff_m: Vec<f64>,
+    }
+    to_js(&AccessibilityJson {
+        resonant_field_t: out.resonant_field_t,
+        relativistic_field_t: out.relativistic_field_t,
+        o1_cutoff_density_m3: out.o1_cutoff_density_m3,
+        resonance_m: out.resonance_m,
+        o1_cutoff_m: out.o1_cutoff_m,
+        x1_cutoff_m: out.x1_cutoff_m,
+    })
+}
+
+#[derive(Deserialize)]
+struct LatticePointJson {
+    #[serde(rename = "positionCm")]
+    position_cm: [f64; 3],
+    rate: f64,
+    #[serde(rename = "tiKev")]
+    ti_kev: f64,
+}
+
+/// Sample `n` seeded particles from an arbitrary-3D birth-rate lattice.
+///
+/// `spec` takes `points` (one `{positionCm: [x, y, z], rate, tiKev}` row per
+/// node, lengths in cm, temperatures in keV), `reaction` (`"dt"`/`"dd"`),
+/// optional `fieldPeriods`/`baseAngle` symmetry, `n` (capped at
+/// [`MAX_FUSION_SAMPLES`]) and an integer `seed`. Returns `{kind:
+/// "lattice", totalStrength, count, particles}` with one `{positionCm,
+/// direction, energyMeV, weight}` row per particle.
+#[wasm_bindgen(js_name = sampleLatticeSource)]
+pub fn sample_lattice_source(spec: JsValue) -> Result<JsValue, JsValue> {
+    use nucleide_plasma_source::lattice::{LatticePoint, LatticeSourceConfig, LatticeSymmetry};
+    #[derive(Deserialize)]
+    struct LatticeSpecJson {
+        points: Vec<LatticePointJson>,
+        reaction: String,
+        #[serde(rename = "fieldPeriods")]
+        field_periods: Option<f64>,
+        #[serde(rename = "baseAngle")]
+        base_angle: Option<f64>,
+    }
+    let parsed: LatticeSpecJson = serde_wasm_bindgen::from_value(spec.clone()).map_err(js_err)?;
+    if parsed.points.is_empty() {
+        return Err(js_err("lattice needs at least one point"));
+    }
+    let points: Vec<LatticePoint> = parsed
+        .points
+        .iter()
+        .map(|p| LatticePoint {
+            position_cm: p.position_cm,
+            rate: p.rate,
+            ion_temperature_kev: p.ti_kev,
+        })
+        .collect();
+    let symmetry = match parsed.field_periods {
+        Some(n) => {
+            if !n.is_finite() || n.fract() != 0.0 || n < 1.0 {
+                return Err(js_err(format!(
+                    "fieldPeriods must be an integer >= 1 (got {n})"
+                )));
+            }
+            Some(LatticeSymmetry::new(n as u32, parsed.base_angle.unwrap_or(0.0)).map_err(js_err)?)
+        }
+        None => None,
+    };
+    let config = LatticeSourceConfig {
+        points,
+        reaction: parse_fusion_reaction(&parsed.reaction)?,
+        fuel_mixture: None,
+        species_temperatures: None,
+        symmetry,
+        weight: 1.0,
+    };
+    let total_strength = config.total_strength().map_err(js_err)?;
+    let (n, seed) = sample_args(&spec)?;
+    let mut sampler =
+        nucleide_plasma_source::lattice::LatticeSampler::new(config, seed).map_err(js_err)?;
+    let particles = sampler.sample_n(n);
+    #[derive(Serialize)]
+    struct LatticeSampleResult {
+        kind: String,
+        #[serde(rename = "totalStrength")]
+        total_strength: f64,
+        count: usize,
+        particles: Vec<FusionParticleJson>,
+    }
+    to_js(&LatticeSampleResult {
+        kind: "lattice".to_string(),
+        total_strength,
+        count: particles.len(),
+        particles: particle_json(&particles),
+    })
+}
+
+/// TBR / blanket bookkeeping scalars (B1–B4 plus burn accounting).
+///
+/// `tritonsBred`/`sourceNeutrons` are the caller tallies, `portFractions`
+/// the per-port coverage losses in `[0, 1)`, `fusionPowerMw` the fusion
+/// power in MW, and `requiredTbr` the optional requirement threshold.
+/// Returns `{rawTbr, effectiveTbr, margin, meets, burnGPerDay,
+/// surplusGPerDay}` (`meets` is `null` without a threshold).
+#[wasm_bindgen(js_name = tbrScalars)]
+pub fn tbr_scalars(
+    tritons_bred: f64,
+    source_neutrons: f64,
+    port_fractions: Vec<f64>,
+    fusion_power_mw: f64,
+    required_tbr: Option<f64>,
+) -> Result<JsValue, JsValue> {
+    use nucleide_blanket as blanket;
+    let raw = blanket::tbr_from_tallies(tritons_bred, source_neutrons).map_err(js_err)?;
+    let effective = blanket::apply_port_penalty(raw, &port_fractions).map_err(js_err)?;
+    let meets = required_tbr
+        .map(|r| blanket::meets_requirement(effective, r))
+        .transpose()
+        .map_err(js_err)?;
+    #[derive(Serialize)]
+    struct TbrScalarsJson {
+        #[serde(rename = "rawTbr")]
+        raw_tbr: f64,
+        #[serde(rename = "effectiveTbr")]
+        effective_tbr: f64,
+        margin: f64,
+        meets: Option<bool>,
+        #[serde(rename = "burnGPerDay")]
+        burn_g_per_day: f64,
+        #[serde(rename = "surplusGPerDay")]
+        surplus_g_per_day: f64,
+    }
+    to_js(&TbrScalarsJson {
+        raw_tbr: raw,
+        effective_tbr: effective,
+        margin: blanket::breeding_margin(effective).map_err(js_err)?,
+        meets,
+        burn_g_per_day: blanket::tritium_burn_g_per_day(fusion_power_mw).map_err(js_err)?,
+        surplus_g_per_day: blanket::net_surplus_g_per_day(effective, fusion_power_mw)
+            .map_err(js_err)?,
+    })
+}
+
+/// Coil fast-flux / fluence over caller groups.
+///
+/// `flux` holds the per-group fluxes, `bounds` the `G+1` MeV group edges,
+/// `thresholdMev` the fast threshold, and `seconds` the hold time. Returns
+/// `{fastFlux, fastFluence}`.
+#[wasm_bindgen(js_name = coilFastFlux)]
+pub fn coil_fast_flux(
+    flux: Vec<f64>,
+    bounds: Vec<f64>,
+    threshold_mev: f64,
+    seconds: f64,
+) -> Result<JsValue, JsValue> {
+    use nucleide_damage::coil;
+    #[derive(Serialize)]
+    struct CoilFluxJson {
+        #[serde(rename = "fastFlux")]
+        fast_flux: f64,
+        #[serde(rename = "fastFluence")]
+        fast_fluence: f64,
+    }
+    to_js(&CoilFluxJson {
+        fast_flux: coil::fast_flux(&flux, &bounds, threshold_mev).map_err(js_err)?,
+        fast_fluence: coil::fast_fluence(&flux, &bounds, threshold_mev, seconds).map_err(js_err)?,
+    })
+}
+
+/// Weakest-link coil lifetime from caller limit/rate tables.
+///
+/// `limits`/`rates` share units per channel; zero-rate channels never age.
+/// Returns `{seconds, limiting}` (`limiting` is `null` when nothing ages).
+#[wasm_bindgen(js_name = coilLifetime)]
+pub fn coil_lifetime(limits: Vec<f64>, rates: Vec<f64>) -> Result<JsValue, JsValue> {
+    use nucleide_damage::coil;
+    let out = coil::coil_lifetime(&limits, &rates).map_err(js_err)?;
+    #[derive(Serialize)]
+    struct CoilLifetimeJson {
+        seconds: f64,
+        limiting: Option<usize>,
+    }
+    to_js(&CoilLifetimeJson {
+        seconds: out.seconds,
+        limiting: out.limiting,
+    })
+}
+
+#[derive(Deserialize)]
+struct SubletActivityEntryJson {
+    nuclide: String,
+    #[serde(rename = "activityBq")]
+    activity_bq: f64,
+    irt: u8,
+    #[serde(rename = "alphaFrac")]
+    alpha_frac: Option<f64>,
+}
+
+/// Sublet S1 total activity with the α/β/γ split (Bq).
+///
+/// `entries` holds one `{nuclide, activityBq, irt, alphaFrac}` row per
+/// inventory nuclide (`alphaFrac` only for IRT 12, 13, 15). Returns
+/// `{totalBq, alphaBq, betaBq, gammaBq, exTritiumBq}`.
+#[wasm_bindgen(js_name = subletActivity)]
+pub fn sublet_activity(entries: JsValue) -> Result<JsValue, JsValue> {
+    use nucleide_alara_io::sublet::{total_activity, ActivityEntry};
+    let rows: Vec<SubletActivityEntryJson> =
+        serde_wasm_bindgen::from_value(entries).map_err(js_err)?;
+    let parsed: Vec<ActivityEntry> = rows
+        .iter()
+        .map(|r| {
+            Ok::<_, JsValue>(ActivityEntry {
+                nuclide: r
+                    .nuclide
+                    .parse::<NuclideId>()
+                    .map_err(|e| js_err(format!("`{}`: {e}", r.nuclide)))?,
+                activity_bq: r.activity_bq,
+                irt: r.irt,
+                alpha_frac: r.alpha_frac,
+            })
+        })
+        .collect::<Result<_, _>>()?;
+    let out = total_activity(&parsed).map_err(js_err)?;
+    #[derive(Serialize)]
+    struct SubletActivityJson {
+        #[serde(rename = "totalBq")]
+        total_bq: f64,
+        #[serde(rename = "alphaBq")]
+        alpha_bq: f64,
+        #[serde(rename = "betaBq")]
+        beta_bq: f64,
+        #[serde(rename = "gammaBq")]
+        gamma_bq: f64,
+        #[serde(rename = "exTritiumBq")]
+        ex_tritium_bq: f64,
+    }
+    to_js(&SubletActivityJson {
+        total_bq: out.total_bq,
+        alpha_bq: out.alpha_bq,
+        beta_bq: out.beta_bq,
+        gamma_bq: out.gamma_bq,
+        ex_tritium_bq: out.ex_tritium_bq,
+    })
+}
+
+#[derive(Deserialize)]
+struct SubletHeatEntryJson {
+    nuclide: String,
+    #[serde(rename = "activityBq")]
+    activity_bq: f64,
+    #[serde(rename = "eAlphaEv")]
+    e_alpha_ev: f64,
+    #[serde(rename = "eBetaEv")]
+    e_beta_ev: f64,
+    #[serde(rename = "eGammaEv")]
+    e_gamma_ev: f64,
+}
+
+/// Sublet S2 decay heat with the α/β/γ split (kW).
+///
+/// `entries` holds one `{nuclide, activityBq, eAlphaEv, eBetaEv, eGammaEv}`
+/// row per inventory nuclide (caller decay energies in eV). Returns
+/// `{alphaKw, betaKw, gammaKw, totalKw, exTritiumKw}`.
+#[wasm_bindgen(js_name = subletDecayHeat)]
+pub fn sublet_decay_heat(entries: JsValue) -> Result<JsValue, JsValue> {
+    use nucleide_alara_io::sublet::{decay_heat, DecayHeatEntry};
+    let rows: Vec<SubletHeatEntryJson> = serde_wasm_bindgen::from_value(entries).map_err(js_err)?;
+    let parsed: Vec<DecayHeatEntry> = rows
+        .iter()
+        .map(|r| {
+            Ok::<_, JsValue>(DecayHeatEntry {
+                nuclide: r
+                    .nuclide
+                    .parse::<NuclideId>()
+                    .map_err(|e| js_err(format!("`{}`: {e}", r.nuclide)))?,
+                activity_bq: r.activity_bq,
+                e_alpha_ev: r.e_alpha_ev,
+                e_beta_ev: r.e_beta_ev,
+                e_gamma_ev: r.e_gamma_ev,
+            })
+        })
+        .collect::<Result<_, _>>()?;
+    let out = decay_heat(&parsed).map_err(js_err)?;
+    #[derive(Serialize)]
+    struct SubletHeatJson {
+        #[serde(rename = "alphaKw")]
+        alpha_kw: f64,
+        #[serde(rename = "betaKw")]
+        beta_kw: f64,
+        #[serde(rename = "gammaKw")]
+        gamma_kw: f64,
+        #[serde(rename = "totalKw")]
+        total_kw: f64,
+        #[serde(rename = "exTritiumKw")]
+        ex_tritium_kw: f64,
+    }
+    to_js(&SubletHeatJson {
+        alpha_kw: out.alpha_kw,
+        beta_kw: out.beta_kw,
+        gamma_kw: out.gamma_kw,
+        total_kw: out.total_kw,
+        ex_tritium_kw: out.ex_tritium_kw,
+    })
+}
+
+fn indata_value_json(value: &nucleide_equilib_io::IndataValue) -> serde_json::Value {
+    match value {
+        nucleide_equilib_io::IndataValue::Int(v) => serde_json::json!({"Int": v}),
+        nucleide_equilib_io::IndataValue::Float(v) => serde_json::json!({"Float": v}),
+        nucleide_equilib_io::IndataValue::Bool(v) => serde_json::json!({"Bool": v}),
+        nucleide_equilib_io::IndataValue::Str(v) => serde_json::json!({"Str": v}),
+    }
+}
+
+/// Parse a STELLOPT-style `&INDATA ... /` block.
+///
+/// Returns `{scalars, indexed}` where `scalars` maps upper-cased names to
+/// `{Int|Float|Bool|Str: value}` and `indexed` maps names to
+/// `[{index: [...], value}]` rows.
+#[wasm_bindgen(js_name = parseIndata)]
+pub fn parse_indata(text: &str) -> Result<JsValue, JsValue> {
+    let parsed = nucleide_equilib_io::parse_indata(text).map_err(js_err)?;
+    #[derive(Serialize)]
+    struct IndexedRowJson {
+        index: Vec<i64>,
+        value: serde_json::Value,
+    }
+    #[derive(Serialize)]
+    struct IndataJson {
+        scalars: std::collections::BTreeMap<String, serde_json::Value>,
+        indexed: std::collections::BTreeMap<String, Vec<IndexedRowJson>>,
+    }
+    to_js(&IndataJson {
+        scalars: parsed
+            .scalars
+            .iter()
+            .map(|(k, v)| (k.clone(), indata_value_json(v)))
+            .collect(),
+        indexed: parsed
+            .indexed
+            .iter()
+            .map(|(k, rows)| {
+                (
+                    k.clone(),
+                    rows.iter()
+                        .map(|(idx, v)| IndexedRowJson {
+                            index: (*idx).clone(),
+                            value: indata_value_json(v),
+                        })
+                        .collect(),
+                )
+            })
+            .collect(),
+    })
+}
+
+/// Map a birth-rate density field onto the wall (W1–W2).
+///
+/// `sEdges` holds the `nr + 1` radial edges, `ntheta`/`nzeta` the angular
+/// grid counts, `nfp` the field-period count, and `birth`/`jacobian` the
+/// per-voxel densities and `√g` values in radial-major order. Returns
+/// `{ntheta, nzeta, loads, total}` with nested per-node loads and the
+/// one-field-period total.
+#[wasm_bindgen(js_name = wallLoad)]
+pub fn wall_load(
+    s_edges: Vec<f64>,
+    ntheta: f64,
+    nzeta: f64,
+    nfp: f64,
+    birth: Vec<f64>,
+    jacobian: Vec<f64>,
+) -> Result<JsValue, JsValue> {
+    for (label, v) in [("ntheta", ntheta), ("nzeta", nzeta), ("nfp", nfp)] {
+        if !v.is_finite() || v.fract() != 0.0 || v < 1.0 {
+            return Err(js_err(format!("{label} must be an integer >= 1 (got {v})")));
+        }
+    }
+    let out = nucleide_equilib_io::wall_load(
+        &s_edges,
+        ntheta as usize,
+        nzeta as usize,
+        nfp as u32,
+        &birth,
+        &jacobian,
+    )
+    .map_err(js_err)?;
+    #[derive(Serialize)]
+    struct WallLoadJson {
+        ntheta: usize,
+        nzeta: usize,
+        loads: Vec<Vec<f64>>,
+        total: f64,
+    }
+    to_js(&WallLoadJson {
+        ntheta: out.ntheta,
+        nzeta: out.nzeta,
+        loads: out.to_nested(),
+        total: out.total,
     })
 }

@@ -22,6 +22,12 @@ The vendored limit tables are selectable explicitly:
 levels, Tables 1-3 per landfill type and NORM material nature, with the
 Tabla 4 chain keys expanded to per-member entries at the parent value). No
 cross-table logic: the caller picks the governing table.
+
+Sublet S1/S2 radiological totals: :func:`alara_total_activity` sums
+per-nuclide activities with the FISPACT-II IRT alpha/beta/gamma split
+(plus the excluding-tritium companion), and :func:`alara_decay_heat` folds
+caller-supplied average decay energies into per-class decay heat (kW, plus
+the excluding-tritium companion). Pure arithmetic, never vendored data.
 """
 
 from nucleide._internal import (
@@ -29,6 +35,7 @@ from nucleide._internal import (
     alara_clearance_es_table,
     alara_clearance_eu_table,
     alara_clearance_index,
+    alara_decay_heat,
     alara_expand_schedule,
     alara_flux_len,
     alara_flux_total,
@@ -40,6 +47,7 @@ from nucleide._internal import (
     alara_photon_total_strength,
     alara_schedule_total_time,
     alara_sum_of_fractions,
+    alara_total_activity,
     alara_validate_deck,
 )
 
@@ -60,4 +68,6 @@ __all__ = [
     "alara_clearance_es_table",
     "alara_clearance_index",
     "alara_sum_of_fractions",
+    "alara_total_activity",
+    "alara_decay_heat",
 ]

@@ -1,0 +1,140 @@
+{
+  "schema": 1,
+  "name": "equilib",
+  "title": "Equilibrium data (`equilib_vs_desc.py`)",
+  "environment": {
+    "date": "2026-09-18",
+    "python": "3.12.14",
+    "platform": "Linux-7.2.6-arch2-1-x86_64-with-glibc2.39",
+    "nucleide": "0.14.0",
+    "pyne": "0.7.5",
+    "openmc": "0.16.0"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "text": "Classic-netCDF `wout` reading plus the VMEC `&INDATA` text grammar (`nucleide.equilib`; reads data, never solves equilibria). Always-run gates E1-E10 pin the magic probe, the reader-minimum round-trip, the Jacobian hand vectors and grid contract, the grammar vectors, and the wall-load gates on synthetic inputs. DESC/simsopt legs D1/S1 pin the documented producer/consumer surfaces and SKIP loudly outside the container."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Value",
+        "Expected",
+        "Status"
+      ],
+      "rows": [
+        [
+          "E1 classic probe",
+          "classic",
+          "classic",
+          "PASS"
+        ],
+        [
+          "E2 HDF5/netCDF-4 rejected",
+          "loud",
+          "loud ValueError",
+          "PASS"
+        ],
+        [
+          "E2 CDF-5 rejected",
+          "loud",
+          "loud ValueError",
+          "PASS"
+        ],
+        [
+          "E3 wout round-trip",
+          "2.000000e+00",
+          "ns=2",
+          "PASS"
+        ],
+        [
+          "E4 Jacobian const rows",
+          "2.000000e+00",
+          "2.0",
+          "PASS"
+        ],
+        [
+          "E4 two-mode cosine",
+          "5.000000e-01",
+          "0.5",
+          "PASS"
+        ],
+        [
+          "E5 J2 grid",
+          "4x5",
+          "4x5",
+          "PASS"
+        ],
+        [
+          "E6 INDATA grammar",
+          "switches+series",
+          "match",
+          "PASS"
+        ],
+        [
+          "E7 sliced index",
+          "loud",
+          "loud ValueError",
+          "PASS"
+        ],
+        [
+          "E8 garbage/truncated",
+          "rejected",
+          "ValueError x3",
+          "PASS"
+        ],
+        [
+          "E9 wall axisymmetric",
+          "1.184353e+02",
+          "12*pi^2",
+          "PASS"
+        ],
+        [
+          "E10 wall cosine",
+          "1.500000e+00",
+          "1.5",
+          "PASS"
+        ],
+        [
+          "E10 wall malformed",
+          "rejected",
+          "ValueError x4",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Synthetic `wout` bytes are hand-packed from the published variable lists (never solver output); the INDATA text follows the documented grammar sections. Real files cross-check with `ncdump -k <file>` reporting `classic` or `64-bit offset`."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Detail",
+        "Status"
+      ],
+      "rows": [
+        [
+          "D1 DESC loader surface",
+          "DESC unavailable",
+          "SKIP"
+        ],
+        [
+          "S1 simsopt Vmec import",
+          "simsopt unavailable",
+          "SKIP"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Oracle leg D1 (DESC VMEC loader) SKIPPED: No module named 'desc' \u2014 the DESC-saved variant stays OUT until re-probed."
+    },
+    {
+      "kind": "prose",
+      "text": "Oracle leg S1 (simsopt Vmec) SKIPPED: No module named 'simsopt' \u2014 simsopt stays a container-only oracle."
+    }
+  ]
+}

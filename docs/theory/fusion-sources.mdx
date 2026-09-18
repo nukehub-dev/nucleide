@@ -59,6 +59,17 @@ references:
     date: "2016"
     type: article
     doi: "10.1016/j.cpc.2015.10.010"
+  - id: bornatici-1983
+    title: "Electron cyclotron emission and absorption in fusion plasmas"
+    url: https://doi.org/10.1088/0029-5515/23/9/005
+    authors: ["M. Bornatici", "R. Cano", "O. De Barbieri", "F. Engelmann"]
+    source: Nuclear Fusion
+    journal: Nuclear Fusion
+    volume: "23"
+    pages: "1153–1257"
+    date: "1983"
+    type: article
+    doi: "10.1088/0029-5515/23/9/005"
 ---
 
 Transport codes need to know where neutrons are born and with what energy. This page
@@ -85,13 +96,17 @@ produce them.
 
 ## Overview
 
-`nucleide.plasma_source` builds fusion neutron sources at two levels of fidelity.
+`nucleide.plasma_source` builds fusion neutron sources at three levels of fidelity.
 The simple tier is a point source or an axisymmetric ring on the full torus (a
 tokamak midplane circle): positions are exact, and the only physics is the
 energy spectrum. The parametric tier models the plasma cross-section with Miller
 flux surfaces and caller-supplied L/H/A-mode profiles of ion density and
 temperature; birth positions weight the local neutron production, so the source
-follows the profiles and the geometry rather than a hand-drawn shape. Both tiers
+follows the profiles and the geometry rather than a hand-drawn shape. The
+lattice tier drops axisymmetry itself for non-axisymmetric (stellarator-class)
+plasmas: the caller supplies the full 3D birth distribution as an explicit
+point cloud, and the same fuel mixtures, spectra, and card emission apply per
+node. All tiers
 sample seeded, deterministic particle vectors (position, direction, energy,
 weight) and emit `SDEF` and `src` cards with an emission report.
 
@@ -100,12 +115,15 @@ in MeV, ion temperature in keV. Profile densities are caller data in m⁻³ (the
 Fausser convention) and converted internally; reactivity is reported in m³/s.
 
 <Callout type="info" title="Code shape">
-  The `nucleide-plasma-source` crate mirrors the two tiers: `source.rs` /
+  The `nucleide-plasma-source` crate mirrors the three tiers: `source.rs` /
   `sample.rs` (ring/point configurations and the seeded sampler),
   `reaction.rs` / `spectrum.rs` (Ballabio spectrum moments and card
   tabulation), `reactivity.rs` (Bosch–Hale fits), `miller.rs` (flux-surface
   map and Jacobian), `profile.rs` (L/H/A-mode profiles), `parametric.rs`
-  (weight tables, parametric sampler, emission histograms), `emit_sdef.rs` /
+  (weight tables, parametric sampler, emission histograms, the deuterium
+  hot-tail fraction), `lattice.rs` (arbitrary-3D birth-rate clouds with
+  field-period symmetry), `ecrh.rs` (closed-form accessibility kernel:
+  cold resonance, relativistic shift, O1/X1 cut-offs, beamline locators), `emit_sdef.rs` /
   `emit_serpent.rs` (cards), `report.rs` (emission report), and `error.rs`
   (a `#[non_exhaustive]` error enum with the crate `Result` alias).
 </Callout>
@@ -287,6 +305,127 @@ global scale, but ratios between configurations are meaningful. Because
 $\langle\sigma v\rangle \to 0$ as $T_i \to 0$, a cold separatrix makes no
 neutrons.
 
+### S5-T — Deuterium hot-tail fraction
+
+Auxiliary-heated plasmas carry a non-thermal tail that a pure Maxwellian
+mis-models. The one pinned non-Maxwellian shape<Citation id="eriksson-2016" />
+splits the deuterium population into a bulk $(1 - \eta)$ at $T_D$ and a hot
+tail $\eta$ at $T_\mathrm{tail}$ (uniform scalars, flat in minor radius),
+while tritium stays Maxwellian at $T_T$. Each sub-pair reacts at its own
+mass-weighted relative temperature:
+
+$$
+T_{DT} = T_D + \tfrac{2}{5}(T_T - T_D),
+\qquad
+T_{DTt} = T_\mathrm{tail} + \tfrac{2}{5}(T_T - T_\mathrm{tail}),
+\qquad
+T_\mathrm{mix} = \tfrac{1}{2}(T_D + T_\mathrm{tail}),
+\tag{S5-T}
+$$
+
+and the strength rule expands into the bulk/tail sub-rates:
+
+$$
+S(r) = n_i(r)^2 \left[ f_D f_T\, \bigl((1-\eta)\langle\sigma v\rangle_{DT}(T_{DT}) + \eta\,\langle\sigma v\rangle_{DT}(T_{DTt})\bigr) + \tfrac{f_D^2}{2}\, \bigl((1-\eta)^2\langle\sigma v\rangle_{DD}(T_D) + 2\eta(1-\eta)\langle\sigma v\rangle_{DD}(T_\mathrm{mix}) + \eta^2\langle\sigma v\rangle_{DD}(T_\mathrm{tail})\bigr) \right].
+$$
+
+The D-T arm carries two spectrum lines (at $T_{DT}$ and $T_{DTt}$) and the
+D-D arm three (at $T_D$, $T_\mathrm{mix}$, $T_\mathrm{tail}$), weighted by the
+same sub-rate rule, so strengths, sampled energies, card marginals, and the
+axis summary stay consistent. Each line is the Ballabio Gaussian at its
+effective temperature — an approximation in the same spirit as the
+species-pair lines, since the published fits assumed single-temperature
+Maxwellians. The pinned hand vector (flat profile, $n = 10^{20}$ m⁻³,
+$f_D = 0.7$, $f_T = 0.3$, $T_D = 20$ keV, $T_T = 30$ keV, $\eta = 0.05$,
+$T_\mathrm{tail} = 60$ keV) gates the rate at $10^{-12}$ relative, and
+$\eta = 0$ reproduces the no-tail mixture kernel exactly.
+
+### S6 — Arbitrary-3D birth-rate lattice
+
+The lattice tier drops the last tokamak assumption, axisymmetry. The caller
+supplies the full 3D birth distribution as a point list — positions,
+relative birth-rate weights, and per-point ion temperatures — and the same
+fuel mixtures, Ballabio lines, and card emission apply per node. An
+optional field-period symmetry declares the points to be one base-sector
+cloud replicated $n$ times around the machine axis (toroidal angles
+identified modulo $2\pi/n$), with the symmetric total scaled by $n$; $n = 1$
+is the identity. Anchors pinned by tests: a two-point hand vector (rates
+2 and 1, total 3, mean birth position $(100, 0, 25)$, mono 14.021 MeV line),
+single-point reproduction of the point source, ring-cloud convergence to
+the analytic ring moments, and bit-for-bit reproduction of the expanded
+full-cloud stream by the folded base-sector stream. Cards carry the cloud's
+cylindrical-$R$/vertical/energy marginals with a lattice row in the
+emission report, exactly like the parametric product-form cards.
+
+### S7 — ECRH accessibility
+
+Heating access is a separate closed-form kernel in the same crate: given a
+wave frequency plus the caller's magnetic-field and density profiles
+tabulated along a beam path, it reports where the wave meets the cyclotron
+resonance and where it meets a cut-off — no ray tracing, no launcher
+design. The cold electron gyrofrequency (Hutchinson, *Principles of Plasma
+Diagnostics*, 2nd ed. (2002), §7.2) is
+
+$$
+f_{ce} = \frac{e\,B}{2\pi\,m_e} \approx 27.99249\ \mathrm{GHz/T},
+\tag{ECRH-1}
+$$
+
+and fundamental (harmonic $n$) absorption sits where $f = n\,f_{ce}$, i.e.
+
+$$
+B_{res} = \frac{2\pi\,m_e\,f}{n\,e},
+\tag{ECRH-2}
+$$
+
+the cold resonance condition pinned by the ECRH review of Bornatici et
+al.<Citation id="bornatici-1983" />. At finite electron temperature the
+resonance carries the Lorentz factor, $f = n\,f_{ce}/\gamma$, so the layer
+moves out to
+
+$$
+B_{res}(T_e) = \gamma\,B_{res}(\mathrm{cold}),
+\qquad
+\gamma = 1 + \frac{T_e}{510.999\ \mathrm{keV}},
+\tag{ECRH-3}
+$$
+
+the weakly-relativistic Maxwell–Jüttner downshift (Bornatici et
+al.<Citation id="bornatici-1983" />). The O-mode cut-off ($P = 0$ of the
+cold Appleton–Hartree dispersion; Stix, *Waves in Plasmas* (1992), Ch. 1)
+sits at the plasma frequency,
+
+$$
+n_{c,O1} = \frac{\varepsilon_0\,m_e\,(2\pi\,f)^2}{e^2},
+\tag{ECRH-4}
+$$
+
+and the X-mode right-hand cut-off inverts to
+
+$$
+n_{c,X1} = n_{c,O1}\,\frac{f - f_{ce}}{f},
+\qquad \text{exists only for } f > f_{ce},
+\tag{ECRH-5}
+$$
+
+(Stix 1992, Ch. 1 — the low-field-side launch cut-off). Where
+$f \le f_{ce}$ the X1 wave is evanescent and the kernel returns no
+cut-off, never a number. Beamline locators take caller profiles at
+strictly increasing positions $s$ [m] and return crossing positions [m] by
+linear interpolation between bracketing nodes; exact nodal touches are
+reported. Scalar inputs are GHz / T / m⁻³ / keV; the per-port absorbed
+power itself lives downstream (blanket bookkeeping consumes these
+positions as plain floats).
+
+Pinned hand vectors (170 GHz, ITER-class, $10^{-9}$ relative): cold
+resonance $B_{res} = 6.07306$ T at $n = 1$ ($3.03653$ T at $n = 2$);
+$\gamma(20\ \mathrm{keV}) = 1.03914$ shifts it to $6.31075$ T; O1 cut-off
+$3.58488\times 10^{20}$ m⁻³; X1 cut-off at 5 T $6.33418\times 10^{19}$
+m⁻³ — while 100 GHz at 5 T ($f_{ce} = 139.96$ GHz) is evanescent. Beamline
+vectors: a 7→5 T fall over $s = 0..2$ m crosses the cold resonance at
+$0.92694$ m; a $10^{20}$→$5\times 10^{20}$ m⁻³ rise crosses the 140 GHz O1
+cut-off at $0.71563$ m.
+
 ## Algorithm
 
 **Ring and point sampling.** A point source sits at its configured position; a
@@ -306,6 +445,18 @@ from the Miller map. The birth energy comes from the Ballabio Gaussian at the
 local ion temperature $T_i(r)$. Both samplers run on a small self-contained RNG
 (SplitMix64 seed expansion feeding xoshiro256\*\*), so a pinned seed reproduces
 the stream on a given platform.
+
+**Tail sampling.** With a deuterium hot tail set, the per-particle branch
+choice runs over the five bulk/tail sub-lines weighted by the sub-rate rule
+(S5-T) — one extra draw per particle on the mixture path, none when
+$\eta = 0$, so the no-tail stream is preserved exactly.
+
+**Lattice sampling.** A lattice particle picks its birth node from the
+rate-weighted discrete distribution, then (with symmetry set) its
+field-period copy from the within-bin fraction of the same single draw — no
+extra draws on any path, so the folded stream reproduces the expanded stream
+exactly. Energies follow the node's Ballabio line (or its mixture branch
+choice); directions are isotropic as above.
 
 **Source cards and the emission report.** A monoenergetic spectrum renders as a
 single line with probability 1. A Gaussian renders as discrete lines at bin
@@ -393,14 +544,19 @@ byte-identically through `nucleide.mcnp.parse_sdef` (the typed `SDEF` reader).
   (birth angles uniform over the sector; strength scales by
   `rotation/2π`); full rotation reproduces the full-torus kernel exactly.
   Out-of-range angles raise a clear error — never a silent guess.
-- **Maxwellian fuel, several choices.** Reactants are Maxwellian: equimolar D-T
+- **Maxwellian fuel, several choices — plus one pinned tail.** Reactants are Maxwellian: equimolar D-T
   (strength factor $1/4$), pure D-D ($1/2$), a D/T mixture
   `{"D": f_D, "T": f_T}` weighted by the two-branch rate (S5-M), or a mixture
   with per-species ion temperatures `{"D": T_D, "T": T_T}` (the D-T branch
   reacts at the mass-weighted effective temperature) — the equimolar, pure,
-  and shared-temperature limits recover the simpler kernels exactly. Fuel
+  and shared-temperature limits recover the simpler kernels exactly. A
+  `deuterium_tail` fraction `{"fraction": η, "temperature_kev": T_tail}`
+  adds the one pinned non-Maxwellian shape (S5-T: bulk plus hot tail with
+  per-sub-pair lines); `η = 0` recovers the no-tail kernel exactly, and the
+  tail needs a `fuel` mixture. Fuel
   fractions that are negative, non-finite, or do not sum to 1 raise a clear
-  error, as do negative temperatures. Non-Maxwellian reactants stay out.
+  error, as do negative temperatures and out-of-range tail parameters.
+  General non-Maxwellian distributions beyond this shape stay out.
 - **Neutron branches plus proton bookkeeping.** The sampler and the emitted
   cards are neutron-only (D-T + D-D lines; no T-T neutron branch — a pure-T
   mixture is a loud error). The D(d,p)T proton branch is reported as
@@ -412,6 +568,11 @@ byte-identically through `nucleide.mcnp.parse_sdef` (the typed `SDEF` reader).
   outside $(0, a)$, non-positive centre density or temperature) raise a clear,
   named error, and a configuration whose total emission strength is zero raises
   a clear error instead of sampling nothing.
+- **Lattice clouds are caller inputs.** Nothing computes the 3D birth
+  distribution and no equilibrium is read: node positions, rates, and ion
+  temperatures arrive as data (a point list, not a grid). Empty clouds,
+  negative rates, zero totals, and non-symmetric fold inputs raise clear,
+  named errors.
 - **Published fit domains.** The Ballabio and Bosch–Hale fits are used within
   their published ranges. Negative or non-finite ion temperatures raise a clear
   error, and the D-D reactivity's correction factor goes non-positive on
@@ -428,6 +589,11 @@ byte-identically through `nucleide.mcnp.parse_sdef` (the typed `SDEF` reader).
 - **No file writing in the crate.** Particle vectors and card strings are
   returned to the caller; writing MCPL or MCNP files stays caller-side
   (`nucleide.mcpl`, `nucleide.mcnp`).
+- **ECRH reports positions, never designs launchers.** Resonance and
+  cut-off crossings are plain floats for downstream bookkeeping; ray
+  tracing, beam optics, and absorbed-power computation stay out. An
+  evanescent X1 reports no cut-off rather than a number, and empty,
+  ragged, or non-monotonic beamlines raise a clear error.
 
 ## Validation
 
@@ -446,21 +612,32 @@ byte-identically through `nucleide.mcnp.parse_sdef` (the typed `SDEF` reader).
   ($\langle r^2\rangle = a^2/2$, $\langle z\rangle = 0$, and the outboard
   volume bias $\langle R\rangle = R_0 + a^2/(4R_0)$), the reactivity
   transcription (< 1e-12), and H-mode sampled birth moments against independent
-  fine quadrature of $S\,R\,|J|$.
+  fine quadrature of $S\,R\,|J|$, plus the P12 lattice gates (two-point hand
+  vectors, single-point recovery, ring-limit closure, symmetry-fold
+  replication, card round trip, mixture branch fire) and the P13 hot-tail
+  gates (sub-rate-rule moments and branch share, the drift tail-neutron
+  share, zero-fraction recovery, loud errors).
 - **Container-only cross-checks** against the MIT-licensed
   `openmc-plasma-source` package and NeSST (Ballabio helpers, sampled D-D and
   ring moments, the Miller map, L/H profiles, reactivities to ~5e-9 — the
-  published coefficients' own precision — and end-to-end parametric moments).
+  published coefficients' own precision — end-to-end parametric moments, the
+  lattice ring-limit probe, and the hot-tail blend probe).
   When the packages are unavailable these checks are reported as SKIP with the
   reason, never silently.
+- **ECRH hand vectors** in `ecrh.rs` unit tests and
+  `tests/test_ecrh_access.py` pin the closed forms at $10^{-9}$ relative
+  (the 170 GHz resonance/shift/cut-off vectors above plus beamline
+  crossings and loud-error vectors). ECRH has no oracle leg: closed forms
+  need no cross-code leg, only the two independent transcriptions.
 - **`tests/test_plasma_source.py`** replays the user-facing Python surface.
 
 ## Related work beyond Nucleide
 
 Adjacent capabilities Nucleide does not implement: the Eriksson et al.
-generalization beyond Maxwellian D/T mixtures at a shared ion temperature —
-non-Maxwellian or per-species-temperature reactant distributions, which covers
-beam-target and mixed-temperature spectra (the documented "not yet supported"
+generalization beyond the one pinned single-tail-temperature shape —
+arbitrary non-Maxwellian reactant distributions, which covers
+beam-target spectra beyond the hot-tail approximation (the documented "not
+yet supported"
 boundary above)<Citation id="eriksson-2016" />; adaptive Monte Carlo source
 iteration in the spirit of KDSource (GPL-licensed, not integrated); OpenMC's
 arbitrary mesh- and CAD-based spatial sources — OpenMC's fusion-specific sources

@@ -10,6 +10,8 @@ import type {
   R2sSummary,
   SnapshotBundleJson,
   SnapshotInputJson,
+  SubletActivity,
+  SubletHeat,
   VoxelPhotonSummary,
   VoxelTagsSummary,
 } from "../../types/nucleide-wasm";
@@ -32,7 +34,8 @@ type ActivationMode =
   | "origen-tape6"
   | "origen-tape9"
   | "r2s"
-  | "r2s-snapshot";
+  | "r2s-snapshot"
+  | "sublet";
 
 // Staged fixtures (sync-data.mjs) for the parser tabs that read real code
 // output; other tabs teach their formats with the inline snippets below.
@@ -117,6 +120,14 @@ const DEFAULT_SNAPSHOT = `{
 }`;
 
 const DEFAULT_VOXEL_TOTALS = "400, 50";
+// Synthetic sublet inventory rows (hand concentrations, no evaluated data):
+// each row carries the S1 fields (nuclide, activity, IRT class) and the S2
+// caller decay energies, so one JSON table feeds both builds.
+const DEFAULT_SUBLET = `[
+  {"nuclide": "co-60", "activityBq": 3.0e9, "irt": 3, "eAlphaEv": 0.0, "eBetaEv": 9.6e4, "eGammaEv": 2.5e6},
+  {"nuclide": "fe-55", "activityBq": 1.0e9, "irt": 11, "eAlphaEv": 0.0, "eBetaEv": 0.0, "eGammaEv": 5.9e3},
+  {"nuclide": "h-3", "activityBq": 5.0e8, "irt": 2, "eAlphaEv": 0.0, "eBetaEv": 5.7e3, "eGammaEv": 0.0}
+]`;
 const DEFAULT_VOXEL_MAP = "0, 0, 1";
 const DEFAULT_VOXEL_PHOTON = `mn-56 shutdown 6.0 2.0
 co-60 shutdown 1.0 3.0
@@ -155,6 +166,7 @@ const DEFAULTS: Record<ActivationMode, string> = {
   "origen-tape9": DEFAULT_ORIGEN_TAPE9,
   r2s: DEFAULT_DECK,
   "r2s-snapshot": DEFAULT_SNAPSHOT,
+  sublet: DEFAULT_SUBLET,
 };
 
 const MODES: { value: ActivationMode; label: string }[] = [
@@ -166,6 +178,7 @@ const MODES: { value: ActivationMode; label: string }[] = [
   { value: "origen-tape9", label: "ORIGEN TAPE9" },
   { value: "r2s", label: "R2S workflow" },
   { value: "r2s-snapshot", label: "R2S snapshot" },
+  { value: "sublet", label: "Sublet S1+S2" },
 ];
 
 export function ActivationDemo() {
@@ -181,6 +194,8 @@ export function ActivationDemo() {
   const [tape9, setTape9] = useState<OrigenTape9Summary | null>(null);
   const [r2s, setR2s] = useState<R2sSummary | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotBundleJson | null>(null);
+  const [subletActivity, setSubletActivity] = useState<SubletActivity | null>(null);
+  const [subletHeat, setSubletHeat] = useState<SubletHeat | null>(null);
   const [snapshots, setSnapshots] = useState<string[]>([DEFAULT_STEP_SNAPSHOT]);
   const [voxelTotals, setVoxelTotals] = useState(DEFAULT_VOXEL_TOTALS);
   const [voxelMap, setVoxelMap] = useState(DEFAULT_VOXEL_MAP);
@@ -212,6 +227,8 @@ export function ActivationDemo() {
     setTape9(null);
     setR2s(null);
     setSnapshot(null);
+    setSubletActivity(null);
+    setSubletHeat(null);
     setVoxelTags(null);
     setVoxelPhotonSums(null);
   }
@@ -273,6 +290,18 @@ export function ActivationDemo() {
             throw new Error("bad snapshot JSON (expected zones/fluxDefs/coolingS)");
           }
           setSnapshot(wasm.r2sFromSnapshot(parsed as SnapshotInputJson));
+          break;
+        }
+        case "sublet": {
+          let rows: unknown;
+          try {
+            rows = JSON.parse(text);
+          } catch {
+            throw new Error("bad sublet JSON (expected an array of inventory rows)");
+          }
+          if (!Array.isArray(rows)) throw new Error("bad sublet JSON (expected an array)");
+          setSubletActivity(wasm.subletActivity(rows));
+          setSubletHeat(wasm.subletDecayHeat(rows));
           break;
         }
       }
@@ -479,6 +508,45 @@ export function ActivationDemo() {
 
           {fispact && (
             <OutputTable rows={fispact.rows} variables={fispact.variables} blocks={null} />
+          )}
+
+          {subletActivity && subletHeat && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium">
+                S1 total activity:{" "}
+                <span className="font-mono">{subletActivity.totalBq.toExponential(4)} Bq</span>{" "}
+                (ex-tritium{" "}
+                <span className="font-mono">{subletActivity.exTritiumBq.toExponential(4)} Bq</span>)
+              </p>
+              <DataTable
+                data={[
+                  { part: "Alpha", bq: subletActivity.alphaBq.toExponential(4) },
+                  { part: "Beta", bq: subletActivity.betaBq.toExponential(4) },
+                  { part: "Gamma", bq: subletActivity.gammaBq.toExponential(4) },
+                ]}
+                columns={[
+                  { key: "part", header: "S1 split" },
+                  { key: "bq", header: "Activity (Bq)", align: "right" },
+                ]}
+              />
+              <p className="text-sm font-medium">
+                S2 decay heat:{" "}
+                <span className="font-mono">{subletHeat.totalKw.toExponential(4)} kW</span>{" "}
+                (ex-tritium{" "}
+                <span className="font-mono">{subletHeat.exTritiumKw.toExponential(4)} kW</span>)
+              </p>
+              <DataTable
+                data={[
+                  { part: "Alpha", kw: subletHeat.alphaKw.toExponential(4) },
+                  { part: "Beta", kw: subletHeat.betaKw.toExponential(4) },
+                  { part: "Gamma", kw: subletHeat.gammaKw.toExponential(4) },
+                ]}
+                columns={[
+                  { key: "part", header: "S2 split" },
+                  { key: "kw", header: "Heat (kW)", align: "right" },
+                ]}
+              />
+            </div>
           )}
 
           {tape5 && (

@@ -4,7 +4,7 @@
 //! ratios — all by spectral folding of a caller-supplied multigroup flux
 //! with caller-supplied damage/gas response functions.
 //!
-//! The crate has two layers, both pure functions over caller inputs:
+//! The crate has three layers, all pure functions over caller inputs:
 //!
 //! - [`physics`] — the closed-form primary-damage physics: the Lindhard
 //!   damage-energy partition (Robinson fit), the NRT displacement function
@@ -16,6 +16,10 @@
 //! - [`fold`] — the multigroup folds `nrt_dpa` / `arc_dpa` / `gas_appm` /
 //!   `he_dpa_ratio` over `(flux, response, bounds)` slices with
 //!   piecewise-constant-per-group semantics (documented in the module).
+//! - [`coil`] — coil fast-fluence and lifetime bookkeeping: the fast-flux
+//!   sum above a caller threshold, history accumulation, and the
+//!   weakest-link life over caller-supplied limit tables (dpa spectral
+//!   weighting stays in [`fold`], consumed as rates here).
 //!
 //! [`uq`] propagates caller-block uncertainty through the folds with the
 //! landed `linalg` MVN machinery (pinned seed, `k`-standard-error gates) —
@@ -39,11 +43,16 @@
 //! Layering: depends on `nucleide-linalg` and `nucleide-nuclei` only;
 //! bindings depend on this crate, never the reverse.
 
+pub mod coil;
 pub mod error;
 pub mod fold;
 pub mod physics;
 pub mod specter;
 pub mod uq;
+
+pub use coil::{
+    accumulate, coil_lifetime, coil_remaining, fast_fluence, fast_flux, CoilLifetime, FPY_SECONDS,
+};
 
 pub use error::{Error, Result};
 pub use fold::{arc_dpa, gas_appm, he_dpa_ratio, nrt_dpa, BARNS_TO_CM2};

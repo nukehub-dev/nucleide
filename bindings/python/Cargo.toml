@@ -37,3 +37,5 @@ nucleide-linalg.workspace = true
 nucleide-plasma-source.workspace = true
 nucleide-damage.workspace = true
 nucleide-unfold.workspace = true
+nucleide-equilib-io.workspace = true
+nucleide-blanket.workspace = true

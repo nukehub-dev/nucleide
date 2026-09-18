@@ -19,6 +19,7 @@ committed `results.md` holds the measured numbers that the paper quotes.
 | `activation_vs_refs.py` | ALARA/CCCC/FISPACT/ORIGEN/R2S I/O checks vs PyNE oracle probes + synthetic self-consistency |
 | `decay_vs_radioactivedecay.py` | Single-nuclide decay (H-3, Co-60, Cs-137) vs the radioactivedecay oracle (ICRP-107, container-only) |
 | `unfold_vs_analytic.py` | SAND-II neutron spectrum unfolding: synthetic forward-fold round-trips + IRDFF-II analytical benchmark shapes (published facts, cited; no external unfolding oracle exists) |
+| `equilib_vs_desc.py` | Equilibrium data readers: synthetic classic-`wout` magic/format/Jacobian gates + `&INDATA` grammar gates (always run) with DESC/simsopt container probes (loud SKIP outside) |
 | `timings.py` | Coarse wall-time comparisons (Python overhead included) |
 | `make_figures.py` | Generates the paper figures in `figures/` from the JSON reports |
 | `common.py` | Shared helpers and `Report` class used by the comparison scripts |

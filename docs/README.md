@@ -4,13 +4,15 @@ Welcome! Nucleide is a Rust toolkit for nuclear-engineering workflow glue,
 exposed through a typed Python API: parse legacy code output (MCNP, Serpent,
 FLUKA, ALARA, and friends), build materials, and run solvers for depletion,
 point kinetics, enrichment cascades, spectroscopy, tritium transport, fusion
-neutron sources, spectrum unfolding, and variance reduction — plus
+neutron sources, spectrum unfolding, TBR/blanket bookkeeping, equilibrium
+data readers, an OpenMC statepoint tally bridge, and variance
+reduction — plus
 damage/gas metrics (dpa, appm), clearance/waste-classification screening,
 and uncertainty-quantification sampling.
 These docs are organized by audience, so you can jump straight to what you
 need.
 
-<svg viewBox="0 0 720 310" width="100%" role="img" font-family="sans-serif" aria-label="Nucleide capability map">
+<svg viewBox="0 0 720 326" width="100%" role="img" font-family="sans-serif" aria-label="Nucleide capability map">
   <style>
     .cm-edge { stroke: var(--primary, #d97706); stroke-width: 2; fill: none; }
     .cm-head { fill: var(--primary, #d97706); }
@@ -30,24 +32,25 @@ need.
   <text x="360" y="47" text-anchor="middle" class="cm-t">Python API (nucleide) &#xb7; WASM interactive tutorials</text>
   <line x1="190" y1="92" x2="190" y2="70" class="cm-edge" marker-end="url(#cm-arrow)"/>
   <line x1="530" y1="92" x2="530" y2="70" class="cm-edge" marker-end="url(#cm-arrow)"/>
-  <rect x="40" y="96" width="300" height="130" rx="10" class="cm-box"/>
+  <rect x="40" y="96" width="300" height="146" rx="10" class="cm-box"/>
   <text x="190" y="124" text-anchor="middle" class="cm-t">Code I/O</text>
   <text x="190" y="148" text-anchor="middle" class="cm-i">MCNP &#xb7; Serpent &#xb7; FLUKA</text>
   <text x="190" y="168" text-anchor="middle" class="cm-i">ALARA &#xb7; CCCC &#xb7; MCPL</text>
-  <text x="190" y="188" text-anchor="middle" class="cm-i">FISPACT-II &#xb7; ORIGEN</text>
+  <text x="190" y="188" text-anchor="middle" class="cm-i">FISPACT-II &#xb7; ORIGEN &#xb7; Equilibrium I/O</text>
   <text x="190" y="210" text-anchor="middle" class="cm-s">readers, writers, emitters, translation</text>
-  <rect x="380" y="96" width="300" height="130" rx="10" class="cm-box"/>
+  <rect x="380" y="96" width="300" height="146" rx="10" class="cm-box"/>
   <text x="530" y="122" text-anchor="middle" class="cm-t">Solvers and analysis</text>
   <text x="530" y="144" text-anchor="middle" class="cm-i">Depletion (CRAM) &#xb7; Point kinetics</text>
   <text x="530" y="160" text-anchor="middle" class="cm-i">Enrichment &#xb7; Spectroscopy &#xb7; UQ sampling</text>
   <text x="530" y="176" text-anchor="middle" class="cm-i">Variance reduction &#xb7; Tritium transport</text>
   <text x="530" y="192" text-anchor="middle" class="cm-i">Fusion sources &#xb7; Spectrum unfolding</text>
   <text x="530" y="208" text-anchor="middle" class="cm-i">Damage metrics (dpa/appm) &#xb7; Clearance screening</text>
-  <text x="530" y="221" text-anchor="middle" class="cm-s">plus the R2S workflow glue</text>
-  <line x1="190" y1="252" x2="190" y2="232" class="cm-edge" marker-end="url(#cm-arrow)"/>
-  <line x1="530" y1="252" x2="530" y2="232" class="cm-edge" marker-end="url(#cm-arrow)"/>
-  <rect x="110" y="256" width="500" height="40" rx="10" class="cm-bar"/>
-  <text x="360" y="281" text-anchor="middle" class="cm-t">Nuclear data (nuclei) &#xb7; Materials (material)</text>
+  <text x="530" y="224" text-anchor="middle" class="cm-i">TBR/blanket bookkeeping</text>
+  <text x="530" y="237" text-anchor="middle" class="cm-s">plus the R2S workflow glue</text>
+  <line x1="190" y1="268" x2="190" y2="248" class="cm-edge" marker-end="url(#cm-arrow)"/>
+  <line x1="530" y1="268" x2="530" y2="248" class="cm-edge" marker-end="url(#cm-arrow)"/>
+  <rect x="110" y="272" width="500" height="40" rx="10" class="cm-bar"/>
+  <text x="360" y="297" text-anchor="middle" class="cm-t">Nuclear data (nuclei) &#xb7; Materials (material)</text>
 </svg>
 
 ## Where to start
@@ -116,10 +119,12 @@ status, and license.
 | [Interactive — spectroscopy](tutorials/interactive/spectroscopy.mdx) | Spectrum smoothing and peak counting |
 | [Interactive — UQ sampling](tutorials/interactive/uq.mdx) | Seeded MVN sampling over caller-supplied covariance blocks (Python API and theory add log-normal + LHS) |
 | [Interactive — MCPL particle lists](tutorials/interactive/mcpl-io.mdx) | Read and write MCPL particle lists |
-| [Interactive — damage metrics](tutorials/interactive/damage.mdx) | Fold a multigroup flux into dpa and gas production |
-| [Interactive — fusion sources](tutorials/interactive/fusion-sources.mdx) | Sample D-D/D-T ring sources and emit SDEF cards |
+| [Interactive — damage metrics](tutorials/interactive/damage.mdx) | Fold a multigroup flux into dpa and gas production, plus coil fast-flux and lifetime |
+| [Interactive — fusion sources](tutorials/interactive/fusion-sources.mdx) | Sample D-D/D-T ring and lattice sources, emit SDEF cards, and check ECRH access |
 | [Interactive — spectrum unfolding](tutorials/interactive/unfold.mdx) | SAND-II, least-squares, and GRAVEL adjustment over detector measurements |
 | [Interactive — clearance screening](tutorials/interactive/clearance.mdx) | Sum-of-fractions classification against EU or Spanish limits |
+| [Interactive — TBR bookkeeping](tutorials/interactive/blanket.mdx) | Raw and effective TBR, breeding margin, and daily burn and surplus |
+| [Interactive — equilibrium data](tutorials/interactive/equilibrium.mdx) | INDATA parsing and wall-load mapping in flux coordinates |
 
 ### Theory
 
@@ -134,10 +139,12 @@ status, and license.
 | [Tritium transport](theory/tritium.mdx) | 1D diffusion-trapping equations, McNabb–Foster traps, surface taxonomy, multi-layer series stacks with Sieverts, Henry, or vented-sink recombination interfaces, and the closed-form permeation checks |
 | [Gamma-ray spectroscopy](theory/spectroscopy.mdx) | Smoothing, peak counting, energy/efficiency calibration, X-ray lines, and SPE readers |
 | [UQ-lite sampling](theory/uq-sampling.mdx) | Seeded MVN, log-normal, and LHS sampling over caller-supplied covariance blocks, SANDY-compatible estimators, and the decay perturbation consumer |
-| [Damage metrics](theory/damage-metrics.mdx) | NRT/arc-dpa displacement functions, the Lindhard partition, and spectral folding conventions |
-| [Fusion neutron sources](theory/fusion-sources.mdx) | Ballabio fusion spectra, Bosch–Hale reactivity, the Miller-geometry parametric plasma map, and D-T/D-D fuel mixtures |
+| [Damage metrics](theory/damage-metrics.mdx) | NRT/arc-dpa displacement functions, the Lindhard partition, spectral folding conventions, and coil lifetime bookkeeping |
+| [Fusion neutron sources](theory/fusion-sources.mdx) | Ballabio fusion spectra, Bosch–Hale reactivity, the Miller-geometry parametric plasma map, D-T/D-D fuel mixtures, lattice sources, and ECRH accessibility |
 | [Neutron spectrum unfolding](theory/unfolding.mdx) | SAND-II, least-squares, GRAVEL, and maximum-entropy adjustment, convergence, and underdetermined systems |
-| [Clearance screening](theory/clearance-screening.mdx) | Clearance index, the sum-of-fractions rule, and the EU and Spanish clearance tables |
+| [Clearance screening](theory/clearance-screening.mdx) | Clearance index, the sum-of-fractions rule, the Sublet S1+S2 totals, and the EU and Spanish clearance tables |
+| [TBR and blanket bookkeeping](theory/blanket.mdx) | Raw TBR, port-penalty haircuts, energy multiplication, burn rate, and breeding margins |
+| [Equilibrium data readers](theory/equilibrium.mdx) | Classic-netCDF wout reading, the INDATA grammar, flux-surface Jacobians, and wall-load mapping |
 
 ### Reference
 

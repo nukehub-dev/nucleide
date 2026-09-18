@@ -3,7 +3,9 @@
 Nucleide is a modern Rust toolkit for nuclear-engineering data, measurement, and
  workflow glue: legacy transport-code I/O, nuclide identification, materials,
  CRAM depletion, enrichment analytics, point kinetics, gamma-ray spectroscopy,
- tritium transport, fusion neutron sources, spectrum unfolding, variance
+ tritium transport, TBR/blanket bookkeeping, equilibrium data readers,
+ an OpenMC statepoint tally bridge, fusion neutron sources, spectrum
+ unfolding, variance
  reduction, UQ sampling, CSG translation, and code-card emission — exposed
  through a typed Python API.
 
@@ -41,15 +43,18 @@ rebuilds the high-value subset in memory-safe Rust with one-command
 | MCPL I/O (`nucleide-mcpl-io`) | Monte Carlo Particle List interchange reader/writer (format versions 2/3, single/double precision, gzip-transparent) plus SSW↔MCPL conversion and the merge/extract/stats/repair particle-list utilities |
 | Serpent I/O (`nucleide-serpent-io`) | `_res.m`, `_dep.m`, `_det.m` readers producing structured records |
 | FLUKA I/O (`nucleide-fluka-io`) | USRBIN tally reader, material/compound card generation |
-| ALARA I/O (`nucleide-alara-io`) | Deck/flux/matlib-elelib-WDR/output/photon/schedule-expansion glue; solver out of scope. Clearance / waste-classification analytics: clearance index CI = Σ Aᵢ/CLᵢ and the sum-of-fractions screening rule over parsed inventories, caller-supplied limit tables plus the EU 2013/59/Euratom Annex VII Table A vendored default and the Spanish CSN conditional NORM landfill tables as opt-in tables (screening arithmetic, never a compliance decision) |
+| ALARA I/O (`nucleide-alara-io`) | Deck/flux/matlib-elelib-WDR/output/photon/schedule-expansion glue; solver out of scope. Clearance / waste-classification analytics: clearance index CI = Σ Aᵢ/CLᵢ and the sum-of-fractions screening rule over parsed inventories, caller-supplied limit tables plus the EU 2013/59/Euratom Annex VII Table A vendored default and the Spanish CSN conditional NORM landfill tables as opt-in tables (screening arithmetic, never a compliance decision). Sublet S1+S2 totals: total activity with the IRT α/β/γ split and decay heat over caller-supplied decay energies, each with the excluding-tritium companion |
 | Depletion (`nucleide-depletion`) | CRAM (orders 16/48) matrix exponential, analytic Bateman fast path (`method=` selector with CRAM-48 fallback), depletion-chain XML parsing, Predictor/CECM/CF4 time-series integrators with activity/decay-heat observables, unit-aware decay inventories, cumulative decays and chain-lineage queries |
 | Enrichment (`nucleide-enrichment`) | Multicomponent cascade solver (numeric), SWU closed-form helpers |
 | Point kinetics (`nucleide-kinetics`) | Prescribed-reactivity PKE solver, inhour roots, prompt-jump factor |
 | Tritium transport (`nucleide-tritium`) | 1D Fick + McNabb–Foster diffusion-trapping kernel, Dirichlet/Sieverts/Henry/zero-flux/recombination surfaces (steady state and transient), permeation breakthrough and time lag, multi-layer series stacks with Sieverts, Henry, or vented-sink recombination internal interfaces |
-| Fusion sources (`nucleide-plasma-source`) | Tokamak neutron sources — ring/point (D-D 2.45 MeV, D-T 14.1 MeV) and a parametric Miller-geometry plasma with caller-supplied L/H/A-mode profiles (Fausser 2012), reactivity-weighted emission (Bosch–Hale 1992) over equimolar D-T, pure D-D, or D/T fuel mixtures at a shared ion temperature (Eriksson 2016), ion-temperature-broadened Gaussian spectra (Brysk/Ballabio), seeded sampling to particle vectors, MCNP SDEF + Serpent source-card emission with drift report |
-| Damage metrics (`nucleide-damage`) | NRT-dpa and arc-dpa displacement functions (NRT 1975; Nordlund 2018), He/H appm production and He/dpa ratios by spectral folding of caller flux with caller response functions, UQ on the folds over caller MVN blocks (SPECTER is the validation oracle behind an opt-in vendored Table VII fallback) |
+| TBR/blanket books (`nucleide-blanket`) | Raw TBR from caller tallies, multiplicative per-port coverage haircuts, blanket energy multiplication, tritium burn rate, and breeding-margin / net-surplus fuel-cycle metrics (pure arithmetic — no transport, no geometry optimization, no coupling into `tritium`) |
+| Fusion sources (`nucleide-plasma-source`) | Tokamak neutron sources — ring/point (D-D 2.45 MeV, D-T 14.1 MeV) and a parametric Miller-geometry plasma with caller-supplied L/H/A-mode profiles (Fausser 2012), reactivity-weighted emission (Bosch–Hale 1992) over equimolar D-T, pure D-D, or D/T fuel mixtures at a shared ion temperature (Eriksson 2016), per-species ion temperatures, one pinned deuterium hot-tail shape, toroidal sectors, an arbitrary-3D birth-rate lattice with field-period symmetry, and closed-form ECRH accessibility (cold resonance, relativistic shift, O1/X1 cut-offs, beamline crossings), ion-temperature-broadened Gaussian spectra (Brysk/Ballabio), seeded sampling to particle vectors, MCNP SDEF + Serpent source-card emission with drift report |
+| Damage metrics (`nucleide-damage`) | NRT-dpa and arc-dpa displacement functions (NRT 1975; Nordlund 2018), He/H appm production and He/dpa ratios by spectral folding of caller flux with caller response functions, UQ on the folds over caller MVN blocks (SPECTER is the validation oracle behind an opt-in vendored Table VII fallback), plus coil fast-fluence / lifetime bookkeeping (fast-flux sums, history accumulation, weakest-link life over caller limit tables) |
 | Spectroscopy (`nucleide-spectroscopy`) | Spectrum smoothing, gross/net counting, energy/efficiency calibration, X-ray lines, SPE parsing, decay-line SDEF source cards (E9) fed from caller lists or the runtime decay-lines TSV interchange |
 | Spectrum unfolding (`nucleide-unfold`) | SAND-II, STAYSL-class least-squares, GRAVEL chi-square-weighted, and MAXED maximum-entropy adjustment of a guess neutron spectrum against measured activation rates (caller-supplied response matrix, or the IRDFF-II runtime pack), with convergence diagnostics; non-convergence is a hard error |
+| Equilibrium data (`nucleide-equilib-io`) | Classic-netCDF VMEC `wout` reader (CDF-1/CDF-2 only; netCDF-4/CDF-5 convert facade-side) plus the `&INDATA` input-text grammar, with flux-surface Jacobian helpers for volume weighting and wall-load mapping in flux coordinates (reads data, never solves equilibria) |
+| OpenMC tally bridge (`nucleide.openmc`, pure Python) | Statepoint mesh/cell tally extraction through the caller-side OpenMC API into plain arrays the damage folds accept, plus a CSV interchange for the same dict |
 | Variance reduction (`nucleide-vr-tools`) | MAGIC weight-window generation, OpenMC/Serpent weight-window emission, mesh source sampling with alias tables |
 | UQ sampling (`nucleide-linalg`) | Seeded MVN + log-normal + LHS draws over caller-supplied covariance blocks, SANDY-compatible estimators, decay-data and fission-yield perturbation consumers |
 | CCCC I/O (`nucleide-cccc-io`) | ISOTXS/RTFLUX text-subset parsers + PARTISN deck writer (no solver) |
@@ -76,7 +81,7 @@ nucleide/
 │   ├── mcpl-io/       # MCPL interchange read/write + SSW conversion + merge/extract/stats/repair
 │   ├── serpent-io/    # res/dep/det readers
 │   ├── fluka-io/      # usrbin reader, material cards
-│   ├── alara-io/      # ALARA deck/flux/libs/output/photon/schedule glue + clearance analytics (no solver)
+│   ├── alara-io/      # ALARA deck/flux/libs/output/photon/schedule glue + clearance + Sublet S1/S2 totals (no solver)
 │   ├── cccc-io/       # ISOTXS/RTFLUX text-subset parsers + PARTISN writer (no solver)
 │   ├── fispact-io/    # FISPACT-II inventory output + CLEAR-keyword clearance table (output-only)
 │   ├── origen-io/     # scoped ORIGEN TAPE5/6/9 readers
@@ -86,9 +91,11 @@ nucleide/
 │   ├── depletion/     # CRAM + chain files
 │   ├── kinetics/      # prescribed-reactivity point kinetics + inhour
 │   ├── tritium/       # 1D diffusion-trapping kernel + single/multi-layer permeation checks
+│   ├── blanket/       # TBR + port penalties + power multiplication + burn/fuel-cycle margin
 │   ├── plasma-source/ # tokamak ring/point/parametric-plasma fusion sources + SDEF/Serpent cards
 │   ├── damage/        # NRT/arc-dpa + He/H appm + He/dpa spectral folds + UQ
 │   ├── unfold/        # neutron spectrum unfolding: SAND-II, STAYSL-class, GRAVEL, MAXED
+│   ├── equilib-io/    # classic-netCDF wout reader + INDATA grammar + Jacobian helpers (no solver)
 │   ├── spectroscopy/  # smoothing, counting, calibration, X-ray, SPE
 │   ├── emit/          # five-dialect card emission + mass-drift reports
 │   └── linalg/        # isolation facade over the linear-algebra backend

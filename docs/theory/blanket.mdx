@@ -1,0 +1,170 @@
+---
+title: TBR and Blanket Bookkeeping
+description: Raw TBR from caller tallies, multiplicative port-penalty haircuts, energy multiplication, tritium burn rate, and breeding-margin metrics.
+sidebar:
+  order: 13
+---
+
+Blanket studies need TBR bookkeeping, not transport: the tallies come from
+the caller's transport runs, and the penalties, multiplications, and
+margins below are closed-form arithmetic over those caller values. This
+page pins the equation set of `nucleide.blanket` (labels B1–B4, P1–P2,
+F1–F2, matching the crate rustdoc) and the reported stellarator Point-A
+values that gate it as regression vectors.
+
+## Overview
+
+A breeding blanket must make at least one triton per source neutron
+(breakeven, TBR = 1) with margin to cover losses, ports, and uncertainties.
+The kernel takes caller-tallied `(bred, source)` pairs plus port coverage
+fractions, power levels, and a required TBR, and returns the effective TBR,
+the margin, the blanket power, the tritium burn rate, and the net surplus —
+plain floats, never a geometry or a target solve.
+
+<Callout type="info" title="Code shape">
+  The `nucleide-blanket` crate is one kernel file plus errors: `lib.rs`
+  (the B1–F2 arithmetic with the Stellaris regression gates) and `error.rs`
+  (a `#[non_exhaustive]` error enum with the crate `Result` alias). The
+  Python surface (`nucleide.blanket`) is thin. There is no validation oracle
+  script: no external oracle exists for bookkeeping arithmetic, so the gates
+  below replay analytically in-crate and in `tests/test_blanket.py`.
+</Callout>
+
+## Mathematical details
+
+### B1 — Raw TBR
+
+$$
+\mathrm{TBR} = \frac{\mathrm{bred}}{\mathrm{source}},
+\tag{B1}
+$$
+
+dimensionless, with `bred` the caller-tallied tritons bred (non-negative)
+and `source` the source neutrons (strictly positive).
+
+### B2 — Port-penalty haircut
+
+Each port (ECRH launcher, diagnostics, maintenance) removes blanket
+coverage; the haircut is multiplicative over the per-port fractions
+$f_i \in [0, 1)$:
+
+$$
+\mathrm{TBR_{eff}} = \mathrm{TBR_{raw}}\prod_i (1 - f_i).
+\tag{B2}
+$$
+
+An empty port list returns the raw TBR unchanged. The ECRH accessibility
+positions on the [fusion-sources page](fusion-sources.mdx#s7--ecrh-accessibility)
+are the per-port penalty inputs.
+
+### B3–B4 — Breeding margin and requirement check
+
+$$
+\mathrm{margin} = \mathrm{TBR_{eff}} - 1,
+\tag{B3}
+$$
+
+$$
+\mathrm{TBR_{eff}} \ge \mathrm{TBR_{required}}.
+\tag{B4}
+$$
+
+A negative margin is a sub-breakeven deficit and is reported as-is, never
+clamped.
+
+### P1–P2 — Energy multiplication and blanket power
+
+$$
+M = \frac{P_\mathrm{blanket}}{P_\mathrm{fusion}},
+\qquad
+P_\mathrm{blanket} = M\,P_\mathrm{fusion}\ \mathrm{[MW]}.
+\tag{P1–P2}
+$$
+
+### F1–F2 — Tritium burn rate and net surplus
+
+One triton (3.0160492 u) burns per 17.6 MeV of D-T fusion energy, scaled to
+grams per day per MW of fusion power:
+
+$$
+\mathrm{burn} = P_\mathrm{fusion}\,K\ \mathrm{[g/day]},
+\qquad
+K = \frac{10^6 \cdot 86400 \cdot (3.0160492\,\mathrm{u\ in\ kg}) \cdot 10^3}
+{17.6\,\mathrm{MeV\ in\ J}} = 0.153454\ \mathrm{g/day\ per\ MW},
+\tag{F1}
+$$
+
+with the SI-exact atomic mass unit and electronvolt; the crate spells the
+constant pair plus the SI conversions as documented `pub const` values.
+The net fuel-cycle surplus is the margin times the burn:
+
+$$
+\mathrm{net} = (\mathrm{TBR_{eff}} - 1)\,\mathrm{burn}\ \mathrm{[g/day]},
+\tag{F2}
+$$
+
+negative when sub-breakeven (a net deficit, never clamped).
+
+## Algorithm
+
+Validate first (finite inputs, non-negative tallies, strictly positive
+source neutrons, port fractions in $[0, 1)$), then evaluate (B1)–(F2) in
+one pass — each metric is a pure function of its inputs with no shared
+state, so callers compose them in any order.
+
+## Worked example: Point-A anchors
+
+The reported stellarator Point-A values gate the arithmetic as regression
+vectors (gates, not inputs): raw TBR $1.1070$ at exact equality, $1.07379$
+after the 3% ECRH-port haircut ($1.1070 \times 0.97$, report print
+$1.074$), multiplication $1.20$, and burn $416.6$ g/day:
+
+```python
+import nucleide.blanket as blk
+
+blk.tbr_from_tallies(1.1070, 1.0)          # 1.107 — (B1)
+blk.apply_port_penalty(1.1070, [0.03])     # 1.07379 — (B2)
+blk.breeding_margin(1.07379)               # 0.07379 — (B3)
+blk.blanket_power(2714.82, 1.20)           # 3257.784 MW — (P2)
+blk.tritium_burn_g_per_day(2714.82)        # 416.6 g/day — (F1)
+blk.net_surplus_g_per_day(1.07379, 2714.82)  # ~30.74 g/day — (F2)
+```
+
+Hand checks: $0.153454 \times 2714.82 = 416.60$ (the 2714.82 MW Point-A
+fusion power is the power implied by 416.6 g/day through (F1), not a
+separate published input — the published anchor is the 416.6 value
+itself), and $(1.07379 - 1) \times 416.6 = 30.74$ g/day net surplus.
+
+## Assumptions and limitations
+
+- **Arithmetic only.** No transport solving, no TBR target solving, no
+  geometry optimization — and no coupling into the `tritium` permeation
+  kernel, which keeps its no-breeding-coupling scope line; this companion
+  owns the breeding-side arithmetic.
+- **Gates, not inputs.** The Point-A values pin the implementation; every
+  real input (tallies, port fractions, powers, required TBR) is caller
+  data, validated loudly (non-finite, negative, non-positive-source, and
+  out-of-range port fractions are named errors).
+- **Deficits stay negative.** Sub-breakeven margins and net results are
+  reported as-is so callers can size the shortfall; nothing clamps at zero.
+
+## Validation
+
+- **Rust unit tests** replay the Point-A anchors (raw TBR exact, penalized
+  TBR, multiplication, burn at the implied power, margin/surplus gates)
+  plus the burn-constant identity and loud-input vectors.
+- **`tests/test_blanket.py`** replays the same anchors through the Python
+  surface with an independent transcription of the (F1) burn constant
+  (grouped differently from the Rust const expression) at $10^{-12}$
+  relative.
+- **No oracle script**: bookkeeping arithmetic has no external oracle, so
+  there is no `validation/*_vs_*.py` leg and no `SECTION_ORDER` entry —
+  the analytic gates above are the contract.
+
+## Related work beyond Nucleide
+
+The tallies this kernel consumes come from transport codes (OpenMC/DAGMC
+blanket runs); the port-penalty inputs come from the ECRH accessibility
+kernel on the fusion-sources page. What Nucleide does not implement:
+blanket neutronics itself, TBR target solving, and tritium transport
+(the `tritium` kernel's documented scope line).

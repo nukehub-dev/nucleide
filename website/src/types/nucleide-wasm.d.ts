@@ -747,8 +747,115 @@ export interface FusionParametricSpec {
   pedestalTempKev: number;
   separatrixTempKev: number;
   pedestalRadiusCm: number;
+  fuelDeuterium?: number;
+  fuelTritium?: number;
+  tailFraction?: number;
+  tailTempKev?: number;
   n: number;
   seed: number;
+}
+
+export interface LatticePointSpec {
+  positionCm: [number, number, number];
+  rate: number;
+  tiKev: number;
+}
+
+export interface LatticeSourceSpec {
+  points: LatticePointSpec[];
+  reaction: string;
+  fieldPeriods?: number;
+  baseAngle?: number;
+  n: number;
+  seed: number;
+}
+
+export interface LatticeSampleResult {
+  kind: string;
+  totalStrength: number;
+  count: number;
+  particles: FusionParticleJson[];
+}
+
+export interface EcrhScalars {
+  gyrofrequencyGhz: number;
+  resonantFieldT: number;
+  relativisticFieldT?: number;
+  o1CutoffDensityM3: number;
+  x1CutoffDensityM3?: number;
+}
+
+export interface EcrhAccessibility {
+  resonantFieldT: number;
+  relativisticFieldT?: number;
+  o1CutoffDensityM3: number;
+  resonanceM: number[];
+  o1CutoffM: number[];
+  x1CutoffM: number[];
+}
+
+export interface TbrScalars {
+  rawTbr: number;
+  effectiveTbr: number;
+  margin: number;
+  meets?: boolean;
+  burnGPerDay: number;
+  surplusGPerDay: number;
+}
+
+export interface CoilFlux {
+  fastFlux: number;
+  fastFluence: number;
+}
+
+export interface CoilLifetime {
+  seconds: number;
+  limiting?: number;
+}
+
+export interface SubletActivityEntry {
+  nuclide: string;
+  activityBq: number;
+  irt: number;
+  alphaFrac?: number;
+}
+
+export interface SubletActivity {
+  totalBq: number;
+  alphaBq: number;
+  betaBq: number;
+  gammaBq: number;
+  exTritiumBq: number;
+}
+
+export interface SubletHeatEntry {
+  nuclide: string;
+  activityBq: number;
+  eAlphaEv: number;
+  eBetaEv: number;
+  eGammaEv: number;
+}
+
+export interface SubletHeat {
+  alphaKw: number;
+  betaKw: number;
+  gammaKw: number;
+  totalKw: number;
+  exTritiumKw: number;
+}
+
+export type IndataValue = { Int: number } | { Float: number } | { Bool: boolean } | { Str: string };
+
+export interface IndataDoc {
+  scalars: Record<string, IndataValue>;
+  indexed: Record<string, { index: number[]; value: IndataValue }[]>;
+}
+
+export interface WallLoadResult {
+  ntheta: number;
+  nzeta: number;
+  loads: number[][];
+  total: number;
 }
 
 export type FusionSourceSpec = FusionRingSpec | FusionPointSpec | FusionParametricSpec;
@@ -1009,6 +1116,36 @@ export interface WasmApi {
   fusionReactivity(reaction: string, tiKev: number): number;
   sampleFusionSource(spec: FusionSourceSpec): FusionSampleResult;
   emitFusionSourceCards(spec: FusionCardsSpec): FusionCardsResult;
+  ecrhScalars(frequencyGhz: number, harmonic: number, bT: number, teKev?: number): EcrhScalars;
+  ecrhAccessibility(
+    sM: number[],
+    bT: number[],
+    neM3: number[],
+    frequencyGhz: number,
+    harmonic: number,
+    teKev?: number,
+  ): EcrhAccessibility;
+  sampleLatticeSource(spec: LatticeSourceSpec): LatticeSampleResult;
+  tbrScalars(
+    tritonsBred: number,
+    sourceNeutrons: number,
+    portFractions: number[],
+    fusionPowerMw: number,
+    requiredTbr?: number,
+  ): TbrScalars;
+  coilFastFlux(flux: number[], bounds: number[], thresholdMev: number, seconds: number): CoilFlux;
+  coilLifetime(limits: number[], rates: number[]): CoilLifetime;
+  subletActivity(entries: SubletActivityEntry[]): SubletActivity;
+  subletDecayHeat(entries: SubletHeatEntry[]): SubletHeat;
+  parseIndata(text: string): IndataDoc;
+  wallLoad(
+    sEdges: number[],
+    ntheta: number,
+    nzeta: number,
+    nfp: number,
+    birth: number[],
+    jacobian: number[],
+  ): WallLoadResult;
   unfoldForwardFold(response: number[][], spectrum: number[]): number[];
   sandiiSolve(
     response: number[][],

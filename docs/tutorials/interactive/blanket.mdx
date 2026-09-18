@@ -1,0 +1,23 @@
+---
+title: TBR bookkeeping
+description: Turn caller tritium tallies into raw and effective TBR, the breeding margin, and daily burn and surplus numbers.
+sidebar:
+  order: 20
+---
+
+A breeding blanket must make at least as much tritium as the plasma burns.
+The **tritium breeding ratio (TBR)** is bred tritons per source neutron;
+ports and penetrations shave it down multiplicatively, and the remainder
+minus one is the breeding margin. Combined with the fusion power, the same
+inputs give the daily tritium burn and the net surplus (or deficit).
+
+The demo below runs that bookkeeping over editable caller tallies — all
+numbers are synthetic. No transport happens here; the tallies come from your
+neutronics calculation.
+
+<InteractiveDemo kind="blanket" />
+
+## Further reading
+
+- Theory: [Blanket TBR bookkeeping](../../theory/blanket.mdx)
+- Crate docs: [`crates/blanket/src/lib.rs`](https://github.com/nukehub-dev/nucleide/blob/main/crates/blanket/src/lib.rs)

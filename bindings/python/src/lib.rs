@@ -6856,6 +6856,208 @@ fn unfold_forward_fold(response: Vec<Vec<f64>>, spectrum: Vec<f64>) -> PyResult<
 }
 
 // ---------------------------------------------------------------------------
+// Equilibrium data readers (thin glue over `nucleide-equilib-io`; model stays in core)
+// ---------------------------------------------------------------------------
+
+/// Probe a `wout` file variant from its magic bytes.
+///
+/// Returns `"classic"` for CDF-1 and `"64-bit offset"` for CDF-2 (the
+/// `ncdump -k` spellings). HDF5-backed netCDF-4 files and CDF-5 files
+/// raise `ValueError` pointing at facade-side conversion: the Rust reader
+/// never takes HDF5.
+#[pyfunction]
+fn equilib_probe_variant(path: &str) -> PyResult<String> {
+    nucleide_equilib_io::probe_classic_file(std::path::Path::new(path))
+        .map(|v| v.ncdump_kind().to_string())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+fn equilib_matrix_dict(py: Python<'_>, m: &nucleide_equilib_io::Matrix) -> PyResult<Py<PyAny>> {
+    use pyo3::types::PyDict;
+    let d = PyDict::new(py);
+    d.set_item("rows", m.n_rows)?;
+    d.set_item("cols", m.n_cols)?;
+    d.set_item("values", m.to_nested())?;
+    Ok(d.into_any().unbind())
+}
+
+/// Read a classic-netCDF `wout` file (CDF-1/CDF-2 only).
+///
+/// Thin wrapper over `nucleide_equilib_io::Wout::read_file`: returns the
+/// reader-minimum variables (`nfp`, `ns`, `xm`, `xn`, `rmnc`, `zmns`,
+/// `lmns`, `gmnc`), the resolved counts, optional scalars (`mpol`,
+/// `ntor`, `phiedge`, `volume_p`, each `None` when absent), the optional
+/// Nyquist maps (`xm_nyq`/`xn_nyq`, `None` when the file carries neither
+/// them nor length-matching `xm`/`xn`), the later-use fields present in
+/// the file (`bmnc`, `bsubumnc`, `bsubvmnc`, `bsubsmns`, `currumnc`,
+/// `currvmnc`), and the `variant` spelling (`"classic"`/`"64-bit
+/// offset"`). Matrices arrive as nested row lists (outer over radius,
+/// inner over modes). Wrong-variant files raise `ValueError`.
+#[pyfunction]
+fn equilib_read_wout(py: Python<'_>, path: &str) -> PyResult<Py<PyAny>> {
+    use pyo3::types::PyDict;
+    let w = nucleide_equilib_io::Wout::read_file(std::path::Path::new(path))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let d = PyDict::new(py);
+    d.set_item("variant", w.variant.ncdump_kind())?;
+    d.set_item("nfp", w.nfp)?;
+    d.set_item("ns", w.ns)?;
+    d.set_item("n_modes", w.n_modes)?;
+    d.set_item("n_modes_nyq", w.n_modes_nyq)?;
+    d.set_item("mpol", w.mpol)?;
+    d.set_item("ntor", w.ntor)?;
+    d.set_item("phiedge", w.phiedge)?;
+    d.set_item("volume_p", w.volume_p)?;
+    d.set_item("xm", w.xm.clone())?;
+    d.set_item("xn", w.xn.clone())?;
+    match w.nyq_modes() {
+        Ok((m, n)) => {
+            d.set_item("xm_nyq", m.to_vec())?;
+            d.set_item("xn_nyq", n.to_vec())?;
+        }
+        Err(_) => {
+            d.set_item("xm_nyq", py.None())?;
+            d.set_item("xn_nyq", py.None())?;
+        }
+    }
+    d.set_item("rmnc", equilib_matrix_dict(py, &w.rmnc)?)?;
+    d.set_item("zmns", equilib_matrix_dict(py, &w.zmns)?)?;
+    d.set_item("lmns", equilib_matrix_dict(py, &w.lmns)?)?;
+    d.set_item("gmnc", equilib_matrix_dict(py, &w.gmnc)?)?;
+    let fields = PyDict::new(py);
+    for (name, m) in &w.fields {
+        fields.set_item(name, equilib_matrix_dict(py, m)?)?;
+    }
+    d.set_item("fields", fields)?;
+    Ok(d.into_any().unbind())
+}
+
+/// Evaluate the Jacobian Fourier sum (J1) over caller arrays:
+/// `Σ c·cos(m·θ − n·ζ)`. Thin wrapper over
+/// `nucleide_equilib_io::fourier_jacobian`.
+#[pyfunction]
+fn equilib_jacobian(
+    xm: Vec<f64>,
+    xn: Vec<f64>,
+    coeffs: Vec<f64>,
+    theta: f64,
+    zeta: f64,
+) -> PyResult<f64> {
+    nucleide_equilib_io::fourier_jacobian(&xm, &xn, &coeffs, theta, zeta)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Evaluate the Jacobian on a tensor grid (J2): `ntheta` poloidal points
+/// over `[0, 2π)` by `nzeta` toroidal points over one field period
+/// `[0, 2π/nfp)`. Returns nested row lists (outer over θ, inner over ζ).
+#[pyfunction]
+fn equilib_jacobian_grid(
+    xm: Vec<f64>,
+    xn: Vec<f64>,
+    coeffs: Vec<f64>,
+    nfp: u32,
+    ntheta: usize,
+    nzeta: usize,
+) -> PyResult<Vec<Vec<f64>>> {
+    if nfp == 0 {
+        return Err(PyValueError::new_err("nfp must be positive"));
+    }
+    if ntheta == 0 {
+        return Err(PyValueError::new_err("ntheta must be positive"));
+    }
+    if nzeta == 0 {
+        return Err(PyValueError::new_err("nzeta must be positive"));
+    }
+    let nfp_f = f64::from(nfp);
+    let mut out = Vec::with_capacity(ntheta);
+    for i in 0..ntheta {
+        let theta = 2.0 * std::f64::consts::PI * i as f64 / ntheta as f64;
+        let mut row = Vec::with_capacity(nzeta);
+        for j in 0..nzeta {
+            let zeta = 2.0 * std::f64::consts::PI * j as f64 / (nzeta as f64 * nfp_f);
+            row.push(
+                nucleide_equilib_io::fourier_jacobian(&xm, &xn, &coeffs, theta, zeta)
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?,
+            );
+        }
+        out.push(row);
+    }
+    Ok(out)
+}
+
+/// Map a caller birth-rate density field onto the wall (W1-W2): one
+/// radial line integral per `(theta, zeta)` wall node plus the
+/// one-field-period total. `s_edges` holds the `nr + 1` strictly
+/// increasing radial edges; `birth`/`jacobian` are the per-voxel
+/// densities and `sqrt(g)` values in radial-major order
+/// (`(i * ntheta + j) * nzeta + k`). Returns a dict with `ntheta`,
+/// `nzeta`, nested `loads` (outer over theta, inner over zeta), and
+/// `total`. Thin wrapper over `nucleide_equilib_io::wall_load`.
+#[pyfunction]
+fn equilib_wall_load(
+    py: Python<'_>,
+    s_edges: Vec<f64>,
+    ntheta: usize,
+    nzeta: usize,
+    nfp: u32,
+    birth: Vec<f64>,
+    jacobian: Vec<f64>,
+) -> PyResult<Py<PyAny>> {
+    use pyo3::types::PyDict;
+    let wall = nucleide_equilib_io::wall_load(&s_edges, ntheta, nzeta, nfp, &birth, &jacobian)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let d = PyDict::new(py);
+    d.set_item("ntheta", wall.ntheta)?;
+    d.set_item("nzeta", wall.nzeta)?;
+    d.set_item("loads", wall.to_nested())?;
+    d.set_item("total", wall.total)?;
+    Ok(d.into_any().unbind())
+}
+
+fn equilib_value_to_py(py: Python<'_>, v: &nucleide_equilib_io::IndataValue) -> Py<PyAny> {
+    use nucleide_equilib_io::IndataValue as V;
+    match v {
+        V::Int(i) => i.into_pyobject(py).unwrap().into_any().unbind(),
+        V::Float(x) => x.into_pyobject(py).unwrap().into_any().unbind(),
+        V::Bool(b) => pyo3::types::PyBool::new(py, *b)
+            .to_owned()
+            .into_any()
+            .unbind(),
+        V::Str(s) => s.into_pyobject(py).unwrap().into_any().unbind(),
+    }
+}
+
+/// Parse `&INDATA ... /` namelist text.
+///
+/// Thin wrapper over `nucleide_equilib_io::parse_indata`: returns
+/// `{"scalars": {NAME: value}, "indexed": {NAME: [[[i, ...], value],
+/// ...]}}` with upper-cased names. Sliced indices (`RBC(0:4,2)=...`)
+/// raise `ValueError`.
+#[pyfunction]
+fn equilib_parse_indata(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
+    use pyo3::types::PyDict;
+    let parsed = nucleide_equilib_io::parse_indata(text)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let d = PyDict::new(py);
+    let scalars = PyDict::new(py);
+    for (name, v) in &parsed.scalars {
+        scalars.set_item(name, equilib_value_to_py(py, v))?;
+    }
+    d.set_item("scalars", scalars)?;
+    let indexed = PyDict::new(py);
+    for (name, map) in &parsed.indexed {
+        let mut entries = Vec::with_capacity(map.len());
+        for (idx, v) in map {
+            let item = (idx.clone(), equilib_value_to_py(py, v));
+            entries.push(item);
+        }
+        indexed.set_item(name, entries)?;
+    }
+    d.set_item("indexed", indexed)?;
+    Ok(d.into_any().unbind())
+}
+
+// ---------------------------------------------------------------------------
 // Tokamak fusion sources (thin glue over `nucleide-plasma-source`; model stays in core)
 // ---------------------------------------------------------------------------
 
@@ -6875,10 +7077,11 @@ fn parse_plasma_reaction(name: &str) -> PyResult<nucleide_plasma_source::FusionR
     }
 }
 
-/// A parsed source spec: ring/point or parametric plasma.
+/// A parsed source spec: ring/point, parametric plasma, or 3D lattice.
 enum PyPlasmaSource {
     Basic(nucleide_plasma_source::PlasmaSourceConfig),
     Parametric(nucleide_plasma_source::ParametricPlasmaConfig),
+    Lattice(nucleide_plasma_source::LatticeSourceConfig),
 }
 
 /// Parse a source-spec dict into a ring/point [`PlasmaSourceConfig`].
@@ -6976,6 +7179,17 @@ fn parse_plasma_basic_spec(
 /// for rate and spectrum (still validated). Both keys are required when the
 /// dict is present, a `fuel` mixture is required with it, and non-finite or
 /// negative temperatures are loud errors.
+///
+/// Deuterium hot tail: the optional `deuterium_tail` dict
+/// `{"fraction": eta, "temperature_kev": T_tail_kev}` splits the deuterium
+/// population into a bulk `(1 - eta)` at `T_D` and a hot tail `eta` at
+/// `T_tail` (the single-tail-temperature Eriksson shape; see
+/// `nucleide-plasma-source` `DeuteriumTail`) — each sub-pair reacts at its
+/// own mass-weighted relative temperature with the Ballabio lines following
+/// per sub-branch. Both keys are required when the dict is present, a `fuel`
+/// mixture is required with it, `eta = 0` recovers the no-tail kernel
+/// exactly, and non-finite, out-of-range, or negative parameters are loud
+/// errors.
 fn parse_plasma_parametric_spec(
     spec: &BTreeMap<String, Py<PyAny>>,
     py: Python<'_>,
@@ -7034,6 +7248,47 @@ fn parse_plasma_parametric_spec(
             let f_d = fractions.get("D").copied().ok_or_else(|| missing("D"))?;
             let f_t = fractions.get("T").copied().ok_or_else(|| missing("T"))?;
             Some(ps::FuelMixture::new(f_d, f_t).map_err(|e| PyValueError::new_err(e.to_string()))?)
+        }
+        None => None,
+    };
+    // Deuterium hot tail: deuterium_tail={"fraction": eta,
+    // "temperature_kev": T_tail_kev}. Both keys are required when the dict is
+    // present; DeuteriumTail::new carries the loud parameter errors, and
+    // config validation requires a fuel mixture alongside.
+    let tail = match spec.get("deuterium_tail") {
+        Some(value) => {
+            let params: BTreeMap<String, f64> = value.extract(py).map_err(|_| {
+                PyValueError::new_err(
+                    "`deuterium_tail` must be a dict of parameters like \
+                     {\"fraction\": 0.05, \"temperature_kev\": 60.0}",
+                )
+            })?;
+            for key in params.keys() {
+                if !matches!(key.as_str(), "fraction" | "temperature_kev") {
+                    return Err(PyValueError::new_err(format!(
+                        "unsupported deuterium tail parameter `{key}` \
+                         (supported keys: fraction, temperature_kev)"
+                    )));
+                }
+            }
+            let missing = |key: &str| {
+                PyValueError::new_err(format!(
+                    "`deuterium_tail` dict needs both `fraction` and `temperature_kev` \
+                     (missing `{key}`)"
+                ))
+            };
+            let fraction = params
+                .get("fraction")
+                .copied()
+                .ok_or_else(|| missing("fraction"))?;
+            let temperature_kev = params
+                .get("temperature_kev")
+                .copied()
+                .ok_or_else(|| missing("temperature_kev"))?;
+            Some(
+                ps::DeuteriumTail::new(fraction, temperature_kev)
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?,
+            )
         }
         None => None,
     };
@@ -7119,6 +7374,191 @@ fn parse_plasma_parametric_spec(
         fuel_mixture,
         species_temperatures,
         sector,
+        tail,
+        weight: 1.0,
+    };
+    if let Some(weight) = spec.get("weight") {
+        let weight = weight
+            .extract::<f64>(py)
+            .map_err(|_| PyValueError::new_err("`weight` must be a number"))?;
+        config.weight = weight;
+    }
+    config
+        .validate()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(config)
+}
+
+/// Parse the lattice-spec keys into a [`LatticeSourceConfig`].
+///
+/// Keys: `points` (a list of `{"position": [x, y, z] [cm], "rate": w >= 0,
+/// "ion_temperature_kev": Ti >= 0 [keV]}` dicts — the full sampling
+/// distribution without symmetry, or the base-sector cloud with symmetry),
+/// plus either `reaction` (`"dt"`/`"dd"`) or the `fuel` dict
+/// `{"D": f_D, "T": f_T}` (then `reaction` is optional and unused), plus the
+/// optional `species_temperatures` dict (both keys; requires `fuel`), plus
+/// the optional `field_periods`/`base_angle` symmetry pair (both or neither;
+/// `field_periods >= 1`, finite `base_angle` [rad]). Non-finite, negative,
+/// or misshapen entries are loud errors.
+fn parse_plasma_lattice_spec(
+    spec: &BTreeMap<String, Py<PyAny>>,
+    py: Python<'_>,
+) -> PyResult<nucleide_plasma_source::LatticeSourceConfig> {
+    use nucleide_plasma_source as ps;
+    let points: Vec<BTreeMap<String, Py<PyAny>>> = spec
+        .get("points")
+        .ok_or_else(|| PyValueError::new_err("lattice spec missing `points`"))?
+        .extract(py)
+        .map_err(|_| {
+            PyValueError::new_err(
+                "`points` must be a list of {position, rate, ion_temperature_kev} dicts",
+            )
+        })?;
+    if points.is_empty() {
+        return Err(PyValueError::new_err(
+            "plasma-source: invalid lattice source: lattice needs at least one point",
+        ));
+    }
+    let mut lattice_points = Vec::with_capacity(points.len());
+    for (i, entry) in points.iter().enumerate() {
+        let position: Vec<f64> = entry
+            .get("position")
+            .ok_or_else(|| {
+                PyValueError::new_err(format!("lattice point {i} needs `position` [cm]"))
+            })?
+            .extract::<Vec<f64>>(py)
+            .map_err(|_| {
+                PyValueError::new_err(format!(
+                    "lattice point {i} `position` must be a list of numbers"
+                ))
+            })?;
+        if position.len() != 3 {
+            return Err(PyValueError::new_err(format!(
+                "lattice point {i} `position` must have exactly three entries"
+            )));
+        }
+        let num = |key: &str| -> PyResult<f64> {
+            entry
+                .get(key)
+                .ok_or_else(|| PyValueError::new_err(format!("lattice point {i} missing `{key}`")))?
+                .extract::<f64>(py)
+                .map_err(|_| {
+                    PyValueError::new_err(format!("lattice point {i} `{key}` must be a number"))
+                })
+        };
+        lattice_points.push(ps::LatticePoint {
+            position_cm: [position[0], position[1], position[2]],
+            rate: num("rate")?,
+            ion_temperature_kev: num("ion_temperature_kev")?,
+        });
+    }
+    // Fuel mixture dict, upstream spelling (both keys required when present).
+    let fuel_mixture = match spec.get("fuel") {
+        Some(value) => {
+            let fractions: BTreeMap<String, f64> = value.extract(py).map_err(|_| {
+                PyValueError::new_err(
+                    "`fuel` must be a dict of fractions like {\"D\": 0.7, \"T\": 0.3}",
+                )
+            })?;
+            for key in fractions.keys() {
+                if !matches!(key.as_str(), "D" | "T") {
+                    return Err(PyValueError::new_err(format!(
+                        "unsupported fuel fraction `{key}` (supported keys: D, T)"
+                    )));
+                }
+            }
+            let missing = |key: &str| {
+                PyValueError::new_err(format!(
+                    "`fuel` dict needs both `D` and `T` fractions (missing `{key}`)"
+                ))
+            };
+            let f_d = fractions.get("D").copied().ok_or_else(|| missing("D"))?;
+            let f_t = fractions.get("T").copied().ok_or_else(|| missing("T"))?;
+            Some(ps::FuelMixture::new(f_d, f_t).map_err(|e| PyValueError::new_err(e.to_string()))?)
+        }
+        None => None,
+    };
+    // Per-species ion temperatures, upstream spelling: species_temperatures=
+    // {"D": T_D_kev, "T": T_T_kev}. Both keys are required when the dict is
+    // present; SpeciesIonTemperatures::new carries the loud temperature
+    // errors, and config validation requires a fuel mixture alongside.
+    let species_temperatures = match spec.get("species_temperatures") {
+        Some(value) => {
+            let temps: BTreeMap<String, f64> = value.extract(py).map_err(|_| {
+                PyValueError::new_err(
+                    "`species_temperatures` must be a dict of temperatures like \
+                     {\"D\": 20.0, \"T\": 30.0} [keV]",
+                )
+            })?;
+            for key in temps.keys() {
+                if !matches!(key.as_str(), "D" | "T") {
+                    return Err(PyValueError::new_err(format!(
+                        "unsupported species temperature `{key}` (supported keys: D, T)"
+                    )));
+                }
+            }
+            let missing = |key: &str| {
+                PyValueError::new_err(format!(
+                    "`species_temperatures` dict needs both `D` and `T` temperatures \
+                     (missing `{key}`)"
+                ))
+            };
+            let t_d = temps.get("D").copied().ok_or_else(|| missing("D"))?;
+            let t_t = temps.get("T").copied().ok_or_else(|| missing("T"))?;
+            Some(
+                ps::SpeciesIonTemperatures::new(t_d, t_t)
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?,
+            )
+        }
+        None => None,
+    };
+    // Field-period symmetry: both keys or neither (the core
+    // `LatticeSymmetry::new` carries the loud range errors).
+    let symmetry = match (spec.get("field_periods"), spec.get("base_angle")) {
+        (None, None) => None,
+        (Some(periods), Some(base)) => {
+            let periods = periods
+                .extract::<i64>(py)
+                .map_err(|_| PyValueError::new_err("`field_periods` must be an integer >= 1"))?;
+            let base = base
+                .extract::<f64>(py)
+                .map_err(|_| PyValueError::new_err("`base_angle` must be a number [rad]"))?;
+            if periods < 1 {
+                return Err(PyValueError::new_err(
+                    "plasma-source: invalid lattice symmetry: field periods must be >= 1",
+                ));
+            }
+            Some(
+                ps::LatticeSymmetry::new(periods as u32, base)
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?,
+            )
+        }
+        _ => {
+            return Err(PyValueError::new_err(
+                "`field_periods` and `base_angle` must be given together (symmetry pair)",
+            ))
+        }
+    };
+    // `reaction` stays required for single-fuel specs; a fuel dict fully
+    // determines the model, so it becomes an optional (unused) placeholder.
+    let fuel = match spec.get("reaction") {
+        Some(_) => parse_plasma_reaction(&get_str(
+            spec,
+            py,
+            "reaction",
+            "lattice spec missing `reaction`",
+        )?)?,
+        None if fuel_mixture.is_some() => ps::FusionReaction::Dt,
+        None => {
+            return Err(PyValueError::new_err("lattice spec missing `reaction`"));
+        }
+    };
+    let mut config = ps::LatticeSourceConfig {
+        points: lattice_points,
+        reaction: fuel,
+        fuel_mixture,
+        species_temperatures,
+        symmetry,
         weight: 1.0,
     };
     if let Some(weight) = spec.get("weight") {
@@ -7134,7 +7574,8 @@ fn parse_plasma_parametric_spec(
 }
 
 /// Parse a source-spec dict: `kind` selects ring/point (`"point"`,
-/// `"ring"`) or the parametric plasma (`"parametric"`).
+/// `"ring"`), the parametric plasma (`"parametric"`), or the arbitrary-3D
+/// lattice (`"lattice"`).
 fn parse_plasma_source_spec(
     spec: &BTreeMap<String, Py<PyAny>>,
     py: Python<'_>,
@@ -7151,8 +7592,11 @@ fn parse_plasma_source_spec(
         "parametric" => Ok(PyPlasmaSource::Parametric(parse_plasma_parametric_spec(
             spec, py,
         )?)),
+        "lattice" => Ok(PyPlasmaSource::Lattice(parse_plasma_lattice_spec(
+            spec, py,
+        )?)),
         other => Err(PyValueError::new_err(format!(
-            "unknown source kind `{other}` (supported: point, ring, parametric)"
+            "unknown source kind `{other}` (supported: point, ring, parametric, lattice)"
         ))),
     }
 }
@@ -7179,8 +7623,8 @@ fn plasma_drift_rows(
 
 /// Sample `n` source particles into per-field float64 NumPy arrays.
 ///
-/// Thin wrapper over the ring/point `SourceSampler` and the parametric
-/// `ParametricSampler` (seeded, deterministic per platform): `spec` is the
+/// Thin wrapper over the ring/point `SourceSampler`, the parametric
+/// `ParametricSampler`, and the lattice `LatticeSampler` (seeded, deterministic per platform): `spec` is the
 /// source-spec dict (see [`parse_plasma_source_spec`]), `seed` pins the
 /// stream. Returns `x`, `y`, `z` \[cm\], direction cosines `u`, `v`, `w`
 /// (unit vectors), `energy` \[MeV\], and `weight`. MCPL projection stays
@@ -7200,6 +7644,9 @@ fn plasma_source_particles(
             .map_err(|e| PyValueError::new_err(e.to_string()))?
             .sample_n(n),
         PyPlasmaSource::Parametric(config) => ps::ParametricSampler::new(config, seed)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?
+            .sample_n(n),
+        PyPlasmaSource::Lattice(config) => ps::LatticeSampler::new(config, seed)
             .map_err(|e| PyValueError::new_err(e.to_string()))?
             .sample_n(n),
     };
@@ -7237,12 +7684,14 @@ fn plasma_source_particles(
 /// Emit MCNP `SDEF` and Serpent `src` source cards plus drift reports.
 ///
 /// Thin wrapper over `nucleide_plasma_source::{emit_sdef, emit_serpent}`
-/// (ring/point) and `{emit_sdef_parametric, emit_serpent_parametric}`.
+/// (ring/point), `{emit_sdef_parametric, emit_serpent_parametric}`, and
+/// `{emit_sdef_lattice, emit_serpent_lattice}`.
 /// `spec` is the source-spec dict (optional `mcnp_version`, 5 or 6, default
 /// 5); `bins` sets the tabulation bin count. Returns `sdef` and `serpent`,
 /// each `{"card": str, "drift": [row dicts]}`, plus `spectrum` moments
 /// (`nominal_mev`, `mean_mev`, `sigma_mev`, `mono` — for a parametric
-/// source these are the magnetic-axis moments). The SDEF card round-trips
+/// source these are the magnetic-axis moments, for a lattice the
+/// rate-weighted cloud moments). The SDEF card round-trips
 /// through `nucleide.mcnp.parse_sdef` byte-identically; Serpent drift rows
 /// are analytic by design (no Serpent source reader in the workspace).
 #[pyfunction]
@@ -7301,6 +7750,47 @@ fn plasma_source_emit_cards(
             let (nominal, mean, sigma) = config
                 .axis_spectrum_summary()
                 .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            out.set_item("sdef", emit(sdef)?)?;
+            out.set_item("serpent", emit(serpent)?)?;
+            (nominal, mean, sigma, sigma == 0.0)
+        }
+        PyPlasmaSource::Lattice(config) => {
+            let sdef = ps::emit_sdef_lattice(config, version, bins)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            let serpent = ps::emit_serpent_lattice(config, bins)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            // Rate-weighted mean birth energy over the cloud; the nominal
+            // line is the config reaction's cold line (mixtures prefer the
+            // D-T line on exact ties, the axis-summary convention).
+            let mean = config
+                .mean_birth_energy()
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            let nominal = match &config.fuel_mixture {
+                None => config.reaction.nominal_energy_mev(),
+                Some(_) => ps::FusionReaction::Dt.nominal_energy_mev(),
+            };
+            // A lattice cloud has no single sigma (per-node lines); report
+            // the rate-weighted mixture sigma around the mean.
+            let mut second = 0.0;
+            let mut den = 0.0;
+            for point in &config.points {
+                let (t_d, t_t) = match &config.species_temperatures {
+                    Some(pair) => (pair.deuterium_kev, pair.tritium_kev),
+                    None => (point.ion_temperature_kev, point.ion_temperature_kev),
+                };
+                let branches = config
+                    .spectrum_branches(t_d, t_t)
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+                for &(_, weight, mu, sigma) in &branches {
+                    second += point.rate * weight * (sigma * sigma + mu * mu);
+                    den += point.rate * weight;
+                }
+            }
+            let sigma = if den > 0.0 {
+                ((second / den - mean * mean).max(0.0)).sqrt()
+            } else {
+                0.0
+            };
             out.set_item("sdef", emit(sdef)?)?;
             out.set_item("serpent", emit(serpent)?)?;
             (nominal, mean, sigma, sigma == 0.0)
@@ -7402,6 +7892,22 @@ fn plasma_source_proton_accounting(
             out.set_item("neutron_total", neutron)?;
             out.set_item("proton_total", proton)?;
         }
+        PyPlasmaSource::Lattice(config) => {
+            // Caller-supplied rates ARE the neutron birth rates, so a
+            // pure-tritium mixture still carries caller strength (unlike the
+            // parametric kernel, whose strength derives from reactivity):
+            // protons are the D-D branch share, possibly zero, never an
+            // error here.
+            let neutron = config
+                .total_strength()
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            let proton = config
+                .total_dd_strength()
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            out.set_item("proton_per_neutron", proton / neutron)?;
+            out.set_item("neutron_total", neutron)?;
+            out.set_item("proton_total", proton)?;
+        }
     }
     out.set_item(
         "note",
@@ -7409,6 +7915,113 @@ fn plasma_source_proton_accounting(
          convention); sampler and cards stay neutron-only, proton transport \
          out of scope",
     )?;
+    Ok(out.into_any().unbind())
+}
+
+// ---------------------------------------------------------------------------
+// ECRH accessibility (thin glue over `nucleide-plasma-source` `ecrh`)
+// ---------------------------------------------------------------------------
+
+/// ECRH scalar quantities at one wave frequency.
+///
+/// Thin wrapper over the `ecrh` cold-resonance (ECRH-2), relativistic-shift
+/// (ECRH-3), and O1/X1 cut-off (ECRH-4/ECRH-5) scalars: `frequency_ghz` is
+/// the wave frequency [GHz], `harmonic` the cyclotron harmonic (≥ 1),
+/// `electron_temperature_kev` (or None) the Maxwell–Jüttner bulk shift
+/// input [keV], and `field_t` (or None) the local field [T] at which the
+/// field-dependent quantities (`f_ce_ghz`, `n_x1_m3`) are evaluated.
+/// Returns `frequency_ghz`, `harmonic`, `f_ce_per_t_ghz`
+/// (≈ 27.992 GHz/T), `f_ce_ghz` (None without `field_t`), `b_cold_t`,
+/// `b_rel_t` (None without a temperature), `n_o1_m3`, and `n_x1_m3` (None
+/// without `field_t`, or where the X1 wave is evanescent).
+#[pyfunction]
+#[pyo3(signature = (frequency_ghz, harmonic=1, electron_temperature_kev=None, field_t=None))]
+fn plasma_source_ecrh_scalars(
+    py: Python<'_>,
+    frequency_ghz: f64,
+    harmonic: u32,
+    electron_temperature_kev: Option<f64>,
+    field_t: Option<f64>,
+) -> PyResult<Py<PyAny>> {
+    use nucleide_plasma_source::ecrh;
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    let map_err = |e: ecrh::EcrhError| PyValueError::new_err(e.to_string());
+    out.set_item("frequency_ghz", frequency_ghz)?;
+    out.set_item("harmonic", harmonic)?;
+    out.set_item("f_ce_per_t_ghz", ecrh::GYROFREQUENCY_GHZ_PER_T)?;
+    match field_t {
+        Some(b) => {
+            out.set_item("f_ce_ghz", ecrh::gyrofrequency_ghz(b).map_err(map_err)?)?;
+            out.set_item(
+                "n_x1_m3",
+                ecrh::x1_cutoff_density_m3(frequency_ghz, b).map_err(map_err)?,
+            )?;
+        }
+        None => {
+            out.set_item("f_ce_ghz", py.None())?;
+            out.set_item("n_x1_m3", py.None())?;
+        }
+    }
+    out.set_item(
+        "b_cold_t",
+        ecrh::cold_resonant_field_t(frequency_ghz, harmonic).map_err(map_err)?,
+    )?;
+    match electron_temperature_kev {
+        Some(te) => out.set_item(
+            "b_rel_t",
+            ecrh::relativistic_resonant_field_t(frequency_ghz, harmonic, te).map_err(map_err)?,
+        )?,
+        None => out.set_item("b_rel_t", py.None())?,
+    }
+    out.set_item(
+        "n_o1_m3",
+        ecrh::o1_cutoff_density_m3(frequency_ghz).map_err(map_err)?,
+    )?;
+    Ok(out.into_any().unbind())
+}
+
+/// ECRH accessibility along a caller beamline.
+///
+/// Thin wrapper over [`nucleide_plasma_source::ecrh::accessibility`]:
+/// `s_m`/`b_t`/`ne_m3` are the caller position [m], field [T], and density
+/// [m⁻³] profiles at strictly increasing positions; `frequency_ghz` and
+/// `harmonic` select the wave; `electron_temperature_kev` (or None) selects
+/// the relativistically shifted resonance. Returns `b_res_t` (the located
+/// resonant field), `n_o1_m3`, and the `resonance_m`/`o1_cutoff_m`/
+/// `x1_cutoff_m` crossing positions [m] — the per-port penalty inputs.
+#[pyfunction]
+#[pyo3(signature = (s_m, b_t, ne_m3, frequency_ghz, harmonic=1, electron_temperature_kev=None))]
+fn plasma_source_ecrh_beamline(
+    py: Python<'_>,
+    s_m: Vec<f64>,
+    b_t: Vec<f64>,
+    ne_m3: Vec<f64>,
+    frequency_ghz: f64,
+    harmonic: u32,
+    electron_temperature_kev: Option<f64>,
+) -> PyResult<Py<PyAny>> {
+    use nucleide_plasma_source::ecrh;
+    use pyo3::types::PyDict;
+    let rep = ecrh::accessibility(
+        &s_m,
+        &b_t,
+        &ne_m3,
+        frequency_ghz,
+        harmonic,
+        electron_temperature_kev,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let out = PyDict::new(py);
+    out.set_item(
+        "b_res_t",
+        rep.relativistic_field_t.unwrap_or(rep.resonant_field_t),
+    )?;
+    out.set_item("b_cold_t", rep.resonant_field_t)?;
+    out.set_item("n_o1_m3", rep.o1_cutoff_density_m3)?;
+    out.set_item("resonance_m", rep.resonance_m)?;
+    out.set_item("o1_cutoff_m", rep.o1_cutoff_m)?;
+    out.set_item("x1_cutoff_m", rep.x1_cutoff_m)?;
     Ok(out.into_any().unbind())
 }
 
@@ -7664,6 +8277,143 @@ fn damage_specter_spectra() -> Vec<String> {
         .iter()
         .map(|s| s.name().to_string())
         .collect()
+}
+
+/// Fast flux above `threshold_mev`: the piecewise-constant group sum over
+/// groups with `bounds[g + 1] > threshold_mev` (caller area units).
+#[pyfunction]
+#[pyo3(signature = (flux, bounds, threshold_mev))]
+fn damage_coil_fast_flux(flux: Vec<f64>, bounds: Vec<f64>, threshold_mev: f64) -> PyResult<f64> {
+    nucleide_damage::fast_flux(&flux, &bounds, threshold_mev)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Fast fluence above `threshold_mev`: `damage_coil_fast_flux` held for
+/// `seconds`.
+#[pyfunction]
+#[pyo3(signature = (flux, bounds, threshold_mev, seconds))]
+fn damage_coil_fast_fluence(
+    flux: Vec<f64>,
+    bounds: Vec<f64>,
+    threshold_mev: f64,
+    seconds: f64,
+) -> PyResult<f64> {
+    nucleide_damage::fast_fluence(&flux, &bounds, threshold_mev, seconds)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Piecewise-constant irradiation-history accumulation: `Σ rates[i]·durations[i]`.
+#[pyfunction]
+#[pyo3(signature = (rates, durations))]
+fn damage_coil_accumulate(rates: Vec<f64>, durations: Vec<f64>) -> PyResult<f64> {
+    nucleide_damage::accumulate(&rates, &durations)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+fn coil_lifetime_to_dict(
+    py: Python<'_>,
+    life: nucleide_damage::CoilLifetime,
+) -> PyResult<Py<PyAny>> {
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    out.set_item("seconds", life.seconds)?;
+    out.set_item("limiting", life.limiting)?;
+    Ok(out.into_any().unbind())
+}
+
+/// Weakest-link coil life: `min` over channels of `limits[i] / rates[i]`
+/// over caller-supplied limit tables. Returns `{"seconds", "limiting"}`;
+/// all-zero rates give infinite seconds with a `None` limiting channel.
+#[pyfunction]
+#[pyo3(signature = (limits, rates))]
+fn damage_coil_lifetime(py: Python<'_>, limits: Vec<f64>, rates: Vec<f64>) -> PyResult<Py<PyAny>> {
+    let life = nucleide_damage::coil_lifetime(&limits, &rates)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    coil_lifetime_to_dict(py, life)
+}
+
+/// Weakest-link remaining life: `min` of `(limits[i] − accumulated[i]) /
+/// rates[i]`, clamped at zero once a limit is reached. Same dict shape as
+/// `damage_coil_lifetime`.
+#[pyfunction]
+#[pyo3(signature = (limits, accumulated, rates))]
+fn damage_coil_remaining(
+    py: Python<'_>,
+    limits: Vec<f64>,
+    accumulated: Vec<f64>,
+    rates: Vec<f64>,
+) -> PyResult<Py<PyAny>> {
+    let life = nucleide_damage::coil_remaining(&limits, &accumulated, &rates)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    coil_lifetime_to_dict(py, life)
+}
+
+// ---------------------------------------------------------------------------
+// TBR / blanket bookkeeping (thin glue over `nucleide-blanket`)
+// ---------------------------------------------------------------------------
+
+/// Raw TBR from caller tallies `(B1)`: `tritons_bred / source_neutrons`.
+#[pyfunction]
+#[pyo3(signature = (tritons_bred, source_neutrons))]
+fn blanket_tbr_from_tallies(tritons_bred: f64, source_neutrons: f64) -> PyResult<f64> {
+    nucleide_blanket::tbr_from_tallies(tritons_bred, source_neutrons)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Effective TBR after per-port coverage penalties `(B2)`.
+#[pyfunction]
+#[pyo3(signature = (raw_tbr, port_fractions))]
+fn blanket_apply_port_penalty(raw_tbr: f64, port_fractions: Vec<f64>) -> PyResult<f64> {
+    nucleide_blanket::apply_port_penalty(raw_tbr, &port_fractions)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Breeding margin `(B3)`: `effective_tbr - 1` (negative is a deficit).
+#[pyfunction]
+#[pyo3(signature = (effective_tbr,))]
+fn blanket_breeding_margin(effective_tbr: f64) -> PyResult<f64> {
+    nucleide_blanket::breeding_margin(effective_tbr)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Requirement check `(B4)`: `true` when `effective_tbr >= required_tbr`.
+#[pyfunction]
+#[pyo3(signature = (effective_tbr, required_tbr))]
+fn blanket_meets_requirement(effective_tbr: f64, required_tbr: f64) -> PyResult<bool> {
+    nucleide_blanket::meets_requirement(effective_tbr, required_tbr)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Blanket energy multiplication `(P1)`: `blanket_power_mw / fusion_power_mw`.
+#[pyfunction]
+#[pyo3(signature = (blanket_power_mw, fusion_power_mw))]
+fn blanket_energy_multiplication(blanket_power_mw: f64, fusion_power_mw: f64) -> PyResult<f64> {
+    nucleide_blanket::energy_multiplication(blanket_power_mw, fusion_power_mw)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Blanket thermal power `(P2)` in MW.
+#[pyfunction]
+#[pyo3(signature = (fusion_power_mw, multiplication))]
+fn blanket_blanket_power(fusion_power_mw: f64, multiplication: f64) -> PyResult<f64> {
+    nucleide_blanket::blanket_power(fusion_power_mw, multiplication)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Tritium burn rate `(F1)` in g/day.
+#[pyfunction]
+#[pyo3(signature = (fusion_power_mw,))]
+fn blanket_tritium_burn(fusion_power_mw: f64) -> PyResult<f64> {
+    nucleide_blanket::tritium_burn_g_per_day(fusion_power_mw)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Net tritium surplus `(F2)` in g/day (negative is a net deficit).
+#[pyfunction]
+#[pyo3(signature = (effective_tbr, fusion_power_mw))]
+fn blanket_net_surplus(effective_tbr: f64, fusion_power_mw: f64) -> PyResult<f64> {
+    nucleide_blanket::net_surplus_g_per_day(effective_tbr, fusion_power_mw)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -9258,6 +10008,122 @@ fn alara_sum_of_fractions(
     Ok(d)
 }
 
+/// Extract a required string field from a caller entry dict.
+fn sublet_str(entry: &Bound<'_, PyAny>, key: &str) -> PyResult<String> {
+    entry
+        .get_item(key)
+        .map_err(|_| PyValueError::new_err(format!("entry missing `{key}`")))?
+        .extract()
+        .map_err(|_| PyValueError::new_err(format!("entry `{key}` must be a str")))
+}
+
+/// Extract a required float field from a caller entry dict.
+fn sublet_f64(entry: &Bound<'_, PyAny>, key: &str) -> PyResult<f64> {
+    entry
+        .get_item(key)
+        .map_err(|_| PyValueError::new_err(format!("entry missing `{key}`")))?
+        .extract()
+        .map_err(|_| PyValueError::new_err(format!("entry `{key}` must be a float")))
+}
+
+/// Build one S1 [`nucleide_alara_io::ActivityEntry`] from a caller dict with
+/// `nuclide` (any shared-dialect spelling), `activity_bq` (float),
+/// `irt` (Table VI decay-type int), and optional `alpha_frac` (float or
+/// None; required for IRT 12, 13, 15, rejected otherwise).
+fn sublet_activity_entry(entry: &Bound<'_, PyAny>) -> PyResult<nucleide_alara_io::ActivityEntry> {
+    let name = sublet_str(entry, "nuclide")?;
+    let nuclide = clearance_key(&name)?;
+    let activity_bq = sublet_f64(entry, "activity_bq")?;
+    let irt: u8 = entry
+        .get_item("irt")
+        .map_err(|_| PyValueError::new_err("entry missing `irt`"))?
+        .extract()
+        .map_err(|_| PyValueError::new_err("entry `irt` must be an int in 0..=255"))?;
+    let alpha_frac: Option<f64> =
+        match entry.get_item("alpha_frac") {
+            Ok(value) if value.is_none() => None,
+            Ok(value) => Some(value.extract().map_err(|_| {
+                PyValueError::new_err("entry `alpha_frac` must be a float or None")
+            })?),
+            Err(_) => None,
+        };
+    Ok(nucleide_alara_io::ActivityEntry {
+        nuclide,
+        activity_bq,
+        irt,
+        alpha_frac,
+    })
+}
+
+/// S1 total activity with the FISPACT-II α/β/γ IRT split (Table X row
+/// `Ai = Ni λi, Bq`; `output_interpretation` "Activity break-down" split:
+/// IRT 4 → alpha; IRT 1, 2, 11, 14, 16, 17, 19, 20 → beta; IRT 3 → gamma;
+/// IRT 12, 13 split α/β and IRT 15 splits α/γ by each entry's `alpha_frac`).
+///
+/// `entries` is a list of dicts with `nuclide`, `activity_bq`, `irt`, and
+/// optional `alpha_frac` (see `sublet_activity_entry` for the contract).
+/// Returns a dict with `total_bq`, `alpha_bq`, `beta_bq`, `gamma_bq`, and
+/// `ex_tritium_bq` (total minus tritium); parts sum to the total exactly.
+/// Negative/non-finite activities, unmapped IRTs, and bad splits raise
+/// `ValueError`.
+#[pyfunction]
+fn alara_total_activity(entries: Vec<Bound<'_, PyAny>>) -> PyResult<BTreeMap<String, f64>> {
+    let parsed: Vec<nucleide_alara_io::ActivityEntry> = entries
+        .iter()
+        .map(sublet_activity_entry)
+        .collect::<PyResult<_>>()?;
+    let out = nucleide_alara_io::total_activity(&parsed)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(BTreeMap::from([
+        ("total_bq".to_string(), out.total_bq),
+        ("alpha_bq".to_string(), out.alpha_bq),
+        ("beta_bq".to_string(), out.beta_bq),
+        ("gamma_bq".to_string(), out.gamma_bq),
+        ("ex_tritium_bq".to_string(), out.ex_tritium_bq),
+    ]))
+}
+
+/// Build one S2 [`nucleide_alara_io::DecayHeatEntry`] from a caller dict with
+/// `nuclide` (any shared-dialect spelling), `activity_bq` (float), and the
+/// caller-supplied average decay energies `e_alpha_ev` / `e_beta_ev` /
+/// `e_gamma_ev` (floats in eV, never vendored; `0.0` when a class has no
+/// emission).
+fn sublet_heat_entry(entry: &Bound<'_, PyAny>) -> PyResult<nucleide_alara_io::DecayHeatEntry> {
+    let name = sublet_str(entry, "nuclide")?;
+    let nuclide = clearance_key(&name)?;
+    Ok(nucleide_alara_io::DecayHeatEntry {
+        nuclide,
+        activity_bq: sublet_f64(entry, "activity_bq")?,
+        e_alpha_ev: sublet_f64(entry, "e_alpha_ev")?,
+        e_beta_ev: sublet_f64(entry, "e_beta_ev")?,
+        e_gamma_ev: sublet_f64(entry, "e_gamma_ev")?,
+    })
+}
+
+/// S2 decay heat per radiation class (Table X rows `Ai·E·C1`, kW; C1 = eV→kJ).
+///
+/// `entries` is a list of dicts with `nuclide`, `activity_bq`, and the
+/// caller-supplied `e_alpha_ev` / `e_beta_ev` / `e_gamma_ev` decay energies.
+/// Returns a dict with `alpha_kw`, `beta_kw`, `gamma_kw`, `total_kw`, and
+/// `ex_tritium_kw` (total minus tritium); parts sum to the total exactly.
+/// Negative/non-finite activities or energies raise `ValueError`.
+#[pyfunction]
+fn alara_decay_heat(entries: Vec<Bound<'_, PyAny>>) -> PyResult<BTreeMap<String, f64>> {
+    let parsed: Vec<nucleide_alara_io::DecayHeatEntry> = entries
+        .iter()
+        .map(sublet_heat_entry)
+        .collect::<PyResult<_>>()?;
+    let out =
+        nucleide_alara_io::decay_heat(&parsed).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(BTreeMap::from([
+        ("alpha_kw".to_string(), out.alpha_kw),
+        ("beta_kw".to_string(), out.beta_kw),
+        ("gamma_kw".to_string(), out.gamma_kw),
+        ("total_kw".to_string(), out.total_kw),
+        ("ex_tritium_kw".to_string(), out.ex_tritium_kw),
+    ]))
+}
+
 /// Find a TAPE6 record by nuclide name, or None.
 #[pyfunction]
 fn origen_tape6_find(py: Python<'_>, text: &str, nuclide: &str) -> PyResult<Option<Py<PyAny>>> {
@@ -9651,6 +10517,8 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(alara_clearance_es_table, m)?)?;
     m.add_function(wrap_pyfunction!(alara_clearance_index, m)?)?;
     m.add_function(wrap_pyfunction!(alara_sum_of_fractions, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_total_activity, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_decay_heat, m)?)?;
     m.add_function(wrap_pyfunction!(isotxs_parse, m)?)?;
     m.add_function(wrap_pyfunction!(rtflux_parse, m)?)?;
     m.add_function(wrap_pyfunction!(cccc_rtflux_npoints, m)?)?;
@@ -9690,11 +10558,19 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(unfold_gravel, m)?)?;
     m.add_function(wrap_pyfunction!(unfold_maxed, m)?)?;
     m.add_function(wrap_pyfunction!(unfold_forward_fold, m)?)?;
+    m.add_function(wrap_pyfunction!(equilib_probe_variant, m)?)?;
+    m.add_function(wrap_pyfunction!(equilib_read_wout, m)?)?;
+    m.add_function(wrap_pyfunction!(equilib_jacobian, m)?)?;
+    m.add_function(wrap_pyfunction!(equilib_jacobian_grid, m)?)?;
+    m.add_function(wrap_pyfunction!(equilib_wall_load, m)?)?;
+    m.add_function(wrap_pyfunction!(equilib_parse_indata, m)?)?;
     m.add_function(wrap_pyfunction!(plasma_source_particles, m)?)?;
     m.add_function(wrap_pyfunction!(plasma_source_emit_cards, m)?)?;
     m.add_function(wrap_pyfunction!(plasma_source_spectrum_moments, m)?)?;
     m.add_function(wrap_pyfunction!(plasma_source_reactivity, m)?)?;
     m.add_function(wrap_pyfunction!(plasma_source_proton_accounting, m)?)?;
+    m.add_function(wrap_pyfunction!(plasma_source_ecrh_scalars, m)?)?;
+    m.add_function(wrap_pyfunction!(plasma_source_ecrh_beamline, m)?)?;
     m.add_function(wrap_pyfunction!(damage_nrt_dpa, m)?)?;
     m.add_function(wrap_pyfunction!(damage_arc_dpa, m)?)?;
     m.add_function(wrap_pyfunction!(damage_gas_appm, m)?)?;
@@ -9709,6 +10585,19 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(damage_specter_damage_energy, m)?)?;
     m.add_function(wrap_pyfunction!(damage_specter_ed, m)?)?;
     m.add_function(wrap_pyfunction!(damage_specter_spectra, m)?)?;
+    m.add_function(wrap_pyfunction!(damage_coil_fast_flux, m)?)?;
+    m.add_function(wrap_pyfunction!(damage_coil_fast_fluence, m)?)?;
+    m.add_function(wrap_pyfunction!(damage_coil_accumulate, m)?)?;
+    m.add_function(wrap_pyfunction!(damage_coil_lifetime, m)?)?;
+    m.add_function(wrap_pyfunction!(damage_coil_remaining, m)?)?;
+    m.add_function(wrap_pyfunction!(blanket_tbr_from_tallies, m)?)?;
+    m.add_function(wrap_pyfunction!(blanket_apply_port_penalty, m)?)?;
+    m.add_function(wrap_pyfunction!(blanket_breeding_margin, m)?)?;
+    m.add_function(wrap_pyfunction!(blanket_meets_requirement, m)?)?;
+    m.add_function(wrap_pyfunction!(blanket_energy_multiplication, m)?)?;
+    m.add_function(wrap_pyfunction!(blanket_blanket_power, m)?)?;
+    m.add_function(wrap_pyfunction!(blanket_tritium_burn, m)?)?;
+    m.add_function(wrap_pyfunction!(blanket_net_surplus, m)?)?;
     m.add_function(wrap_pyfunction!(tritium_steady, m)?)?;
     m.add_function(wrap_pyfunction!(tritium_transient, m)?)?;
     m.add_function(wrap_pyfunction!(tritium_time_lag, m)?)?;

@@ -2,7 +2,7 @@
 //! geometry, reactivity-weighted neutron emission, seeded sampling, and
 //! histogram source-card emission.
 //!
-//! This is the second Cycle-01 landing. The source model is the public
+//! The source model is the public
 //! ITER/EU-DEMO parametrization of Fausser et al., Fus. Eng. Des. **87**
 //! (2012) 787 — [`MillerGeometry`] flux surfaces ([`crate::miller`]) with
 //! L/H/A-mode density/temperature profiles ([`crate::profile`]) — and the
@@ -167,6 +167,66 @@
 //! then unused for rate and spectrum (still validated), while the density
 //! profile keeps shaping `S(r) ∝ n(r)²`.
 //!
+//! # Deuterium hot tail (mixture v3)
+//!
+//! [`DeuteriumTail`] pins one parametrized non-Maxwellian reactant shape — a
+//! single-tail-temperature deuterium fraction, the auxiliary-heated
+//! (NBI/minority-ICRH) tail approximated as a hot Maxwellian sub-population
+//! — within the Eriksson et al., Comput. Phys. Commun. **199** (2016) 40
+//! arbitrary-distribution framework. The deuterium distribution splits into a
+//! bulk `(1 − η)` at `T_D` and a tail `η` at `T_tail` (uniform scalars, flat
+//! in minor radius); tritium stays Maxwellian at `T_T`. Each sub-population
+//! pair reacts at its own mass-weighted relative-temperature closed form
+//! (the mixture-v2 rule applied per pair):
+//!
+//! ```text
+//! S = n² · [f_D·f_T·((1−η)·⟨σv⟩_DT(T_DT) + η·⟨σv⟩_DT(T_DTt))
+//!          + (f_D²/2)·((1−η)²·⟨σv⟩_DD(T_D) + 2η(1−η)·⟨σv⟩_DD(T_mix)
+//!                       + η²·⟨σv⟩_DD(T_tail))]
+//! T_DT   = T_D + (2/5)·(T_T − T_D)         (bulk D–T, the v2 spelling)
+//! T_DTt  = T_tail + (2/5)·(T_T − T_tail)   (tail D–T)
+//! T_mix  = (T_D + T_tail)/2                (bulk–tail D–D cross pair:
+//!                                          equal masses, so the relative
+//!                                          temperature is the plain mean)
+//! ```
+//!
+//! Per-branch Ballabio spectra follow the same sub-pair temperatures — the
+//! D-T arm carries two lines (at `T_DT` and `T_DTt`), the D-D arm three (at
+//! `T_D`, `T_mix`, `T_tail`) — weighted by the sub-rate rule, so the
+//! sampler's branch roulette, the card energy marginals, and the axis summary
+//! all stay consistent with the strength rule. The tail-line arm is an
+//! effective-temperature convention with the same error stance as mixture v2:
+//! Ballabio Table III was fitted to single-temperature Maxwellians, so the
+//! Gaussian-at-effective-`T` lines capture the leading mass-weighted
+//! relative-temperature dependence while the residual against the true
+//! distinct-temperature spectrum (the full Eriksson numerical integration
+//! over arbitrary reactant distributions) is out of scope to quantify.
+//!
+//! Hand vectors (flat profile, `n = 1e20` m⁻³, `f_D = 0.7`, `f_T = 0.3`,
+//! `T_D = 20` keV, `T_T = 30` keV, `η = 0.05`, `T_tail = 60` keV;
+//! `T_DT = 24.0`, `T_DTt = 48.0`, `T_mix = 40.0` keV exactly, pinned
+//! reactivities `⟨σv⟩_DT(48) = 8.557148874535018e-22`,
+//! `⟨σv⟩_DD(40) = 8.234915801644433e-24`,
+//! `⟨σv⟩_DD(60) = 1.4470008265609934e-23` m³/s alongside the landed
+//! `⟨σv⟩_DT(24) = 5.414667327922193e-22` and
+//! `⟨σv⟩_DD(20) = 2.602582958721524e-24` m³/s):
+//!
+//! ```text
+//! S = 1170076195103.095 + 7759941698.06273 = 1177836136801.1577
+//! ```
+//!
+//! Exact recovery anchor (regression gate): `η = 0` reproduces the
+//! no-tail mixture kernel bit-for-bit — strength densities, sampled stream,
+//! and emitted cards — because `(1 − 0) = 1` and every `η`-scaled term is
+//! exactly `0.0` (the `η == 0` path additionally skips the tail reactivity
+//! evaluations, so any in-range `T_tail` spelling recovers). The tail
+//! requires a fuel mixture (a single-fuel config with the tail set is a loud
+//! [`Error::NotYetSupported`]); it composes with [`SpeciesIonTemperatures`]
+//! (`T_D`/`T_T` from the pair when set, else the shared profile temperature)
+//! and with [`ToroidalSector`] (the angle draw is untouched — the tail adds
+//! no new RNG draws on the mixture path beyond the landed one-per-particle
+//! branch roulette).
+//!
 //! # Toroidal sectors
 //!
 //! [`ToroidalSector`] restricts birth positions to the toroidal interval
@@ -214,16 +274,17 @@
 //!
 //! Profiles are caller inputs; nothing here computes profiles or solves an
 //! equilibrium. The documented loud boundary ([`Error::NotYetSupported`]):
-//! reactant distributions beyond distinct-temperature Maxwellians
-//! (non-Maxwellian tails — the rest of the full Eriksson generalization),
+//! reactant distributions beyond one deuterium hot-tail fraction
+//! ([`DeuteriumTail`] pins the single v1 tail shape — the rest of the full
+//! Eriksson generalization stays out),
 //! T-T neutron transport (normalization pinned above; no publishable fit or
 //! line exists), and proton transport (the D(d,p)T proton *rate* is
 //! accounted via [`ParametricPlasmaConfig::proton_strength_density`] /
 //! [`ParametricPlasmaConfig::total_proton_strength`]; no proton particles
 //! are sampled and no proton distributions reach the cards).
-//! Mixture fractions, species temperatures, and sector angles themselves are
-//! validated loudly at construction: non-finite, negative, non-summing, or
-//! out-of-range values never reach the sampler.
+//! Mixture fractions, species temperatures, tail parameters, and sector angles
+//! themselves are validated loudly at construction: non-finite, negative,
+//! non-summing, or out-of-range values never reach the sampler.
 //!
 //! # Card emission
 //!
@@ -451,6 +512,58 @@ impl SpeciesIonTemperatures {
     }
 }
 
+/// Deuterium hot-tail fraction for the D/T fuel mixture: a uniform tail
+/// population `η` at `T_tail` \[keV\], flat in minor radius, on top of the
+/// bulk deuterium at `T_D` (mixture v3 — see the module rustdoc for the
+/// pinned normalization, hand vectors, and recovery anchor).
+///
+/// Construction is loud: NaN/infinite parameters give [`Error::NonFinite`], a
+/// fraction outside `[0, 1]` gives [`Error::InvalidTail`], a negative tail
+/// temperature gives [`Error::NegativeIonTemperature`]. The fraction is used
+/// exactly as given — nothing is renormalized. The tail requires
+/// [`ParametricPlasmaConfig::fuel_mixture`] (a single-fuel config with the
+/// tail set is [`Error::NotYetSupported`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DeuteriumTail {
+    /// Tail fraction `η` of the deuterium population in `[0, 1]` (`0`
+    /// recovers the no-tail kernel bit-for-bit).
+    pub fraction: f64,
+    /// Tail temperature `T_tail` \[keV\]; non-negative.
+    pub temperature_kev: f64,
+}
+
+impl DeuteriumTail {
+    /// New validated tail; errors are loud and named.
+    pub fn new(fraction: f64, temperature_kev: f64) -> Result<Self> {
+        let tail = Self {
+            fraction,
+            temperature_kev,
+        };
+        tail.validate()?;
+        Ok(tail)
+    }
+
+    /// Validate both parameters: finite, fraction in `[0, 1]`, non-negative
+    /// tail temperature.
+    pub fn validate(&self) -> Result<()> {
+        if !self.fraction.is_finite() {
+            return Err(Error::NonFinite("deuterium tail fraction"));
+        }
+        if !self.temperature_kev.is_finite() {
+            return Err(Error::NonFinite("deuterium tail temperature"));
+        }
+        if !(0.0..=1.0).contains(&self.fraction) {
+            return Err(Error::InvalidTail(
+                "deuterium tail fraction must be in [0, 1]",
+            ));
+        }
+        if self.temperature_kev < 0.0 {
+            return Err(Error::NegativeIonTemperature(self.temperature_kev));
+        }
+        Ok(())
+    }
+}
+
 /// Parametric tokamak plasma source configuration.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ParametricPlasmaConfig {
@@ -477,6 +590,12 @@ pub struct ParametricPlasmaConfig {
     /// When set, a fuel mixture is required and the profile ion temperature
     /// is unused for rate and spectrum (still validated).
     pub species_temperatures: Option<SpeciesIonTemperatures>,
+    /// Optional deuterium hot-tail fraction (module rustdoc normalization).
+    /// `None` — the default — keeps the landed mixture kernels bit-for-bit.
+    /// When set, a fuel mixture is required; it composes with
+    /// [`Self::species_temperatures`] (`T_D`/`T_T` from the pair when set,
+    /// else the shared profile temperature).
+    pub tail: Option<DeuteriumTail>,
     /// Optional toroidal sector (module rustdoc normalization). `None` —
     /// the default — keeps the landed full-torus kernel bit-for-bit.
     pub sector: Option<ToroidalSector>,
@@ -509,6 +628,14 @@ impl ParametricPlasmaConfig {
             if self.fuel_mixture.is_none() {
                 return Err(Error::NotYetSupported(
                     "per-species ion temperatures need a D/T fuel mixture",
+                ));
+            }
+        }
+        if let Some(tail) = &self.tail {
+            tail.validate()?;
+            if self.fuel_mixture.is_none() {
+                return Err(Error::NotYetSupported(
+                    "a deuterium hot tail needs a D/T fuel mixture",
                 ));
             }
         }
@@ -561,7 +688,11 @@ impl ParametricPlasmaConfig {
     /// mixture reacts the D-T branch at the pair effective temperature
     /// [`SpeciesIonTemperatures::dt_effective_kev`] and the D-D branch at
     /// `T_D` (module rustdoc); without a pair both reduce to the shared
-    /// profile temperature exactly. Zero
+    /// profile temperature exactly. A [`DeuteriumTail`] splits the deuterium
+    /// population into bulk/tail sub-pairs at their own effective
+    /// temperatures (module rustdoc); `η == 0` takes the landed mixture
+    /// expressions verbatim (bit-for-bit recovery for any `T_tail`
+    /// spelling). Zero
     /// temperature ⇒ zero strength on both branches (cold separatrix makes
     /// no neutrons).
     fn branch_strength_density(&self, r: f64) -> Result<(f64, f64)> {
@@ -572,9 +703,30 @@ impl ParametricPlasmaConfig {
             Some(mixture) => {
                 let (k_dt, k_dd) = mixture.branch_weights();
                 let t_eff = SpeciesIonTemperatures::dt_effective_kev(t_d, t_t);
+                let tail_eta = self.tail.map(|tail| tail.fraction).unwrap_or(0.0);
+                if tail_eta == 0.0 {
+                    let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(t_eff)? * 1e6;
+                    let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(t_d)? * 1e6;
+                    return Ok((k_dt * n_cm3 * n_cm3 * sv_dt, k_dd * n_cm3 * n_cm3 * sv_dd));
+                }
+                let tail = self.tail.expect("tail fraction nonzero implies a tail");
+                let eta = tail.fraction;
+                let t_tail = tail.temperature_kev;
+                let t_eff_tail = SpeciesIonTemperatures::dt_effective_kev(t_tail, t_t);
+                let t_mix = 0.5 * (t_d + t_tail);
                 let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(t_eff)? * 1e6;
+                let sv_dt_tail = FusionReaction::Dt.reactivity_m3_per_s(t_eff_tail)? * 1e6;
                 let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(t_d)? * 1e6;
-                Ok((k_dt * n_cm3 * n_cm3 * sv_dt, k_dd * n_cm3 * n_cm3 * sv_dd))
+                let sv_dd_mix = FusionReaction::Dd.reactivity_m3_per_s(t_mix)? * 1e6;
+                let sv_dd_tail = FusionReaction::Dd.reactivity_m3_per_s(t_tail)? * 1e6;
+                let s_dt = k_dt * n_cm3 * n_cm3 * ((1.0 - eta) * sv_dt + eta * sv_dt_tail);
+                let s_dd = k_dd
+                    * n_cm3
+                    * n_cm3
+                    * ((1.0 - eta) * (1.0 - eta) * sv_dd
+                        + 2.0 * eta * (1.0 - eta) * sv_dd_mix
+                        + eta * eta * sv_dd_tail);
+                Ok((s_dt, s_dd))
             }
             None => {
                 let reactivity = self.fuel.reactivity_m3_per_s(t_d)? * 1e6;
@@ -643,7 +795,11 @@ impl ParametricPlasmaConfig {
     /// Single fuel → one unit-weight branch at the shared temperature; a
     /// mixture → D-T and D-D branches weighted by the rate rule, the D-T
     /// arm at the pair effective temperature and the D-D arm at `t_d`
-    /// (the module rustdoc normalization). Where the total mixture rate
+    /// (the module rustdoc normalization). A [`DeuteriumTail`] expands the
+    /// mixture to bulk/tail sub-branches — D-T at `T_DT`/`T_DTt`, D-D at
+    /// `T_D`/`T_mix`/`T_tail` — weighted by the sub-rate rule (module
+    /// rustdoc); `η == 0` returns the landed two-branch vector verbatim
+    /// (bit-for-bit recovery). Where the total mixture rate
     /// underflows — both reactivities zero, a cold annulus — the D-T branch
     /// is returned by convention: the mixture spectrum degenerates to the
     /// 14.021 MeV line exactly as the single-fuel kernels degenerate at
@@ -661,20 +817,59 @@ impl ParametricPlasmaConfig {
             Some(mixture) => {
                 let t_eff = SpeciesIonTemperatures::dt_effective_kev(t_d, t_t);
                 let (k_dt, k_dd) = mixture.branch_weights();
+                let tail_eta = self.tail.map(|tail| tail.fraction).unwrap_or(0.0);
+                if tail_eta == 0.0 {
+                    let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(t_eff)?;
+                    let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(t_d)?;
+                    let w_dt = k_dt * sv_dt;
+                    let w_dd = k_dd * sv_dd;
+                    let (mu_dt, sigma_dt) = FusionReaction::Dt.moments_mev(t_eff)?;
+                    if w_dt + w_dd <= 0.0 {
+                        return Ok(vec![(FusionReaction::Dt, 1.0, mu_dt, sigma_dt)]);
+                    }
+                    let (mu_dd, sigma_dd) = FusionReaction::Dd.moments_mev(t_d)?;
+                    let p_dt = w_dt / (w_dt + w_dd);
+                    return Ok(vec![
+                        (FusionReaction::Dt, p_dt, mu_dt, sigma_dt),
+                        (FusionReaction::Dd, 1.0 - p_dt, mu_dd, sigma_dd),
+                    ]);
+                }
+                let tail = self.tail.expect("tail fraction nonzero implies a tail");
+                let eta = tail.fraction;
+                let t_tail = tail.temperature_kev;
+                let t_eff_tail = SpeciesIonTemperatures::dt_effective_kev(t_tail, t_t);
+                let t_mix = 0.5 * (t_d + t_tail);
                 let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(t_eff)?;
+                let sv_dt_tail = FusionReaction::Dt.reactivity_m3_per_s(t_eff_tail)?;
                 let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(t_d)?;
-                let w_dt = k_dt * sv_dt;
-                let w_dd = k_dd * sv_dd;
+                let sv_dd_mix = FusionReaction::Dd.reactivity_m3_per_s(t_mix)?;
+                let sv_dd_tail = FusionReaction::Dd.reactivity_m3_per_s(t_tail)?;
+                let subs = [
+                    (FusionReaction::Dt, k_dt * (1.0 - eta) * sv_dt, t_eff),
+                    (FusionReaction::Dt, k_dt * eta * sv_dt_tail, t_eff_tail),
+                    (
+                        FusionReaction::Dd,
+                        k_dd * (1.0 - eta) * (1.0 - eta) * sv_dd,
+                        t_d,
+                    ),
+                    (
+                        FusionReaction::Dd,
+                        k_dd * 2.0 * eta * (1.0 - eta) * sv_dd_mix,
+                        t_mix,
+                    ),
+                    (FusionReaction::Dd, k_dd * eta * eta * sv_dd_tail, t_tail),
+                ];
+                let total: f64 = subs.iter().map(|s| s.1).sum();
                 let (mu_dt, sigma_dt) = FusionReaction::Dt.moments_mev(t_eff)?;
-                if w_dt + w_dd <= 0.0 {
+                if total <= 0.0 {
                     return Ok(vec![(FusionReaction::Dt, 1.0, mu_dt, sigma_dt)]);
                 }
-                let (mu_dd, sigma_dd) = FusionReaction::Dd.moments_mev(t_d)?;
-                let p_dt = w_dt / (w_dt + w_dd);
-                Ok(vec![
-                    (FusionReaction::Dt, p_dt, mu_dt, sigma_dt),
-                    (FusionReaction::Dd, 1.0 - p_dt, mu_dd, sigma_dd),
-                ])
+                let mut branches = Vec::with_capacity(subs.len());
+                for (reaction, weight, ti) in subs {
+                    let (mu, sigma) = reaction.moments_mev(ti)?;
+                    branches.push((reaction, weight / total, mu, sigma));
+                }
+                Ok(branches)
             }
         }
     }
@@ -708,6 +903,58 @@ impl ParametricPlasmaConfig {
                 Ok((nominal, mean, variance.sqrt()))
             }
         }
+    }
+
+    /// Tail-only neutron source density \[neutrons/s/cm³, same arbitrary
+    /// global scale as [`Self::strength_density\]] at minor radius `r` \[cm\]:
+    /// the `η`-scaled sub-rate of the module-rustdoc rule — the tail D-T
+    /// arm plus the cross and tail-tail D-D arms. `0.0` without a tail or at
+    /// `η == 0`. Card-drift input only: the sampler and the strength kernel
+    /// never call it.
+    pub fn tail_strength_density(&self, r: f64) -> Result<f64> {
+        let Some(tail) = &self.tail else {
+            return Ok(0.0);
+        };
+        let eta = tail.fraction;
+        if eta == 0.0 {
+            return Ok(0.0);
+        }
+        let Some(mixture) = &self.fuel_mixture else {
+            return Ok(0.0);
+        };
+        let (k_dt, k_dd) = mixture.branch_weights();
+        let n_cm3 = self.density_m3(r) * 1e-6;
+        let (t_d, t_t) = self.species_temperatures_at(r);
+        let t_tail = tail.temperature_kev;
+        let t_eff_tail = SpeciesIonTemperatures::dt_effective_kev(t_tail, t_t);
+        let t_mix = 0.5 * (t_d + t_tail);
+        let sv_dt_tail = FusionReaction::Dt.reactivity_m3_per_s(t_eff_tail)? * 1e6;
+        let sv_dd_mix = FusionReaction::Dd.reactivity_m3_per_s(t_mix)? * 1e6;
+        let sv_dd_tail = FusionReaction::Dd.reactivity_m3_per_s(t_tail)? * 1e6;
+        let s_dt = k_dt * n_cm3 * n_cm3 * eta * sv_dt_tail;
+        let s_dd =
+            k_dd * n_cm3 * n_cm3 * (2.0 * eta * (1.0 - eta) * sv_dd_mix + eta * eta * sv_dd_tail);
+        Ok(s_dt + s_dd)
+    }
+
+    /// Total relative tail-neutron strength ∭ T·R·|J| da dθ dφ over the same
+    /// volume element as [`Self::total_strength`] (sector-aware). Same
+    /// arbitrary global scale, so the tail neutron share
+    /// (`total_tail_strength / total_strength`) is meaningful; `0.0`
+    /// without a tail. Card-drift input only.
+    pub fn total_tail_strength(&self) -> Result<f64> {
+        if let Some(sector) = &self.sector {
+            sector.validate()?;
+        }
+        if self.tail.is_none_or(|tail| tail.fraction == 0.0) {
+            return Ok(0.0);
+        }
+        let table = WeightTable::build_with(self, |r| self.tail_strength_density(r))?;
+        let toroidal = match &self.sector {
+            None => 2.0 * PI,
+            Some(sector) => sector.rotation_angle,
+        };
+        Ok(toroidal * table.masses.iter().sum::<f64>())
     }
 
     /// Total relative source strength ∭ S·R·|J| da dθ dφ. The toroidal
@@ -1202,6 +1449,7 @@ pub(crate) mod tests {
             fuel: FusionReaction::Dt,
             fuel_mixture: None,
             species_temperatures: None,
+            tail: None,
             sector: None,
             weight: 1.0,
         }
@@ -1645,6 +1893,365 @@ pub(crate) mod tests {
         // silent single-fuel fallback.
         let mut single = iter_h_mode();
         single.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 30.0).unwrap());
+        assert!(matches!(single.validate(), Err(Error::NotYetSupported(_))));
+        assert!(matches!(
+            ParametricSampler::new(single, 7),
+            Err(Error::NotYetSupported(_))
+        ));
+    }
+
+    // --- G-tail: deuterium hot-tail fraction, recovery anchor, loud errors ---
+
+    /// Flat 70/30 blend at T_D = 20 keV, T_T = 30 keV with the pinned
+    /// tail (η = 0.05 at T_tail = 60 keV — the module rustdoc hand vector).
+    fn tail_config() -> ParametricPlasmaConfig {
+        let mut c = flat_config(1.85, 0.0, 0.0);
+        c.fuel_mixture = Some(FuelMixture::new(0.7, 0.3).unwrap());
+        c.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 30.0).unwrap());
+        c.tail = Some(DeuteriumTail::new(0.05, 60.0).unwrap());
+        c
+    }
+
+    #[test]
+    fn tail_strength_hand_vectors() {
+        // Flat L-mode profile: n = 1e20 m⁻³ everywhere; the module rustdoc
+        // hand vector (T_DT = 24, T_DTt = 48, T_mix = 40 keV). Exact
+        // expression equality against the sub-rate decomposition, plus the
+        // pinned decimal golden at 1e-12.
+        let c = tail_config();
+        let n_cm3 = 1e14_f64;
+        let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(24.0).unwrap() * 1e6;
+        let sv_dt_tail = FusionReaction::Dt.reactivity_m3_per_s(48.0).unwrap() * 1e6;
+        let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(20.0).unwrap() * 1e6;
+        let sv_dd_mix = FusionReaction::Dd.reactivity_m3_per_s(40.0).unwrap() * 1e6;
+        let sv_dd_tail = FusionReaction::Dd.reactivity_m3_per_s(60.0).unwrap() * 1e6;
+        let eta = 0.05_f64;
+        let (s_dt, s_dd) = c.branch_strength_density(123.0).unwrap();
+        assert_eq!(
+            s_dt,
+            0.7 * 0.3 * n_cm3 * n_cm3 * ((1.0 - eta) * sv_dt + eta * sv_dt_tail)
+        );
+        assert_eq!(
+            s_dd,
+            0.7 * 0.7 / 2.0
+                * n_cm3
+                * n_cm3
+                * ((1.0 - eta) * (1.0 - eta) * sv_dd
+                    + 2.0 * eta * (1.0 - eta) * sv_dd_mix
+                    + eta * eta * sv_dd_tail)
+        );
+        let want_dt = 1170076195103.095_f64; // sub-rate hand vector (1e-12)
+        assert!(
+            (s_dt - want_dt).abs() < 1e-12 * want_dt,
+            "{s_dt} vs {want_dt}"
+        );
+        let want = 1177836136801.1577_f64; // module rustdoc hand vector
+        let s = c.strength_density(123.0).unwrap();
+        assert_eq!(s, s_dt + s_dd);
+        assert!((s - want).abs() < 1e-12 * want, "{s} vs {want}");
+        // The tail reactivity goldens pin the transcription at the new
+        // sub-pair temperatures.
+        let want_tail = 8.557148874535017e-16_f64;
+        assert!((sv_dt_tail - want_tail).abs() < 1e-15 * want_tail);
+        let want_mix = 8.234915801644433e-18_f64;
+        assert!((sv_dd_mix - want_mix).abs() < 1e-15 * want_mix);
+        let want_ddt = 1.4470008265609935e-17_f64;
+        assert!((sv_dd_tail - want_ddt).abs() < 1e-15 * want_ddt);
+        // Proton accounting stays bit-identical with the (tail-inclusive)
+        // D-D neutron branch.
+        assert_eq!(c.proton_strength_density(123.0).unwrap(), s_dd);
+        // Tail-only density is the η-scaled sub-rate (the bulk depletes by
+        // the complementary share, so total − base is smaller — assert the
+        // direct sub-rate expression instead, exact tree).
+        assert_eq!(
+            c.tail_strength_density(123.0).unwrap(),
+            0.7 * 0.3 * n_cm3 * n_cm3 * eta * sv_dt_tail
+                + 0.7 * 0.7 / 2.0
+                    * n_cm3
+                    * n_cm3
+                    * (2.0 * eta * (1.0 - eta) * sv_dd_mix + eta * eta * sv_dd_tail)
+        );
+    }
+
+    #[test]
+    fn tail_sub_branch_spectra_follow_sub_pair_temperatures() {
+        // D-T carries two lines (24 / 48 keV), D-D three (20 / 40 / 60 keV),
+        // weighted by the sub-rate rule; per-branch Ballabio moments pinned
+        // to the independent goldens.
+        let c = tail_config();
+        let branches = c.spectrum_branches(20.0, 30.0).unwrap();
+        assert_eq!(branches.len(), 5);
+        let (mu_dt, sigma_dt) = FusionReaction::Dt.moments_mev(24.0).unwrap();
+        let (mu_dt_tail, sigma_dt_tail) = FusionReaction::Dt.moments_mev(48.0).unwrap();
+        let (mu_dd, sigma_dd) = FusionReaction::Dd.moments_mev(20.0).unwrap();
+        let (mu_dd_mix, sigma_dd_mix) = FusionReaction::Dd.moments_mev(40.0).unwrap();
+        let (mu_dd_tail, sigma_dd_tail) = FusionReaction::Dd.moments_mev(60.0).unwrap();
+        assert_eq!((branches[0].2, branches[0].3), (mu_dt, sigma_dt));
+        assert_eq!((branches[1].2, branches[1].3), (mu_dt_tail, sigma_dt_tail));
+        assert_eq!((branches[2].2, branches[2].3), (mu_dd, sigma_dd));
+        assert_eq!((branches[3].2, branches[3].3), (mu_dd_mix, sigma_dd_mix));
+        assert_eq!((branches[4].2, branches[4].3), (mu_dd_tail, sigma_dd_tail));
+        assert_eq!(branches[0].0, FusionReaction::Dt);
+        assert_eq!(branches[4].0, FusionReaction::Dd);
+        assert!(
+            (mu_dt_tail - 14.104551866140476).abs() < 1e-12,
+            "{mu_dt_tail}"
+        );
+        assert!((sigma_dt_tail - 0.5241295764702804).abs() < 1e-12);
+        assert!((mu_dd_mix - 2.553611770233373).abs() < 1e-12, "{mu_dd_mix}");
+        assert!(
+            (mu_dd_tail - 2.5984132221035106).abs() < 1e-12,
+            "{mu_dd_tail}"
+        );
+        // Weights sum to 1 and match the sub-rate rule.
+        let sum: f64 = branches.iter().map(|b| b.1).sum();
+        assert!((sum - 1.0).abs() < 1e-12, "branch weights sum {sum}");
+        let eta = 0.05_f64;
+        let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(24.0).unwrap();
+        let sv_dt_tail = FusionReaction::Dt.reactivity_m3_per_s(48.0).unwrap();
+        let w_dt = 0.7 * 0.3 * ((1.0 - eta) * sv_dt + eta * sv_dt_tail);
+        let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(20.0).unwrap();
+        let sv_dd_mix = FusionReaction::Dd.reactivity_m3_per_s(40.0).unwrap();
+        let sv_dd_tail = FusionReaction::Dd.reactivity_m3_per_s(60.0).unwrap();
+        let w_dd = 0.7 * 0.7 / 2.0
+            * ((1.0 - eta) * (1.0 - eta) * sv_dd
+                + 2.0 * eta * (1.0 - eta) * sv_dd_mix
+                + eta * eta * sv_dd_tail);
+        assert!((branches[0].1 + branches[1].1 - w_dt / (w_dt + w_dd)).abs() < 1e-12);
+        assert!(
+            (branches[2].1 + branches[3].1 + branches[4].1 - w_dd / (w_dt + w_dd)).abs() < 1e-12
+        );
+    }
+
+    #[test]
+    fn zero_tail_fraction_recovers_no_tail_kernel_bit_for_bit() {
+        // Module-rustdoc anchor: η = 0 reproduces the no-tail mixture kernel
+        // bit-for-bit — strengths, axis summary, sampled stream, and emitted
+        // cards — for any T_tail spelling (even one whose reactivity would be
+        // out of domain, since the tail evaluations are skipped).
+        let mut base = flat_config(1.85, 0.0, 0.0);
+        base.fuel_mixture = Some(FuelMixture::new(0.7, 0.3).unwrap());
+        base.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 30.0).unwrap());
+        let mut zero = base;
+        zero.tail = Some(DeuteriumTail::new(0.0, 1.0e6).unwrap());
+        for &r in &[0.0, 37.5, 100.0, 150.0, 199.9, 200.0] {
+            assert_eq!(
+                zero.strength_density(r).unwrap(),
+                base.strength_density(r).unwrap(),
+                "tail-free strength must equal the no-tail kernel at r={r}"
+            );
+            assert_eq!(
+                zero.proton_strength_density(r).unwrap(),
+                base.proton_strength_density(r).unwrap(),
+            );
+        }
+        assert_eq!(
+            zero.axis_spectrum_summary().unwrap(),
+            base.axis_spectrum_summary().unwrap(),
+        );
+        assert_eq!(
+            zero.spectrum_branches(20.0, 30.0).unwrap(),
+            base.spectrum_branches(20.0, 30.0).unwrap(),
+        );
+        let a = ParametricSampler::new(base, 17).unwrap().sample_n(512);
+        let b = ParametricSampler::new(zero, 17).unwrap().sample_n(512);
+        assert_eq!(a, b);
+        assert_eq!(
+            emission_histograms(&zero, 15).unwrap(),
+            emission_histograms(&base, 15).unwrap()
+        );
+        // No tail drift row at η = 0: the emitted cards (text and drift) are
+        // the landed ones.
+        let cards_base = crate::emit_sdef_parametric(&base, 5, 15).unwrap();
+        let cards_zero = crate::emit_sdef_parametric(&zero, 5, 15).unwrap();
+        assert_eq!(cards_zero.text, cards_base.text);
+        assert_eq!(cards_zero.drift, cards_base.drift);
+        let serp_base = crate::emit_serpent_parametric(&base, 15).unwrap();
+        let serp_zero = crate::emit_serpent_parametric(&zero, 15).unwrap();
+        assert_eq!(serp_zero.text, serp_base.text);
+        assert_eq!(serp_zero.drift, serp_base.drift);
+    }
+
+    #[test]
+    fn tail_sampler_fires_all_sub_branches() {
+        // The pinned tail config: all five sub-lines must fire in the stream
+        // at the sub-rate-rule shares, and the mean energy must match the
+        // five-branch weighted mean (module rustdoc).
+        let config = tail_config();
+        let mut sampler = ParametricSampler::new(config, 13).unwrap();
+        let particles = sampler.sample_n(N);
+        let eta = 0.05_f64;
+        let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(24.0).unwrap();
+        let sv_dt_tail = FusionReaction::Dt.reactivity_m3_per_s(48.0).unwrap();
+        let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(20.0).unwrap();
+        let sv_dd_mix = FusionReaction::Dd.reactivity_m3_per_s(40.0).unwrap();
+        let sv_dd_tail = FusionReaction::Dd.reactivity_m3_per_s(60.0).unwrap();
+        let w = [
+            0.7 * 0.3 * (1.0 - eta) * sv_dt,
+            0.7 * 0.3 * eta * sv_dt_tail,
+            0.7 * 0.7 / 2.0 * (1.0 - eta) * (1.0 - eta) * sv_dd,
+            0.7 * 0.7 / 2.0 * 2.0 * eta * (1.0 - eta) * sv_dd_mix,
+            0.7 * 0.7 / 2.0 * eta * eta * sv_dd_tail,
+        ];
+        let total: f64 = w.iter().sum();
+        let p: Vec<f64> = w.iter().map(|x| x / total).collect();
+        // D-D share (all three D-D sub-lines sit below 10 MeV).
+        let p_dd = p[2] + p[3] + p[4];
+        let below = particles.iter().filter(|p| p.energy_mev < 10.0).count() as f64;
+        let frac_dd = below / N as f64;
+        let se = (p_dd * (1.0 - p_dd) / N as f64).sqrt();
+        assert!(
+            (frac_dd - p_dd).abs() < 8.0 * se,
+            "D-D branch fraction {frac_dd} vs {p_dd} ± {se}"
+        );
+        // Five-branch weighted mean and variance.
+        let temps = [24.0, 48.0, 20.0, 40.0, 60.0];
+        let reactions = [
+            FusionReaction::Dt,
+            FusionReaction::Dt,
+            FusionReaction::Dd,
+            FusionReaction::Dd,
+            FusionReaction::Dd,
+        ];
+        let mut want = 0.0;
+        let mut second = 0.0;
+        for (i, (&reaction, &ti)) in reactions.iter().zip(temps.iter()).enumerate() {
+            let (mu, sigma) = reaction.moments_mev(ti).unwrap();
+            want += p[i] * mu;
+            second += p[i] * (sigma * sigma + mu * mu);
+        }
+        let var = second - want * want;
+        let mean: f64 = particles.iter().map(|p| p.energy_mev).sum::<f64>() / N as f64;
+        let se_mean = var.sqrt() / (N as f64).sqrt();
+        assert!(
+            (mean - want).abs() < 6.0 * se_mean,
+            "<E> {mean} vs {want} ± {se_mean}"
+        );
+        // Deterministic per seed on the tail path too.
+        let a = ParametricSampler::new(config, 31).unwrap().sample_n(256);
+        let b = ParametricSampler::new(config, 31).unwrap().sample_n(256);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn tail_emission_carries_tail_drift_row() {
+        let config = tail_config();
+        let hist = emission_histograms(&config, 61).unwrap();
+        let energy_sum: f64 = hist.energy.masses.iter().sum();
+        assert!((energy_sum - hist.energy_coverage).abs() < 1e-12);
+        assert!(hist.energy_coverage > 0.999);
+        // The tail D-T sub-line (48 keV: mean 14.10 MeV, sigma 0.52 MeV)
+        // widens the tabulated window past the bulk line and lifts the
+        // marginal mean: both are deterministic histogram properties.
+        let mut base = config;
+        base.tail = None;
+        let hist_base = emission_histograms(&base, 61).unwrap();
+        assert!(hist.energy.centers.last().unwrap() > hist_base.energy.centers.last().unwrap());
+        // The tail boosts the D-D sub-rate more than the D-T line shifts up
+        // (hot deuterons meet deuterons at T_mix/T_tail), so the below-10
+        // MeV histogram mass grows while the window top extends past the
+        // bulk line — both deterministic card properties.
+        let mass_low = |h: &EmissionHistograms| {
+            h.energy
+                .masses
+                .iter()
+                .zip(&h.energy.centers)
+                .filter(|(_, &c)| c < 10.0)
+                .map(|(&m, _)| m)
+                .sum::<f64>()
+        };
+        assert!(mass_low(&hist) > mass_low(&hist_base));
+        // Both dialects carry the tail drift row with the integrated share.
+        let sdef = crate::emit_sdef_parametric(&config, 5, 15).unwrap();
+        sdef.verify_round_trip().unwrap();
+        let quantities: Vec<_> = sdef
+            .drift
+            .rows
+            .iter()
+            .map(|r| r.quantity.as_str())
+            .collect();
+        assert_eq!(
+            quantities,
+            [
+                "emission probability",
+                "spatial marginals",
+                "joint correlation",
+                "deuterium tail"
+            ]
+        );
+        let serpent = crate::emit_serpent_parametric(&config, 15).unwrap();
+        assert_eq!(
+            serpent.drift.rows.last().unwrap().quantity,
+            "deuterium tail"
+        );
+        // The integrated tail share on the flat uniform plasma matches the
+        // sub-rate hand ratio (grid-independent: every cell shares one
+        // value): the tail sub-branches carry ~7.8% of the births while the
+        // net rate increase is smaller (the bulk depletes).
+        let share = config.total_tail_strength().unwrap() / config.total_strength().unwrap();
+        let eta = 0.05_f64;
+        let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(24.0).unwrap();
+        let sv_dt_tail = FusionReaction::Dt.reactivity_m3_per_s(48.0).unwrap();
+        let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(20.0).unwrap();
+        let sv_dd_mix = FusionReaction::Dd.reactivity_m3_per_s(40.0).unwrap();
+        let sv_dd_tail = FusionReaction::Dd.reactivity_m3_per_s(60.0).unwrap();
+        let bulk =
+            0.7 * 0.3 * (1.0 - eta) * sv_dt + 0.7 * 0.7 / 2.0 * (1.0 - eta) * (1.0 - eta) * sv_dd;
+        let tail = 0.7 * 0.3 * eta * sv_dt_tail
+            + 0.7 * 0.7 / 2.0 * (2.0 * eta * (1.0 - eta) * sv_dd_mix + eta * eta * sv_dd_tail);
+        let want_share = tail / (bulk + tail);
+        assert!((share - want_share).abs() < 1e-9, "{share} vs {want_share}");
+        assert!((share - 0.07798654309040301).abs() < 1e-9, "{share}");
+    }
+
+    #[test]
+    fn tail_parameters_are_loud() {
+        assert_eq!(
+            DeuteriumTail::new(f64::NAN, 60.0),
+            Err(Error::NonFinite("deuterium tail fraction"))
+        );
+        assert_eq!(
+            DeuteriumTail::new(0.05, f64::INFINITY),
+            Err(Error::NonFinite("deuterium tail temperature"))
+        );
+        assert_eq!(
+            DeuteriumTail::new(-0.1, 60.0),
+            Err(Error::InvalidTail(
+                "deuterium tail fraction must be in [0, 1]"
+            ))
+        );
+        assert_eq!(
+            DeuteriumTail::new(1.1, 60.0),
+            Err(Error::InvalidTail(
+                "deuterium tail fraction must be in [0, 1]"
+            ))
+        );
+        assert_eq!(
+            DeuteriumTail::new(0.05, -1.0),
+            Err(Error::NegativeIonTemperature(-1.0))
+        );
+        // Boundary fractions are admitted exactly.
+        assert!(DeuteriumTail::new(0.0, 60.0).is_ok());
+        assert!(DeuteriumTail::new(1.0, 60.0).is_ok());
+        // Config-level validation surfaces the same named errors.
+        let mut c = iter_h_mode();
+        c.fuel_mixture = Some(FuelMixture::new(0.5, 0.5).unwrap());
+        c.tail = Some(DeuteriumTail {
+            fraction: 2.0,
+            temperature_kev: 60.0,
+        });
+        assert!(matches!(c.validate(), Err(Error::InvalidTail(_))));
+        let mut c = iter_h_mode();
+        c.fuel_mixture = Some(FuelMixture::new(0.5, 0.5).unwrap());
+        c.tail = Some(DeuteriumTail {
+            fraction: f64::NAN,
+            temperature_kev: 60.0,
+        });
+        assert!(matches!(c.validate(), Err(Error::NonFinite(_))));
+        // The tail without a fuel mixture is a loud scope error, never a
+        // silent single-fuel fallback.
+        let mut single = iter_h_mode();
+        single.tail = Some(DeuteriumTail::new(0.05, 60.0).unwrap());
         assert!(matches!(single.validate(), Err(Error::NotYetSupported(_))));
         assert!(matches!(
             ParametricSampler::new(single, 7),

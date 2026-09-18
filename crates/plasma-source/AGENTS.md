@@ -5,19 +5,25 @@
 Tokamak fusion-neutron source creation: ring and point sources plus a
 parametric Miller-geometry plasma, over the D-D (2.45 MeV) and D-T
 (14.1 MeV) reactions — singly or as arbitrary D/T fuel mixtures at a shared
-ion temperature or at distinct Maxwellian species temperatures
-(`SpeciesIonTemperatures`: D-T at the mass-weighted `T_DT`, D-D at `T_D`) —
-with ion-temperature-broadened Gaussian spectra, a seeded
+ion temperature, at distinct Maxwellian species temperatures
+(`SpeciesIonTemperatures`: D-T at the mass-weighted `T_DT`, D-D at `T_D`),
+or with the one pinned deuterium hot-tail fraction (`DeuteriumTail`: bulk
+plus hot-tail sub-pairs at their own effective temperatures) — with
+ion-temperature-broadened Gaussian spectra, a seeded
 sampler to particle vectors, and MCNP `SDEF` + Serpent `src` card emission
-with a drift report.
+with a drift report. An arbitrary-3D birth-rate lattice (`lattice.rs`)
+drops axisymmetry for stellarator-class callers: a caller-supplied point
+cloud with field-period symmetry reduction, sampled and emitted through the
+same machinery.
 
 ## Ownership
 
 Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
 `spectrum.rs`, `source.rs`, `sample.rs`, `miller.rs`, `profile.rs`,
-`parametric.rs`, `emit_sdef.rs`, `emit_serpent.rs`, `report.rs`,
+`parametric.rs`, `lattice.rs`, `ecrh.rs`, `emit_sdef.rs`, `emit_serpent.rs`, `report.rs`,
 `error.rs`), the Python surface (`nucleide.plasma_source`,
-`plasma_source_*` in `_internal`), `tests/test_plasma_source.py`, and the
+`plasma_source_*` in `_internal`), `tests/test_plasma_source.py` plus
+`tests/test_ecrh_access.py` (ECRH hand vectors + loud-error gates), and the
 `plasma_source_vs_openmc.py` validation oracle.
 
 ## Local Contracts
@@ -82,15 +88,17 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   publishable fit or line exists) and proton transport (the D(d,p)T proton
   *rate* is accounted: `proton_strength_density` /
   `total_proton_strength`, `proton_accounting` facade; sampler and cards
-  stay neutron-only), reactant distributions beyond distinct-temperature
-  Maxwellians (non-Maxwellian tails — the rest of the full Eriksson
-  generalization; the per-species-temperature form is supported via
-  `SpeciesIonTemperatures` on a fuel mixture), per-species temperatures
-  without a fuel mixture, and profile
+  stay neutron-only), reactant distributions beyond the one pinned
+  deuterium hot-tail fraction on a D/T mixture (the rest of the full
+  Eriksson generalization; the per-species-temperature form is supported via
+  `SpeciesIonTemperatures`, the single-tail-temperature form via
+  `DeuteriumTail` — both parametric-only, there is no tail spelling on
+  lattice configs), per-species temperatures without a fuel mixture, and profile
   self-consistency (zero total strength). Mixture fractions, species
-  temperatures, and sector angles carry their own loud errors
+  temperatures, tail parameters, lattice clouds/symmetry, and sector angles carry their own loud errors
   (`Error::NonFinite`, `Error::InvalidFuelMixture`,
-  `Error::NegativeIonTemperature`, `Error::InvalidSector`) at
+  `Error::NegativeIonTemperature`, `Error::InvalidTail`,
+  `Error::InvalidLattice`, `Error::InvalidSymmetry`, `Error::InvalidSector`) at
   construction.
 - Units: cm, MeV, keV (card convention); profile density is m⁻³ (Fausser
   convention, converted internally); reactivity is exposed in m³/s. The
@@ -112,9 +120,12 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   (module rustdoc hand vectors) and the exact recovery anchors move before
   any sampler change, and the single-fuel sampling stream must stay
   bit-for-bit (no new RNG draws on the `fuel_mixture: None` path).
-- Generalizing the mixture model further (T-T branch transport,
-  non-Maxwellian tails) moves the `NotYetSupported` boundary only after
-  its own pinned normalization brief.
+- Generalizing the mixture model further (T-T branch transport, tail
+  shapes beyond the one pinned `DeuteriumTail`) moves the
+  `NotYetSupported` boundary only after its own pinned normalization brief.
+- Lattice changes keep the sampler draw accounting: no new RNG draws on any
+  path (the symmetry copy comes from the within-bin fraction), so the
+  folded/expanded bit-identity and the single-point recovery anchors hold.
 
 ## Verification
 
@@ -126,10 +137,15 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   rotation/2π hand vectors, full-rotation bit-for-bit recovery, loud angle
   errors, species gates: T_DT hand vectors, pair-temperature strength and
   per-branch spectra, equal-T bit-for-bit recovery, loud temperature
-  errors).
+  errors, tail gates: sub-rate hand vectors at 1e-12, five-sub-branch
+  spectra, eta=0 bit-for-bit recovery, loud tail errors, lattice gates:
+  two-point hand vectors, single-point bit-for-bit point-source recovery,
+  expand/fold exactness, folded-vs-expanded stream bit-identity (incl. the
+  single-node regression), ring-limit moment closure, equal-pair recovery,
+  card round trips with the lattice row, loud lattice/symmetry errors).
 - `pytest tests/test_plasma_source.py` after `maturin develop`.
 - `validation/plasma_source_vs_openmc.py` runs inside `run_all.sh`
-  (two-part: P1–P11 always, O1–O11 vs openmc-plasma-source/NeSST
+  (two-part: P1–P13 always, O1–O13 vs openmc-plasma-source/NeSST
   container-only with loud SKIP outside; the Containerfile layer installs
   `openmc-plasma-source` + `NeSST` and shims `scipy.integrate.cumtrapz`
   in the oracle process for scipy ≥ 1.14).

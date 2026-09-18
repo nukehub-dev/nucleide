@@ -1,0 +1,155 @@
+---
+title: Equilibrium Data Readers
+description: Classic-netCDF VMEC wout reading, the INDATA namelist grammar, flux-surface Jacobians, and wall-load mapping in flux coordinates.
+sidebar:
+  order: 14
+---
+
+Equilibrium codes solve the plasma shape; everything downstream — volume
+weighting, wall loads, source normalization — only reads their output.
+This page pins the data layer of `nucleide-equilib-io`: a pure
+classic-netCDF `wout` reader, the VMEC `&INDATA` input-text grammar, the
+flux-surface Jacobian helpers (J1–J3), and the wall-load accumulation
+kernel (W1–W3). Reads data, never solves equilibria.
+
+## Overview
+
+A VMEC `wout` file stores the equilibrium as Fourier coefficients of the
+flux-surface geometry plus scalar parameters. The reader accepts the two
+classic-netCDF variants per magic probe — CDF-1 (`43 44 46 01`) and CDF-2
+(`43 44 46 02`), the spellings `ncdump -k` reports as `classic` and
+`64-bit offset` — and rejects HDF5-backed netCDF-4 and CDF-5 loudly for
+facade-side conversion: no HDF5 in Rust, by rule. The documented variable
+minimum for Jacobians is `nfp`, `ns`, `xm`, `xn`, `rmnc`, `zmns`, `lmns`,
+`gmnc` on dims `radius`/`mn_mode`/`mn_mode_nyq` (later-use field/current
+tables ride through verbatim; `mpol`/`ntor`/`phiedge`/`volume_p` are
+optional scalars). The `&INDATA` grammar covers scalar switches,
+power-series profiles, and boundary Fourier tables (`NCURR = 1` reads as
+the `I'(s)` profile; absent `LFREEB` reads fixed boundary; sliced indices
+are a loud error).
+
+<Callout type="info" title="Code shape">
+  The `nucleide-equilib-io` crate is readers plus math, no solver:
+  `classic.rs` (magic probe + header walk), `wout.rs` (field extraction +
+  Jacobian helpers), `wall.rs` (wall-load accumulation), `indata.rs`
+  (namelist grammar), and `error.rs` (one shared vocabulary, reused by the
+  wall kernel with no new variants). Synthetic fixtures are built in-test
+  from the published variable lists only — never solver output. The Python
+  surface (`nucleide.equilib`) is thin.
+</Callout>
+
+## Mathematical details
+
+### J1 — Flux-surface Jacobian
+
+The Jacobian $\sqrt{g}$ is the `gmnc` Fourier sum over the resolved
+Nyquist mode maps:
+
+$$
+\sqrt{g}(\theta, \zeta) = \sum c\,\cos(m\,\theta - n\,\zeta),
+\tag{J1}
+$$
+
+with $\zeta$ following the file's toroidal convention (one field period —
+the caller scales totals for full-torus work). Nyquist maps resolve from
+`xm_nyq`/`xn_nyq` when present, else from `xm`/`xn` when their length
+already matches `mn_mode_nyq`; anything else fails loudly instead of
+guessing a truncation.
+
+### J2–J3 — Grids and surface average
+
+J2 grids `ntheta` points over $[0, 2\pi)$ by `nzeta` over
+$[0, 2\pi/\mathrm{nfp})$ for volume weighting; J3 reads the $(0, 0)$
+coefficient (loud when absent). The free `fourier_jacobian` kernel stays
+caller-array-clean for the wall-load consumer below.
+
+### W1–W3 — Wall-load mapping
+
+A caller birth-rate density field maps onto the caller wall surface
+sharing the same flux coordinates ($s$ the normalized toroidal-flux label,
+$\theta \in [0, 2\pi)$ poloidal, $\zeta$ toroidal over one field period;
+radial-major voxels). Each wall node sees the radial line integral at its
+own angles:
+
+$$
+q[j][k] = \sum_i S[i][j][k]\,J[i][j][k]\,\Delta s[i],
+\tag{W1}
+$$
+
+with $S$ the birth-rate density, $J = \sqrt{g}$, and $\Delta s[i]$ the
+$i$-th radial cell width. The angle-weighted one-field-period total
+conserves the discrete births to roundoff by construction:
+
+$$
+Q = \sum_{jk} q[j][k]\,\Delta\theta\,\Delta\zeta
+= \sum_{ijk} S\,J\,\Delta s\,\Delta\theta\,\Delta\zeta.
+\tag{W2}
+$$
+
+The axisymmetric limit is analytic: uniform $S$, uniform $J = J_0$ give the
+spatially constant wall flux $q = S\,J_0\,(s_{hi} - s_{lo})$ over the
+radial span (W3). Pure glue — no transport, no shadowing, no FEM/thermal,
+no CAD; shape mismatches and non-finite or negative densities/Jacobians
+are loud errors reusing the crate vocabulary.
+
+## Algorithm
+
+Probe the magic first (accept two variants, reject the rest with the
+conversion remedy), walk the classic header into named fields, resolve
+mode maps, then evaluate sums: Fourier sums for Jacobians, the (W1) line
+integral per wall node plus the (W2) total for wall loads, single-pass
+namelist scan for `&INDATA`.
+
+## Worked example: uniform-field wall load
+
+One radial cell over $s \in [0, 1]$, uniform birth density $S = 2.0$,
+uniform Jacobian $J_0 = 1.5$, four poloidal by two toroidal nodes at two
+field periods:
+
+```python
+import nucleide.equilib as eq
+
+out = eq.wall_load([0.0, 1.0], 4, 2, 2, [2.0] * 8, [1.5] * 8)
+out["loads"]  # [[3.0, 3.0]] * 4 — every node sees S·J0·Δs = 3.0 (W3)
+out["total"]  # 59.21762640653615 — 8 nodes × 3.0 × (π/2)·(π/2) = 6π² (W2)
+```
+
+Hand checks: (W1) gives $2.0 \times 1.5 \times 1.0 = 3.0$ at every node;
+(W2) weights by $\Delta\theta = 2\pi/4 = \pi/2$ and
+$\Delta\zeta = 2\pi/(2 \cdot 2) = \pi/2$, so
+$Q = 8 \times 3.0 \times \pi^2/4 = 6\pi^2$.
+
+## Assumptions and limitations
+
+- **Reads, never solves.** No equilibrium solving or optimization, no coil
+  design; DESC-saved files and VMEC++-era outputs stay out until
+  re-probed (every file is probed regardless).
+- **Classic only in Rust.** CDF-1/CDF-2 are accepted; netCDF-4/HDF5 and
+  CDF-5 fail loudly for facade-side conversion. Synthetic test bytes are
+  hand-packed from the published variable lists, never solver output.
+- **One-field-period convention.** $\zeta$ grids and wall-load totals cover
+  $[0, 2\pi/\mathrm{nfp})$; full-torus scaling is the caller's multiply.
+- **Wall-load scope.** Caller densities, caller Jacobians, caller wall
+  grid — the kernel is the accumulation math plus gates. A zero Jacobian
+  is allowed (null-volume voxel); a negative one is not.
+
+## Validation
+
+- **Rust unit tests** pin magic-byte accept/reject vectors, synthetic
+  CDF-1/CDF-2 round trips, Jacobian hand vectors, `&INDATA` grammar
+  vectors, and the wall-load gates (axisymmetric analytic limit vs the
+  $S \cdot J_0$ flux with its closed-form total, cosine-Jacobian vector,
+  radial weighting, discrete conservation) at $10^{-12}$ relative.
+- **`tests/test_equilib.py`** replays the Python surface, including the
+  worked example above.
+- **`validation/equilib_vs_desc.py`** replays the gates as always-run E9–E10
+  rows in the same `equilib` report; the DESC/simsopt cross-check legs SKIP
+  loudly outside the container (optional oracle dependencies recorded in
+  `validation/environment.json`).
+
+## Related work beyond Nucleide
+
+The file formats originate with VMEC; the DESC and simsopt packages are
+runtime cross-check oracles only (never ported). What Nucleide does not
+implement: equilibrium solving, VMEC++-era outputs, stellarator
+optimization, and anything CAD, FEM, or HDF5-shaped in Rust.

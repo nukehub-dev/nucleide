@@ -1,4 +1,4 @@
-"""Clearance / waste-classification analytics tests (Cycle 04).
+"""Clearance / waste-classification analytics tests.
 
 Covers the `alara-io` clearance kernel facade (clearance index + sum-of-
 fractions over caller-supplied or EU-default limit tables) and the

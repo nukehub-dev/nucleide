@@ -57,6 +57,45 @@ pub enum Error {
         /// What was expected versus what was found.
         msg: String,
     },
+    /// An S1 total-activity input value was rejected: negative or
+    /// non-finite activity, or a non-finite overflowed class sum.
+    #[error("bad activity value for {nuclide}: {msg}")]
+    BadActivityValue {
+        /// Name of the offending nuclide (`total` for a sum overflow).
+        nuclide: String,
+        /// What was expected versus what was found.
+        msg: String,
+    },
+    /// An S2 decay-heat input value was rejected: negative or non-finite
+    /// activity or decay energy, or a non-finite overflowed class sum.
+    #[error("bad heat value for {nuclide}: {msg}")]
+    BadHeatValue {
+        /// Name of the offending nuclide (`total` for a sum overflow).
+        nuclide: String,
+        /// What was expected versus what was found.
+        msg: String,
+    },
+    /// An S1 entry carried a Table VI IRT with no pinned α/β/γ mapping
+    /// (unused 8, 9; unknown 10; unlisted 0, 5–7, 18, 21–27, 28+).
+    #[error("nuclide {nuclide} has unmapped IRT {irt} (no pinned alpha/beta/gamma class)")]
+    UnmappedIrt {
+        /// Name of the offending nuclide.
+        nuclide: String,
+        /// The rejected decay-type identifier.
+        irt: u8,
+    },
+    /// An S1 split fraction was missing, superfluous, or out of range:
+    /// split IRTs (12, 13, 15) require a finite `alpha_frac` in `[0, 1]`;
+    /// wholly-mapped IRTs take none.
+    #[error("bad IRT split for {nuclide} (IRT {irt}): {msg}")]
+    BadIrtSplit {
+        /// Name of the offending nuclide.
+        nuclide: String,
+        /// The decay-type identifier the fraction was (or was not) for.
+        irt: u8,
+        /// What was expected versus what was found.
+        msg: String,
+    },
 }
 
 #[cfg(test)]
@@ -109,5 +148,40 @@ mod tests {
         let error = Error::from(io);
         assert!(matches!(error, Error::Io(_)));
         assert!(error.to_string().contains("gone"));
+    }
+
+    #[test]
+    fn sublet_variants_display_key_context() {
+        let error = Error::BadActivityValue {
+            nuclide: "Co60".to_string(),
+            msg: "activity must be finite and >= 0, got -1".to_string(),
+        };
+        let text = error.to_string();
+        assert!(text.contains("Co60"), "msg was `{text}`");
+        assert!(text.contains("-1"), "msg was `{text}`");
+
+        let error = Error::BadHeatValue {
+            nuclide: "H3".to_string(),
+            msg: "e_beta_ev must be finite and >= 0, got NaN".to_string(),
+        };
+        let text = error.to_string();
+        assert!(text.contains("H3"), "msg was `{text}`");
+
+        let error = Error::UnmappedIrt {
+            nuclide: "Co60".to_string(),
+            irt: 10,
+        };
+        let text = error.to_string();
+        assert!(text.contains("Co60"), "msg was `{text}`");
+        assert!(text.contains("10"), "msg was `{text}`");
+
+        let error = Error::BadIrtSplit {
+            nuclide: "U235".to_string(),
+            irt: 12,
+            msg: "split IRT requires alpha_frac".to_string(),
+        };
+        let text = error.to_string();
+        assert!(text.contains("U235"), "msg was `{text}`");
+        assert!(text.contains("12"), "msg was `{text}`");
     }
 }

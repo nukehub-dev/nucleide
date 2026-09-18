@@ -30,6 +30,11 @@ from nucleide._internal import (
     damage_arc_displacements,
     damage_arc_dpa,
     damage_arc_efficiency,
+    damage_coil_accumulate,
+    damage_coil_fast_fluence,
+    damage_coil_fast_flux,
+    damage_coil_lifetime,
+    damage_coil_remaining,
     damage_damage_energy,
     damage_fold_uq,
     damage_gas_appm,
@@ -58,7 +63,17 @@ __all__ = [
     "specter_damage_energy",
     "specter_ed",
     "specter_spectra",
+    "coil_fast_flux",
+    "coil_fast_fluence",
+    "coil_accumulate",
+    "coil_lifetime",
+    "coil_remaining",
 ]
+
+#: Seconds in one full-power year (365.25 d), the life unit of the coil gates.
+#: (Module attribute, intentionally outside __all__: the reference generator
+#: covers callable facade entries; constants stay importable but unlisted.)
+FPY_SECONDS: float = 365.25 * 24.0 * 3600.0
 
 
 def nrt_dpa(flux: list[float], response: list[float], bounds: list[float], seconds: float) -> float:
@@ -207,3 +222,54 @@ def specter_ed(element: str) -> float:
     """Vendored SPECTER Table II ``E_d`` (eV) for an element symbol
     (e.g. ``"Fe"``). Unknown elements raise a clear error."""
     return damage_specter_ed(element)
+
+
+def coil_fast_flux(flux: list[float], bounds: list[float], threshold_mev: float) -> float:
+    """Fast flux above ``threshold_mev``: the group sum over groups with
+    ``bounds[g+1] > threshold_mev`` (caller area units, e.g. m⁻²s⁻¹).
+
+    A threshold cutting through a group includes the whole group — align the
+    grid so the threshold sits on a boundary when that conservatism matters.
+    """
+    return damage_coil_fast_flux(flux, bounds, threshold_mev)
+
+
+def coil_fast_fluence(
+    flux: list[float], bounds: list[float], threshold_mev: float, seconds: float
+) -> float:
+    """Fast fluence above ``threshold_mev``: :func:`coil_fast_flux` held for
+    ``seconds`` (fluence = flux × time, caller area units)."""
+    return damage_coil_fast_fluence(flux, bounds, threshold_mev, seconds)
+
+
+def coil_accumulate(rates: list[float], durations: list[float]) -> float:
+    """Piecewise-constant irradiation-history accumulation:
+    ``Σ rates[i]·durations[i]``.
+
+    Fold each interval's spectrum through its metric of choice
+    (:func:`coil_fast_flux` or a dpa fold at one second for the rate) and
+    accumulate the rate history here."""
+    return damage_coil_accumulate(rates, durations)
+
+
+def coil_lifetime(limits: list[float], rates: list[float]) -> dict[str, Any]:
+    """Weakest-link coil life over caller-supplied limit tables:
+    ``min`` of ``limits[i] / rates[i]``.
+
+    Limits share their rate's units (fluence or dpa — any accumulated
+    metric); published design numbers are validation gates the caller
+    supplies, never defaults. Returns ``{"seconds", "limiting"}``: seconds
+    to the first breach plus the limiting channel index (all-zero rates give
+    infinite seconds with ``limiting`` None — a zero rate never breaches).
+    """
+    return damage_coil_lifetime(limits, rates)
+
+
+def coil_remaining(
+    limits: list[float], accumulated: list[float], rates: list[float]
+) -> dict[str, Any]:
+    """Weakest-link remaining life: ``min`` of
+    ``(limits[i] − accumulated[i]) / rates[i]``, clamped at zero once a
+    limit is reached. Same ``{"seconds", "limiting"}`` shape as
+    :func:`coil_lifetime`."""
+    return damage_coil_remaining(limits, accumulated, rates)

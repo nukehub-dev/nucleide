@@ -255,6 +255,30 @@ Depends on:
 Python:
   [<span class="ref-pill"><code>nucleide.damage</code></span>](./python-api.mdx#nucleidedamage)
 
+### nucleide-blanket
+
+`crates/blanket` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/blanket)
+
+TBR and blanket power bookkeeping over caller transport tallies (port-penalty haircuts, energy multiplication, tritium
+burn and fuel-cycle margin)
+
+Depends on: -
+
+Python:
+  [<span class="ref-pill"><code>nucleide.blanket</code></span>](./python-api.mdx#nucleideblanket)
+
+### nucleide-equilib-io
+
+`crates/equilib-io` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/equilib-io)
+
+Equilibrium data readers (classic-netCDF VMEC wout files plus VMEC INDATA namelist text); reads data, never solves
+equilibria
+
+Depends on: -
+
+Python:
+  [<span class="ref-pill"><code>nucleide.equilib</code></span>](./python-api.mdx#nucleideequilib)
+
 ### nucleide-vr-tools
 
 `crates/vr-tools` · [source](https://github.com/nukehub-dev/nucleide/tree/main/crates/vr-tools)
@@ -332,6 +356,8 @@ Depends on:
   [<span class="ref-pill"><code>nucleide-plasma-source</code></span>](../architecture/crate-responsibilities.md#nucleide-plasma-source)
   [<span class="ref-pill"><code>nucleide-damage</code></span>](../architecture/crate-responsibilities.md#nucleide-damage)
   [<span class="ref-pill"><code>nucleide-unfold</code></span>](../architecture/crate-responsibilities.md#nucleide-unfold)
+  [<span class="ref-pill"><code>nucleide-equilib-io</code></span>](../architecture/crate-responsibilities.md#nucleide-equilib-io)
+  [<span class="ref-pill"><code>nucleide-blanket</code></span>](../architecture/crate-responsibilities.md#nucleide-blanket)
 
 Python: -
 
@@ -363,6 +389,8 @@ Depends on:
   [<span class="ref-pill"><code>nucleide-damage</code></span>](../architecture/crate-responsibilities.md#nucleide-damage)
   [<span class="ref-pill"><code>nucleide-plasma-source</code></span>](../architecture/crate-responsibilities.md#nucleide-plasma-source)
   [<span class="ref-pill"><code>nucleide-unfold</code></span>](../architecture/crate-responsibilities.md#nucleide-unfold)
+  [<span class="ref-pill"><code>nucleide-blanket</code></span>](../architecture/crate-responsibilities.md#nucleide-blanket)
+  [<span class="ref-pill"><code>nucleide-equilib-io</code></span>](../architecture/crate-responsibilities.md#nucleide-equilib-io)
 
 Python: -
 
