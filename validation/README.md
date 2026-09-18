@@ -47,11 +47,14 @@ The canonical environment is the container built from `Containerfile`:
   `pyne/dbgen/atomic_mass.py` is quote style and `std::isnan` qualification
   only. PyNE 0.7.8 itself cannot build on Python 3.12 (its `setup.py` still
   does `import imp`, removed in 3.12), and conda-forge tops out at 0.7.5.
-- OpenMC 0.16.0 built from the upstream release tag. conda-forge still ships
-  0.15.3, and the `docker.io/openmc/openmc:v0.16.0` image actually contains
-  0.15.3 (its Dockerfile defaults `openmc_branch=master` and the published tag
-  was built from the 0.15.3 release commit), so neither binary channel carries
-  0.16.0 yet.
+- OpenMC 0.16.0 built from the upstream release tag. conda-forge now ships
+  0.16.0 as well (previously 0.15.3) — use 0.16.0 everywhere: 0.15.3's
+  `Chain.form_matrix` drops decay constants on some diagonal entries (52 on
+  the CASL chain, up to 0.26% relative), which fails the 1e-8 CRAM gate;
+  0.16.0 includes them and matches to 8.9e-15. (The
+  `docker.io/openmc/openmc:v0.16.0` image actually contains 0.15.3 — its
+  Dockerfile defaults `openmc_branch=master` and the published tag was built
+  from the 0.15.3 release commit — so that image is not a substitute.)
 - Nucleide abi3 wheel built in release mode by the `ghcr.io/pyo3/maturin`
   container (manylinux2014; release mode is required for meaningful timing
   numbers).
@@ -63,7 +66,11 @@ The canonical environment is the container built from `Containerfile`:
   or docs (licensing boundary).
 
 A conda env with `pyne` and `openmc` from conda-forge also works (see
-`run_all.sh`), but tracks the older conda-forge versions.
+`run_all.sh`), but must carry OpenMC 0.16.0 — 0.15.3 fails the depletion
+gate (see Environment). Caller-side oracle extras (`radioactivedecay`,
+`pypact`, `openmc-plasma-source` + NeSST from PyPI) additionally cover the
+decay, clearance-overlap, and plasma-moment oracle legs locally; DESC and
+simsopt stay container-absent optionals (import-surface probes only).
 
 ## Running
 
