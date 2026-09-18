@@ -2,7 +2,7 @@
 title: Interactive tutorials
 description: Learn Nucleide feature by feature with live demos. No installation needed.
 sidebar:
-  order: 2
+  order: 0
 ---
 
 These pages run Nucleide right here — no Python or Rust installation is
@@ -15,30 +15,50 @@ required; every example is live.
 
 ## Available interactive tutorials
 
+### Foundations
+
 - [Nuclides & nuclear data](nuclides.mdx) — name conversions, masses, abundances, half-lives.
 - [Materials](materials.mdx) — formula expansion, atom/weight fractions, mixing, XML export.
+
+### Fuel cycle
+
 - [Enrichment cascades](enrichment.mdx) — solve matched-abundance-ratio cascades.
 - [Depletion](depletion.mdx) — load a chain and run one CRAM step.
+
+### Transport input and tooling
+
 - [MCNP I/O](mcnp-io.mdx) — parse material cards, xsdir, meshtal, and WWINP files.
 - [Serpent output](serpent-io.mdx) — parse `_res.m`, `_dep.m`, and `_det.m` MATLAB-style files.
 - [FLUKA USRBIN](fluka-io.mdx) — read USRBIN mesh tallies from `.lis` output.
-- [Variance reduction](variance-reduction.mdx) — MAGIC bounds and alias-table source sampling.
-- [Activation](activation.mdx) — ALARA decks and output, FISPACT-II inventories, ORIGEN tapes, R2S workflows.
-- [Deterministic transport](deterministic.mdx) — ISOTXS libraries, RTFLUX fluxes, PARTISN decks.
 - [Deck editor](deck-editor.mdx) — parse, validate, and edit full MCNP decks.
-- [Code-card emission](emitter.mdx) — five-dialect cards, ARMI keys, and mass drift.
-- [Point kinetics](kinetics.mdx) — step-reactivity transients and the prompt jump.
-- [Tritium permeation](tritium.mdx) — 1D breakthrough curve and time lag.
-- [Gamma-ray spectroscopy](spectroscopy.mdx) — smoothing and peak counting.
-- [UQ sampling](uq.mdx) — seeded MVN sampling over caller-supplied covariance blocks.
+- [Deterministic transport](deterministic.mdx) — ISOTXS libraries, RTFLUX fluxes, PARTISN decks.
+- [Variance reduction](variance-reduction.mdx) — MAGIC bounds and alias-table source sampling.
 - [MCPL particle lists](mcpl-io.mdx) — read/write MCPL bytes and SSW conversion.
-- [Damage metrics](damage.mdx) — fold a multigroup flux into dpa and gas production.
+- [Code-card emission](emitter.mdx) — five-dialect cards, ARMI keys, and mass drift.
+
+### Neutron sources
+
 - [Fusion sources](fusion-sources.mdx) — sample D-D/D-T ring, point, and
   parametric sources (including fuel mixtures) and emit SDEF cards.
-- [Spectrum unfolding](unfold.mdx) — SAND-II, least-squares, and GRAVEL adjustment over detector measurements.
+
+### Activation and radiological analysis
+
+- [Activation](activation.mdx) — ALARA decks and output, FISPACT-II inventories, ORIGEN tapes, R2S workflows.
 - [Clearance screening](clearance.mdx) — sum-of-fractions classification against EU or Spanish limits.
 - [Radiological totals](clearance.mdx#radiological-totals-s3s7) — committed
   hazards, transport ratio, IAEA clearance, and gamma dose over caller inventories.
+
+### Damage, measurement, and uncertainty
+
+- [Damage metrics](damage.mdx) — fold a multigroup flux into dpa and gas production.
+- [Gamma-ray spectroscopy](spectroscopy.mdx) — smoothing and peak counting.
+- [Spectrum unfolding](unfold.mdx) — SAND-II, least-squares, and GRAVEL adjustment over detector measurements.
+- [UQ sampling](uq.mdx) — seeded MVN sampling over caller-supplied covariance blocks.
+
+### Dynamics and the fuel cycle
+
+- [Point kinetics](kinetics.mdx) — step-reactivity transients and the prompt jump.
+- [Tritium permeation](tritium.mdx) — 1D breakthrough curve and time lag.
 - [TBR bookkeeping](blanket.mdx) — raw and effective TBR, breeding margin, and daily burn and surplus.
 - [Equilibrium data](equilibrium.mdx) — INDATA parsing and wall-load mapping in flux coordinates.
 

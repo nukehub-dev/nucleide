@@ -1,7 +1,7 @@
 ---
 title: Python tutorials
 sidebar:
-  order: 3
+  order: 0
 ---
 
 Hands-on Python guides for Nucleide. Each tutorial is short, self-contained,
