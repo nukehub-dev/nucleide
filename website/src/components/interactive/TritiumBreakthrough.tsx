@@ -175,7 +175,7 @@ export function TritiumBreakthrough() {
                       x1: result.tLag,
                       y0: 0,
                       y1: 1,
-                      line: { dash: "dash", width: 1 },
+                      line: { dash: "dash", width: 1.5, color: "#9aa0a6" },
                     },
                   ],
                 }}
