@@ -322,6 +322,47 @@ To draw one index:
   or fractional-cell sampling modes are not implemented.
 </Callout>
 
+## Gaussian KDE source sampling
+
+`KdeSampler` fits an axis-aligned Gaussian kernel-density estimator (KDE)
+over caller-supplied particle vectors (energy/position/direction rows,
+for example projected from MCPL records by the caller) and resamples
+synthetic particles with the same density. The kernel equations are
+textbook statistics; the implementation is from scratch.
+
+The fitted density is a product of one-dimensional Gaussians per sample
+$i$ and dimension $j$,
+
+$$
+p(x) = \frac{1}{N} \sum_i \prod_j \mathcal{N}(x_j; p_{ij}, h_{ij}^2)
+$$
+
+with per-sample bandwidths $h_{ij}$. Three bandwidth rules exist:
+
+- **Silverman**: $h_j = \sigma_j (4 / (d + 2) / N)^{1 / (d + 4)}$ per
+  dimension, shared across samples ($\sigma_j$ is the unbiased per-dimension
+  standard deviation; zero-variance dimensions are loud errors).
+- **Fixed**: caller-supplied per-dimension widths.
+- **Adaptive** ($\texttt{AdaptiveKnn} \{ k, \texttt{scale} \}$): each sample
+  gets its own width
+
+$$
+h_{i0} = \texttt{scale} \cdot d_k(x_i), \qquad h_{ij} = h_{i0} \, \sigma_j
+$$
+
+where $d_k(x_i)$ is the $k$th nearest-neighbour distance excluding the
+point itself (1-based, $1 \le k \le N - 1$) in the $\sigma_j$-scaled space,
+so tight clusters smooth lightly and sparse tails smooth broadly. Invalid
+rank or scale, duplicate points (zero distance), and zero-variance
+dimensions are loud errors — a zero bandwidth is never a delta spike.
+
+Draws are deterministic in the house style: `draw()` takes one uniform
+$u$ selecting the kernel centre plus one standard normal per dimension
+($x = x_i + h_i \, z$), with no RNG inside. A shared centre across
+dimensions preserves the fitted correlations by construction. MCPL
+projection stays caller-side (a short map from particle fields to rows);
+this module never depends on the MCPL crate.
+
 ## Assumptions and limitations
 
 - **MAGIC requires positive flux somewhere**: if every value in an energy group

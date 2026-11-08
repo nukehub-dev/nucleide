@@ -106,6 +106,20 @@ orchestration around the physics codes, sharing nuclide identities and
 mesh-source machinery with the Monte Carlo side rather than reimplementing any
 solver.
 
+# State of the field
+
+Nucleide sits with PyNE in the "toolkit around transport" niche, but does not
+fork either it or OpenMC. PyNE pioneered that role yet its installation
+requires CMake/MOAB/Fortran and a generated data file, which blocks
+embedding and slows reproducibility. OpenMC absorbs depletion and weight
+windows natively, but its Python surface centers on driving a solve rather
+than on legacy-file utilities, enrichment cascades, or embeddable analytics.
+Single-code suites such as MontePy (MCNP) and serpentTools (Serpent) cover
+individual formats only. Nucleide targets the multi-code wedge — fuel-cycle
+math, activation and clearance, tritium and fusion sources, spectrum
+unfolding — as a dependency-light Rust library with a typed Python facade
+and no transport solver of its own.
+
 # Software design
 
 The Rust workspace enforces strict layering: capability crates (`nucleide-nuclei`,
@@ -270,6 +284,22 @@ OpenMC tally bridge carry synthetic hand-vector gates in the unit suite
 
 ![Raw vs rectangular ($m=5$) and five-point smoothed counts on the 7-channel spectroscopy oracle vector; the annotation gives the ROI (channels 2..5) gross/background/net totals; both smoothers match hand values and PyNE exactly.](validation/figures/spectroscopy_overlay.png)
 
+# Research impact statement
+
+Nucleide is already used in the author's own research: the tutorial and
+notebook workflows (first-wall damage and UQ, activation screening with
+Sublet totals, tokamak source sampling with card emission) run end to end
+in CI on seeded synthetic fixtures, so every documented chain is an
+executable, reproducible artifact rather than a worked listing. The
+vendored validation harness (`validation/`) reruns the measured claims in
+this paper against PyNE and OpenMC from a container image, with every
+number quoted here drawn from the committed reports. Classroom use is
+enabled by the WASM interactive tutorials — twenty-three demos now cover
+the 0.15–0.16 additions (equilibrium, blanket, wall load, radiological
+totals, He/dpa UQ) with no installation. External adoption and citation
+tracking are the next step, via the NukeIDE/NukeHub ecosystem dependency
+declaration.
+
 # Documentation
 
 The documentation website (built with Astro, deployed to GitHub Pages) provides
@@ -288,6 +318,16 @@ interactive demo.
 Nucleide is BSD-2-Clause-licensed and developed at
 <https://github.com/nukehub-dev/nucleide>. Python wheels are published to PyPI;
 the Rust crates can be published to crates.io from the same release workflow.
+
+# AI usage disclosure
+
+Substantial portions of the Rust implementation, Python facade, theory
+documentation, validation harness, and this manuscript were produced with
+AI assistance (Kimi Code CLI and coding subagents). The author reviewed and
+edited all AI-assisted outputs, verified every validation number against
+the committed reports, and made the core design decisions (AD-1 through
+AD-14, the glue-not-solver charter, and the synthetic-fixture policy).
+No AI output is submitted as unreviewed work.
 
 # Acknowledgements
 

@@ -360,6 +360,27 @@ $\eta$ spelling), routing strengths, the per-particle branch roulette, card
 marginals, and the drift row identically — there too $\eta = 0$ recovers
 the no-tail lattice kernel exactly.
 
+### S5-Pr — D(d,p)T proton transport
+
+The twin D(d,p)T proton branch shares the D-D neutron-branch rate 50/50
+(the landed `proton_accounting` normalization is reused bit-for-bit, with
+the Bosch–Hale D(d,p) fit deferred) and is transported on request via the
+optional `species` key for deuterium-bearing ring/point and parametric
+sources. There is no Ballabio-class proton line (Ballabio et al. 1998
+covers neutrons only), so the v1 proton line is Brysk-Gaussian at the
+3.02 MeV cold line ($Q = 4.03$ MeV),
+
+$$
+\mu = 3.02\ \mathrm{MeV}, \qquad \sigma = \sqrt{1.51 \cdot T_i[\mathrm{MeV}]}\ \mathrm{MeV}\ \text{(mass numbers $m_D = 2$, $m_p = 1$)},
+\tag{S5-Pr}
+$$
+
+with $T_i = 0$ degenerating to the monoenergetic 3.02 MeV line. Proton
+samplers draw on independent seeds with zero new draws on any neutron
+path; protons emit MCNP6-only `PAR=h` SDEF cards with the same
+$\pm 4\sigma$ histogram shape and a `proton branch` drift row, and no
+Serpent card exists (its `PART='p'` means photons).
+
 ### S6 — Arbitrary-3D birth-rate lattice
 
 The lattice tier drops the last tokamak assumption, axisymmetry. The caller
