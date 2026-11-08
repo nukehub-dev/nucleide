@@ -69,6 +69,28 @@ references:
     source: Nucleide implementation
     date: "2026"
     type: misc
+  - id: silverman-1986
+    title: Density Estimation for Statistics and Data Analysis
+    url: https://doi.org/10.1007/978-1-4899-3324-6
+    authors: ["B. W. Silverman"]
+    source: Chapman and Hall
+    journal: London
+    volume: "1"
+    pages: "1–176"
+    date: "1986"
+    type: article
+    doi: "10.1007/978-1-4899-3324-6"
+  - id: schmidt-2022
+    title: KDSource, a tool for the generation of Monte Carlo particle sources using kernel density estimation
+    url: https://doi.org/10.1016/j.anucene.2022.109309
+    authors: ["N. S. Schmidt", "O. I. Abbate", "Z. M. Prieto", "J. I. Robledo", "J. I. Márquez Damián", "A. A. Márquez", "J. Dawidowski"]
+    source: Annals of Nuclear Energy
+    journal: Annals of Nuclear Energy
+    volume: "177"
+    pages: "109309–109319"
+    date: "2022"
+    type: article
+    doi: "10.1016/j.anucene.2022.109309"
 ---
 
 Nucleide provides two variance-reduction utilities built on MCNP mesh tallies:
@@ -328,7 +350,10 @@ To draw one index:
 over caller-supplied particle vectors (energy/position/direction rows,
 for example projected from MCPL records by the caller) and resamples
 synthetic particles with the same density. The kernel equations are
-textbook statistics; the implementation is from scratch.
+textbook statistics — the Gaussian product kernel and the Silverman
+bandwidth rule as in Silverman<Citation id="silverman-1986" /> — implemented
+from scratch; the adaptive rule follows the KDSource adaptive-KNN
+construction<Citation id="schmidt-2022" />.
 
 The fitted density is a product of one-dimensional Gaussians per sample
 $i$ and dimension $j$,

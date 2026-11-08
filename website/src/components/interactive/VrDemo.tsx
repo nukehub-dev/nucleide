@@ -483,7 +483,8 @@ function KdeChart({ result }: { result: KdeResult }) {
         title: { text: "KDE density (samples + pdf)" },
         xaxis: { title: { text: "Value (dimension 1)" }, type: "linear" },
         yaxis: { title: { text: "Count / density" }, type: "linear" },
-        margin: { t: 16, r: 24, b: 48, l: 64 },
+        height: 320,
+        margin: { t: 56, r: 24, b: 48, l: 64 },
         legend: { orientation: "h", y: -0.25 },
       }}
     />
@@ -519,7 +520,8 @@ function MagicBoundsChart({ magic }: { magic: MagicSummary }) {
           range: [-0.5, Math.max(n - 0.5, 0.5)],
         },
         yaxis: { title: { text: "Upper bound (MeV)" }, ...logAxis },
-        margin: { t: 16, r: 16, b: 48, l: 64 },
+        height: 320,
+        margin: { t: 56, r: 16, b: 48, l: 64 },
       }}
     />
   );
