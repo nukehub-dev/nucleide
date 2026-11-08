@@ -13,6 +13,8 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-08
+
 ### Added
 
 - D(d,p)T proton transport in `nucleide-plasma-source` for deuterium-bearing
