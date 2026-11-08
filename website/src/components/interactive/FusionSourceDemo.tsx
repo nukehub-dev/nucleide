@@ -3,6 +3,7 @@ import { useWasm } from "../../lib/wasm";
 import type {
   FusionCardsResult,
   FusionParametricSpec,
+  FusionProtonMoments,
   FusionRingSpec,
   FusionSampleResult,
   FusionSpectrumMoments,
@@ -26,6 +27,8 @@ const MAX_SAMPLES = 5000;
 type Reaction = "dt" | "dd";
 
 type SourceKind = "ring" | "lattice" | "parametric";
+
+type ParticleSpecies = "neutron" | "proton";
 
 // Synthetic five-node base-sector cloud: an arc at R = 300 cm spanning
 // ±4° with unit rates (no evaluated data, no machine geometry).
@@ -70,6 +73,11 @@ const REACTIONS: { value: Reaction; label: string }[] = [
   { value: "dd", label: "D-D (2.45 MeV)" },
 ];
 
+const SPECIES: { value: ParticleSpecies; label: string }[] = [
+  { value: "neutron", label: "Neutron" },
+  { value: "proton", label: "Proton" },
+];
+
 export function FusionSourceDemo() {
   const { wasm, ready, error } = useWasm();
   const [sourceKind, setSourceKind] = useState<SourceKind>("ring");
@@ -90,7 +98,15 @@ export function FusionSourceDemo() {
   const [tailTempText, setTailTempText] = useState(DEFAULT_TAIL_TEMP);
   const [speciesDText, setSpeciesDText] = useState("");
   const [speciesTText, setSpeciesTText] = useState("");
+  // Lattice fuel/tail default blank (single-fuel, no tail), exactly like the
+  // parametric blank-pair default, so the lattice default stream is unchanged.
+  const [latticeFuelDText, setLatticeFuelDText] = useState("");
+  const [latticeFuelTText, setLatticeFuelTText] = useState("");
+  const [latticeTailFracText, setLatticeTailFracText] = useState("");
+  const [latticeTailTempText, setLatticeTailTempText] = useState("");
+  const [particleSpecies, setParticleSpecies] = useState<ParticleSpecies>("neutron");
   const [moments, setMoments] = useState<FusionSpectrumMoments | null>(null);
+  const [protonMoments, setProtonMoments] = useState<FusionProtonMoments | null>(null);
   const [cards, setCards] = useState<FusionCardsResult | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -150,6 +166,25 @@ export function FusionSourceDemo() {
       speciesDeuteriumKev = parseEntry(speciesDText, "species D temperature");
       speciesTritiumKev = parseEntry(speciesTText, "species T temperature");
     }
+    // Blank mixture fractions select the single-fuel kernel at the chosen
+    // reaction; a set pair selects the D/T mixture per node. A set tail
+    // pair requires the mixture (WASM/core raises loudly otherwise).
+    const dBlank = latticeFuelDText.trim() === "";
+    const tBlank = latticeFuelTText.trim() === "";
+    let fuelDeuterium: number | undefined;
+    let fuelTritium: number | undefined;
+    if (!dBlank || !tBlank) {
+      fuelDeuterium = parseEntry(latticeFuelDText, "fuel D");
+      fuelTritium = parseEntry(latticeFuelTText, "fuel T");
+    }
+    const fracBlank = latticeTailFracText.trim() === "";
+    const tempBlank = latticeTailTempText.trim() === "";
+    let tailFraction: number | undefined;
+    let tailTempKev: number | undefined;
+    if (!fracBlank || !tempBlank) {
+      tailFraction = parseEntry(latticeTailFracText, "tail fraction");
+      tailTempKev = parseEntry(latticeTailTempText, "tail temperature");
+    }
     return {
       points: LATTICE_PRESET.map((p) => ({ ...p, tiKev })),
       reaction,
@@ -157,6 +192,10 @@ export function FusionSourceDemo() {
       baseAngle,
       speciesDeuteriumKev,
       speciesTritiumKev,
+      fuelDeuterium,
+      fuelTritium,
+      tailFraction,
+      tailTempKev,
       n,
       seed,
     };
@@ -206,6 +245,7 @@ export function FusionSourceDemo() {
       tailTempKev,
       speciesDeuteriumKev,
       speciesTritiumKev,
+      ...(particleSpecies === "proton" ? { species: "proton" as const } : {}),
       n,
       seed,
     };
@@ -215,6 +255,7 @@ export function FusionSourceDemo() {
     setSample(null);
     setLattice(null);
     setMoments(null);
+    setProtonMoments(null);
     setCards(null);
   }
 
@@ -228,6 +269,7 @@ export function FusionSourceDemo() {
         setMoments(
           wasm.fusionSpectrumMoments(spec.reaction, parseEntry(tiText, "ion temperature")),
         );
+        setProtonMoments(null);
         setCards(null);
         setLocalError(null);
         return;
@@ -237,6 +279,11 @@ export function FusionSourceDemo() {
         setSample(wasm.sampleFusionSource(spec));
         setLattice(null);
         setMoments(null);
+        if (particleSpecies === "proton") {
+          setProtonMoments(wasm.fusionProtonMoments(spec.centreTempKev));
+        } else {
+          setProtonMoments(null);
+        }
         setCards(null);
         setLocalError(null);
         return;
@@ -246,6 +293,7 @@ export function FusionSourceDemo() {
       setSample(out);
       setLattice(null);
       setMoments(wasm.fusionSpectrumMoments(spec.reaction, spec.tiKev));
+      setProtonMoments(null);
       setCards(wasm.emitFusionSourceCards({ ...spec, nBins: 21 }));
       setLocalError(null);
     } catch (e) {
@@ -323,8 +371,25 @@ export function FusionSourceDemo() {
                 single-fuel kernel at the reaction selected above; an optional species pair (T
                 <sub>D</sub>, T<sub>T</sub>) then reacts single-fuel D-T at the mass-weighted T
                 <sub>DT</sub> and single-fuel D-D at T<sub>D</sub> (blank pair = shared profile
-                temperature).
+                temperature). Pick Neutron (default) or Proton for the independent D(d,p)T proton
+                stream.
               </p>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Particle species">
+                {SPECIES.map((s) => (
+                  <Button
+                    key={s.value}
+                    onClick={() => {
+                      setParticleSpecies(s.value);
+                      resetOutputs();
+                      clearError();
+                    }}
+                    variant={particleSpecies === s.value ? "default" : "outline"}
+                    size="sm"
+                  >
+                    {s.label}
+                  </Button>
+                ))}
+              </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <div className="space-y-1">
                   <Label className="flex min-h-10 items-end">Centre Tᵢ [keV]</Label>
@@ -511,7 +576,8 @@ export function FusionSourceDemo() {
                 lattice spelling. Synthetic preset, no machine geometry. An optional species pair (T
                 <sub>D</sub>, T<sub>T</sub>) reacts single-fuel D-T at the mass-weighted T
                 <sub>DT</sub> and single-fuel D-D at T<sub>D</sub> (blank pair = shared node
-                temperature).
+                temperature). Blank both mixture fractions for the single-fuel kernel at the
+                reaction selected above; a set tail pair then needs the mixture.
               </p>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <div className="space-y-1">
@@ -542,6 +608,62 @@ export function FusionSourceDemo() {
                     value={baseAngleText}
                     onChange={(e) => {
                       setBaseAngleText(e.target.value);
+                      clearError();
+                    }}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="fusion-lattice-fuel-d" className="flex min-h-10 items-end">
+                    Fuel D fraction (blank = single-fuel)
+                  </Label>
+                  <Input
+                    id="fusion-lattice-fuel-d"
+                    value={latticeFuelDText}
+                    onChange={(e) => {
+                      setLatticeFuelDText(e.target.value);
+                      clearError();
+                    }}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="fusion-lattice-fuel-t" className="flex min-h-10 items-end">
+                    Fuel T fraction (blank = single-fuel)
+                  </Label>
+                  <Input
+                    id="fusion-lattice-fuel-t"
+                    value={latticeFuelTText}
+                    onChange={(e) => {
+                      setLatticeFuelTText(e.target.value);
+                      clearError();
+                    }}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="fusion-lattice-tail-frac" className="flex min-h-10 items-end">
+                    Tail fraction (blank = none)
+                  </Label>
+                  <Input
+                    id="fusion-lattice-tail-frac"
+                    value={latticeTailFracText}
+                    onChange={(e) => {
+                      setLatticeTailFracText(e.target.value);
+                      clearError();
+                    }}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="fusion-lattice-tail-temp" className="flex min-h-10 items-end">
+                    Tail T [keV]
+                  </Label>
+                  <Input
+                    id="fusion-lattice-tail-temp"
+                    value={latticeTailTempText}
+                    onChange={(e) => {
+                      setLatticeTailTempText(e.target.value);
                       clearError();
                     }}
                     className="font-mono text-xs"
@@ -612,6 +734,19 @@ export function FusionSourceDemo() {
               <span className="font-mono">{moments.meanMeV.toFixed(4)} MeV</span>, σ{" "}
               <span className="font-mono">
                 {moments.mono ? "0 (monoenergetic)" : `${moments.sigmaMeV.toExponential(4)} MeV`}
+              </span>
+            </p>
+          )}
+
+          {protonMoments && (
+            <p className="text-sm">
+              Proton moments: line at{" "}
+              <span className="font-mono">{protonMoments.nominalMeV.toFixed(4)} MeV</span>, mean{" "}
+              <span className="font-mono">{protonMoments.meanMeV.toFixed(4)} MeV</span>, σ{" "}
+              <span className="font-mono">
+                {protonMoments.mono
+                  ? "0 (monoenergetic)"
+                  : `${protonMoments.sigmaMeV.toExponential(4)} MeV`}
               </span>
             </p>
           )}

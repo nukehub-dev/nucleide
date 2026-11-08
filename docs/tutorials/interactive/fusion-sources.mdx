@@ -18,14 +18,18 @@ histograms the sampled birth energies, and renders the same configuration as
 MCNP `SDEF` and Serpent `src` cards that transport codes can read directly.
 Identical inputs always reproduce the identical particle stream. The 3D
 lattice tab samples a five-node base-sector cloud replicated by field-period
-symmetry instead — the stellarator-style spelling with the same spectrum.
-The parametric tab samples a synthetic H-mode plasma volume with an editable
-D/T fuel mixture and an optional deuterium hot-tail fraction. Blank both
+symmetry instead — the stellarator-style spelling with the same spectrum,
+including the same D/T fuel mixture and hot-tail options as the parametric
+tab (blank fractions mean single-fuel at the selected reaction, and the
+tail needs the mixture). The parametric tab samples a synthetic H-mode
+plasma volume with an editable D/T fuel mixture and an optional deuterium
+hot-tail fraction. Blank both
 mixture fractions for the single-fuel kernel at the selected reaction, with
 an optional per-species temperature pair: single-fuel D-T then reacts at the
 mass-weighted pair temperature while single-fuel D-D reacts at the deuterium
 temperature, and an equal pair reproduces the shared-temperature kernel
-exactly.
+exactly. Pick Neutron (default) or Proton for the independent D(d,p)T
+proton stream with its 3.02 MeV line moments.
 
 <InteractiveDemo kind="fusion-sources" />
 

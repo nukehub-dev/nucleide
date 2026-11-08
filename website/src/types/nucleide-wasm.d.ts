@@ -323,6 +323,30 @@ export interface SampledVoxelSummary {
   weight: number;
 }
 
+export interface KdeFitSpec {
+  samples: number[][];
+  rule?: "silverman" | "fixed" | "adaptive";
+  k?: number;
+  scale?: number;
+  widths?: number[];
+}
+
+export interface KdePdfSpec extends KdeFitSpec {
+  point: number[];
+}
+
+export interface KdeDrawSpec extends KdeFitSpec {
+  u: number;
+  normals: number[];
+}
+
+export interface KdeFitResult {
+  nSamples: number;
+  dims: number;
+  bandwidths: number[];
+  sampleBandwidths: number[][];
+}
+
 export interface AlaraMixtureJson {
   name: string;
   entries: string[];
@@ -1106,6 +1130,10 @@ export interface WasmApi {
     r1: number,
     r2: number,
   ): SampledVoxelSummary;
+  kdeFit(spec: KdeFitSpec): KdeFitResult;
+  kdePdf(spec: KdePdfSpec): number;
+  kdeDraw(spec: KdeDrawSpec): number[];
+  kdeSampleBandwidths(spec: KdeFitSpec): number[][];
   parseAlaraDeck(text: string): AlaraDeckSummary;
   parseAlaraOutput(text: string, runLbl: string): AlaraOutputSummary;
   parseFispactOutput(text: string, runLbl: string): FispactOutputSummary;

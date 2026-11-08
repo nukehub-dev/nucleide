@@ -1320,6 +1320,175 @@ pub fn mesh_source_sample(
     })
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KdeSpecBase {
+    /// Caller-supplied rows (e.g. projected MCPL particle fields); never
+    /// parsed from a file.
+    samples: Vec<Vec<f64>>,
+    rule: Option<String>,
+    k: Option<f64>,
+    scale: Option<f64>,
+    widths: Option<Vec<f64>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KdePdfSpecJson {
+    samples: Vec<Vec<f64>>,
+    rule: Option<String>,
+    k: Option<f64>,
+    scale: Option<f64>,
+    widths: Option<Vec<f64>>,
+    point: Vec<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KdeDrawSpecJson {
+    samples: Vec<Vec<f64>>,
+    rule: Option<String>,
+    k: Option<f64>,
+    scale: Option<f64>,
+    widths: Option<Vec<f64>>,
+    u: f64,
+    normals: Vec<f64>,
+}
+
+#[derive(Serialize)]
+struct KdeFitResultJson {
+    #[serde(rename = "nSamples")]
+    n_samples: usize,
+    dims: usize,
+    bandwidths: Vec<f64>,
+    #[serde(rename = "sampleBandwidths")]
+    sample_bandwidths: Vec<Vec<f64>>,
+}
+
+/// Mirror the Python `KdeSampler` kwargs: `rule` is `"silverman"`
+/// (absent, the default), `"fixed"` (with `widths`), or `"adaptive"`
+/// (with optional `k`/`scale`, defaults 1/1.0). `k`/`scale` with any
+/// other rule and `widths` with a non-`"fixed"` rule are loud errors.
+fn kde_sampler(
+    samples: &[Vec<f64>],
+    rule: Option<&str>,
+    k: Option<f64>,
+    scale: Option<f64>,
+    widths: Option<&[f64]>,
+) -> Result<nucleide_vr_tools::kde::KdeSampler, JsValue> {
+    let rule = rule.unwrap_or("silverman").to_ascii_lowercase();
+    let bandwidth = match rule.as_str() {
+        "silverman" => {
+            if k.is_some() || scale.is_some() || widths.is_some() {
+                return Err(js_err(
+                    "k/scale only apply when rule is \"adaptive\" and widths only when rule is \"fixed\"",
+                ));
+            }
+            nucleide_vr_tools::kde::Bandwidth::Silverman
+        }
+        "fixed" => {
+            if k.is_some() || scale.is_some() {
+                return Err(js_err("k/scale only apply when rule is \"adaptive\""));
+            }
+            let widths =
+                widths.ok_or_else(|| js_err("widths is required when rule is \"fixed\""))?;
+            nucleide_vr_tools::kde::Bandwidth::Fixed(widths.to_vec())
+        }
+        "adaptive" => {
+            if widths.is_some() {
+                return Err(js_err("widths only apply when rule is \"fixed\""));
+            }
+            let k = match k {
+                Some(v) => {
+                    if !v.is_finite() || v.fract() != 0.0 || v < 1.0 || v > 9007199254740991.0 {
+                        return Err(js_err(format!("k must be a positive integer (got {v})")));
+                    }
+                    v as usize
+                }
+                None => 1,
+            };
+            let scale = scale.unwrap_or(1.0);
+            nucleide_vr_tools::kde::Bandwidth::AdaptiveKnn { k, scale }
+        }
+        other => {
+            return Err(js_err(format!(
+                "unknown KDE rule `{other}` (supported: silverman, fixed, adaptive)"
+            )));
+        }
+    };
+    nucleide_vr_tools::kde::KdeSampler::fit(samples, bandwidth).map_err(js_err)
+}
+
+/// Fit a Gaussian KDE over caller-supplied `samples` and report the
+/// fitted widths. `rule` mirrors the Python kwargs (`"silverman"`,
+/// `"fixed"` with `widths`, or `"adaptive"` with `k`/`scale` defaults
+/// 1/1.0). Returns `{nSamples, dims, bandwidths, sampleBandwidths}`.
+#[wasm_bindgen(js_name = kdeFit)]
+pub fn kde_fit(spec: JsValue) -> Result<JsValue, JsValue> {
+    let parsed: KdeSpecBase = serde_wasm_bindgen::from_value(spec).map_err(js_err)?;
+    let sampler = kde_sampler(
+        &parsed.samples,
+        parsed.rule.as_deref(),
+        parsed.k,
+        parsed.scale,
+        parsed.widths.as_deref(),
+    )?;
+    to_js(&KdeFitResultJson {
+        n_samples: sampler.n_samples(),
+        dims: sampler.dims(),
+        bandwidths: sampler.bandwidths().to_vec(),
+        sample_bandwidths: sampler.sample_bandwidths().to_vec(),
+    })
+}
+
+/// KDE density at `point`; `spec` carries the same fit fields as
+/// [`kde_fit`] plus `point`.
+#[wasm_bindgen(js_name = kdePdf)]
+pub fn kde_pdf(spec: JsValue) -> Result<f64, JsValue> {
+    let parsed: KdePdfSpecJson = serde_wasm_bindgen::from_value(spec).map_err(js_err)?;
+    let sampler = kde_sampler(
+        &parsed.samples,
+        parsed.rule.as_deref(),
+        parsed.k,
+        parsed.scale,
+        parsed.widths.as_deref(),
+    )?;
+    sampler.pdf(&parsed.point).map_err(js_err)
+}
+
+/// Resample one particle: `u` in `[0, 1)` selects the kernel centre and
+/// `normals` (one value per dimension) perturbs it; `spec` carries the
+/// same fit fields as [`kde_fit`] plus `u`/`normals`. Returns the drawn
+/// row.
+#[wasm_bindgen(js_name = kdeDraw)]
+pub fn kde_draw(spec: JsValue) -> Result<JsValue, JsValue> {
+    let parsed: KdeDrawSpecJson = serde_wasm_bindgen::from_value(spec).map_err(js_err)?;
+    let sampler = kde_sampler(
+        &parsed.samples,
+        parsed.rule.as_deref(),
+        parsed.k,
+        parsed.scale,
+        parsed.widths.as_deref(),
+    )?;
+    to_js(&sampler.draw(parsed.u, &parsed.normals).map_err(js_err)?)
+}
+
+/// Per-sample physical bandwidths `h_ij` for the fit in `spec` (the
+/// `sampleBandwidths` half of [`kde_fit`], exposed on its own for
+/// callers that only need the widths).
+#[wasm_bindgen(js_name = kdeSampleBandwidths)]
+pub fn kde_sample_bandwidths(spec: JsValue) -> Result<JsValue, JsValue> {
+    let parsed: KdeSpecBase = serde_wasm_bindgen::from_value(spec).map_err(js_err)?;
+    let sampler = kde_sampler(
+        &parsed.samples,
+        parsed.rule.as_deref(),
+        parsed.k,
+        parsed.scale,
+        parsed.widths.as_deref(),
+    )?;
+    to_js(&sampler.sample_bandwidths())
+}
+
 // ---------------------------------------------------------------------------
 // Activation (ALARA deck/output, FISPACT-II output, R2S workflow)
 // ---------------------------------------------------------------------------

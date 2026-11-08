@@ -111,6 +111,16 @@ workspace crates from tags.
   10}` with `k = 1` gives widths `0.2, 0.2, 0.2, 9.6` and
   `pdf(0) = 0.8746688805236177`.
 
+- Interactive demo parity (0.17.0): the variance-reduction demo gains a
+  KDE section (Silverman/fixed/adaptive rule selector, synthetic
+  `{0, 0.2, 0.4, 10}` default rows, fitted bandwidths, density curve,
+  and a deterministic draw; WASM `kdeFit`/`kdePdf`/`kdeDraw`/
+  `kdeSampleBandwidths` mirroring the Python kwargs), the fusion demo's
+  lattice tab gains the fuel/tail inputs blank by default, the
+  parametric tab gains a Neutron/Proton selector with D(d,p)T proton
+  moments, and the tritium tutorial notes the FESTIM 2.1 parity
+  (F1–F4 PASS over `J_ss`/`J(t)`/`t_lag`/`c(x)`).
+
 ## [0.16.0] - 2026-09-18
 
 ### Added
