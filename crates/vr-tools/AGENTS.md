@@ -32,9 +32,10 @@ and KDE sections of `tests/test_serpent_fluka_vr.py`.
   (ANALOG/UNIFORM/USER bias modes, birth weights); draws take
   caller-supplied uniforms, no RNG inside.
 - `kde`: axis-aligned Gaussian KDE over caller particle vectors
-  (Silverman or fixed bandwidths; zero-variance Silverman dims are loud);
-  deterministic `draw(u, normals)`/`pdf`, no RNG inside, no `mcpl-io`
-  dependency (MCPL projection stays caller-side).
+  (Silverman, fixed, or adaptive per-sample kNN bandwidths; zero-variance
+  dims and duplicate-point zero distances are loud); deterministic
+  `draw(u, normals)`/`pdf`, no RNG inside, no `mcpl-io` dependency
+  (MCPL projection stays caller-side).
 - KDE equations are textbook statistics implemented from scratch; no
   upstream code or data read, ported, or vendored (GPL upstream).
 - Synthetic fixtures only; golden values live in unit tests with

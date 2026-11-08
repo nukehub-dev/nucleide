@@ -103,9 +103,11 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   gates, and marginal-histogram source cards with joint-correlation drift.
   Fuel is equimolar D-T, pure D-D, or a D/T mixture at the shared ion
   temperature (Eriksson/DRESS two-branch rate); toroidal sectors, per-species
-  ion temperatures, the D(d,p)T proton branch, and the pinned T-T
-  normalization also landed (sectors scale totals by rotation/2π with a PHI
-  marginal; sampler and cards stay neutron-only).
+  ion temperatures, and the pinned T-T normalization also landed (sectors
+  scale totals by rotation/2π with a PHI marginal). D(d,p)T proton
+  transport landed for deuterium-bearing ring/point and parametric sources
+  (Brysk 3.02 MeV line, MCNP6-only `PAR=h` cards, no Serpent proton cards;
+  lattice protons stay accounting-only).
 - Damage and gas-production metrics (`damage`): NRT-dpa and arc-dpa
   displacement functions (NRT 1975; Nordlund 2018), He/H appm and He/dpa
   ratios by spectral folding of caller flux with caller response functions,

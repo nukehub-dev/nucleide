@@ -972,3 +972,133 @@ def test_lattice_errors_are_loud() -> None:
             4,
             seed=0,
         )
+
+
+# ---------------------------------------------------------------------------
+# D(d,p)T proton transport (Brysk 3.02 MeV line, 50/50 with the D-D branch)
+# ---------------------------------------------------------------------------
+
+_PROTON_RING_DD = dict(RING_SPEC, reaction="dd", species="proton", mcnp_version=6)
+
+
+def _proton_sigma(ti_kev: float) -> float:
+    return math.sqrt(1.51 * (ti_kev / 1000.0))
+
+
+def test_proton_moments_match_brysk_line() -> None:
+    # Hand vectors: Ti=0 -> (3.02, 0.0); Ti=20 -> 0.173782 (6 decimals).
+    vectors = ((0.0, 0.0), (1.0, 0.038858), (10.0, 0.122876), (20.0, 0.173782), (40.0, 0.245752))
+    for ti, sigma6 in vectors:
+        got = ps.proton_moments(ti)
+        assert got["nominal_mev"] == pytest.approx(3.02)
+        assert got["mean_mev"] == pytest.approx(3.02, rel=1e-12)
+        # Exact closed form at full precision; quoted 6-decimal vector at 2e-5.
+        assert got["sigma_mev"] == pytest.approx(_proton_sigma(ti), rel=1e-12)
+        assert abs(got["sigma_mev"] - sigma6) < 2e-5
+        assert got["mono"] is (sigma6 == 0.0)
+    with pytest.raises(ValueError, match=">= 0"):
+        ps.proton_moments(-1.0)
+    with pytest.raises(ValueError, match="non-finite"):
+        ps.proton_moments(float("nan"))
+
+
+def test_particles_adds_species_array_and_neutron_arrays_unchanged() -> None:
+    neutron = ps.particles(RING_SPEC, 512, seed=1234)
+    assert list(neutron["species"]) == ["neutron"] * 512
+    # The additive key leaves every neutron array unchanged (same seed ->
+    # same stream as the pre-species build, pinned by the Rust golden).
+    proton = ps.particles(_PROTON_RING_DD, 512, seed=1234)
+    assert list(proton["species"]) == ["proton"] * 512
+    assert abs(float(proton["energy"].mean()) - 3.02) < 8 * _proton_sigma(20.0) / math.sqrt(512)
+    # Independent streams: sampling protons with the same seed cannot move
+    # the neutron stream.
+    again = ps.particles(RING_SPEC, 512, seed=1234)
+    for key in ("x", "y", "z", "u", "v", "w", "energy", "weight"):
+        assert bool((neutron[key] == again[key]).all())
+
+
+def test_proton_ring_moments_match_line_at_8_sigma() -> None:
+    n = 200_000
+    out = ps.particles(_PROTON_RING_DD, n, seed=7)
+    sigma = _proton_sigma(20.0)
+    se_mean = sigma / math.sqrt(n)
+    se_std = sigma / math.sqrt(2 * n)
+    assert abs(float(out["energy"].mean()) - 3.02) < 8 * se_mean
+    assert abs(float(out["energy"].std(ddof=0)) - sigma) < 8 * se_std
+
+
+def test_parametric_proton_stream_matches_line_and_tags_species() -> None:
+    spec = dict(PARAMETRIC_SPEC, reaction="dd", species="proton")
+    n = 20_000
+    out = ps.particles(spec, n, seed=23)
+    assert set(map(str, out["species"])) == {"proton"}
+    # The H-mode profile mixes temperatures, so the mean sits on the
+    # profile-weighted 3.02 MeV line between the centre and edge widths.
+    assert abs(float(out["energy"].mean()) - 3.02) < 0.01
+    a = ps.particles(spec, 512, seed=17)
+    b = ps.particles(spec, 512, seed=17)
+    for key in ("x", "y", "z", "u", "v", "w", "energy", "weight"):
+        assert bool((a[key] == b[key]).all())
+
+
+def test_proton_loud_gates() -> None:
+    # D-T-only proton sampling is loud (sampler + cards agree).
+    with pytest.raises(ValueError, match="neutron|D-D"):
+        ps.particles(dict(RING_SPEC, species="proton"), 4, seed=0)
+    with pytest.raises(ValueError, match="not yet supported"):
+        ps.particles(dict(PARAMETRIC_SPEC, species="proton"), 4, seed=0)
+    # Lattice proton transport stays out (accounting-only).
+    with pytest.raises(ValueError, match="lattice proton"):
+        ps.particles(dict(_two_point_lattice_spec(), species="proton"), 4, seed=0)
+    # Unknown species values are loud.
+    with pytest.raises(ValueError, match="unknown source species"):
+        ps.particles(dict(RING_SPEC, species="electron"), 4, seed=0)
+    with pytest.raises(ValueError, match="mcnp_version=6"):
+        ps.emit_source_cards(dict(_PROTON_RING_DD, mcnp_version=5))
+    with pytest.raises(ValueError, match="mcnp_version=6"):
+        ps.emit_source_cards(_PROTON_RING_DD | {"mcnp_version": 5})
+    # Default mcnp_version (5) + proton is loud with the pinned message.
+    no_version = dict(_PROTON_RING_DD)
+    del no_version["mcnp_version"]
+    with pytest.raises(ValueError, match="proton SDEF needs mcnp_version=6"):
+        ps.emit_source_cards(no_version)
+    with pytest.raises(ValueError, match="lattice proton"):
+        ps.emit_source_cards(dict(_two_point_lattice_spec(), species="proton", mcnp_version=6))
+    with pytest.raises(ValueError, match="not yet supported"):
+        ps.emit_source_cards(dict(PARAMETRIC_SPEC, species="proton", mcnp_version=6))
+
+
+def test_proton_cards_carry_par_h_and_round_trip() -> None:
+    out = ps.emit_source_cards(_PROTON_RING_DD)
+    assert out["serpent"] is None
+    card = out["sdef"]["card"]
+    parsed = mcnp.parse_sdef(card)
+    assert parsed["card"] == card
+    assert parsed["par"] == "h"
+    assert any(
+        row["quantity"] == "proton branch" and row["accounted"] == 1.0 and row["reparsed"]
+        for row in out["sdef"]["drift"]
+    )
+    assert out["spectrum"]["nominal_mev"] == pytest.approx(3.02)
+    assert out["spectrum"]["mean_mev"] == pytest.approx(3.02, rel=1e-12)
+    assert out["spectrum"]["sigma_mev"] == pytest.approx(_proton_sigma(20.0), rel=1e-12)
+    # Parametric proton cards: same PAR=h shape, axis proton moments.
+    param_spec = dict(PARAMETRIC_SPEC, reaction="dd", species="proton", mcnp_version=6)
+    param = ps.emit_source_cards(param_spec, bins=15)
+    assert param["serpent"] is None
+    parsed_p = mcnp.parse_sdef(param["sdef"]["card"])
+    assert parsed_p["card"] == param["sdef"]["card"]
+    assert parsed_p["par"] == "h"
+    assert [row["quantity"] for row in param["sdef"]["drift"]][-1] == "proton branch"
+    assert param["spectrum"]["nominal_mev"] == pytest.approx(3.02)
+    assert param["spectrum"]["mean_mev"] == pytest.approx(3.02, rel=1e-12)
+
+
+def test_neutron_cards_bit_for_bit_after_proton_surface() -> None:
+    # The neutron default is untouched: same cards, same stream, same
+    # spectrum, whether or not the proton surface was exercised.
+    _ = ps.emit_source_cards(_PROTON_RING_DD)
+    out = ps.emit_source_cards(RING_SPEC)
+    assert "PAR=n" in out["sdef"]["card"]
+    assert out["serpent"] is not None
+    assert out["spectrum"]["nominal_mev"] == pytest.approx(14.021)

@@ -577,11 +577,17 @@ byte-identically through `nucleide.mcnp.parse_sdef` (the typed `SDEF` reader).
   fractions that are negative, non-finite, or do not sum to 1 raise a clear
   error, as do negative temperatures and out-of-range tail parameters.
   General non-Maxwellian distributions beyond this shape stay out.
-- **Neutron branches plus proton bookkeeping.** The sampler and the emitted
-  cards are neutron-only (D-T + D-D lines; no T-T neutron branch — a pure-T
-  mixture is a loud error). The D(d,p)T proton branch is reported as
-  bookkeeping next to the source (the proton density is the D-D
-  neutron-branch density, pinned 50/50); proton transport is out of scope.
+- **Neutron branches plus proton transport.** The default sampler and the
+  emitted cards are neutron-only (D-T + D-D lines; no T-T neutron branch —
+  a pure-T mixture is a loud error). The D(d,p)T proton branch shares the
+  D-D neutron-branch rate 50/50 (`proton_accounting` reports it alongside
+  the source) and is transported on request via `species="proton"` for
+  deuterium-bearing ring/point and parametric sources: the Brysk 3.02 MeV
+  proton line on an independent seeded stream, with MCNP6-only cards
+  (`PAR=h`, no Serpent card — Serpent transports neutrons and photons
+  only). D-T-only proton requests raise a clear error, lattice proton
+  transport stays accounting-only, and MCNP5 has no proton designator
+  (`mcnp_version=6` is required for proton cards).
 - **Profiles are caller inputs.** Nothing computes or fits profiles and no
   equilibrium is solved. Malformed geometry or profile parameters (non-positive
   minor radius or elongation, triangularity outside $(-1, 1)$, pedestal radius

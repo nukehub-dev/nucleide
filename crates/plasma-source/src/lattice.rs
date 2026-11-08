@@ -124,19 +124,22 @@
 //! correlation the card drops is quantified, never hidden.
 //!
 //! Loud boundary ([`Error::NotYetSupported`]): everything the parametric
-//! source defers (T-T neutron transport, proton transport, non-Maxwellian
-//! tails beyond the parametric deuterium hot-tail fraction —
-//! [`crate::parametric::DeuteriumTail`] is parametric-only, there is no tail
-//! spelling on lattice configs — equilibrium solving, CAD/DAGMC) stays
-//! deferred here — the per-node
-//! proton *rate* is accounted through the D-D branch share like the
-//! parametric bookkeeping while sampler and cards stay neutron-only. No HDF5,
+//! source defers (T-T neutron transport, lattice proton transport — the
+//! per-node proton *rate* is accounted through the D-D branch share like
+//! the parametric bookkeeping (`total_dd_strength`), while the lattice
+//! sampler and cards stay neutron-only; parametric/ring-point proton
+//! transport IS supported — non-Maxwellian tails beyond the parametric
+//! deuterium hot-tail fraction — [`crate::parametric::DeuteriumTail`] is
+//! parametric-only, there is no tail spelling on lattice configs —
+//! equilibrium solving, CAD/DAGMC) stays deferred here. No HDF5,
 //! no vendored data, no equilibrium-file consumption.
 //!
 //! Units: cm, MeV, keV (card convention); rates dimensionless relative
 //! weights; reactivity exposed in m³/s where mixtures need it.
 
 use std::f64::consts::PI;
+
+use nucleide_nuclei::particles::ParticleId;
 
 use crate::parametric::{FuelMixture, SpeciesIonTemperatures};
 use crate::sample::{Particle, Rng};
@@ -626,6 +629,7 @@ impl LatticeSampler {
         match self.try_sample() {
             Ok(particle) => particle,
             Err(_) => Particle {
+                species: ParticleId::Neutron,
                 position_cm: [0.0, 0.0, 0.0],
                 direction: [0.0, 0.0, 1.0],
                 energy_mev: 0.0,
@@ -675,6 +679,7 @@ impl LatticeSampler {
             mean
         };
         Ok(Particle {
+            species: ParticleId::Neutron,
             position_cm,
             direction: self.rng.isotropic_direction(),
             energy_mev,

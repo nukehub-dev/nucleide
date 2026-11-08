@@ -258,9 +258,11 @@ restrict births with totals scaled by `rotation/2π` (full rotation
 recovers the full torus bit-for-bit; partial sectors add a PHI marginal).
 An arbitrary-3D birth-rate lattice drops axisymmetry for
 stellarator-class callers (caller point cloud with field-period symmetry
-reduction, same machinery per node). The D(d,p)T proton *rate* is
-accounted alongside the neutron source (sampler and cards stay
-neutron-only); the T-T neutron term is pinned as the third mixture term
+reduction, same machinery per node). The D(d,p)T proton branch shares the
+D-D rate 50/50 and is transported for deuterium-bearing ring/point and
+parametric sources on the Brysk 3.02 MeV line (independent seeded streams,
+MCNP6-only `PAR=h` cards, no Serpent proton cards — its `PART='p'` means
+photons); the lattice keeps the proton rate accounting only. The T-T neutron term is pinned as the third mixture term
 but not transported. Closed-form ECRH accessibility (cold resonance,
 relativistic shift, O1/X1 cut-offs, beamline locators) reports
 heating-access positions for blanket bookkeeping — no ray tracing, no
@@ -272,8 +274,9 @@ parametric cards carry the radial/vertical/energy marginals as histograms
 and the drift report quantifies the tabulation truncation and the
 joint-correlation distance a product-form card cannot carry; Serpent rows
 are analytic by design. Profiles are caller inputs — nothing computes them.
-Out of scope (loud `NotYetSupported`): T-T neutron transport, proton
-transport, and reactant distributions beyond the one pinned tail shape (the
+Out of scope (loud `NotYetSupported`): T-T neutron transport, lattice proton
+transport, Serpent/MCNP5 proton cards, D-T-only proton requests, and reactant
+distributions beyond the one pinned tail shape (the
 rest of the full Eriksson generalization; the tail is parametric-only — no
 tail spelling on lattice configs). Per-species temperatures are supported
 on single-fuel and mixture configs (D-T at `T_DT`, D-D at `T_D`).

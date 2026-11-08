@@ -2405,30 +2405,51 @@ struct PyKdeSampler {
 #[pymethods]
 impl PyKdeSampler {
     /// Fit over `samples` (rectangular row lists); `bandwidth` is
-    /// "silverman" (default) or a per-dimension width list.
+    /// "silverman" (default), "adaptive" (with `k`/`scale`), or a
+    /// per-dimension width list. `k` (1-based neighbour rank, default 1)
+    /// and `scale` (default 1.0) only apply to "adaptive"; passing them
+    /// with any other rule is a `ValueError`.
     #[new]
-    #[pyo3(signature = (samples, bandwidth=None))]
-    fn new(samples: Vec<Vec<f64>>, bandwidth: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+    #[pyo3(signature = (samples, bandwidth=None, k=None, scale=None))]
+    fn new(
+        samples: Vec<Vec<f64>>,
+        bandwidth: Option<&Bound<'_, PyAny>>,
+        k: Option<usize>,
+        scale: Option<f64>,
+    ) -> PyResult<Self> {
         let rule = match bandwidth {
             None => nucleide_vr_tools::kde::Bandwidth::Silverman,
             Some(b) => {
                 if let Ok(name) = b.extract::<String>() {
-                    match name.as_str() {
-                        "silverman" => nucleide_vr_tools::kde::Bandwidth::Silverman,
-                        other => {
-                            return Err(PyValueError::new_err(format!(
-                                "bandwidth must be silverman or a width list, got `{other}`"
-                            )))
+                    if name == "silverman" {
+                        nucleide_vr_tools::kde::Bandwidth::Silverman
+                    } else if name == "adaptive" {
+                        nucleide_vr_tools::kde::Bandwidth::AdaptiveKnn {
+                            k: k.unwrap_or(1),
+                            scale: scale.unwrap_or(1.0),
                         }
+                    } else {
+                        return Err(PyValueError::new_err(format!(
+                            "bandwidth must be silverman, adaptive, or a width list, got `{name}`"
+                        )));
                     }
                 } else {
                     let widths = b.extract::<Vec<f64>>().map_err(|_| {
-                        PyValueError::new_err("bandwidth must be silverman or a width list")
+                        PyValueError::new_err(
+                            "bandwidth must be silverman, adaptive, or a width list",
+                        )
                     })?;
                     nucleide_vr_tools::kde::Bandwidth::Fixed(widths)
                 }
             }
         };
+        if (k.is_some() || scale.is_some())
+            && !matches!(rule, nucleide_vr_tools::kde::Bandwidth::AdaptiveKnn { .. })
+        {
+            return Err(PyValueError::new_err(
+                "k/scale only apply when bandwidth is \"adaptive\"",
+            ));
+        }
         nucleide_vr_tools::kde::KdeSampler::fit(&samples, rule)
             .map(|inner| PyKdeSampler { inner })
             .map_err(|e| PyValueError::new_err(e.to_string()))
@@ -2445,9 +2466,14 @@ impl PyKdeSampler {
             .draw(u, &normals)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
-    /// Fitted per-dimension bandwidths.
+    /// Bandwidths in the fit-rule parameterization (global per-dimension
+    /// widths, or per-sample scaled base widths for "adaptive").
     fn bandwidths(&self) -> Vec<f64> {
         self.inner.bandwidths().to_vec()
+    }
+    /// Per-sample physical bandwidths `h_ij` (one row per sample).
+    fn sample_bandwidths(&self) -> Vec<Vec<f64>> {
+        self.inner.sample_bandwidths().to_vec()
     }
     /// Number of fitted samples.
     fn n_samples(&self) -> usize {
@@ -7077,6 +7103,26 @@ fn parse_plasma_reaction(name: &str) -> PyResult<nucleide_plasma_source::FusionR
     }
 }
 
+/// Parse the optional `species` key (`"neutron"` (absent, the default) or
+/// `"proton"`, case-insensitive). Unknown values are loud `ValueError`s.
+fn parse_plasma_species(spec: &BTreeMap<String, Py<PyAny>>, py: Python<'_>) -> PyResult<bool> {
+    match spec.get("species") {
+        None => Ok(false),
+        Some(value) => {
+            let name: String = value
+                .extract::<String>(py)
+                .map_err(|_| PyValueError::new_err("`species` must be a string"))?;
+            match name.to_ascii_lowercase().as_str() {
+                "neutron" => Ok(false),
+                "proton" => Ok(true),
+                other => Err(PyValueError::new_err(format!(
+                    "unknown source species `{other}` (supported: neutron, proton)"
+                ))),
+            }
+        }
+    }
+}
+
 /// A parsed source spec: ring/point, parametric plasma, or 3D lattice.
 enum PyPlasmaSource {
     Basic(nucleide_plasma_source::PlasmaSourceConfig),
@@ -7630,10 +7676,13 @@ fn plasma_drift_rows(
 /// Thin wrapper over the ring/point `SourceSampler`, the parametric
 /// `ParametricSampler`, and the lattice `LatticeSampler` (seeded, deterministic per platform): `spec` is the
 /// source-spec dict (see [`parse_plasma_source_spec`]), `seed` pins the
-/// stream. Returns `x`, `y`, `z` \[cm\], direction cosines `u`, `v`, `w`
-/// (unit vectors), `energy` \[MeV\], and `weight`. MCPL projection stays
-/// caller-side: write the arrays with `nucleide.mcpl` / `nucleide.mcnp` if
-/// a file is wanted.
+/// stream. The optional `species` key selects `"neutron"` (absent, the
+/// default) or `"proton"` (independent proton samplers with the same
+/// `seed`; lattice proton requests are loud). Returns `x`, `y`, `z` \[cm\],
+/// direction cosines `u`, `v`, `w` (unit vectors), `energy` \[MeV\],
+/// `weight`, and `species` (`"neutron"`/`"proton"` per particle). MCPL
+/// projection stays caller-side: write the arrays with `nucleide.mcpl` /
+/// `nucleide.mcnp` if a file is wanted.
 #[pyfunction]
 #[pyo3(signature = (spec, n, seed))]
 fn plasma_source_particles(
@@ -7643,16 +7692,36 @@ fn plasma_source_particles(
     seed: u64,
 ) -> PyResult<Py<PyAny>> {
     use nucleide_plasma_source as ps;
-    let particles = match parse_plasma_source_spec(&spec, py)? {
-        PyPlasmaSource::Basic(config) => ps::SourceSampler::new(config, seed)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?
-            .sample_n(n),
-        PyPlasmaSource::Parametric(config) => ps::ParametricSampler::new(config, seed)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?
-            .sample_n(n),
-        PyPlasmaSource::Lattice(config) => ps::LatticeSampler::new(config, seed)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?
-            .sample_n(n),
+    // Optional `species` (absent = neutron, bit-for-bit): proton requests
+    // dispatch to the independent proton samplers (own Rng(seed)); the
+    // lattice stays neutron-only and proton requests there are loud.
+    let is_proton = parse_plasma_species(&spec, py)?;
+    let particles = if is_proton {
+        match parse_plasma_source_spec(&spec, py)? {
+            PyPlasmaSource::Basic(config) => ps::SourceSampler::proton(config, seed)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?
+                .sample_n(n),
+            PyPlasmaSource::Parametric(config) => ps::ParametricProtonSampler::new(config, seed)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?
+                .sample_n(n),
+            PyPlasmaSource::Lattice(_) => {
+                return Err(PyValueError::new_err(
+                    "lattice proton transport is not yet supported (accounting only)",
+                ))
+            }
+        }
+    } else {
+        match parse_plasma_source_spec(&spec, py)? {
+            PyPlasmaSource::Basic(config) => ps::SourceSampler::new(config, seed)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?
+                .sample_n(n),
+            PyPlasmaSource::Parametric(config) => ps::ParametricSampler::new(config, seed)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?
+                .sample_n(n),
+            PyPlasmaSource::Lattice(config) => ps::LatticeSampler::new(config, seed)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?
+                .sample_n(n),
+        }
     };
     let mut x = Vec::with_capacity(n);
     let mut y = Vec::with_capacity(n);
@@ -7662,7 +7731,12 @@ fn plasma_source_particles(
     let mut w = Vec::with_capacity(n);
     let mut energy = Vec::with_capacity(n);
     let mut weight = Vec::with_capacity(n);
+    let mut species = Vec::with_capacity(n);
     for p in &particles {
+        species.push(match p.species {
+            nucleide_nuclei::particles::ParticleId::Proton => "proton",
+            _ => "neutron",
+        });
         x.push(p.position_cm[0]);
         y.push(p.position_cm[1]);
         z.push(p.position_cm[2]);
@@ -7682,6 +7756,7 @@ fn plasma_source_particles(
     out.set_item("w", w.into_pyarray(py))?;
     out.set_item("energy", energy.into_pyarray(py))?;
     out.set_item("weight", weight.into_pyarray(py))?;
+    out.set_item("species", species)?;
     Ok(out.into_any().unbind())
 }
 
@@ -7691,11 +7766,15 @@ fn plasma_source_particles(
 /// (ring/point), `{emit_sdef_parametric, emit_serpent_parametric}`, and
 /// `{emit_sdef_lattice, emit_serpent_lattice}`.
 /// `spec` is the source-spec dict (optional `mcnp_version`, 5 or 6, default
-/// 5); `bins` sets the tabulation bin count. Returns `sdef` and `serpent`,
+/// 5, and optional `species` — `"neutron"`, the default, or `"proton"`);
+/// `bins` sets the tabulation bin count. Returns `sdef` and `serpent`,
 /// each `{"card": str, "drift": [row dicts]}`, plus `spectrum` moments
 /// (`nominal_mev`, `mean_mev`, `sigma_mev`, `mono` — for a parametric
 /// source these are the magnetic-axis moments, for a lattice the
-/// rate-weighted cloud moments). The SDEF card round-trips
+/// rate-weighted cloud moments). A proton spec requires
+/// `mcnp_version=6`, returns `serpent: None` (never a phantom photon
+/// card), and reports the proton spectrum moments (for a parametric
+/// source, the magnetic-axis proton moments). The SDEF card round-trips
 /// through `nucleide.mcnp.parse_sdef` byte-identically; Serpent drift rows
 /// are analytic by design (no Serpent source reader in the workspace).
 #[pyfunction]
@@ -7713,6 +7792,67 @@ fn plasma_source_emit_cards(
             .map_err(|_| PyValueError::new_err("`mcnp_version` must be an integer (5 or 6)"))?,
         None => 5,
     };
+    // Optional `species` (absent = neutron, bit-for-bit): proton card
+    // requests are MCNP6-only with no Serpent card (never a phantom
+    // `src ... p` photon card) and return the proton spectrum moments.
+    // The lattice stays neutron-only (loud) for protons.
+    if parse_plasma_species(&spec, py)? {
+        if matches!(source, PyPlasmaSource::Lattice(_)) {
+            return Err(PyValueError::new_err(
+                "lattice proton transport is not yet supported (accounting only)",
+            ));
+        }
+        if version != 6 {
+            return Err(PyValueError::new_err("proton SDEF needs mcnp_version=6"));
+        }
+        let emit = |card: ps::EmittedCard| -> PyResult<Py<pyo3::types::PyDict>> {
+            use pyo3::types::PyDict;
+            let d = PyDict::new(py);
+            d.set_item("card", card.text)?;
+            d.set_item("drift", plasma_drift_rows(py, &card.drift)?)?;
+            Ok(d.unbind())
+        };
+        use pyo3::types::PyDict;
+        let out = PyDict::new(py);
+        let (nominal, mean, sigma, mono) = match &source {
+            PyPlasmaSource::Basic(config) => {
+                let sdef = ps::emit_sdef_proton(config, version, bins)
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+                let spectrum = ps::SpectrumSpec::from_proton(config.ion_temperature_kev)
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+                let sigma = match spectrum {
+                    ps::SpectrumSpec::Gaussian { sigma_mev, .. } => sigma_mev,
+                    ps::SpectrumSpec::Mono { .. } => 0.0,
+                };
+                out.set_item("sdef", emit(sdef)?)?;
+                out.set_item("serpent", py.None())?;
+                (
+                    ps::reaction::PROTON_NOMINAL_MEV,
+                    spectrum.mean_mev(),
+                    sigma,
+                    spectrum.is_mono(),
+                )
+            }
+            PyPlasmaSource::Parametric(config) => {
+                let sdef = ps::emit_sdef_parametric_proton(config, version, bins)
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+                let (nominal, mean, sigma) = config
+                    .axis_proton_spectrum_summary()
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+                out.set_item("sdef", emit(sdef)?)?;
+                out.set_item("serpent", py.None())?;
+                (nominal, mean, sigma, sigma == 0.0)
+            }
+            PyPlasmaSource::Lattice(_) => unreachable!("lattice proton is loud above"),
+        };
+        let spec_out = PyDict::new(py);
+        spec_out.set_item("nominal_mev", nominal)?;
+        spec_out.set_item("mean_mev", mean)?;
+        spec_out.set_item("sigma_mev", sigma)?;
+        spec_out.set_item("mono", mono)?;
+        out.set_item("spectrum", spec_out)?;
+        return Ok(out.into_any().unbind());
+    }
     let emit = |card: ps::EmittedCard| -> PyResult<Py<pyo3::types::PyDict>> {
         use pyo3::types::PyDict;
         let d = PyDict::new(py);
@@ -7839,6 +7979,29 @@ fn plasma_source_spectrum_moments(
     out.set_item("nominal_mev", reaction.nominal_energy_mev())?;
     out.set_item("mean_mev", mean)?;
     out.set_item("sigma_mev", sigma)?;
+    Ok(out.into_any().unbind())
+}
+
+/// Closed-form D(d,p)T proton line moments at an ion temperature.
+///
+/// Thin wrapper over
+/// [`nucleide_plasma_source::reaction::proton_moments_mev`] (the
+/// Brysk-Gaussian 3.02 MeV line, `sigma = sqrt(1.51·Ti [MeV])`). Returns
+/// `nominal_mev` (3.02), `mean_mev`, `sigma_mev` (0 when monoenergetic),
+/// and `mono`.
+#[pyfunction]
+fn plasma_source_proton_moments(py: Python<'_>, ion_temperature_kev: f64) -> PyResult<Py<PyAny>> {
+    let (mean, sigma) = nucleide_plasma_source::reaction::proton_moments_mev(ion_temperature_kev)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    use pyo3::types::PyDict;
+    let out = PyDict::new(py);
+    out.set_item(
+        "nominal_mev",
+        nucleide_plasma_source::reaction::PROTON_NOMINAL_MEV,
+    )?;
+    out.set_item("mean_mev", mean)?;
+    out.set_item("sigma_mev", sigma)?;
+    out.set_item("mono", sigma == 0.0)?;
     Ok(out.into_any().unbind())
 }
 
@@ -10883,6 +11046,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plasma_source_particles, m)?)?;
     m.add_function(wrap_pyfunction!(plasma_source_emit_cards, m)?)?;
     m.add_function(wrap_pyfunction!(plasma_source_spectrum_moments, m)?)?;
+    m.add_function(wrap_pyfunction!(plasma_source_proton_moments, m)?)?;
     m.add_function(wrap_pyfunction!(plasma_source_reactivity, m)?)?;
     m.add_function(wrap_pyfunction!(plasma_source_proton_accounting, m)?)?;
     m.add_function(wrap_pyfunction!(plasma_source_ecrh_scalars, m)?)?;

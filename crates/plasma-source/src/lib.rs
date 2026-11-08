@@ -20,12 +20,15 @@
 //! three-branch normalization lives in [`parametric`], but no publishable
 //! T-T reactivity fit or Ballabio-class line exists — the oracle's vendored
 //! tables stay out — so the sampler and the cards run the landed two
-//! neutron branches), and proton transport (the D(d,p)T proton *rate* is
-//! accounted alongside the neutron source via
+//! neutron branches). D(d,p)T proton transport IS supported for D-D-bearing
+//! sources (the rate is pinned 50/50 with the D-D neutron branch via
 //! [`ParametricPlasmaConfig::proton_strength_density`] /
-//! [`ParametricPlasmaConfig::total_proton_strength`], 50/50 with the D-D
-//! neutron branch; no proton particles are sampled and no proton
-//! distributions reach the cards). Toroidal sectors ([`ToroidalSector`])
+//! [`ParametricPlasmaConfig::total_proton_strength`], and the Brysk 3.02 MeV
+//! proton line is sampled by [`SourceSampler::proton`] /
+//! [`ParametricProtonSampler`] and emitted as MCNP6-only `PAR=h` SDEF cards;
+//! lattice proton transport, Serpent proton cards (its `PART='p'` means
+//! photons), and MCNP5 proton cards stay loud, as do D-T-only proton
+//! requests). Toroidal sectors ([`ToroidalSector`])
 //! are supported on the parametric config: birth angles uniform over
 //! `[start_angle, start_angle + rotation_angle)`, totals scaled by
 //! `rotation_angle/2π`, cards carrying a uniform angle-bin marginal.
@@ -109,7 +112,10 @@ pub mod spectrum;
 
 pub use ecrh::{EcrhAccessibility, EcrhError};
 pub use emit_sdef::EmittedCard;
-pub use emit_sdef::{emit_sdef, emit_sdef_lattice, emit_sdef_parametric};
+pub use emit_sdef::{
+    emit_sdef, emit_sdef_lattice, emit_sdef_parametric, emit_sdef_parametric_proton,
+    emit_sdef_proton,
+};
 pub use emit_serpent::{emit_serpent, emit_serpent_lattice, emit_serpent_parametric};
 pub use error::{Error, Result};
 pub use lattice::{
@@ -118,8 +124,9 @@ pub use lattice::{
 };
 pub use miller::MillerGeometry;
 pub use parametric::{
-    BinnedDistribution, DeuteriumTail, EmissionHistograms, FuelMixture, ParametricPlasmaConfig,
-    ParametricSampler, SpeciesIonTemperatures, ToroidalSector,
+    proton_emission_histograms, BinnedDistribution, DeuteriumTail, EmissionHistograms, FuelMixture,
+    ParametricPlasmaConfig, ParametricProtonSampler, ParametricSampler, SpeciesIonTemperatures,
+    ToroidalSector,
 };
 pub use profile::{DensityProfile, ProfileMode, TemperatureProfile};
 pub use reaction::FusionReaction;

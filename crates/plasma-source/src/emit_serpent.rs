@@ -28,6 +28,14 @@
 //! design in the drift report (the `nucleide-emit` Serpent/FLUKA/PARTISN
 //! posture): surface syntax follows the public Serpent input manual, and the
 //! sampling semantics are Serpent's.
+//!
+//! There is deliberately no Serpent proton emitter: Serpent transports
+//! neutrons and photons only, and its `PART='p'` designator means photons —
+//! emitting it for D(d,p)T protons would mislabel photons. Proton card
+//! emission is MCNP6-only (`PAR=h` via
+//! [`emit_sdef_proton`](crate::emit_sdef::emit_sdef_proton) /
+//! [`emit_sdef_parametric_proton`](crate::emit_sdef::emit_sdef_parametric_proton));
+//! facades return `serpent: None` for proton specs.
 
 use crate::emit_sdef::drift_report;
 use crate::parametric::{emission_histograms, ParametricPlasmaConfig};

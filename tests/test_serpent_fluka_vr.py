@@ -212,6 +212,73 @@ class TestKdeSampler:
         assert kde.draw(0.75, [1.0, -0.5]) == [3.5, 3.0]
         assert kde.pdf([3.0, 4.0]) > kde.pdf([5.0, 6.0]) > 0.0
 
+    def test_adaptive_hand_vector(self) -> None:
+        kde = nucleide.vr.KdeSampler([[0.0], [0.2], [0.4], [10.0]], "adaptive", k=1, scale=1.0)
+        assert kde.n_samples() == 4
+        sw = kde.sample_bandwidths()
+        assert sw[0][0] == pytest.approx(0.2, abs=1e-12)
+        assert sw[1][0] == pytest.approx(0.2, abs=1e-12)
+        assert sw[2][0] == pytest.approx(0.2, abs=1e-12)
+        assert sw[3][0] == pytest.approx(9.6, abs=1e-9)
+        assert sw[0][0] != sw[3][0]
+        base = kde.bandwidths()
+        assert base[0] == pytest.approx(0.04079367910119179, abs=1e-12)
+        assert base[3] == pytest.approx(1.9580965968572057, abs=1e-12)
+        assert kde.pdf([0.0]) == pytest.approx(0.8746688805236177, abs=1e-9)
+        got = kde.draw(0.5, [1.0])
+        assert got[0] == 0.4 + sw[2][0] * 1.0
+        assert got[0] == pytest.approx(0.6, abs=1e-12)
+
+    def test_adaptive_rank_scale_and_defaults(self) -> None:
+        rows = [[0.0], [0.2], [0.4], [10.0]]
+        kde = nucleide.vr.KdeSampler(rows, "adaptive", k=2)
+        sw = kde.sample_bandwidths()
+        assert sw[0][0] == pytest.approx(0.4, abs=1e-12)
+        assert sw[3][0] == pytest.approx(9.8, abs=1e-9)
+        scaled = nucleide.vr.KdeSampler(rows, "adaptive", scale=2.0)
+        assert scaled.sample_bandwidths()[0][0] == pytest.approx(0.4, abs=1e-12)
+        # Defaults pin k = 1, scale = 1.0.
+        defaulted = nucleide.vr.KdeSampler(rows, "adaptive")
+        assert defaulted.sample_bandwidths()[0][0] == pytest.approx(0.2, abs=1e-12)
+
+    def test_adaptive_2d_correlated_pairs(self) -> None:
+        kde = nucleide.vr.KdeSampler(
+            [[0.0, 0.0], [1.0, 1.0], [4.0, 4.0], [5.0, 5.0]], "adaptive", k=1, scale=1.0
+        )
+        sw = kde.sample_bandwidths()
+        assert all(
+            row[0] == pytest.approx(1.4142135623730951, abs=1e-12)
+            and row[1] == pytest.approx(1.4142135623730951, abs=1e-12)
+            for row in sw
+        )
+        assert kde.pdf([2.5, 2.5]) > kde.pdf([2.5, 5.0])
+        got = kde.draw(0.0, [1.0, 1.0])
+        assert got[0] == got[1]
+        assert got[0] == pytest.approx(1.4142135623730951, abs=1e-12)
+
+    def test_adaptive_loud_errors(self) -> None:
+        rows = [[0.0], [0.2], [0.4], [10.0]]
+        with pytest.raises(ValueError, match="k = 0"):
+            nucleide.vr.KdeSampler(rows, "adaptive", k=0)
+        with pytest.raises(ValueError):
+            nucleide.vr.KdeSampler(rows, "adaptive", k=4)
+        with pytest.raises(ValueError):
+            nucleide.vr.KdeSampler([[1.0]], "adaptive", k=1)
+        with pytest.raises(ValueError):
+            nucleide.vr.KdeSampler(rows, "adaptive", scale=0.0)
+        with pytest.raises(ValueError):
+            nucleide.vr.KdeSampler(rows, "adaptive", scale=-1.0)
+        with pytest.raises(ValueError):
+            nucleide.vr.KdeSampler(rows, "adaptive", scale=float("nan"))
+        with pytest.raises(ValueError):
+            nucleide.vr.KdeSampler(rows, "adaptive", scale=float("inf"))
+        with pytest.raises(ValueError, match="duplicate"):
+            nucleide.vr.KdeSampler([[0.0], [0.0], [1.0]], "adaptive", k=1)
+        with pytest.raises(ValueError, match="zero variance"):
+            nucleide.vr.KdeSampler([[1.0, 0.0], [1.0, 1.0], [1.0, 2.0]], "adaptive", k=1)
+        with pytest.raises(ValueError, match="k/scale only apply"):
+            nucleide.vr.KdeSampler(rows, "silverman", k=1)
+
     def test_silverman_and_errors(self) -> None:
         kde = nucleide.vr.KdeSampler([[0.0], [1.0], [2.0], [3.0]])
         assert kde.bandwidths()[0] > 0.0

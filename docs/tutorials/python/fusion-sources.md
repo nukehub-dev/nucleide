@@ -216,8 +216,48 @@ print(ps.proton_accounting(dict(parametric, fuel={"D": 1.0, "T": 0.0})))
 ```
 
 Out-of-range angles, negative temperatures, and pure-tritium mixtures raise
-a clear error instead of guessing. The sampler and the emitted cards stay
-neutron-only; proton transport is out of scope.
+a clear error instead of guessing.
+
+## Proton (D(d,p)T) transport
+
+An optional `species` key (`"proton"`; the default stays `"neutron"`) asks
+for the twin D(d,p)T proton branch instead of neutrons: an independent
+stream (same seed, separate sequence) on the 3.02 MeV proton line, at half
+the D-D rate. Proton cards use the MCNP6-only proton designator and carry
+no Serpent card:
+
+```python
+proton_spec = {
+    "kind": "ring",
+    "radius": 300.0,
+    "height": 25.0,
+    "reaction": "dd",
+    "ion_temperature_kev": 20.0,
+    "species": "proton",
+    "mcnp_version": 6,
+}
+print(ps.proton_moments(20.0))
+print(ps.particles(proton_spec, 4, seed=0)["energy"])
+print(ps.particles(proton_spec, 4, seed=0)["species"])
+proton_cards = ps.emit_source_cards(proton_spec)
+print(proton_cards["spectrum"], proton_cards["serpent"])
+print([row["quantity"] for row in proton_cards["sdef"]["drift"]])
+```
+
+```text
+{'nominal_mev': 3.02, 'mean_mev': 3.02, 'sigma_mev': 0.17378147196982768, 'mono': False}
+[3.2500928  3.19393701 3.31329048 3.27627836]
+['proton', 'proton', 'proton', 'proton']
+{'nominal_mev': 3.02, 'mean_mev': 3.02, 'sigma_mev': 0.17378147196982768, 'mono': False} None
+['emission probability', 'spatial distribution', 'proton branch']
+```
+
+Protons need a deuterium-bearing source, an MCNP6 card (`mcnp_version=6`;
+the default 5 raises a clear error), and only the ring/point and parametric
+kinds. D-T-only and lattice proton requests raise a clear error (lattice
+proton rates stay accounting-only), as do Serpent proton cards — Serpent
+transports neutrons and photons only, so proton specs return `serpent` as
+`None` instead of a photon card.
 
 Malformed inputs raise a clear error at every entry point — for example a
 zero ring radius (`ring radius must be > 0 cm`) or a two-entry point

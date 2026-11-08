@@ -508,7 +508,10 @@ export function FusionSourceDemo() {
               <p className="text-sm text-muted-foreground">
                 Five-node base-sector cloud on an arc at R = 300 cm (±4°, unit rates, shared ion
                 temperature below), replicated by field-period symmetry — the stellarator-style
-                lattice spelling. Synthetic preset, no machine geometry.
+                lattice spelling. Synthetic preset, no machine geometry. An optional species pair (T
+                <sub>D</sub>, T<sub>T</sub>) reacts single-fuel D-T at the mass-weighted T
+                <sub>DT</sub> and single-fuel D-D at T<sub>D</sub> (blank pair = shared node
+                temperature).
               </p>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <div className="space-y-1">
@@ -539,6 +542,34 @@ export function FusionSourceDemo() {
                     value={baseAngleText}
                     onChange={(e) => {
                       setBaseAngleText(e.target.value);
+                      clearError();
+                    }}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="fusion-lattice-species-d" className="flex min-h-10 items-end">
+                    Species T_D [keV] (blank = shared Tᵢ)
+                  </Label>
+                  <Input
+                    id="fusion-lattice-species-d"
+                    value={speciesDText}
+                    onChange={(e) => {
+                      setSpeciesDText(e.target.value);
+                      clearError();
+                    }}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="fusion-lattice-species-t" className="flex min-h-10 items-end">
+                    Species T_T [keV] (blank = shared Tᵢ)
+                  </Label>
+                  <Input
+                    id="fusion-lattice-species-t"
+                    value={speciesTText}
+                    onChange={(e) => {
+                      setSpeciesTText(e.target.value);
                       clearError();
                     }}
                     className="font-mono text-xs"

@@ -5397,6 +5397,33 @@ pub fn fusion_reactivity(reaction: &str, ti_kev: f64) -> Result<f64, JsValue> {
         .map_err(js_err)
 }
 
+#[derive(Serialize)]
+struct FusionProtonMoments {
+    #[serde(rename = "nominalMeV")]
+    nominal_mev: f64,
+    #[serde(rename = "meanMeV")]
+    mean_mev: f64,
+    #[serde(rename = "sigmaMeV")]
+    sigma_mev: f64,
+    mono: bool,
+}
+
+/// D(d,p)T proton spectrum moments at ion temperature `ti_kev` [keV]: the
+/// Brysk-Gaussian 3.02 MeV proton line (`sigma = sqrt(1.51·Ti [MeV])`,
+/// pinned 50/50 with the D-D neutron branch; `sigma` zero at `T_i = 0`,
+/// the monoenergetic line).
+#[wasm_bindgen(js_name = fusionProtonMoments)]
+pub fn fusion_proton_moments(ti_kev: f64) -> Result<JsValue, JsValue> {
+    let (mean_mev, sigma_mev) =
+        nucleide_plasma_source::reaction::proton_moments_mev(ti_kev).map_err(js_err)?;
+    to_js(&FusionProtonMoments {
+        nominal_mev: nucleide_plasma_source::reaction::PROTON_NOMINAL_MEV,
+        mean_mev,
+        sigma_mev,
+        mono: sigma_mev == 0.0,
+    })
+}
+
 #[derive(Deserialize)]
 struct FusionRingSpecJson {
     #[serde(rename = "radiusCm", alias = "radius_cm")]
@@ -5519,13 +5546,15 @@ fn point_config(spec: &JsValue) -> Result<nucleide_plasma_source::PlasmaSourceCo
 fn parametric_config(
     spec: &JsValue,
 ) -> Result<nucleide_plasma_source::ParametricPlasmaConfig, JsValue> {
-    // The sampling envelope (`kind` dispatch, `n`/`seed` counts) rides on the
-    // same object `sample_fusion_source` matches on, but the spec struct
-    // denies unknown fields (so a stray `fuel_mixture`/`species_temperatures`/
-    // `sector` key fails loudly instead of silently sampling the wrong
-    // plasma). Strip just the envelope keys before struct parsing.
+    // The sampling envelope (`kind` dispatch, `n`/`seed` counts, the
+    // optional `species` key, and the card `nBins`/`mcnpVersion` keys)
+    // rides on the same object `sample_fusion_source` matches on, but the
+    // spec struct denies unknown fields (so a stray `fuel_mixture`/
+    // `species_temperatures`/`sector` key fails loudly instead of
+    // silently sampling the wrong plasma). Strip just the envelope keys
+    // before struct parsing.
     let body: js_sys::Object = spec.clone().into();
-    for key in ["kind", "n", "seed"] {
+    for key in ["kind", "n", "seed", "species", "nBins", "mcnpVersion"] {
         let _ = js_sys::Reflect::delete_property(&body, &JsValue::from_str(key));
     }
     let parsed: FusionParametricSpecJson =
@@ -5614,6 +5643,8 @@ struct FusionParticleJson {
     #[serde(rename = "energyMeV")]
     energy_mev: f64,
     weight: f64,
+    /// Source particle species (`"neutron"` / `"proton"`).
+    species: String,
 }
 
 #[derive(Serialize)]
@@ -5631,8 +5662,34 @@ fn particle_json(particles: &[nucleide_plasma_source::Particle]) -> Vec<FusionPa
             direction: p.direction,
             energy_mev: p.energy_mev,
             weight: p.weight,
+            species: match p.species {
+                nucleide_nuclei::particles::ParticleId::Proton => "proton",
+                _ => "neutron",
+            }
+            .to_string(),
         })
         .collect()
+}
+
+/// Read the optional `species` key off a raw spec object: `"neutron"`
+/// (absent, the default) or `"proton"`. Unknown values are loud errors.
+fn parse_fusion_species(spec: &JsValue) -> Result<bool, JsValue> {
+    match js_sys::Reflect::get(spec, &JsValue::from_str("species"))
+        .ok()
+        .filter(|v| !(v.is_null() || v.is_undefined()))
+    {
+        None => Ok(false),
+        Some(value) => match value.as_string() {
+            Some(name) => match name.to_ascii_lowercase().as_str() {
+                "neutron" => Ok(false),
+                "proton" => Ok(true),
+                other => Err(js_err(format!(
+                    "unknown fusion source species `{other}` (supported: neutron, proton)"
+                ))),
+            },
+            None => Err(js_err("`species` must be a string".to_string())),
+        },
+    }
 }
 
 /// Sample `n` seeded fusion-source particles.
@@ -5646,18 +5703,29 @@ fn particle_json(particles: &[nucleide_plasma_source::Particle]) -> Vec<FusionPa
 /// `densityPeaking`, `pedestalDensityM3`, `separatrixDensityM3`,
 /// `centreTempKev`, `tempPeaking`, `tempBeta`, `pedestalTempKev`,
 /// `separatrixTempKev`, `pedestalRadiusCm`). All kinds take `n` (capped at
-/// [`MAX_FUSION_SAMPLES`]) and an integer `seed`. Returns `{kind, count,
-/// particles}` with one `{positionCm, direction, energyMeV, weight}` row per
-/// particle (lengths in cm, energies in MeV).
+/// [`MAX_FUSION_SAMPLES`]), an integer `seed`, and an optional `species`
+/// (`"neutron"`, the default, or `"proton"` — the independent D(d,p)T
+/// proton stream; lattice-kinds and D-T-only proton requests are loud).
+/// Returns `{kind, count, particles}` with one `{positionCm, direction,
+/// energyMeV, weight, species}` row per particle (lengths in cm, energies
+/// in MeV).
 #[wasm_bindgen(js_name = sampleFusionSource)]
 pub fn sample_fusion_source(spec: JsValue) -> Result<JsValue, JsValue> {
     let kind = js_get_string(&spec, "kind")?.to_ascii_lowercase();
     let (n, seed) = sample_args(&spec)?;
+    let is_proton = parse_fusion_species(&spec)?;
     let result = match kind.as_str() {
         "ring" => {
-            let mut sampler = nucleide_plasma_source::SourceSampler::new(ring_config(&spec)?, seed)
-                .map_err(js_err)?;
-            let particles = sampler.sample_n(n);
+            let config = ring_config(&spec)?;
+            let particles = if is_proton {
+                nucleide_plasma_source::SourceSampler::proton(config, seed)
+                    .map_err(js_err)?
+                    .sample_n(n)
+            } else {
+                nucleide_plasma_source::SourceSampler::new(config, seed)
+                    .map_err(js_err)?
+                    .sample_n(n)
+            };
             FusionSampleResult {
                 kind: "ring".to_string(),
                 count: particles.len(),
@@ -5665,10 +5733,16 @@ pub fn sample_fusion_source(spec: JsValue) -> Result<JsValue, JsValue> {
             }
         }
         "point" => {
-            let mut sampler =
-                nucleide_plasma_source::SourceSampler::new(point_config(&spec)?, seed)
-                    .map_err(js_err)?;
-            let particles = sampler.sample_n(n);
+            let config = point_config(&spec)?;
+            let particles = if is_proton {
+                nucleide_plasma_source::SourceSampler::proton(config, seed)
+                    .map_err(js_err)?
+                    .sample_n(n)
+            } else {
+                nucleide_plasma_source::SourceSampler::new(config, seed)
+                    .map_err(js_err)?
+                    .sample_n(n)
+            };
             FusionSampleResult {
                 kind: "point".to_string(),
                 count: particles.len(),
@@ -5676,10 +5750,16 @@ pub fn sample_fusion_source(spec: JsValue) -> Result<JsValue, JsValue> {
             }
         }
         "parametric" => {
-            let mut sampler =
-                nucleide_plasma_source::ParametricSampler::new(parametric_config(&spec)?, seed)
-                    .map_err(js_err)?;
-            let particles = sampler.sample_n(n);
+            let config = parametric_config(&spec)?;
+            let particles = if is_proton {
+                nucleide_plasma_source::ParametricProtonSampler::new(config, seed)
+                    .map_err(js_err)?
+                    .sample_n(n)
+            } else {
+                nucleide_plasma_source::ParametricSampler::new(config, seed)
+                    .map_err(js_err)?
+                    .sample_n(n)
+            };
             FusionSampleResult {
                 kind: "parametric".to_string(),
                 count: particles.len(),
@@ -5706,15 +5786,19 @@ fn sample_args(spec: &JsValue) -> Result<(usize, u64), JsValue> {
 #[derive(Serialize)]
 struct FusionCardsResult {
     mcnp: String,
-    serpent: String,
+    /// Serpent `src` text, or [`None`] for proton specs (Serpent
+    /// transports neutrons and photons only — never a phantom photon card).
+    serpent: Option<String>,
 }
 
 /// Emit MCNP `SDEF` and Serpent `src` cards for one fusion source.
 ///
 /// `spec` matches [`sample_fusion_source`] (the `n`/`seed` fields are
 /// ignored); optional `nBins` (default 21) sets the Gaussian tabulation bin
-/// count and `mcnpVersion` (default 6) selects the `PAR=` designator dialect
-/// for the `SDEF` card. Returns `{mcnp, serpent}` card texts.
+/// count, `mcnpVersion` (default 6) selects the `PAR=` designator dialect
+/// for the `SDEF` card, and optional `species` selects `"neutron"` (the
+/// default) or `"proton"` (MCNP6-only `PAR=h`, `serpent: null`). Returns
+/// `{mcnp, serpent}` card texts.
 #[wasm_bindgen(js_name = emitFusionSourceCards)]
 pub fn emit_fusion_source_cards(spec: JsValue) -> Result<JsValue, JsValue> {
     let get_opt = |key: &str| -> Option<f64> {
@@ -5724,7 +5808,35 @@ pub fn emit_fusion_source_cards(spec: JsValue) -> Result<JsValue, JsValue> {
     };
     let n_bins = get_opt("nBins").unwrap_or(21.0) as usize;
     let version = get_opt("mcnpVersion").unwrap_or(6.0) as u32;
+    let is_proton = parse_fusion_species(&spec)?;
     let kind = js_get_string(&spec, "kind")?.to_ascii_lowercase();
+    if is_proton {
+        let mcnp = match kind.as_str() {
+            "ring" | "point" => {
+                let config = if kind == "ring" {
+                    ring_config(&spec)?
+                } else {
+                    point_config(&spec)?
+                };
+                nucleide_plasma_source::emit_sdef_proton(&config, version, n_bins)
+                    .map_err(js_err)?
+            }
+            "parametric" => {
+                let config = parametric_config(&spec)?;
+                nucleide_plasma_source::emit_sdef_parametric_proton(&config, version, n_bins)
+                    .map_err(js_err)?
+            }
+            other => {
+                return Err(js_err(format!(
+                    "unknown fusion source kind `{other}` (supported: ring, point, parametric)"
+                )));
+            }
+        };
+        return to_js(&FusionCardsResult {
+            mcnp: mcnp.text,
+            serpent: None,
+        });
+    }
     let (mcnp, serpent) = match kind.as_str() {
         "ring" | "point" => {
             let config = if kind == "ring" {
@@ -5753,7 +5865,7 @@ pub fn emit_fusion_source_cards(spec: JsValue) -> Result<JsValue, JsValue> {
     };
     to_js(&FusionCardsResult {
         mcnp: mcnp.text,
-        serpent: serpent.text,
+        serpent: Some(serpent.text),
     })
 }
 
@@ -6021,9 +6133,16 @@ struct LatticePointJson {
 /// D-T reacts at the mass-weighted `T_DT`, D-D at `T_D`), `n` (capped at
 /// [`MAX_FUSION_SAMPLES`]) and an integer `seed`. Returns `{kind:
 /// "lattice", totalStrength, count, particles}` with one `{positionCm,
-/// direction, energyMeV, weight}` row per particle.
+/// direction, energyMeV, weight, species}` row per particle. Lattice
+/// proton transport stays out: `species: "proton"` is a loud error
+/// (lattice proton rates stay accounting-only).
 #[wasm_bindgen(js_name = sampleLatticeSource)]
 pub fn sample_lattice_source(spec: JsValue) -> Result<JsValue, JsValue> {
+    if parse_fusion_species(&spec)? {
+        return Err(js_err(
+            "lattice proton transport is not yet supported (accounting only)".to_string(),
+        ));
+    }
     use nucleide_plasma_source::lattice::{LatticePoint, LatticeSourceConfig, LatticeSymmetry};
     #[derive(Deserialize)]
     struct LatticeSpecJson {

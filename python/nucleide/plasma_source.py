@@ -43,9 +43,15 @@ errors. An optional
 ``start_angle``/``rotation_angle`` pair [rad] restricts births to the toroidal
 sector ``[start_angle, start_angle + rotation_angle)`` (uniform birth angle;
 emission totals scale by ``rotation_angle/2π``); both keys or neither, and a
-full ``2π`` rotation reproduces the full torus exactly. ``proton_accounting``
-reports the D(d,p)T proton rate alongside the neutron source (pinned 50/50
-with the D-D neutron branch; sampler and cards stay neutron-only). Lengths are
+full ``2π`` rotation reproduces the full torus exactly. An optional ``species``
+key (``"neutron"``, the default, or ``"proton"``) selects the transported
+particle: proton requests sample the independent D(d,p)T proton stream
+(Brysk 3.02 MeV line, pinned 50/50 with the D-D neutron branch; MCNP6-only
+cards with ``PAR=h``, Serpent returns ``None``) for D-D-bearing ring/point
+and parametric specs; D-T-only proton requests are loud errors, and lattice
+proton requests stay loud (lattice proton rates stay accounting-only).
+``proton_accounting`` reports the D(d,p)T proton rate alongside the neutron
+source (pinned 50/50 with the D-D neutron branch). Lengths are
 centimetres, energies MeV, ion temperature keV. MCPL
 projection stays caller-side: write particle vectors with ``nucleide.mcpl``
 when a file is wanted.
@@ -78,6 +84,7 @@ from nucleide._internal import (
     plasma_source_emit_cards,
     plasma_source_particles,
     plasma_source_proton_accounting,
+    plasma_source_proton_moments,
     plasma_source_reactivity,
     plasma_source_spectrum_moments,
 )
@@ -86,6 +93,7 @@ __all__ = [
     "particles",
     "emit_source_cards",
     "spectrum_moments",
+    "proton_moments",
     "reactivity",
     "proton_accounting",
     "ecrh_scalars",
@@ -119,10 +127,14 @@ def particles(spec: dict[str, Any], n: int, seed: int) -> dict[str, Any]:
     species temperatures (both keys; single-fuel D-T reacts at ``T_DT``,
     single-fuel D-D at ``T_D``, mixtures at the same pair temperatures), plus
     the optional ``field_periods``/``base_angle`` symmetry pair (both or
-    neither).
+    neither). All kinds take the optional ``species`` key — ``"neutron"``
+    (the default) or ``"proton"`` (the independent D(d,p)T proton stream on
+    the Brysk 3.02 MeV line; D-T-only and lattice proton requests raise a
+    loud error).
     Returns ``x``/``y``/
     ``z`` [cm], direction cosines ``u``/``v``/``w`` (unit vectors), ``energy``
-    [MeV], and ``weight``. The same ``seed`` reproduces the same stream.
+    [MeV], ``weight``, and ``species`` (``"neutron"``/``"proton"`` per
+    particle). The same ``seed`` reproduces the same stream.
     """
     return plasma_source_particles(spec, n, seed)
 
@@ -131,15 +143,20 @@ def emit_source_cards(spec: dict[str, Any], bins: int = 21) -> dict[str, Any]:
     """Emit MCNP ``SDEF`` and Serpent ``src`` source cards plus drift reports.
 
     ``spec`` is the source spec from ``particles`` (optional ``mcnp_version``,
-    5 or 6, default 5); ``bins`` sets the tabulation bin count. Returns
+    5 or 6, default 5; optional ``species`` — ``"neutron"``, the default, or
+    ``"proton"``); ``bins`` sets the tabulation bin count. Returns
     ``sdef`` and ``serpent``, each ``{"card": str, "drift": [row dicts]}``
     (rows carry ``quantity``, ``accounted``, ``rel_drift``, ``reparsed``,
     ``note``), plus ``spectrum`` moments (``nominal_mev``, ``mean_mev``,
     ``sigma_mev``, ``mono`` — for a parametric source, the magnetic-axis
     moments; for a fuel mixture, the two-branch Gaussian-mixture summary;
     for a lattice, the rate-weighted cloud moments with the mixture sigma
-    around the mean).
-    The SDEF card round-trips through ``nucleide.mcnp.parse_sdef``
+    around the mean). A ``species="proton"`` spec requires
+    ``mcnp_version=6`` (the default 5 raises a loud error), returns
+    ``serpent`` as ``None`` (never a phantom photon card), and reports the
+    proton spectrum moments (for a parametric source, the magnetic-axis
+    proton moments on the Brysk 3.02 MeV line). The SDEF card round-trips
+    through ``nucleide.mcnp.parse_sdef``
     byte-identically; Serpent drift rows are analytic by design. Parametric
     cards carry the radial/vertical/energy *marginals* as histograms (plus a
     uniform toroidal-angle marginal for a partial sector); lattice cards
@@ -161,6 +178,18 @@ def spectrum_moments(reaction: str, ion_temperature_kev: float) -> dict[str, Any
     return plasma_source_spectrum_moments(reaction, ion_temperature_kev)
 
 
+def proton_moments(ion_temperature_kev: float) -> dict[str, Any]:
+    """Closed-form D(d,p)T proton line moments at an ion temperature.
+
+    The Brysk-Gaussian 3.02 MeV proton line (mean 3.02 MeV with no shift in
+    v1, ``sigma = sqrt(1.51 * Ti [MeV])``) shared 50/50 with the D-D neutron
+    branch. ``ion_temperature_kev`` is in keV. Returns ``nominal_mev``
+    (3.02), ``mean_mev``, ``sigma_mev`` (0 when monoenergetic), and
+    ``mono``.
+    """
+    return plasma_source_proton_moments(ion_temperature_kev)
+
+
 def reactivity(reaction: str, ion_temperature_kev: float) -> float:
     """Thermonuclear reactivity ⟨σv⟩ [m³/s] at an ion temperature [keV].
 
@@ -179,8 +208,9 @@ def proton_accounting(spec: dict[str, Any]) -> dict[str, Any]:
     D-T-only) plus, for ``kind="parametric"`` only, the integrated
     ``neutron_total`` and ``proton_total`` (sector-aware; ring/point specs
     carry no density model, so their totals are ``None``) and a ``note``
-    stating the convention. The sampler and the emitted cards stay
-    neutron-only; proton transport is out of scope. A pure-tritium mixture
+    stating the convention. Proton transport is available separately via
+    ``species="proton"`` (ring/point and parametric, D-D-bearing sources
+    only; lattice proton transports stay accounting-only). A pure-tritium mixture
     (no T-T neutron branch) is a loud error, like sampling it.
     """
     return plasma_source_proton_accounting(spec)

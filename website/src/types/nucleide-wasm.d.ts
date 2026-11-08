@@ -694,11 +694,19 @@ export interface FusionSpectrumMoments {
   mono: boolean;
 }
 
+export interface FusionProtonMoments {
+  nominalMeV: number;
+  meanMeV: number;
+  sigmaMeV: number;
+  mono: boolean;
+}
+
 export interface FusionParticleJson {
   positionCm: [number, number, number];
   direction: [number, number, number];
   energyMeV: number;
   weight: number;
+  species: string;
 }
 
 export interface FusionSampleResult {
@@ -713,6 +721,7 @@ export interface FusionRingSpec {
   heightCm: number;
   reaction: string;
   tiKev: number;
+  species?: string;
   n: number;
   seed: number;
 }
@@ -724,6 +733,7 @@ export interface FusionPointSpec {
   zCm: number;
   reaction: string;
   tiKev: number;
+  species?: string;
   n: number;
   seed: number;
 }
@@ -753,6 +763,7 @@ export interface FusionParametricSpec {
   tailTempKev?: number;
   speciesDeuteriumKev?: number;
   speciesTritiumKev?: number;
+  species?: string;
   n: number;
   seed: number;
 }
@@ -770,6 +781,7 @@ export interface LatticeSourceSpec {
   baseAngle?: number;
   speciesDeuteriumKev?: number;
   speciesTritiumKev?: number;
+  species?: string;
   n: number;
   seed: number;
 }
@@ -964,11 +976,12 @@ export interface FusionCardsSpec {
   pedestalRadiusCm?: number;
   nBins?: number;
   mcnpVersion?: number;
+  species?: string;
 }
 
 export interface FusionCardsResult {
   mcnp: string;
-  serpent: string;
+  serpent: string | null;
 }
 
 export interface SandiiSolutionJson {
@@ -1190,6 +1203,7 @@ export interface WasmApi {
   arcEfficiency(tDamEv: number, edEv: number, bArc: number, cArc: number): number;
   fusionSpectrumMoments(reaction: string, tiKev: number): FusionSpectrumMoments;
   fusionReactivity(reaction: string, tiKev: number): number;
+  fusionProtonMoments(tiKev: number): FusionProtonMoments;
   sampleFusionSource(spec: FusionSourceSpec): FusionSampleResult;
   emitFusionSourceCards(spec: FusionCardsSpec): FusionCardsResult;
   ecrhScalars(frequencyGhz: number, harmonic: number, bT: number, teKev?: number): EcrhScalars;

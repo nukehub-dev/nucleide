@@ -15,6 +15,27 @@ workspace crates from tags.
 
 ### Added
 
+- D(d,p)T proton transport in `nucleide-plasma-source` for deuterium-bearing
+  ring/point and parametric sources (lattice stays rate-accounting-only):
+  `Particle.species` (`Neutron` default, `Proton` additive),
+  `SourceSampler::proton` and `ParametricProtonSampler` as independent
+  seeded instances (zero new draws on any neutron path), the Brysk-Gaussian
+  proton line (`reaction::proton_moments_mev`, `SpectrumSpec::from_proton`;
+  `E0 = 3.02` MeV, `sigma = sqrt(1.51·Ti [MeV])`; `Ti = 20` keV → 3.02 MeV,
+  `0.173782` MeV), and MCNP6-only `PAR=h` SDEF cards
+  (`emit_sdef_proton` / `emit_sdef_parametric_proton`) with a `proton branch`
+  drift row. The proton rate is the D-D neutron-branch rate reused
+  bit-for-bit (50/50; flat-profile anchors `P = 13012914793.607618`
+  pure D-D and `P = 6376328248.867733` for 70/30). D-T-only proton
+  requests, MCNP5 proton cards, and lattice proton transport stay loud;
+  there are no Serpent proton cards (its `PART='p'` means photons), so the
+  Python/WASM facades return `serpent: None` for proton specs. Python gains
+  the optional `species` spec key, the `species` particle array,
+  `proton_moments()`, and a `mcnp_version=6` requirement for proton cards;
+  WASM gains `fusionProtonMoments()`, `species` on fusion sample/card
+  specs, and per-particle `species`. The interactive fusion demo's lattice
+  panel now exposes the species-temperature pair.
+
 - End-to-end first-wall workflow (tutorial
   `docs/tutorials/python/fusion-first-wall.md` and notebook
   `notebooks/first-wall-workflow.ipynb`): screening-level chain from a
@@ -57,6 +78,21 @@ workspace crates from tags.
   no vendored code or data; the example files stay in the ACTINV
   repository. Carries the research-grade qualification, the TENDL-2025
   data defects, and the TOTAL-only photon limit.
+
+- Adaptive per-sample bandwidths for Gaussian KDE source sampling in
+  `nucleide-vr-tools`: `Bandwidth::AdaptiveKnn { k, scale }` (a synthetic
+  KDSource-class case) gives each fitted sample its own width
+  `h_i0 = scale · dist_k(x_i)` in σ-scaled coordinates with
+  `h_ij = h_i0 · σ_j`, so tight clusters smooth lightly and sparse tails
+  smooth broadly. `dist_k` is the 1-based leave-one-out `k`-th nearest
+  neighbour (`1 <= k <= n - 1`); `pdf` normalizes per sample and `draw`
+  perturbs the centre with its own width row, keeping the deterministic
+  caller-random style. Invalid rank/scale, duplicate points (zero
+  distance), and zero-variance dims are loud errors — a zero bandwidth is
+  never a delta spike. Python: `KdeSampler(rows, "adaptive", k=k,
+  scale=scale)` plus `sample_bandwidths()`. Hand vector: `{0, 0.2, 0.4,
+  10}` with `k = 1` gives widths `0.2, 0.2, 0.2, 9.6` and
+  `pdf(0) = 0.8746688805236177`.
 
 ## [0.16.0] - 2026-09-18
 

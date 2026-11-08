@@ -96,21 +96,40 @@
 //! draws exactly `0.0` from the absent branches, so the no-T mixture
 //! reproduces the landed two-branch kernel bit-for-bit.
 //!
-//! ## D(d,p)T protons: accounting output, sampler untouched
+//! ## D(d,p)T protons: 50/50 rate, Brysk line, parametric + ring/point transport
 //!
 //! The D(d,p)T proton branch shares the D-D total rate 50/50 with the
 //! neutron branch (Bosch & Hale resolve the two D-D branches to ~4–8% at
 //! 10–20 keV; the pinned v1 convention reports them equal —
 //! [`ParametricPlasmaConfig::proton_strength_density`] IS the D-D neutron
-//! branch density, bit-for-bit). Protons are bookkeeping alongside the
-//! neutron source, never particles: the sampler draws no proton energies,
-//! the cards carry no proton distributions, and proton transport stays out
-//! of scope. [`ParametricPlasmaConfig::total_proton_strength`] integrates
-//! the proton density over the same `S·R·|J|` volume (sector-aware), so the
-//! `proton_per_neutron` bookkeeping ratio is exactly `1.0` for pure D-D.
+//! branch density, bit-for-bit; no new reactivity function, no separate
+//! D(d,p) fit). Protons are transported by independent sampler instances
+//! ([`ParametricProtonSampler`] for the parametric source, plus the
+//! ring/point [`SourceSampler::proton`](crate::SourceSampler::proton)) and
+//! emitted as MCNP6-only `PAR=h` SDEF cards
+//! ([`emit_sdef_proton`](crate::emit_sdef::emit_sdef_proton) /
+//! [`emit_sdef_parametric_proton`](crate::emit_sdef::emit_sdef_parametric_proton));
+//! the lattice and Serpent stay neutron-only (lattice keeps the rate
+//! accounting only, Serpent `PART='p'` means photons). The proton line is
+//! the Brysk-Gaussian 3.02 MeV line ([`proton_moments_mev`](crate::reaction::proton_moments_mev)),
+//! NOT a Ballabio line (no Ballabio proton line exists).
+//! [`ParametricPlasmaConfig::total_proton_strength`] integrates the
+//! proton density over the same `S·R·|J|` volume (sector-aware), so the
+//! `proton_per_neutron` ratio is exactly `1.0` for pure D-D. Proton
+//! spatial weight is `P·R·|J|` over the existing
+//! `WeightTable::build_with(proton_strength_density)`; proton reactions
+//! share the D-D temperatures everywhere (shared profile `T_i`, species
+//! pair `T_D`, tail sub-pairs). D-T-only ("Dt-only") proton requests are
+//! loud ([`Error::NotYetSupported`]). The parametric proton sampler draws
+//! `r`/`θ`/`φ` (3 uniforms) plus one sub-branch roulette uniform iff a
+//! deuterium tail with `η > 0` expands the D-D arm to more than one
+//! sub-branch (mirroring the neutron 5-branch rule restricted to the D-D
+//! subs), plus energy and direction — zero new draws on any neutron
+//! path.
 //!
 //! Hand vectors (flat profile, `T_i = 20` keV, `n = 1e20` m⁻³; the pinned
-//! `⟨σv⟩_DD = 2.602582958721524e-24` m³/s):
+//! `⟨σv⟩_DD = 2.602582958721524e-24` m³/s; the proton rate IS the D-D
+//! branch rate, reused bit-for-bit):
 //!
 //! ```text
 //! pure D-D:             P = 13012914793.607618 = S_DD  →  P/N = 1.0
@@ -295,10 +314,11 @@
 //! ([`DeuteriumTail`] pins the single v1 tail shape — the rest of the full
 //! Eriksson generalization stays out),
 //! T-T neutron transport (normalization pinned above; no publishable fit or
-//! line exists), and proton transport (the D(d,p)T proton *rate* is
+//! line exists), D-T-only proton requests (the D(d,p)T proton *rate* is
 //! accounted via [`ParametricPlasmaConfig::proton_strength_density`] /
-//! [`ParametricPlasmaConfig::total_proton_strength`]; no proton particles
-//! are sampled and no proton distributions reach the cards).
+//! [`ParametricPlasmaConfig::total_proton_strength`], and parametric +
+//! ring/point proton transport is supported — lattice proton transport and
+//! Serpent proton cards stay out, loudly; MCNP proton cards are MCNP6-only).
 //! Mixture fractions, species temperatures, tail parameters, and sector angles
 //! themselves are validated loudly at construction: non-finite, negative,
 //! non-summing, or out-of-range values never reach the sampler.
@@ -312,6 +332,8 @@
 //! what it loses (truncation; the joint-correlation distance).
 
 use std::f64::consts::PI;
+
+use nucleide_nuclei::particles::ParticleId;
 
 use crate::miller::MillerGeometry;
 use crate::profile::{self, DensityProfile, ProfileMode, TemperatureProfile};
@@ -785,15 +807,26 @@ impl ParametricPlasmaConfig {
 
     /// Relative D(d,p)T proton production density \[protons/s/cm³, same
     /// arbitrary global scale as [`Self::strength_density`] at minor radius
-    /// `r` \[cm\]: the pinned v1 accounting convention (module rustdoc) —
-    /// the proton branch shares the D-D total rate 50/50 with the neutron
-    /// branch, so this IS the D-D neutron-branch density, bit-for-bit
-    /// (the branch tuple's second element, not a re-expression). Zero for
-    /// D-T-only configurations. Accounting output only: the sampler and the
-    /// cards never see it.
+    /// `r` \[cm\]: the pinned v1 convention (module rustdoc) — the proton
+    /// branch shares the D-D total rate 50/50 with the neutron branch, so
+    /// this IS the D-D neutron-branch density, bit-for-bit (the branch
+    /// tuple's second element, not a re-expression). Zero for D-T-only
+    /// configurations. The proton sampler and the proton cards build on it.
     pub fn proton_strength_density(&self, r: f64) -> Result<f64> {
         let (_, s_dd) = self.branch_strength_density(r)?;
         Ok(s_dd)
+    }
+
+    /// True when this config makes D(d,p)T protons (D-D-bearing: single-fuel
+    /// D-D, or a fuel mixture with `f_D > 0`). D-T-only configurations make
+    /// no protons; proton requests there are loud
+    /// ([`Error::NotYetSupported`]).
+    fn makes_protons(&self) -> bool {
+        match (&self.fuel_mixture, self.fuel) {
+            (Some(mixture), _) => mixture.f_deuterium > 0.0,
+            (None, FusionReaction::Dd) => true,
+            (None, FusionReaction::Dt) => false,
+        }
     }
 
     /// Total relative proton production strength ∭ P·R·|J| da dθ dφ over the
@@ -810,12 +843,7 @@ impl ParametricPlasmaConfig {
         if let Some(sector) = &self.sector {
             sector.validate()?;
         }
-        let makes_protons = match (&self.fuel_mixture, self.fuel) {
-            (Some(mixture), _) => mixture.f_deuterium > 0.0,
-            (None, FusionReaction::Dd) => true,
-            (None, FusionReaction::Dt) => false,
-        };
-        if !makes_protons {
+        if !self.makes_protons() {
             return Ok(0.0);
         }
         let table = WeightTable::build_with(self, |r| self.proton_strength_density(r))?;
@@ -922,6 +950,78 @@ impl ParametricPlasmaConfig {
                 Ok(branches)
             }
         }
+    }
+
+    /// Proton-branch spectra at species temperatures `(t_d, _t_t)` \[keV\]:
+    /// `(weight, mean, sigma)` tuples with weights summing to 1, on the
+    /// Brysk-Gaussian D(d,p)T line ([`proton_moments_mev`](crate::reaction::proton_moments_mev)).
+    /// The proton reacts at `T_D` everywhere the D-D neutron branch does
+    /// (module rustdoc): single fuel D-D and any no-tail mixture → one line
+    /// at `t_d`; a [`DeuteriumTail`] expands the D-D arm to the three
+    /// sub-lines `(1−η)² @ T_D`, `2η(1−η) @ T_mix`, `η² @ T_tail`
+    /// (the neutron D-D sub-weights restricted to the D-D arm); `η == 0`
+    /// returns the landed single line. Where the sub-rate total
+    /// underflows, the single `t_d` line is returned (the cold-annulus
+    /// convention of [`Self::spectrum_branches`]).
+    ///
+    /// D-T-only configs (and pure-tritium mixtures) make no protons: loud
+    /// [`Error::NotYetSupported`] (`"proton sampling needs a D-D source"`).
+    fn proton_spectrum_branches(&self, t_d: f64, _t_t: f64) -> Result<Vec<(f64, f64, f64)>> {
+        if !self.makes_protons() {
+            return Err(Error::NotYetSupported("proton sampling needs a D-D source"));
+        }
+        match &self.fuel_mixture {
+            None => {
+                let (mu, sigma) = crate::reaction::proton_moments_mev(t_d)?;
+                Ok(vec![(1.0, mu, sigma)])
+            }
+            Some(mixture) => {
+                let tail_eta = self.tail.map(|tail| tail.fraction).unwrap_or(0.0);
+                if tail_eta == 0.0 {
+                    let (mu, sigma) = crate::reaction::proton_moments_mev(t_d)?;
+                    return Ok(vec![(1.0, mu, sigma)]);
+                }
+                let tail = self.tail.expect("tail fraction nonzero implies a tail");
+                let eta = tail.fraction;
+                let t_tail = tail.temperature_kev;
+                let t_mix = 0.5 * (t_d + t_tail);
+                let k_dd = mixture.branch_weights().1;
+                let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(t_d)?;
+                let sv_dd_mix = FusionReaction::Dd.reactivity_m3_per_s(t_mix)?;
+                let sv_dd_tail = FusionReaction::Dd.reactivity_m3_per_s(t_tail)?;
+                let subs = [
+                    (k_dd * (1.0 - eta) * (1.0 - eta) * sv_dd, t_d),
+                    (k_dd * 2.0 * eta * (1.0 - eta) * sv_dd_mix, t_mix),
+                    (k_dd * eta * eta * sv_dd_tail, t_tail),
+                ];
+                let total: f64 = subs.iter().map(|s| s.0).sum();
+                let (mu, sigma) = crate::reaction::proton_moments_mev(t_d)?;
+                if total <= 0.0 {
+                    return Ok(vec![(1.0, mu, sigma)]);
+                }
+                let mut branches = Vec::with_capacity(subs.len());
+                for (weight, ti) in subs {
+                    let (mu, sigma) = crate::reaction::proton_moments_mev(ti)?;
+                    branches.push((weight / total, mu, sigma));
+                }
+                Ok(branches)
+            }
+        }
+    }
+
+    /// Spectrum summary at the magnetic axis (`r = 0`): `(nominal, mean,
+    /// sigma)` \[MeV\] on the proton line. The proton analogue of
+    /// [`Self::axis_spectrum_summary`]: the branch-mixture moments over
+    /// [`Self::proton_spectrum_branches`] at the axis species pair
+    /// (`T_D`, `T_T`), nominal 3.02 MeV. D-T-only configs are loud
+    /// ([`Error::NotYetSupported`]).
+    pub fn axis_proton_spectrum_summary(&self) -> Result<(f64, f64, f64)> {
+        let (t_d, t_t) = self.species_temperatures_at(0.0);
+        let branches = self.proton_spectrum_branches(t_d, t_t)?;
+        let mean: f64 = branches.iter().map(|b| b.0 * b.1).sum();
+        let second: f64 = branches.iter().map(|b| b.0 * (b.2 * b.2 + b.1 * b.1)).sum();
+        let variance = (second - mean * mean).max(0.0);
+        Ok((crate::reaction::PROTON_NOMINAL_MEV, mean, variance.sqrt()))
     }
 
     /// Spectrum summary at the magnetic axis (`r = 0`): `(nominal, mean,
@@ -1198,6 +1298,7 @@ impl ParametricSampler {
         match self.try_sample() {
             Ok(particle) => particle,
             Err(_) => Particle {
+                species: ParticleId::Neutron,
                 position_cm: [0.0, 0.0, 0.0],
                 direction: [0.0, 0.0, 1.0],
                 energy_mev: 0.0,
@@ -1255,6 +1356,7 @@ impl ParametricSampler {
             mean
         };
         Ok(Particle {
+            species: ParticleId::Neutron,
             position_cm: [big_r * phi.cos(), big_r * phi.sin(), z],
             direction: self.rng.isotropic_direction(),
             energy_mev,
@@ -1263,6 +1365,129 @@ impl ParametricSampler {
     }
 
     /// Sample `n` particles.
+    pub fn sample_n(&mut self, n: usize) -> Vec<Particle> {
+        (0..n).map(|_| self.sample()).collect()
+    }
+}
+
+/// Deterministic sampler for the D(d,p)T proton branch of a parametric
+/// plasma source.
+///
+/// An independent sampler instance with its own `Rng(seed)` and its own
+/// `WeightTable` built over [`ParametricPlasmaConfig::proton_strength_density`]
+/// (`P·R·|J|`; sector-aware). Draw accounting mirrors the neutron path —
+/// `r`/`θ`/`φ` (3 uniforms), one sub-branch roulette uniform iff the tail
+/// expands the D-D arm to more than one sub-branch (`η > 0`), energy,
+/// direction — and consumes zero draws on any neutron path: the neutron
+/// sampler's stream is bit-for-bit whether or not a proton sampler with
+/// the same seed is also sampled.
+pub struct ParametricProtonSampler {
+    config: ParametricPlasmaConfig,
+    table: WeightTable,
+    rng: Rng,
+}
+
+impl ParametricProtonSampler {
+    /// New proton sampler over `config` pinned to `seed`.
+    ///
+    /// Errors: the configuration is validated up front; D-T-only configs
+    /// are loud: [`Error::NotYetSupported`]
+    /// (`"proton sampling needs a D-D source"`).
+    pub fn new(config: ParametricPlasmaConfig, seed: u64) -> Result<Self> {
+        config.validate()?;
+        if !config.makes_protons() {
+            return Err(Error::NotYetSupported("proton sampling needs a D-D source"));
+        }
+        let table = WeightTable::build_with(&config, |r| config.proton_strength_density(r))?;
+        Ok(Self {
+            config,
+            table,
+            rng: Rng::new(seed),
+        })
+    }
+
+    /// Borrow the underlying configuration.
+    pub fn config(&self) -> &ParametricPlasmaConfig {
+        &self.config
+    }
+
+    /// Sample one proton particle: `r` from the proton-strength-weighted
+    /// radial CDF, `θ` from the cell's poloidal CDF, `φ` uniform over the
+    /// full torus or the sector (the same remap as the neutron path);
+    /// energy from the local Brysk-Gaussian proton line; isotropic
+    /// direction; species [`ParticleId::Proton`].
+    ///
+    /// The `Err(_) => 0.0` arm mirrors the neutron sampler's documented
+    /// unreachable-in-practice fallback. The sector remap consumes no new
+    /// RNG draws on any path.
+    pub fn sample(&mut self) -> Particle {
+        match self.try_sample() {
+            Ok(particle) => particle,
+            Err(_) => Particle {
+                species: ParticleId::Proton,
+                position_cm: [0.0, 0.0, 0.0],
+                direction: [0.0, 0.0, 1.0],
+                energy_mev: 0.0,
+                weight: self.config.weight,
+            },
+        }
+    }
+
+    /// Draw the birth proton moments `(mean, sigma)` \[MeV\] at species
+    /// temperatures `(t_d, t_t)`: the D-D-sub-branch roulette over
+    /// [`ParametricPlasmaConfig::proton_spectrum_branches`] (one uniform
+    /// per particle iff there is more than one D-D sub-branch — the tail
+    /// case; the no-tail and single-fuel paths consume no RNG, like the
+    /// neutron sampler); then the chosen sub-line's moments.
+    fn sample_spectrum_moments(&mut self, t_d: f64, t_t: f64) -> Result<(f64, f64)> {
+        let branches = self.config.proton_spectrum_branches(t_d, t_t)?;
+        if branches.len() == 1 {
+            return Ok((branches[0].1, branches[0].2));
+        }
+        let u = self.rng.uniform();
+        let mut acc = 0.0;
+        let mut picked = branches[0];
+        for &branch in &branches {
+            acc += branch.0;
+            if u < acc {
+                picked = branch;
+                break;
+            }
+        }
+        Ok((picked.1, picked.2))
+    }
+
+    /// Fallible single-proton sample: like
+    /// [`ParametricProtonSampler::sample`] but surfaces a spectrum-moment
+    /// failure as a loud [`Error`] instead of the documented zero-energy
+    /// fallback.
+    pub fn try_sample(&mut self) -> Result<Particle> {
+        let r = self.table.sample_r(self.rng.uniform());
+        let dr = self.config.geometry.minor_radius_cm / R_GRID as f64;
+        let cell = ((r / dr).floor() as usize).min(R_GRID - 1);
+        let theta = self.table.sample_theta(cell, self.rng.uniform());
+        let phi = match &self.config.sector {
+            None => 2.0 * PI * self.rng.uniform(),
+            Some(sector) => sector.map_angle(self.rng.uniform()),
+        };
+        let (big_r, z) = self.config.geometry.map(r, theta);
+        let (t_d, t_t) = self.config.species_temperatures_at(r);
+        let (mean, sigma) = self.sample_spectrum_moments(t_d, t_t)?;
+        let energy_mev = if sigma > 0.0 {
+            mean + sigma * self.rng.standard_normal()
+        } else {
+            mean
+        };
+        Ok(Particle {
+            species: ParticleId::Proton,
+            position_cm: [big_r * phi.cos(), big_r * phi.sin(), z],
+            direction: self.rng.isotropic_direction(),
+            energy_mev,
+            weight: self.config.weight,
+        })
+    }
+
+    /// Sample `n` proton particles.
     pub fn sample_n(&mut self, n: usize) -> Vec<Particle> {
         (0..n).map(|_| self.sample()).collect()
     }
@@ -1438,6 +1663,181 @@ pub fn emission_histograms(
     // (module rustdoc), so the marginal is exact, not sampled — bin centers
     // over [start, start + rotation) with equal masses. The full torus
     // carries no marginal (the landed card shape is untouched).
+    let toroidal = match config.sector {
+        Some(sector) if !sector.is_full_rotation() => {
+            let width = sector.rotation_angle / bins as f64;
+            Some(BinnedDistribution {
+                centers: (0..bins)
+                    .map(|b| sector.start_angle + (b as f64 + 0.5) * width)
+                    .collect(),
+                masses: vec![1.0 / bins as f64; bins],
+            })
+        }
+        _ => None,
+    };
+
+    Ok(EmissionHistograms {
+        radial: BinnedDistribution {
+            centers: (0..bins)
+                .map(|b| (b as f64 + 0.5) * (a / bins as f64))
+                .collect(),
+            masses: radial,
+        },
+        vertical: BinnedDistribution {
+            centers: (0..bins)
+                .map(|b| -z_max + (b as f64 + 0.5) * (2.0 * z_max / bins as f64))
+                .collect(),
+            masses: vertical,
+        },
+        energy: BinnedDistribution {
+            centers: energy_centers,
+            masses: energy_masses,
+        },
+        toroidal,
+        energy_coverage,
+        joint_correlation: corr,
+    })
+}
+
+/// Build the marginal histograms of the D(d,p)T proton branch for card
+/// emission: same shape as [`emission_histograms`] (radial/vertical
+/// marginals, the global marginal Brysk-Gaussian proton energy spectrum,
+/// the sector angle marginal, the joint-correlation distance), but the
+/// spatial weights are `P·R·|J|` over
+/// [`ParametricPlasmaConfig::proton_strength_density`] and the energy
+/// lines are [`ParametricPlasmaConfig::proton_spectrum_branches`].
+/// D-T-only configs are loud ([`Error::NotYetSupported`]).
+pub fn proton_emission_histograms(
+    config: &ParametricPlasmaConfig,
+    bins: usize,
+) -> Result<EmissionHistograms> {
+    config.validate()?;
+    let bins = bins.max(4);
+    let g = &config.geometry;
+    let a = g.minor_radius_cm;
+    let dr = a / R_GRID as f64;
+    let dtheta = 2.0 * PI / THETA_GRID as f64;
+
+    let mut radial_m = vec![0.0f64; bins];
+    let mut vertical_m = vec![0.0f64; bins];
+    let z_max = g.z_max();
+    let mut energy_lo = f64::INFINITY;
+    let mut energy_hi = f64::NEG_INFINITY;
+    let mut cell_weights: Vec<f64> = Vec::with_capacity(R_GRID * THETA_GRID);
+    let mut cell_r: Vec<f64> = Vec::with_capacity(R_GRID * THETA_GRID);
+    let mut cell_z: Vec<f64> = Vec::with_capacity(R_GRID * THETA_GRID);
+    let mut total = 0.0f64;
+    for i in 0..R_GRID {
+        let r = (i as f64 + 0.5) * dr;
+        let strength = config.proton_strength_density(r)?;
+        let (t_d, t_t) = config.species_temperatures_at(r);
+        for &(_, mu, sigma) in &config.proton_spectrum_branches(t_d, t_t)? {
+            energy_lo = energy_lo.min(mu - ENERGY_WIDTH_SIGMA * sigma);
+            energy_hi = energy_hi.max(mu + ENERGY_WIDTH_SIGMA * sigma);
+        }
+        for j in 0..THETA_GRID {
+            let theta = (j as f64 + 0.5) * dtheta;
+            let (_, z) = g.map(r, theta);
+            let w = strength * g.volume_element(r, theta) * dtheta * dr;
+            total += w;
+            cell_weights.push(w);
+            cell_r.push(r);
+            cell_z.push(z);
+        }
+    }
+    if total.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
+        return Err(Error::InvalidProfile(
+            "total parametric source strength is zero",
+        ));
+    }
+    let energy_lo = if energy_lo.is_finite() {
+        energy_lo
+    } else {
+        0.0
+    };
+    let energy_hi = if energy_hi.is_finite() {
+        energy_hi
+    } else {
+        1.0
+    };
+
+    // Bin the spatial marginals and accumulate the joint for the
+    // correlation distance (same convention as the neutron histograms).
+    let mut joint = vec![vec![0.0f64; bins]; bins];
+    for k in 0..cell_weights.len() {
+        let (w, r, z) = (cell_weights[k], cell_r[k], cell_z[k]);
+        let ri = ((r / a) * bins as f64).floor() as usize;
+        let ri = ri.min(bins - 1);
+        let zi = (((z + z_max) / (2.0 * z_max)) * bins as f64).floor() as usize;
+        let zi = zi.min(bins - 1);
+        radial_m[ri] += w;
+        vertical_m[zi] += w;
+        joint[ri][zi] += w / total;
+    }
+    let radial: Vec<f64> = radial_m.iter().map(|m| m / total).collect();
+    let vertical: Vec<f64> = vertical_m.iter().map(|m| m / total).collect();
+    // joint_correlation = 1/2 Σ |p_true(i,j) − p_r(i) p_z(j)|
+    let mut corr = 0.0;
+    for i in 0..bins {
+        for j in 0..bins {
+            corr += (joint[i][j] - radial[i] * vertical[j]).abs();
+        }
+    }
+    corr *= 0.5;
+
+    // Marginal proton energy spectrum: Σ_cells w_cell · [Φ(hi; μ,σ) − Φ(lo; μ,σ)]
+    // over the proton sub-branch mixture.
+    let de = (energy_hi - energy_lo) / bins as f64;
+    let mut energy_m = vec![0.0f64; bins];
+    let mut energy_coverage = 0.0f64;
+    for i in 0..R_GRID {
+        let r = (i as f64 + 0.5) * dr;
+        let (t_d, t_t) = config.species_temperatures_at(r);
+        let branches = config.proton_spectrum_branches(t_d, t_t)?;
+        let cell_mass: f64 = cell_weights[i * THETA_GRID..(i + 1) * THETA_GRID]
+            .iter()
+            .sum();
+        for (b, mass) in energy_m.iter_mut().enumerate() {
+            let lo = energy_lo + b as f64 * de;
+            let hi = lo + de;
+            // Sub-branch-mixture bin probability: Σ w_b · [Φ(hi; μ_b, σ_b) −
+            // Φ(lo; μ_b, σ_b)] (the monoenergetic arm per sub-branch).
+            let mut p = 0.0;
+            for &(weight, mu, sigma) in &branches {
+                let pb = if sigma > 0.0 {
+                    crate::spectrum::normal_cdf((hi - mu) / sigma)
+                        - crate::spectrum::normal_cdf((lo - mu) / sigma)
+                } else if lo < mu && mu <= hi {
+                    1.0
+                } else {
+                    0.0
+                };
+                p += weight * pb;
+            }
+            *mass += cell_mass * p;
+        }
+        let mut covered = 0.0;
+        for &(weight, mu, sigma) in &branches {
+            let cb = if sigma > 0.0 {
+                crate::spectrum::normal_cdf((energy_hi - mu) / sigma)
+                    - crate::spectrum::normal_cdf((energy_lo - mu) / sigma)
+            } else {
+                1.0
+            };
+            covered += weight * cb;
+        }
+        energy_coverage += cell_mass * covered;
+    }
+    energy_coverage /= total;
+    let energy_centers: Vec<f64> = (0..bins)
+        .map(|b| energy_lo + (b as f64 + 0.5) * de)
+        .collect();
+    let energy_masses: Vec<f64> = energy_m.iter().map(|m| m / total).collect();
+
+    // Toroidal-angle marginal: the birth angle is uniform over the sector
+    // (module rustdoc), so the marginal is exact, not sampled — bin centers
+    // over [start, start + rotation) with equal masses. The full torus
+    // carries no marginal (the proton card keeps the neutron card shape).
     let toroidal = match config.sector {
         Some(sector) if !sector.is_full_rotation() => {
             let width = sector.rotation_angle / bins as f64;
@@ -2894,6 +3294,232 @@ pub(crate) mod tests {
             matches!(c.total_strength(), Err(Error::InvalidProfile(_))),
             "{:?}",
             c.total_strength()
+        );
+    }
+
+    // --- G-proton: D(d,p)T proton branches, sampler, recovery anchors ---
+
+    #[test]
+    fn proton_branch_spectra_follow_dd_temperatures() {
+        // Brysk-Gaussian branches at the D-D temperatures: single-fuel D-D
+        // and any no-tail mixture carry one line at T_D; the tail expands
+        // to the three D-D sub-lines at T_D / T_mix / T_tail.
+        let flat = flat_config(1.85, 0.0, 0.0);
+        let (mu, sigma) = crate::reaction::proton_moments_mev(20.0).unwrap();
+        let mut dd = flat;
+        dd.fuel = FusionReaction::Dd;
+        assert_eq!(
+            dd.proton_spectrum_branches(20.0, 30.0).unwrap(),
+            vec![(1.0, mu, sigma)]
+        );
+        let mut blend = flat;
+        blend.fuel_mixture = Some(FuelMixture::new(0.7, 0.3).unwrap());
+        assert_eq!(
+            blend.proton_spectrum_branches(20.0, 30.0).unwrap(),
+            vec![(1.0, mu, sigma)]
+        );
+        // Tau case: the proton arm ignores T_T (D-D reacts at T_D).
+        assert_eq!(
+            blend.proton_spectrum_branches(20.0, 99.0).unwrap(),
+            blend.proton_spectrum_branches(20.0, 30.0).unwrap()
+        );
+        // With a tail: three sub-lines, weights = the D-D sub-rate rule,
+        // each on its own sub-pair temperature.
+        let mut tail = flat;
+        tail.fuel_mixture = Some(FuelMixture::new(0.7, 0.3).unwrap());
+        tail.tail = Some(DeuteriumTail::new(0.05, 60.0).unwrap());
+        let branches = tail.proton_spectrum_branches(20.0, 30.0).unwrap();
+        assert_eq!(branches.len(), 3);
+        let t_mix = 0.5 * (20.0 + 60.0);
+        let k_dd = FuelMixture::new(0.7, 0.3).unwrap().branch_weights().1;
+        let sv = |t| FusionReaction::Dd.reactivity_m3_per_s(t).unwrap();
+        let subs = [
+            k_dd * 0.95 * 0.95 * sv(20.0),
+            k_dd * 2.0 * 0.05 * 0.95 * sv(t_mix),
+            k_dd * 0.05 * 0.05 * sv(60.0),
+        ];
+        let total: f64 = subs.iter().sum();
+        for (i, (branch, ti)) in branches.iter().zip([20.0, t_mix, 60.0]).enumerate() {
+            let (w, m, s) = *branch;
+            let want = subs[i] / total;
+            assert!((w - want).abs() < 1e-12, "sub weight {w} vs {want}");
+            let (want_mu, want_sigma) = crate::reaction::proton_moments_mev(ti).unwrap();
+            assert_eq!((m, s), (want_mu, want_sigma));
+        }
+        let sum: f64 = branches.iter().map(|b| b.0).sum();
+        assert!((sum - 1.0).abs() < 1e-12);
+        // Axis proton summary: nominal 3.02, single-line mean/sigma (the
+        // mixture-variance round trip is exact only up to last-ulp).
+        let (nominal, mean, std) = blend.axis_proton_spectrum_summary().unwrap();
+        assert_eq!(nominal, 3.02);
+        assert!(
+            (mean - mu).abs() < 1e-12 && (std - sigma).abs() < 1e-12,
+            "{mean} {std}"
+        );
+    }
+
+    #[test]
+    fn proton_dt_only_is_loud() {
+        let flat = flat_config(1.85, 0.0, 0.0);
+        // Single-fuel D-T: loud at the sampler, the branches, the summary,
+        // and the histograms — never a degenerate line.
+        assert_eq!(
+            ParametricProtonSampler::new(flat, 7).map(|_| ()),
+            Err(Error::NotYetSupported("proton sampling needs a D-D source"))
+        );
+        assert_eq!(
+            flat.proton_spectrum_branches(20.0, 20.0),
+            Err(Error::NotYetSupported("proton sampling needs a D-D source"))
+        );
+        assert_eq!(
+            flat.axis_proton_spectrum_summary(),
+            Err(Error::NotYetSupported("proton sampling needs a D-D source"))
+        );
+        assert_eq!(
+            proton_emission_histograms(&flat, 15),
+            Err(Error::NotYetSupported("proton sampling needs a D-D source"))
+        );
+        // Pure-tritium mixture makes no D-D protons: loud, like sampling.
+        let mut pure_t = flat;
+        pure_t.fuel_mixture = Some(FuelMixture::new(0.0, 1.0).unwrap());
+        assert_eq!(
+            ParametricProtonSampler::new(pure_t, 7).map(|_| ()),
+            Err(Error::NotYetSupported("proton sampling needs a D-D source"))
+        );
+        // The neutron sampler on the same single-fuel D-T config is
+        // unaffected (loud protons never move neutron paths).
+        assert!(ParametricSampler::new(flat, 7).is_ok());
+    }
+
+    #[test]
+    fn proton_sampler_moments_match_brysk_line_at_8_sigma() {
+        // Flat D-D plasma at T_i = 20 keV: the proton stream sits on the
+        // Brysk line (3.02, 0.173782) MeV at 8 standard errors, tagged
+        // Proton with the config weight.
+        let mut config = flat_config(1.85, 0.0, 0.0);
+        config.fuel = FusionReaction::Dd;
+        let mut sampler = ParametricProtonSampler::new(config, 7).unwrap();
+        let particles = sampler.sample_n(N);
+        assert!(particles.iter().all(|p| p.species == ParticleId::Proton));
+        assert!(particles.iter().all(|p| p.weight == 1.0));
+        let (mu, sigma) = crate::reaction::proton_moments_mev(20.0).unwrap();
+        let mean: f64 = particles.iter().map(|p| p.energy_mev).sum::<f64>() / N as f64;
+        let se = sigma / (N as f64).sqrt();
+        assert!((mean - mu).abs() < 8.0 * se, "<E> {mean} vs {mu} ± {se}");
+        // Deterministic per seed, independent from the neutron stream: a
+        // neutron sampler with the same seed reproduces its landed stream
+        // whether or not the proton sampler ran.
+        let a = ParametricProtonSampler::new(config, 31)
+            .unwrap()
+            .sample_n(256);
+        let b = ParametricProtonSampler::new(config, 31)
+            .unwrap()
+            .sample_n(256);
+        assert_eq!(a, b);
+        let neutron = ParametricSampler::new(config, 31).unwrap().sample_n(256);
+        let neutron_again = ParametricSampler::new(config, 31).unwrap().sample_n(256);
+        assert_eq!(neutron, neutron_again);
+    }
+
+    #[test]
+    fn eta_zero_proton_stream_equals_no_tail_proton_stream() {
+        // η = 0 proton recovery anchor: no roulette, single D-D line —
+        // the stream is bit-for-bit the no-tail proton stream.
+        let mut base = flat_config(1.85, 0.0, 0.0);
+        base.fuel_mixture = Some(FuelMixture::new(0.7, 0.3).unwrap());
+        let mut zero = base;
+        zero.tail = Some(DeuteriumTail::new(0.0, 60.0).unwrap());
+        let a = ParametricProtonSampler::new(base, 17)
+            .unwrap()
+            .sample_n(256);
+        let b = ParametricProtonSampler::new(zero, 17)
+            .unwrap()
+            .sample_n(256);
+        assert_eq!(a, b);
+        assert_eq!(
+            proton_emission_histograms(&zero, 15).unwrap(),
+            proton_emission_histograms(&base, 15).unwrap()
+        );
+    }
+
+    #[test]
+    fn equal_species_proton_stream_equals_shared_t_proton_stream() {
+        // Equal pair (T, T) proton recovery anchor: the proton reacts at
+        // T_D, so the stream is bit-for-bit the shared-T proton stream.
+        let mut base = flat_config(1.85, 0.0, 0.0);
+        base.fuel_mixture = Some(FuelMixture::new(0.7, 0.3).unwrap());
+        let mut pair = base;
+        pair.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 20.0).unwrap());
+        let a = ParametricProtonSampler::new(base, 17)
+            .unwrap()
+            .sample_n(256);
+        let b = ParametricProtonSampler::new(pair, 17)
+            .unwrap()
+            .sample_n(256);
+        assert_eq!(a, b);
+        // A distinct pair moves the proton line to T_D, not T_T.
+        let mut distinct = base;
+        distinct.species_temperatures = Some(SpeciesIonTemperatures::new(30.0, 20.0).unwrap());
+        let (nominal, mean, sigma) = distinct.axis_proton_spectrum_summary().unwrap();
+        let (want_mu, want_sigma) = crate::reaction::proton_moments_mev(30.0).unwrap();
+        assert_eq!(nominal, 3.02);
+        assert!(
+            (mean - want_mu).abs() < 1e-12 && (sigma - want_sigma).abs() < 1e-12,
+            "{mean} {sigma}"
+        );
+    }
+
+    #[test]
+    fn exact_two_pi_proton_stream_equals_full_torus() {
+        // Full-rotation proton recovery anchor: same kernel, same stream,
+        // same histograms as the full torus.
+        let full = flat_config(1.85, 0.0, 0.0);
+        let mut sector = full;
+        sector.fuel = FusionReaction::Dd;
+        let mut full_dd = full;
+        full_dd.fuel = FusionReaction::Dd;
+        sector.sector = Some(ToroidalSector::new(0.0, 2.0 * PI).unwrap());
+        let a = ParametricProtonSampler::new(full_dd, 17)
+            .unwrap()
+            .sample_n(256);
+        let b = ParametricProtonSampler::new(sector, 17)
+            .unwrap()
+            .sample_n(256);
+        assert_eq!(a, b);
+        assert_eq!(
+            proton_emission_histograms(&sector, 15).unwrap(),
+            proton_emission_histograms(&full_dd, 15).unwrap()
+        );
+    }
+
+    #[test]
+    fn proton_histograms_cover_proton_line() {
+        // Flat D-D plasma: the proton energy marginal sits on the 3.02 MeV
+        // line with the +/−4σ truncation coverage, spatial marginals
+        // normalized; D-T-only stays loud (covered above).
+        let mut config = flat_config(1.85, 0.0, 0.0);
+        config.fuel = FusionReaction::Dd;
+        let hist = proton_emission_histograms(&config, 21).unwrap();
+        let radial_sum: f64 = hist.radial.masses.iter().sum();
+        assert!((radial_sum - 1.0).abs() < 1e-12);
+        let energy_sum: f64 = hist.energy.masses.iter().sum();
+        assert!(
+            (energy_sum - hist.energy_coverage).abs() < 1e-12,
+            "energy {energy_sum}"
+        );
+        assert!(hist.energy_coverage > 0.999);
+        // The energy marginal is centered on the 3.02 MeV line.
+        let mean: f64 = hist
+            .energy
+            .masses
+            .iter()
+            .zip(&hist.energy.centers)
+            .map(|(m, c)| m * c)
+            .sum::<f64>();
+        assert!(
+            (mean / energy_sum - 3.02).abs() < 0.02,
+            "proton marginal mean {}",
+            mean / energy_sum
         );
     }
 }
