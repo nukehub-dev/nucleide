@@ -67,11 +67,19 @@ the optional ``species_temperatures`` pair reacts every node at ``(T_D, T_T)``
 mixture the D-T arm reacts at ``T_DT`` and the D-D arm at ``T_D``, and on a
 single-fuel config the same pair rule applies (single-fuel D-T at ``T_DT``,
 single-fuel D-D at ``T_D``). A uniform ``T_D = T_T`` pair reproduces the
-shared-temperature kernel exactly. The optional ``field_periods``/``base_angle`` pair declares
+shared-temperature kernel exactly. An optional ``deuterium_tail`` dict
+``{"fraction": eta, "temperature_kev": T_tail}`` splits the deuterium at every
+node into a bulk ``(1 − eta)`` at the node ``T_D`` and a hot tail ``eta`` at
+the global ``T_tail`` [keV] — the same single-tail-temperature rule as the
+parametric kind, applied per node (D-T at ``T_DT``/``T_DTt``, D-D at
+``T_D``/``T_mix``/``T_tail``, per-node Ballabio lines and card marginals);
+``eta = 0`` reproduces the no-tail lattice kernel exactly and the tail needs
+a ``fuel`` dict. The optional ``field_periods``/``base_angle`` pair declares
 field-period symmetry (both or neither; ``field_periods >= 1``): the points
 are the base-sector cloud, replicated uniformly around the axis. Cards carry
 the cloud's cylindrical-``R``/vertical/energy marginals with drift rows plus
-a ``lattice discretization`` row. ``proton_accounting`` reports the D-D branch
+a ``lattice discretization`` row (and a ``deuterium tail`` row with a nonzero
+tail). ``proton_accounting`` reports the D-D branch
 share of the caller rates (a pure-tritium lattice still carries caller neutron
 strength, unlike the reactivity-derived parametric kernel).
 """
@@ -126,6 +134,10 @@ def particles(spec: dict[str, Any], n: int, seed: int) -> dict[str, Any]:
     ``species_temperatures`` dict ``{"D": T_D, "T": T_T}`` [keV] for distinct
     species temperatures (both keys; single-fuel D-T reacts at ``T_DT``,
     single-fuel D-D at ``T_D``, mixtures at the same pair temperatures), plus
+    the optional ``deuterium_tail`` dict ``{"fraction": eta,
+    "temperature_kev": T_tail}`` for the deuterium hot-tail fraction on a
+    mixture (both keys; requires ``fuel``; one global tail applied per node
+    that takes the node temperature as the bulk ``T_D``), plus
     the optional ``field_periods``/``base_angle`` symmetry pair (both or
     neither). All kinds take the optional ``species`` key — ``"neutron"``
     (the default) or ``"proton"`` (the independent D(d,p)T proton stream on
@@ -159,9 +171,11 @@ def emit_source_cards(spec: dict[str, Any], bins: int = 21) -> dict[str, Any]:
     through ``nucleide.mcnp.parse_sdef``
     byte-identically; Serpent drift rows are analytic by design. Parametric
     cards carry the radial/vertical/energy *marginals* as histograms (plus a
-    uniform toroidal-angle marginal for a partial sector); lattice cards
+    uniform toroidal-angle marginal for a partial sector and a deuterium-tail
+    drift row with a nonzero hot tail); lattice cards
     carry the cloud's cylindrical-``R``/vertical/energy marginals plus a
-    ``lattice discretization`` row; the
+    ``lattice discretization`` row (and a ``deuterium tail`` row with a
+    nonzero hot tail); the
     drift rows quantify the tabulation truncation and the joint-correlation
     information a product-form card cannot carry.
     """

@@ -6128,9 +6128,16 @@ struct LatticePointJson {
 ///
 /// `spec` takes `points` (one `{positionCm: [x, y, z], rate, tiKev}` row per
 /// node, lengths in cm, temperatures in keV), `reaction` (`"dt"`/`"dd"`),
+/// optional `fuelDeuterium` + `fuelTritium` (both or neither; a D/T mixture
+/// through the same Eriksson/DRESS rate rule per node, then `reaction` is
+/// optional and unused),
 /// optional `fieldPeriods`/`baseAngle` symmetry, optional
 /// `speciesDeuteriumKev` + `speciesTritiumKev` (both or neither; single-fuel
-/// D-T reacts at the mass-weighted `T_DT`, D-D at `T_D`), `n` (capped at
+/// D-T reacts at the mass-weighted `T_DT`, D-D at `T_D`), optional
+/// `tailFraction` + `tailTempKev` (both or neither; one global deuterium
+/// hot-tail fraction applied per node with the node temperature as the bulk
+/// `T_D`, needs the fuel mixture, `eta = 0` recovers the no-tail kernel),
+/// `n` (capped at
 /// [`MAX_FUSION_SAMPLES`]) and an integer `seed`. Returns `{kind:
 /// "lattice", totalStrength, count, particles}` with one `{positionCm,
 /// direction, energyMeV, weight, species}` row per particle. Lattice
@@ -6147,7 +6154,7 @@ pub fn sample_lattice_source(spec: JsValue) -> Result<JsValue, JsValue> {
     #[derive(Deserialize)]
     struct LatticeSpecJson {
         points: Vec<LatticePointJson>,
-        reaction: String,
+        reaction: Option<String>,
         #[serde(rename = "fieldPeriods")]
         field_periods: Option<f64>,
         #[serde(rename = "baseAngle")]
@@ -6156,6 +6163,14 @@ pub fn sample_lattice_source(spec: JsValue) -> Result<JsValue, JsValue> {
         species_deuterium_kev: Option<f64>,
         #[serde(rename = "speciesTritiumKev")]
         species_tritium_kev: Option<f64>,
+        #[serde(rename = "fuelDeuterium")]
+        fuel_deuterium: Option<f64>,
+        #[serde(rename = "fuelTritium")]
+        fuel_tritium: Option<f64>,
+        #[serde(rename = "tailFraction")]
+        tail_fraction: Option<f64>,
+        #[serde(rename = "tailTempKev")]
+        tail_temp_kev: Option<f64>,
     }
     let parsed: LatticeSpecJson = serde_wasm_bindgen::from_value(spec.clone()).map_err(js_err)?;
     if parsed.points.is_empty() {
@@ -6195,11 +6210,48 @@ pub fn sample_lattice_source(spec: JsValue) -> Result<JsValue, JsValue> {
             ));
         }
     };
+    // D/T fuel mixture per node: both fractions or neither (the core
+    // FuelMixture::new carries the loud fraction errors); with a mixture the
+    // `reaction` key is optional and unused.
+    let fuel_mixture = match (parsed.fuel_deuterium, parsed.fuel_tritium) {
+        (Some(d), Some(t)) => Some(nucleide_plasma_source::FuelMixture::new(d, t).map_err(js_err)?),
+        (None, None) => None,
+        _ => {
+            return Err(js_err(
+                "fuelDeuterium and fuelTritium must be given together",
+            ));
+        }
+    };
+    // One global deuterium hot-tail fraction applied per node (node
+    // temperature stays the bulk T_D): both keys or neither, needs the fuel
+    // mixture (the core carries the loud scope error as well).
+    let tail = match (parsed.tail_fraction, parsed.tail_temp_kev) {
+        (Some(f), Some(t)) => {
+            if fuel_mixture.is_none() {
+                return Err(js_err(
+                    "tailFraction/tailTempKev need a D/T fuel mixture (fuelDeuterium + fuelTritium)",
+                ));
+            }
+            Some(nucleide_plasma_source::DeuteriumTail::new(f, t).map_err(js_err)?)
+        }
+        (None, None) => None,
+        _ => {
+            return Err(js_err(
+                "tailFraction and tailTempKev must be given together",
+            ));
+        }
+    };
+    let reaction = match &parsed.reaction {
+        Some(name) => parse_fusion_reaction(name)?,
+        None if fuel_mixture.is_some() => nucleide_plasma_source::FusionReaction::Dt,
+        None => return Err(js_err("lattice spec missing `reaction`")),
+    };
     let config = LatticeSourceConfig {
         points,
-        reaction: parse_fusion_reaction(&parsed.reaction)?,
-        fuel_mixture: None,
+        reaction,
+        fuel_mixture,
         species_temperatures,
+        tail,
         symmetry,
         weight: 1.0,
     };

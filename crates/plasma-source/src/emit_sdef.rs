@@ -506,7 +506,9 @@ pub fn emit_sdef_parametric_proton(
 /// rate-weighted marginal energy spectrum) — the same product-form shape as
 /// [`emit_sdef_parametric`]. The drift report quantifies the truncation, the
 /// joint-correlation information the card cannot carry, and the lattice
-/// discretization itself (node count, total rate, symmetry spelling); the
+/// discretization itself (node count, total rate, symmetry spelling), plus
+/// a `deuterium tail` row with a nonzero hot tail (the tail sub-lines
+/// folded into the energy marginal, with the rate-weighted tail share); the
 /// card round-trips byte-identically through the typed reader.
 pub fn emit_sdef_lattice(
     config: &crate::lattice::LatticeSourceConfig,
@@ -585,6 +587,24 @@ pub fn emit_sdef_lattice(
             hist.node_count, hist.total_rate,
         ),
     ));
+    if let Some(tail) = &config.tail {
+        if tail.fraction > 0.0 {
+            let share = config.total_tail_strength().unwrap_or(f64::NAN)
+                / config.total_strength().unwrap_or(f64::NAN);
+            report.push(DriftRow::new(
+                "deuterium tail",
+                1.0,
+                true,
+                format!(
+                    "deuterium hot-tail fraction {:.6} at {:.6} keV folded into the \
+                     marginal energy spectrum as Ballabio sub-lines \
+                     (effective-temperature convention); tail neutron share of the \
+                     rate-weighted cloud = {:.6}",
+                    tail.fraction, tail.temperature_kev, share,
+                ),
+            ));
+        }
+    }
     Ok(EmittedCard {
         text,
         drift: report,
@@ -826,6 +846,44 @@ mod tests {
         let mut bad = config;
         bad.points[0].rate = -1.0;
         assert!(emit_sdef_lattice(&bad, 5, 8).is_err());
+    }
+
+    #[test]
+    fn lattice_tail_card_carries_tail_drift_row() {
+        let config = crate::lattice::tests::tail_lattice();
+        let card = emit_sdef_lattice(&config, 5, 15).unwrap();
+        card.verify_round_trip().unwrap();
+        let quantities: Vec<&str> = card
+            .drift
+            .rows
+            .iter()
+            .map(|row| row.quantity.as_str())
+            .collect();
+        assert_eq!(
+            quantities,
+            [
+                "emission probability",
+                "spatial marginals",
+                "joint correlation",
+                "lattice discretization",
+                "deuterium tail"
+            ]
+        );
+        let tail_row = &card.drift.rows[4];
+        assert_eq!(tail_row.accounted, 1.0);
+        assert!(tail_row.reparsed);
+        assert!(tail_row.note.contains("0.050000"));
+        assert!(tail_row.note.contains("60.000000"));
+        assert!(tail_row.note.contains("rate-weighted cloud"));
+        // η = 0 emits no tail row: cards are the landed no-tail ones.
+        let mut base = config.clone();
+        base.tail = None;
+        let mut zero = config;
+        zero.tail = Some(crate::parametric::DeuteriumTail::new(0.0, 1.0e6).unwrap());
+        let a = emit_sdef_lattice(&base, 5, 15).unwrap();
+        let b = emit_sdef_lattice(&zero, 5, 15).unwrap();
+        assert_eq!(a.text, b.text);
+        assert_eq!(a.drift, b.drift);
     }
 
     #[test]

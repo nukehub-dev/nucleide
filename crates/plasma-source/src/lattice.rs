@@ -33,7 +33,14 @@
 //! rate rule as the parametric source (per-point branch roulette), and a
 //! uniform [`SpeciesIonTemperatures`] pair reacts every node at
 //! `(T_D, T_T)` exactly like the parametric pair rule (equal-T recovery is
-//! bit-for-bit, see below).
+//! bit-for-bit, see below). An optional [`DeuteriumTail`] applies the
+//! parametric hot-tail rule per node with one global `(η, T_tail)` — each
+//! node splits its deuterium into bulk `(1 − η)` at the node `T_D` and tail
+//! `η` at the global `T_tail`, reacting at the sub-pair temperatures through
+//! the same five-branch roulette and card marginals (see the tail section
+//! below). The node ion temperature stays the bulk `T_D` per node; a
+//! per-node `η` dictionary stays out (the global spelling keeps the draw
+//! accounting identical to the parametric kernel).
 //!
 //! # Single-fuel species pair (solo port)
 //!
@@ -64,6 +71,67 @@
 //! A = (300, 0, 25) rate 2, B = (−300, 0, 25) rate 1: total = 3.0 exactly;
 //! mean birth position = (100, 0, 25); mean energy = 14.021 MeV exactly.
 //! ```
+//!
+//! # Deuterium hot tail (lattice port)
+//!
+//! [`DeuteriumTail`] mirrors the parametric mixture-v3 rule per node with one
+//! global pair `(η, T_tail)` (uniform scalars, flat in node index — there is
+//! no per-node `η` spelling): node deuterium splits into bulk `(1 − η)` at
+//! the node bulk `T_D` (the node `ion_temperature_kev`, or the pair `T_D`
+//! when [`SpeciesIonTemperatures`] is set) and tail `η` at the global
+//! `T_tail`, while tritium stays Maxwellian at `T_T` (the node temperature
+//! twice when the pair is `None`, else the pair `T_T`). Each node then
+//! carries the five bulk/tail sub-branches at their own mass-weighted
+//! relative temperatures, exactly as [`crate::parametric`] routes them:
+//!
+//! ```text
+//! S_node = k_DT·[(1−η)·⟨σv⟩_DT(T_DT) + η·⟨σv⟩_DT(T_DTt)]
+//!        + k_DD·[(1−η)²·⟨σv⟩_DD(T_D) + 2η(1−η)·⟨σv⟩_DD(T_mix) + η²·⟨σv⟩_DD(T_tail)]
+//! T_DT   = T_D + (2/5)·(T_T − T_D)          (bulk D–T)
+//! T_DTt  = T_tail + (2/5)·(T_T − T_tail)    (tail D–T)
+//! T_mix  = (T_D + T_tail)/2                 (bulk–tail D–D cross pair)
+//! ```
+//!
+//! Lattice node rates are caller birth-rate weights (not `n²·⟨σv⟩`), so the
+//! sub-rate rule sets the per-node spectrum-branch weights
+//! `w_sub / Σ w_sub`; the sampler's one-per-particle roulette draws against
+//! those five weights (one draw on the mixture path, tail or no tail, so the
+//! no-tail stream is preserved), the card energy marginal folds the five
+//! Ballabio lines, and the drift report carries a `deuterium tail` row with
+//! the rate-weighted tail share ([`LatticeSourceConfig::total_tail_strength`]
+//! over [`LatticeSourceConfig::total_strength`], mirroring the parametric
+//! card-drift input). The tail requires a [`FuelMixture`] (a single-fuel
+//! lattice with the tail set is a loud [`Error::NotYetSupported`], the same
+//! loud boundary as parametric).
+//!
+//! Hand vectors (70/30 blend, `T_D = 20` keV, `T_T = 30` keV, `η = 0.05`,
+//! `T_tail = 60` keV; `T_DT = 24.0`, `T_DTt = 48.0`, `T_mix = 40.0` keV
+//! exactly, pinned reactivities `⟨σv⟩_DT(24) = 5.414667327922193e-22`,
+//! `⟨σv⟩_DT(48) = 8.557148874535018e-22`, `⟨σv⟩_DD(20) = 2.602582958721524e-24`,
+//! `⟨σv⟩_DD(40) = 8.234915801644433e-24`, `⟨σv⟩_DD(60) = 1.4470008265609934e-23`
+//! m³/s): the sub-rate weights (× `n²`, parametric flat-profile units) are
+//! DT bulk `1.080226e-22`, DT tail `8.985006e-24`, DD bulk `5.754636e-25`,
+//! DD cross `1.916677e-25`, DD tail `8.862880e-27`, with
+//! `S_DT = 1170076195103.095`, `S_DD = 7759941698.06273`,
+//! `S = 1177836136801.1577` at `n = 1e20` m⁻³ (the parametric flat-profile
+//! gate; the lattice branch weights are the same sub-rates normalized) and
+//! tail neutron share `≈ 0.078`. Per-branch Ballabio lines (mean / sigma,
+//! MeV): D-T bulk (24 keV) 14.077934372230146 / 0.3700390508551786,
+//! D-T tail (48 keV) 14.104551866140476 / 0.5241295764702804,
+//! D-D bulk (20 keV) 2.507372988… / 0.160384038…,
+//! D-D cross (40 keV) 2.553611770233373 / 0.230910499…,
+//! D-D tail (60 keV) 2.5984132221035106 / 0.287597721…
+//! (full decimals pinned in the `tail_lattice_hand_vectors` test;
+//! digit-truncated here so rustdoc stays readable).
+//!
+//! Exact recovery anchor (regression gate): `η = 0` reproduces the no-tail
+//! lattice kernel bit-for-bit — [`LatticeSourceConfig::total_strength`],
+//! [`LatticeSourceConfig::total_dd_strength`],
+//! [`LatticeSourceConfig::mean_birth_energy`], the sampled stream, and the
+//! emitted cards — because the `η == 0` path takes the landed two-branch
+//! expression tree verbatim and skips the tail reactivity evaluations, so
+//! any in-range `T_tail` spelling recovers (test vector `1e6` keV). No new
+//! RNG draws on the no-tail path.
 //!
 //! # Symmetry reduction
 //!
@@ -111,6 +179,9 @@
 //!   kernel bit-for-bit (stream and cards), the parametric spelling — with
 //!   a fuel mixture, and (solo port) on a single-fuel config whose nodes
 //!   sit at `Ti = T`.
+//! - Zero tail fraction `η = 0` reproduces the no-tail lattice kernel
+//!   bit-for-bit (strengths, stream, cards), for any in-range `T_tail`
+//!   spelling (the tail section above).
 //!
 //! # Card emission
 //!
@@ -120,7 +191,10 @@
 //! histogram over `[0, R_max]`, vertical histogram over the cloud `z` span,
 //! global rate-weighted marginal energy spectrum — with the same drift rows
 //! (energy coverage, spatial marginals, joint correlation) plus a `lattice`
-//! row (node count, total rate, symmetry spelling). The `(R, z, E)`
+//! row (node count, total rate, symmetry spelling) and, with a nonzero hot
+//! tail, a `deuterium tail` row (the parametric spelling: the tail sub-lines
+//! folded into the energy marginal, with the rate-weighted tail share). The
+//! `(R, z, E)`
 //! correlation the card drops is quantified, never hidden.
 //!
 //! Loud boundary ([`Error::NotYetSupported`]): everything the parametric
@@ -128,9 +202,9 @@
 //! per-node proton *rate* is accounted through the D-D branch share like
 //! the parametric bookkeeping (`total_dd_strength`), while the lattice
 //! sampler and cards stay neutron-only; parametric/ring-point proton
-//! transport IS supported — non-Maxwellian tails beyond the parametric
-//! deuterium hot-tail fraction — [`crate::parametric::DeuteriumTail`] is
-//! parametric-only, there is no tail spelling on lattice configs —
+//! transport IS supported — non-Maxwellian tails beyond the one pinned
+//! deuterium hot-tail fraction — [`crate::parametric::DeuteriumTail`] is now
+//! spelled on lattice configs too (the global per-node rule above) —
 //! equilibrium solving, CAD/DAGMC) stays deferred here. No HDF5,
 //! no vendored data, no equilibrium-file consumption.
 //!
@@ -141,7 +215,7 @@ use std::f64::consts::PI;
 
 use nucleide_nuclei::particles::ParticleId;
 
-use crate::parametric::{FuelMixture, SpeciesIonTemperatures};
+use crate::parametric::{DeuteriumTail, FuelMixture, SpeciesIonTemperatures};
 use crate::sample::{Particle, Rng};
 use crate::{BinnedDistribution, Error, FusionReaction, Result};
 
@@ -264,6 +338,13 @@ pub struct LatticeSourceConfig {
     /// per branch; node temperatures are then unused for rate and spectrum,
     /// still validated).
     pub species_temperatures: Option<SpeciesIonTemperatures>,
+    /// Optional deuterium hot-tail fraction (the parametric hot-tail rule,
+    /// applied per node with one global `(η, T_tail)` — node ion temperature
+    /// stays the bulk `T_D` per node). `None` — the default — keeps the
+    /// landed mixture kernels bit-for-bit. When set, a fuel mixture is
+    /// required; it composes with [`Self::species_temperatures`] (`T_D`/`T_T`
+    /// from the pair when set, else the node temperature twice).
+    pub tail: Option<DeuteriumTail>,
     /// Optional field-period symmetry (module rustdoc).
     pub symmetry: Option<LatticeSymmetry>,
     /// Particle weight carried by the sampler and the emitted cards.
@@ -286,6 +367,14 @@ impl LatticeSourceConfig {
         }
         if let Some(pair) = &self.species_temperatures {
             pair.validate()?;
+        }
+        if let Some(tail) = &self.tail {
+            tail.validate()?;
+            if self.fuel_mixture.is_none() {
+                return Err(Error::NotYetSupported(
+                    "a deuterium hot tail needs a D/T fuel mixture",
+                ));
+            }
         }
         if let Some(symmetry) = &self.symmetry {
             symmetry.validate()?;
@@ -334,7 +423,11 @@ impl LatticeSourceConfig {
     /// — the landed call verbatim — or at the landed pair temperature when
     /// the pair is set: D-T at `T_DT`, D-D at `t_d`; mixture → D-T at the
     /// pair effective temperature and D-D at `t_d`, degenerating to the D-T
-    /// line where both reactivities vanish).
+    /// line where both reactivities vanish). A [`DeuteriumTail`] expands the
+    /// mixture to bulk/tail sub-branches — D-T at `T_DT`/`T_DTt`, D-D at
+    /// `T_D`/`T_mix`/`T_tail` — weighted by the sub-rate rule (module
+    /// rustdoc); `η == 0` returns the landed two-branch vector verbatim
+    /// (bit-for-bit recovery).
     pub fn spectrum_branches(
         &self,
         t_d: f64,
@@ -359,20 +452,59 @@ impl LatticeSourceConfig {
             Some(mixture) => {
                 let t_eff = SpeciesIonTemperatures::dt_effective_kev(t_d, t_t);
                 let (k_dt, k_dd) = mixture.branch_weights();
+                let tail_eta = self.tail.map(|tail| tail.fraction).unwrap_or(0.0);
+                if tail_eta == 0.0 {
+                    let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(t_eff)?;
+                    let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(t_d)?;
+                    let w_dt = k_dt * sv_dt;
+                    let w_dd = k_dd * sv_dd;
+                    let (mu_dt, sigma_dt) = FusionReaction::Dt.moments_mev(t_eff)?;
+                    if w_dt + w_dd <= 0.0 {
+                        return Ok(vec![(FusionReaction::Dt, 1.0, mu_dt, sigma_dt)]);
+                    }
+                    let (mu_dd, sigma_dd) = FusionReaction::Dd.moments_mev(t_d)?;
+                    let p_dt = w_dt / (w_dt + w_dd);
+                    return Ok(vec![
+                        (FusionReaction::Dt, p_dt, mu_dt, sigma_dt),
+                        (FusionReaction::Dd, 1.0 - p_dt, mu_dd, sigma_dd),
+                    ]);
+                }
+                let tail = self.tail.expect("tail fraction nonzero implies a tail");
+                let eta = tail.fraction;
+                let t_tail = tail.temperature_kev;
+                let t_eff_tail = SpeciesIonTemperatures::dt_effective_kev(t_tail, t_t);
+                let t_mix = 0.5 * (t_d + t_tail);
                 let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(t_eff)?;
+                let sv_dt_tail = FusionReaction::Dt.reactivity_m3_per_s(t_eff_tail)?;
                 let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(t_d)?;
-                let w_dt = k_dt * sv_dt;
-                let w_dd = k_dd * sv_dd;
+                let sv_dd_mix = FusionReaction::Dd.reactivity_m3_per_s(t_mix)?;
+                let sv_dd_tail = FusionReaction::Dd.reactivity_m3_per_s(t_tail)?;
+                let subs = [
+                    (FusionReaction::Dt, k_dt * (1.0 - eta) * sv_dt, t_eff),
+                    (FusionReaction::Dt, k_dt * eta * sv_dt_tail, t_eff_tail),
+                    (
+                        FusionReaction::Dd,
+                        k_dd * (1.0 - eta) * (1.0 - eta) * sv_dd,
+                        t_d,
+                    ),
+                    (
+                        FusionReaction::Dd,
+                        k_dd * 2.0 * eta * (1.0 - eta) * sv_dd_mix,
+                        t_mix,
+                    ),
+                    (FusionReaction::Dd, k_dd * eta * eta * sv_dd_tail, t_tail),
+                ];
+                let total: f64 = subs.iter().map(|s| s.1).sum();
                 let (mu_dt, sigma_dt) = FusionReaction::Dt.moments_mev(t_eff)?;
-                if w_dt + w_dd <= 0.0 {
+                if total <= 0.0 {
                     return Ok(vec![(FusionReaction::Dt, 1.0, mu_dt, sigma_dt)]);
                 }
-                let (mu_dd, sigma_dd) = FusionReaction::Dd.moments_mev(t_d)?;
-                let p_dt = w_dt / (w_dt + w_dd);
-                Ok(vec![
-                    (FusionReaction::Dt, p_dt, mu_dt, sigma_dt),
-                    (FusionReaction::Dd, 1.0 - p_dt, mu_dd, sigma_dd),
-                ])
+                let mut branches = Vec::with_capacity(subs.len());
+                for (reaction, weight, ti) in subs {
+                    let (mu, sigma) = reaction.moments_mev(ti)?;
+                    branches.push((reaction, weight / total, mu, sigma));
+                }
+                Ok(branches)
             }
         }
     }
@@ -380,6 +512,9 @@ impl LatticeSourceConfig {
     /// D-D neutron-branch share of one node's rate (the proton-accounting
     /// weight): `1` for single-fuel D-D, `0` for single-fuel D-T, the
     /// rate-rule D-D fraction for a mixture (cold nodes contribute `0`).
+    /// With a hot tail the D-D share is the sum of the three D-D sub-branch
+    /// weights (D-T tail excluded — the neutron sub-branches carry the
+    /// reaction label, so the sum is exact on every mixture spelling).
     fn dd_branch_share(&self, node_ti_kev: f64) -> Result<f64> {
         match &self.fuel_mixture {
             None => Ok(match self.reaction {
@@ -392,7 +527,11 @@ impl LatticeSourceConfig {
                 if branches.len() == 1 {
                     return Ok(0.0);
                 }
-                Ok(1.0 - branches[0].1)
+                Ok(branches
+                    .iter()
+                    .filter(|b| b.0 == FusionReaction::Dd)
+                    .map(|b| b.1)
+                    .sum())
             }
         }
     }
@@ -408,6 +547,37 @@ impl LatticeSourceConfig {
         }
         if !total.is_finite() {
             return Err(Error::InvalidLattice("lattice D-D branch total is empty"));
+        }
+        match &self.symmetry {
+            None => Ok(total),
+            Some(symmetry) => Ok(symmetry.copies() * total),
+        }
+    }
+
+    /// Total relative hot-tail neutron strength: the tail sub-branch share
+    /// of each node's rate (D-T tail plus D-D cross and tail-tail
+    /// sub-branches, the [`DeuteriumTail`] sub-rate rule), summed over the
+    /// cloud. Same relative-rate scale as [`Self::total_strength`], so the
+    /// tail share (`total_tail_strength / total_strength`) is the
+    /// rate-weighted tail fraction of the cloud; `0.0` without a tail or at
+    /// `η == 0`. Card-drift input only: the sampler and the strength kernel
+    /// never call it. Symmetry-aware like [`Self::total_strength`].
+    pub fn total_tail_strength(&self) -> Result<f64> {
+        self.validate()?;
+        if self.tail.is_none_or(|tail| tail.fraction == 0.0) {
+            return Ok(0.0);
+        }
+        let mut total = 0.0;
+        for point in &self.points {
+            let (t_d, t_t) = self.species_temperatures_at(point.ion_temperature_kev);
+            let branches = self.spectrum_branches(t_d, t_t)?;
+            if branches.len() == 5 {
+                let share = branches[1].1 + branches[3].1 + branches[4].1;
+                total += point.rate * share;
+            }
+        }
+        if !total.is_finite() {
+            return Err(Error::InvalidLattice("lattice tail branch total is empty"));
         }
         match &self.symmetry {
             None => Ok(total),
@@ -882,6 +1052,7 @@ pub(crate) mod tests {
             reaction: FusionReaction::Dt,
             fuel_mixture: None,
             species_temperatures: None,
+            tail: None,
             symmetry: None,
             weight: 1.0,
         }
@@ -903,6 +1074,27 @@ pub(crate) mod tests {
             reaction: FusionReaction::Dt,
             fuel_mixture: None,
             species_temperatures: None,
+            tail: None,
+            symmetry: None,
+            weight: 1.0,
+        }
+    }
+
+    /// Flat 70/30 blend with the pinned tail (η = 0.05 at T_tail = 60 keV —
+    /// the module rustdoc hand vector): single node at Ti = 20 keV with the
+    /// uniform pair (20, 30) keV, so the five sub-pair temperatures are
+    /// T_DT = 24, T_DTt = 48, T_mix = 40, T_D = 20, T_tail = 60 keV.
+    pub(crate) fn tail_lattice() -> LatticeSourceConfig {
+        LatticeSourceConfig {
+            points: vec![LatticePoint {
+                position_cm: [0.0, 0.0, 0.0],
+                rate: 1.0,
+                ion_temperature_kev: 20.0,
+            }],
+            reaction: FusionReaction::Dt,
+            fuel_mixture: Some(FuelMixture::new(0.7, 0.3).unwrap()),
+            species_temperatures: Some(SpeciesIonTemperatures::new(20.0, 30.0).unwrap()),
+            tail: Some(DeuteriumTail::new(0.05, 60.0).unwrap()),
             symmetry: None,
             weight: 1.0,
         }
@@ -928,6 +1120,7 @@ pub(crate) mod tests {
             reaction: FusionReaction::Dt,
             fuel_mixture: None,
             species_temperatures: None,
+            tail: None,
             symmetry: None,
             weight: 2.5,
         };
@@ -1019,6 +1212,7 @@ pub(crate) mod tests {
             reaction: FusionReaction::Dt,
             fuel_mixture: None,
             species_temperatures: None,
+            tail: None,
             symmetry: None,
             weight: 1.0,
         };
@@ -1097,6 +1291,7 @@ pub(crate) mod tests {
             reaction: FusionReaction::Dt,
             fuel_mixture: Some(FuelMixture::new(0.5, 0.5).unwrap()),
             species_temperatures: None,
+            tail: None,
             symmetry: None,
             weight: 1.0,
         };
@@ -1141,6 +1336,7 @@ pub(crate) mod tests {
             reaction: FusionReaction::Dt,
             fuel_mixture: None,
             species_temperatures: Some(SpeciesIonTemperatures::new(20.0, 30.0).unwrap()),
+            tail: None,
             symmetry: None,
             weight: 1.0,
         };
@@ -1192,6 +1388,7 @@ pub(crate) mod tests {
                 reaction,
                 fuel_mixture: None,
                 species_temperatures: None,
+                tail: None,
                 symmetry: None,
                 weight: 1.0,
             };
@@ -1237,6 +1434,7 @@ pub(crate) mod tests {
             reaction: FusionReaction::Dt,
             fuel_mixture: Some(FuelMixture::new(0.7, 0.3).unwrap()),
             species_temperatures: None,
+            tail: None,
             symmetry: None,
             weight: 1.0,
         };
@@ -1252,6 +1450,7 @@ pub(crate) mod tests {
             reaction: FusionReaction::Dt,
             fuel_mixture: None,
             species_temperatures: None,
+            tail: None,
             symmetry: None,
             weight: 1.0,
         };
@@ -1320,6 +1519,310 @@ pub(crate) mod tests {
             nan_pair.validate(),
             Err(Error::NonFinite("deuterium ion temperature"))
         );
+    }
+
+    #[test]
+    fn tail_lattice_hand_vectors() {
+        // T_DT/T_DTt/T_mix exact (parametric hand vectors, ported verbatim).
+        assert_eq!(SpeciesIonTemperatures::dt_effective_kev(20.0, 30.0), 24.0);
+        assert_eq!(SpeciesIonTemperatures::dt_effective_kev(60.0, 30.0), 48.0);
+        assert_eq!(0.5 * (20.0 + 60.0), 40.0);
+        // Pinned reactivities at the five sub-pair temperatures (m³/s).
+        // D-T(24) is the exact solo-port anchor; the rest are pinned at
+        // transcription precision (1e-12) — the brief's decimals round the
+        // last ulp (e.g. ⟨σv⟩_DD(20) = 2.602582958721524e-24 vs the fitted
+        // 2.6025829587215236e-24).
+        assert_eq!(
+            FusionReaction::Dt.reactivity_m3_per_s(24.0).unwrap(),
+            5.414667327922193e-22
+        );
+        for (reaction, ti, want) in [
+            (FusionReaction::Dt, 48.0, 8.557148874535018e-22),
+            (FusionReaction::Dd, 20.0, 2.602582958721524e-24),
+            (FusionReaction::Dd, 40.0, 8.234915801644433e-24),
+            (FusionReaction::Dd, 60.0, 1.4470008265609934e-23),
+        ] {
+            let got = reaction.reactivity_m3_per_s(ti).unwrap();
+            assert!(
+                (got - want).abs() < 1e-12 * want,
+                "reactivity {got} vs {want}"
+            );
+        }
+        // Five sub-branch spectra: weights follow the sub-rate rule and the
+        // lines sit on the independent Ballabio moments at the sub-pair T.
+        let config = tail_lattice();
+        let branches = config.spectrum_branches(20.0, 30.0).unwrap();
+        assert_eq!(branches.len(), 5);
+        let (mu_dt, sigma_dt) = FusionReaction::Dt.moments_mev(24.0).unwrap();
+        let (mu_dt_tail, sigma_dt_tail) = FusionReaction::Dt.moments_mev(48.0).unwrap();
+        let (mu_dd, sigma_dd) = FusionReaction::Dd.moments_mev(20.0).unwrap();
+        let (mu_dd_mix, sigma_dd_mix) = FusionReaction::Dd.moments_mev(40.0).unwrap();
+        let (mu_dd_tail, sigma_dd_tail) = FusionReaction::Dd.moments_mev(60.0).unwrap();
+        assert_eq!((branches[0].2, branches[0].3), (mu_dt, sigma_dt));
+        assert_eq!((branches[1].2, branches[1].3), (mu_dt_tail, sigma_dt_tail));
+        assert_eq!((branches[2].2, branches[2].3), (mu_dd, sigma_dd));
+        assert_eq!((branches[3].2, branches[3].3), (mu_dd_mix, sigma_dd_mix));
+        assert_eq!((branches[4].2, branches[4].3), (mu_dd_tail, sigma_dd_tail));
+        assert_eq!(branches[0].0, FusionReaction::Dt);
+        assert_eq!(branches[1].0, FusionReaction::Dt);
+        assert_eq!(branches[4].0, FusionReaction::Dd);
+        // Decimal goldens (05-tails Gate Verdict table) at 1e-12.
+        assert!((mu_dt - 14.077934372230146).abs() < 1e-12, "{mu_dt}");
+        assert!((sigma_dt - 0.3700390508551786).abs() < 1e-12, "{sigma_dt}");
+        assert!(
+            (mu_dt_tail - 14.104551866140476).abs() < 1e-12,
+            "{mu_dt_tail}"
+        );
+        assert!(
+            (sigma_dt_tail - 0.5241295764702804).abs() < 1e-12,
+            "{sigma_dt_tail}"
+        );
+        assert!((mu_dd - 2.5073729884064235).abs() < 1e-12, "{mu_dd}");
+        assert!((sigma_dd - 0.16038403773694965).abs() < 1e-12, "{sigma_dd}");
+        assert!((mu_dd_mix - 2.553611770233373).abs() < 1e-12, "{mu_dd_mix}");
+        assert!(
+            (sigma_dd_mix - 0.2309104994779356).abs() < 1e-12,
+            "{sigma_dd_mix}"
+        );
+        assert!(
+            (mu_dd_tail - 2.5984132221035106).abs() < 1e-12,
+            "{mu_dd_tail}"
+        );
+        assert!(
+            (sigma_dd_tail - 0.2875977213369914).abs() < 1e-12,
+            "{sigma_dd_tail}"
+        );
+        // Sub-rate weights (× n² units): lattice branch weights are the same
+        // sub-rates normalized, and n²·Σw reproduces the flat-profile S
+        // hand vector (n = 1e20 m⁻³) — lattice rates are caller weights, so
+        // S is reconstructed here from the sub-rate decomposition.
+        let eta = 0.05_f64;
+        let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(24.0).unwrap();
+        let sv_dt_tail = FusionReaction::Dt.reactivity_m3_per_s(48.0).unwrap();
+        let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(20.0).unwrap();
+        let sv_dd_mix = FusionReaction::Dd.reactivity_m3_per_s(40.0).unwrap();
+        let sv_dd_tail = FusionReaction::Dd.reactivity_m3_per_s(60.0).unwrap();
+        let w = [
+            0.7 * 0.3 * (1.0 - eta) * sv_dt,
+            0.7 * 0.3 * eta * sv_dt_tail,
+            0.7 * 0.7 / 2.0 * (1.0 - eta) * (1.0 - eta) * sv_dd,
+            0.7 * 0.7 / 2.0 * 2.0 * eta * (1.0 - eta) * sv_dd_mix,
+            0.7 * 0.7 / 2.0 * eta * eta * sv_dd_tail,
+        ];
+        let total: f64 = w.iter().sum();
+        let sum: f64 = branches.iter().map(|b| b.1).sum();
+        assert!((sum - 1.0).abs() < 1e-12, "branch weights sum {sum}");
+        for (b, wi) in branches.iter().zip(w.iter()) {
+            assert!(
+                (b.1 - wi / total).abs() < 1e-12,
+                "{} vs {}",
+                b.1,
+                wi / total
+            );
+        }
+        let n_cm3 = 1e14_f64;
+        let s = n_cm3 * n_cm3 * total * 1e6;
+        let want = 1177836136801.1577_f64; // module rustdoc hand vector
+        assert!((s - want).abs() < 1e-12 * want, "{s} vs {want}");
+        // Tail share matches the parametric flat-profile gate (single node:
+        // rate-weighted share = per-node sub-rate share).
+        let share = config.total_tail_strength().unwrap() / config.total_strength().unwrap();
+        let tail_w = w[1] + w[3] + w[4];
+        let want_share = tail_w / total;
+        assert!((share - want_share).abs() < 1e-9, "{share} vs {want_share}");
+        assert!((share - 0.07798654309040301).abs() < 1e-9, "{share}");
+    }
+
+    #[test]
+    fn zero_tail_fraction_recovers_no_tail_kernel_bit_for_bit() {
+        // Module-rustdoc anchor: η = 0 reproduces the no-tail lattice kernel
+        // bit-for-bit — strengths, mean energy, spectrum branches, sampled
+        // stream, and emitted histograms — for any T_tail spelling (the
+        // tail reactivity evaluations are skipped at η == 0).
+        let mut base = tail_lattice();
+        base.tail = None;
+        let mut zero = tail_lattice();
+        zero.tail = Some(DeuteriumTail::new(0.0, 1.0e6).unwrap());
+        assert_eq!(
+            zero.total_strength().unwrap(),
+            base.total_strength().unwrap(),
+            "strengths"
+        );
+        assert_eq!(
+            zero.total_dd_strength().unwrap(),
+            base.total_dd_strength().unwrap(),
+            "D-D strengths"
+        );
+        assert_eq!(
+            zero.total_tail_strength().unwrap(),
+            0.0,
+            "zero tail carries no tail strength"
+        );
+        assert_eq!(
+            zero.mean_birth_energy().unwrap(),
+            base.mean_birth_energy().unwrap(),
+            "mean energy"
+        );
+        assert_eq!(
+            zero.spectrum_branches(20.0, 30.0).unwrap(),
+            base.spectrum_branches(20.0, 30.0).unwrap(),
+            "spectrum branches"
+        );
+        for seed in [0, 17] {
+            let a = LatticeSampler::new(base.clone(), seed)
+                .unwrap()
+                .sample_n(128);
+            let b = LatticeSampler::new(zero.clone(), seed)
+                .unwrap()
+                .sample_n(128);
+            assert_eq!(a, b, "seed {seed}");
+        }
+        assert_eq!(
+            lattice_emission_histograms(&zero, 8).unwrap(),
+            lattice_emission_histograms(&base, 8).unwrap(),
+            "cards"
+        );
+    }
+
+    #[test]
+    fn tail_sampler_fires_all_sub_branches() {
+        // The pinned tail config: the five sub-lines fire in the stream at
+        // the sub-rate-rule shares, and the mean energy matches the
+        // five-branch weighted mean (module rustdoc).
+        let config = tail_lattice();
+        let particles = LatticeSampler::new(config.clone(), 13)
+            .unwrap()
+            .sample_n(200_000);
+        let eta = 0.05_f64;
+        let sv_dt = FusionReaction::Dt.reactivity_m3_per_s(24.0).unwrap();
+        let sv_dt_tail = FusionReaction::Dt.reactivity_m3_per_s(48.0).unwrap();
+        let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(20.0).unwrap();
+        let sv_dd_mix = FusionReaction::Dd.reactivity_m3_per_s(40.0).unwrap();
+        let sv_dd_tail = FusionReaction::Dd.reactivity_m3_per_s(60.0).unwrap();
+        let w = [
+            0.7 * 0.3 * (1.0 - eta) * sv_dt,
+            0.7 * 0.3 * eta * sv_dt_tail,
+            0.7 * 0.7 / 2.0 * (1.0 - eta) * (1.0 - eta) * sv_dd,
+            0.7 * 0.7 / 2.0 * 2.0 * eta * (1.0 - eta) * sv_dd_mix,
+            0.7 * 0.7 / 2.0 * eta * eta * sv_dd_tail,
+        ];
+        let total: f64 = w.iter().sum();
+        let p: Vec<f64> = w.iter().map(|x| x / total).collect();
+        let p_dd = p[2] + p[3] + p[4];
+        let n = particles.len() as f64;
+        let frac_dd = particles.iter().filter(|p| p.energy_mev < 10.0).count() as f64 / n;
+        let se = (p_dd * (1.0 - p_dd) / n).sqrt();
+        assert!(
+            (frac_dd - p_dd).abs() < 8.0 * se,
+            "D-D branch fraction {frac_dd} vs {p_dd} ± {se}"
+        );
+        let temps = [24.0, 48.0, 20.0, 40.0, 60.0];
+        let reactions = [
+            FusionReaction::Dt,
+            FusionReaction::Dt,
+            FusionReaction::Dd,
+            FusionReaction::Dd,
+            FusionReaction::Dd,
+        ];
+        let mut want = 0.0;
+        let mut second = 0.0;
+        for (i, (&reaction, &ti)) in reactions.iter().zip(temps.iter()).enumerate() {
+            let (mu, sigma) = reaction.moments_mev(ti).unwrap();
+            want += p[i] * mu;
+            second += p[i] * (sigma * sigma + mu * mu);
+        }
+        let var = second - want * want;
+        let mean: f64 = particles.iter().map(|p| p.energy_mev).sum::<f64>() / n;
+        let se_mean = var.sqrt() / n.sqrt();
+        assert!(
+            (mean - want).abs() < 6.0 * se_mean,
+            "<E> {mean} vs {want} ± {se_mean}"
+        );
+        // Deterministic per seed on the tail path too.
+        let a = LatticeSampler::new(config.clone(), 31)
+            .unwrap()
+            .sample_n(256);
+        let b = LatticeSampler::new(config.clone(), 31)
+            .unwrap()
+            .sample_n(256);
+        assert_eq!(a, b);
+        // D-D accounting now sums the three D-D sub-branches (D-T tail is
+        // not proton-producing).
+        assert!((config.total_dd_strength().unwrap() - p_dd).abs() < 1e-15);
+    }
+
+    #[test]
+    fn tail_emission_histograms_fold_five_lines() {
+        let config = tail_lattice();
+        let hist = lattice_emission_histograms(&config, 61).unwrap();
+        let energy_sum: f64 = hist.energy.masses.iter().sum();
+        assert!((energy_sum - hist.energy_coverage).abs() < 1e-12);
+        assert!(hist.energy_coverage > 0.999);
+        // The tail D-T sub-line (48 keV) widens the tabulated window past
+        // the bulk line; the tail boosts the D-D sub-rate more than the D-T
+        // line shifts up, so the below-10 MeV mass grows.
+        let mut base = config.clone();
+        base.tail = None;
+        let hist_base = lattice_emission_histograms(&base, 61).unwrap();
+        assert!(hist.energy.centers.last().unwrap() > hist_base.energy.centers.last().unwrap());
+        let mass_low = |h: &LatticeEmissionHistograms| {
+            h.energy
+                .masses
+                .iter()
+                .zip(&h.energy.centers)
+                .filter(|(_, &c)| c < 10.0)
+                .map(|(&m, _)| m)
+                .sum::<f64>()
+        };
+        assert!(mass_low(&hist) > mass_low(&hist_base));
+    }
+
+    #[test]
+    fn tail_parameters_are_loud() {
+        // The tail without a fuel mixture is a loud scope error, never a
+        // silent single-fuel fallback (same boundary as parametric).
+        let mut single = two_point_lattice();
+        single.tail = Some(DeuteriumTail::new(0.05, 60.0).unwrap());
+        assert!(matches!(
+            single.validate(),
+            Err(Error::NotYetSupported(
+                "a deuterium hot tail needs a D/T fuel mixture"
+            ))
+        ));
+        assert!(matches!(
+            LatticeSampler::new(single, 7),
+            Err(Error::NotYetSupported(
+                "a deuterium hot tail needs a D/T fuel mixture"
+            ))
+        ));
+        // Malformed tail parameters stay loud on the mixture path (the
+        // DeuteriumTail vocabulary itself is pinned by the parametric gates).
+        let mut bad_fraction = tail_lattice();
+        bad_fraction.tail = Some(DeuteriumTail {
+            fraction: 1.1,
+            temperature_kev: 60.0,
+        });
+        assert!(matches!(
+            bad_fraction.validate(),
+            Err(Error::InvalidTail(_))
+        ));
+        let mut nan_fraction = tail_lattice();
+        nan_fraction.tail = Some(DeuteriumTail {
+            fraction: f64::NAN,
+            temperature_kev: 60.0,
+        });
+        assert!(matches!(nan_fraction.validate(), Err(Error::NonFinite(_))));
+        let mut negative_temp = tail_lattice();
+        negative_temp.tail = Some(DeuteriumTail {
+            fraction: 0.05,
+            temperature_kev: -1.0,
+        });
+        assert!(matches!(
+            negative_temp.validate(),
+            Err(Error::NegativeIonTemperature(-1.0))
+        ));
+        // Boundary fractions are admitted exactly (with a mixture).
+        assert!(tail_lattice().validate().is_ok());
     }
 
     #[test]

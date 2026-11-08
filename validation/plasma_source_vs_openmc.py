@@ -22,7 +22,9 @@ Two parts:
    means, single-point bit-for-bit recovery of the point source, ring-limit
    moment closure, symmetry-fold replication and totals, card round trip
    with the lattice drift row, mixture branch fire, loud errors, plus the
-   single-fuel species-pair arms with bit-for-bit equal-T recovery),
+   single-fuel species-pair arms with bit-for-bit equal-T recovery, plus the
+   lattice hot tail: five-branch mean and D-D share vs the sub-rate rule,
+   drift tail share, zero-fraction bit-for-bit recovery, loud errors),
    plus P13 on the deuterium hot-tail fraction (sub-rate-rule moments and
    branch share vs quadrature, the card drift tail-neutron share, bit-for-bit
    zero-fraction recovery, loud errors).
@@ -1072,14 +1074,150 @@ def lattice_gates() -> tuple[list[list[str]], list[str]]:
     rows.append(
         ["P12 single-fuel equal-T cards", "-", "exact", _check(same_cards_solo, "P12 solo cards")]
     )
+    # P12g: lattice deuterium hot tail (same report). One global (eta, T_tail)
+    # applied per node (single-node cloud, T_D = 20 keV, T_T = 30 keV,
+    # eta = 0.05 at T_tail = 60 keV): the five sub-branch sampled mean and
+    # D-D share sit on the sub-rate rule, the card drift tail share matches
+    # the same rule, eta = 0 recovers the no-tail kernel bit-for-bit, and a
+    # tail without a fuel mixture is loud.
+    tail12 = {
+        "kind": "lattice",
+        "fuel": {"D": 0.7, "T": 0.3},
+        "species_temperatures": {"D": 20.0, "T": 30.0},
+        "deuterium_tail": {"fraction": 0.05, "temperature_kev": 60.0},
+        "points": [{"position": [0.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 20.0}],
+    }
+    ours12t = ps.particles(tail12, N, seed=84)
+    eta12 = 0.05
+    sv12 = [
+        _reactivity_m3_s("dt", 24.0),
+        _reactivity_m3_s("dt", 48.0),
+        _reactivity_m3_s("dd", 20.0),
+        _reactivity_m3_s("dd", 40.0),
+        _reactivity_m3_s("dd", 60.0),
+    ]
+    w12 = [
+        0.7 * 0.3 * (1.0 - eta12) * sv12[0],
+        0.7 * 0.3 * eta12 * sv12[1],
+        0.7 * 0.7 / 2.0 * (1.0 - eta12) ** 2 * sv12[2],
+        0.7 * 0.7 / 2.0 * 2.0 * eta12 * (1.0 - eta12) * sv12[3],
+        0.7 * 0.7 / 2.0 * eta12**2 * sv12[4],
+    ]
+    tot12 = sum(w12)
+    p12 = [x / tot12 for x in w12]
+    mus12 = [
+        _ballabio_moments("dt", 24.0)[0],
+        _ballabio_moments("dt", 48.0)[0],
+        _ballabio_moments("dd", 20.0)[0],
+        _ballabio_moments("dd", 40.0)[0],
+        _ballabio_moments("dd", 60.0)[0],
+    ]
+    want_e12 = sum(pi * mu for pi, mu in zip(p12, mus12, strict=True))
+    err_e12t = rel_diff(float(np.mean(ours12t["energy"])), want_e12)
+    rows.append(
+        [
+            "P12 lattice tail mean birth energy",
+            fmt(err_e12t),
+            "< 1e-2",
+            _check(err_e12t < 1e-2, "P12 tail E"),
+        ]
+    )
+    p_dd12 = p12[2] + p12[3] + p12[4]
+    frac_dd12t = float(np.mean(ours12t["energy"] < 10.0))
+    se_dd12t = math.sqrt(p_dd12 * (1.0 - p_dd12) / N)
+    rows.append(
+        [
+            "P12 lattice tail D-D branch share",
+            fmt(frac_dd12t - p_dd12),
+            "< 8 sigma",
+            _check(abs(frac_dd12t - p_dd12) < 8.0 * se_dd12t, "P12 tail share"),
+        ]
+    )
+    cards12t = ps.emit_source_cards(tail12, bins=15)
+    tail_row12 = next(
+        row for row in cards12t["sdef"]["drift"] if row["quantity"] == "deuterium tail"
+    )
+    share12 = float(tail_row12["note"].split("rate-weighted cloud = ")[1])
+    want_share12 = (w12[1] + w12[3] + w12[4]) / tot12
+    rows.append(
+        [
+            "P12 lattice tail neutron share",
+            fmt(share12 - want_share12),
+            "< 1e-6",
+            _check(abs(share12 - want_share12) < 1e-6, "P12 tail neutron share"),
+        ]
+    )
+    drift_ok12t = [row["quantity"] for row in cards12t["sdef"]["drift"]] == [
+        "emission probability",
+        "spatial marginals",
+        "joint correlation",
+        "lattice discretization",
+        "deuterium tail",
+    ] and bool(tail_row12["reparsed"])
+    rows.append(
+        ["P12 lattice tail drift row", "-", "present", _check(drift_ok12t, "P12 tail drift")]
+    )
+    base12t = {k: v for k, v in tail12.items() if k != "deuterium_tail"}
+    zero12t = dict(base12t, deuterium_tail={"fraction": 0.0, "temperature_kev": 1.0e6})
+    a12t = ps.particles(base12t, 512, seed=17)
+    b12t = ps.particles(zero12t, 512, seed=17)
+    recovered12t = all(bool((a12t[key] == b12t[key]).all()) for key in ("x", "y", "z", "energy"))
+    rows.append(
+        [
+            "P12 lattice zero-tail stream recovery",
+            "-",
+            "exact",
+            _check(recovered12t, "P12 tail stream"),
+        ]
+    )
+    cards_a12t = ps.emit_source_cards(base12t, bins=15)
+    cards_b12t = ps.emit_source_cards(zero12t, bins=15)
+    same_cards12t = (
+        cards_b12t["sdef"]["card"] == cards_a12t["sdef"]["card"]
+        and cards_b12t["serpent"]["card"] == cards_a12t["serpent"]["card"]
+    )
+    rows.append(
+        [
+            "P12 lattice zero-tail card recovery",
+            "-",
+            "exact",
+            _check(same_cards12t, "P12 tail cards"),
+        ]
+    )
+    loud12t = True
+    for bad in (
+        {"fraction": 1.5, "temperature_kev": 60.0},
+        {"fraction": 0.05, "temperature_kev": -1.0},
+    ):
+        try:
+            ps.particles(dict(base12t, deuterium_tail=bad), 4, seed=0)
+            loud12t = False
+        except ValueError:
+            pass
+    try:
+        ps.particles(
+            dict(
+                LATTICE_TWO_POINT,
+                deuterium_tail={"fraction": 0.05, "temperature_kev": 60.0},
+            ),
+            4,
+            seed=0,
+        )
+        loud12t = False
+    except ValueError:
+        pass
+    rows.append(["P12 lattice tail loud errors", "-", "raise", _check(loud12t, "P12 tail loud")])
     notes.append(
         f"P12 arbitrary-3D birth-rate lattice: two-point hand vectors (total 3, "
         f"mean x 100 cm, mono 14.021 MeV), single-point bit-for-bit recovery of "
         f"the landed point source, ring-limit moment closure (n={N}), 4-period "
         f"symmetry-fold replication with period-scaled totals, card round trip "
-        f"with the lattice drift row, 70/30 mixture branch fire, and the solo "
+        f"with the lattice drift row, 70/30 mixture branch fire, the solo "
         f"single-fuel pair (D-T at T_DT=24 keV, D-D at T_D, equal-T bit-for-bit "
-        f"recovery)."
+        f"recovery), and the lattice hot tail (one global eta=0.05 at "
+        f"T_tail=60 keV applied per node: five-branch mean and D-D share vs "
+        f"the sub-rate rule, drift tail share, zero-fraction bit-for-bit "
+        f"recovery, loud errors)."
     )
     return rows, notes
 
@@ -1999,7 +2137,9 @@ def main() -> int:
         "at the same landed temperatures with their own equal-T recovery), and P12 "
         "on the arbitrary-3D birth-rate lattice (hand-vector totals and "
         "means, single-point recovery, ring-limit closure, symmetry-fold "
-        "replication, card round trip, mixture branch fire), and P13 "
+        "replication, card round trip, mixture branch fire, plus the "
+        "per-node hot tail: five-branch moments, drift tail share, "
+        "zero-fraction recovery, loud errors), and P13 "
         "on the deuterium hot-tail fraction (sub-rate-rule moments and "
         "branch share, the drift tail-neutron share, zero-fraction "
         "recovery) — "

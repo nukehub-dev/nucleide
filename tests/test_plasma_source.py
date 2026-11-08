@@ -974,6 +974,117 @@ def test_lattice_errors_are_loud() -> None:
         )
 
 
+def _lattice_tail_spec() -> dict[str, object]:
+    """Pinned lattice tail spec: single node (bulk Ti = 20 keV) on a 70/30
+    blend at T_D = 20 keV, T_T = 30 keV with a 5% deuterium hot tail at
+    60 keV (sub-pairs at T_DT = 24, T_DTt = 48, T_D = 20, T_mix = 40,
+    T_tail = 60 keV) — the parametric tail hand vector per node."""
+    return {
+        "kind": "lattice",
+        "fuel": {"D": 0.7, "T": 0.3},
+        "species_temperatures": {"D": 20.0, "T": 30.0},
+        "deuterium_tail": {"fraction": 0.05, "temperature_kev": 60.0},
+        "points": [{"position": [0.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 20.0}],
+    }
+
+
+def _lattice_tail_base() -> dict[str, object]:
+    spec = _lattice_tail_spec()
+    del spec["deuterium_tail"]
+    return spec
+
+
+def test_lattice_deuterium_tail_fires_all_sub_branches() -> None:
+    # All five bulk/tail sub-lines fire per node at the sub-rate-rule shares,
+    # and the mean energy matches the five-branch weighted mean.
+    spec = _lattice_tail_spec()
+    n = 20_000
+    out = ps.particles(spec, n, seed=13)
+    energy = out["energy"]
+    p, branches = _tail_sub_weights()
+    p_dd = p[2] + p[3] + p[4]
+    frac_dd = float((energy < 10.0).mean())
+    se = math.sqrt(p_dd * (1.0 - p_dd) / n)
+    assert abs(frac_dd - p_dd) < 8.0 * se
+    moments = [_ballabio_moments(reaction, ti) for reaction, ti in branches]
+    want = sum(pi * mu for pi, (mu, _) in zip(p, moments, strict=True))
+    var = sum(pi * (sigma**2 + mu**2) for pi, (mu, sigma) in zip(p, moments, strict=True)) - want**2
+    assert abs(float(energy.mean()) - want) < 6.0 * math.sqrt(var / n)
+
+
+def test_lattice_deuterium_tail_zero_fraction_recovers_no_tail() -> None:
+    # eta = 0 reproduces the no-tail lattice kernel bit-for-bit end to end:
+    # the same seeded stream and the same emitted cards (even at an extreme
+    # T_tail spelling — the tail evaluations are skipped at eta == 0).
+    base = _lattice_tail_base()
+    zero = dict(base, deuterium_tail={"fraction": 0.0, "temperature_kev": 1.0e6})
+    a = ps.particles(base, 512, seed=17)
+    b = ps.particles(zero, 512, seed=17)
+    for key in ("x", "y", "z", "u", "v", "w", "energy", "weight"):
+        assert bool((a[key] == b[key]).all())
+    cards_a = ps.emit_source_cards(base, bins=15)
+    cards_b = ps.emit_source_cards(zero, bins=15)
+    assert cards_b["sdef"]["card"] == cards_a["sdef"]["card"]
+    assert cards_b["sdef"]["drift"] == cards_a["sdef"]["drift"]
+    assert cards_b["serpent"]["card"] == cards_a["serpent"]["card"]
+
+
+def test_lattice_deuterium_tail_card_carries_drift_row() -> None:
+    # A nonzero tail folds its Ballabio sub-lines into the energy marginal
+    # and appends the deuterium-tail drift row (after the lattice row);
+    # the SDEF card still round-trips through the typed reader.
+    out = ps.emit_source_cards(_lattice_tail_spec(), bins=15)
+    card = out["sdef"]["card"]
+    parsed = mcnp.parse_sdef(card)
+    assert parsed["card"] == card
+    assert parsed["rad"] == "D1"
+    assert parsed["ext"] == "D2"
+    assert parsed["erg"] == "D3"
+    quantities = [row["quantity"] for row in out["sdef"]["drift"]]
+    assert quantities == [
+        "emission probability",
+        "spatial marginals",
+        "joint correlation",
+        "lattice discretization",
+        "deuterium tail",
+    ]
+    tail_row = out["sdef"]["drift"][4]
+    assert tail_row["reparsed"] is True
+    assert "0.050000" in tail_row["note"] and "60.000000" in tail_row["note"]
+    assert out["serpent"]["drift"][-1]["quantity"] == "deuterium tail"
+    assert out["serpent"]["drift"][-1]["reparsed"] is False
+
+
+def test_lattice_deuterium_tail_is_loud() -> None:
+    # Non-finite, out-of-range, or negative tail parameters never reach the
+    # sampler; the dict needs both fraction and temperature_kev keys; and
+    # the tail without a fuel mixture is a loud scope error, never a silent
+    # single-fuel fallback.
+    base = _lattice_tail_base()
+    bad_tails = [
+        {"fraction": -0.1, "temperature_kev": 60.0},
+        {"fraction": 1.1, "temperature_kev": 60.0},
+        {"fraction": 0.05, "temperature_kev": -1.0},
+        {"fraction": float("nan"), "temperature_kev": 60.0},
+        {"fraction": 0.05, "temperature_kev": float("inf")},
+        {"fraction": 0.05},  # missing temperature_kev
+        {"temperature_kev": 60.0},  # missing fraction
+        {"fraction": 0.05, "temperature_kev": 60.0, "shape": "slowing-down"},
+    ]
+    for tail in bad_tails:
+        with pytest.raises(ValueError):
+            ps.particles(dict(base, deuterium_tail=tail), 4, seed=0)
+    with pytest.raises(ValueError, match="not yet supported"):
+        ps.particles(
+            dict(
+                _two_point_lattice_spec(),
+                deuterium_tail={"fraction": 0.05, "temperature_kev": 60.0},
+            ),
+            4,
+            seed=0,
+        )
+
+
 # ---------------------------------------------------------------------------
 # D(d,p)T proton transport (Brysk 3.02 MeV line, 50/50 with the D-D branch)
 # ---------------------------------------------------------------------------

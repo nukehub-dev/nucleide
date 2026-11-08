@@ -258,7 +258,8 @@ restrict births with totals scaled by `rotation/2π` (full rotation
 recovers the full torus bit-for-bit; partial sectors add a PHI marginal).
 An arbitrary-3D birth-rate lattice drops axisymmetry for
 stellarator-class callers (caller point cloud with field-period symmetry
-reduction, same machinery per node). The D(d,p)T proton branch shares the
+reduction, same machinery per node, including the global hot-tail rule
+applied per node). The D(d,p)T proton branch shares the
 D-D rate 50/50 and is transported for deuterium-bearing ring/point and
 parametric sources on the Brysk 3.02 MeV line (independent seeded streams,
 MCNP6-only `PAR=h` cards, no Serpent proton cards — its `PART='p'` means
@@ -277,8 +278,7 @@ are analytic by design. Profiles are caller inputs — nothing computes them.
 Out of scope (loud `NotYetSupported`): T-T neutron transport, lattice proton
 transport, Serpent/MCNP5 proton cards, D-T-only proton requests, and reactant
 distributions beyond the one pinned tail shape (the
-rest of the full Eriksson generalization; the tail is parametric-only — no
-tail spelling on lattice configs). Per-species temperatures are supported
+rest of the full Eriksson generalization). Per-species temperatures are supported
 on single-fuel and mixture configs (D-T at `T_DT`, D-D at `T_D`).
 MCPL projection stays caller-side (`vr-tools` KDE layering rule). Depends on
 `nucleide-mcnp-io` and `nucleide-nuclei`; never on `mcpl-io`, never on

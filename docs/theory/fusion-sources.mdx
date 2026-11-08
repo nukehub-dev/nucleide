@@ -353,7 +353,12 @@ species-pair lines, since the published fits assumed single-temperature
 Maxwellians. The pinned hand vector (flat profile, $n = 10^{20}$ m⁻³,
 $f_D = 0.7$, $f_T = 0.3$, $T_D = 20$ keV, $T_T = 30$ keV, $\eta = 0.05$,
 $T_\mathrm{tail} = 60$ keV) gates the rate at $10^{-12}$ relative, and
-$\eta = 0$ reproduces the no-tail mixture kernel exactly.
+$\eta = 0$ reproduces the no-tail mixture kernel exactly. The lattice tier
+applies the same rule per node with one global $(\eta, T_\mathrm{tail})$ (the
+node temperature stays the bulk $T_D$ per node; there is no per-node
+$\eta$ spelling), routing strengths, the per-particle branch roulette, card
+marginals, and the drift row identically — there too $\eta = 0$ recovers
+the no-tail lattice kernel exactly.
 
 ### S6 — Arbitrary-3D birth-rate lattice
 
@@ -365,7 +370,12 @@ lattice carrying a species pair $(T_D, T_T)$ reacts at the same landed pair
 temperatures as the parametric solo port — single-fuel D-T at the
 mass-weighted $T_{DT} = T_D + \tfrac{2}{5}(T_T - T_D)$, single-fuel D-D at
 $T_D$ — with the Ballabio lines following per branch; an equal pair $(T, T)$
-reproduces the shared-temperature kernel bit-for-bit. An
+reproduces the shared-temperature kernel bit-for-bit. A global deuterium
+hot-tail fraction (S5-T) applies per node the same way: each node computes
+bulk plus tail sub-branches at the node $T_D$ with the shared $\eta$ and
+$T_\mathrm{tail}$, mirroring parametric routing (strengths, per-particle
+branch roulette, card marginals, drift row); $\eta = 0$ reproduces the
+no-tail lattice kernel exactly, and a tail needs a fuel mixture. An
 optional field-period symmetry declares the points to be one base-sector
 cloud replicated $n$ times around the machine axis (toroidal angles
 identified modulo $2\pi/n$), with the symmetric total scaled by $n$; $n = 1$
@@ -573,7 +583,9 @@ byte-identically through `nucleide.mcnp.parse_sdef` (the typed `SDEF` reader).
   `deuterium_tail` fraction `{"fraction": η, "temperature_kev": T_tail}`
   adds the one pinned non-Maxwellian shape (S5-T: bulk plus hot tail with
   per-sub-pair lines); `η = 0` recovers the no-tail kernel exactly, and the
-  tail needs a `fuel` mixture. Fuel
+  tail needs a `fuel` mixture. On lattice clouds the same tail applies per
+  node with one global $(\eta, T_\mathrm{tail})$ (node temperature stays the
+  bulk $T_D$ per node). Fuel
   fractions that are negative, non-finite, or do not sum to 1 raise a clear
   error, as do negative temperatures and out-of-range tail parameters.
   General non-Maxwellian distributions beyond this shape stay out.

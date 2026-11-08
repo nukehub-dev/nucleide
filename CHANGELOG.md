@@ -68,6 +68,23 @@ workspace crates from tags.
   untouched; the `None`-pair path keeps the landed expression trees verbatim
   (no new RNG draws); the per-node tail spelling stays out of scope.
 
+- Deuterium hot-tail fraction on lattice configs in `nucleide-plasma-source`
+  (the parametric `DeuteriumTail` rule ported per node): `LatticeSourceConfig`
+  gains an optional `tail` mirroring `ParametricPlasmaConfig::tail` — one
+  global `(η, T_tail)` applied at every node with the node temperature as
+  the bulk `T_D`, reacting the five bulk/tail sub-branches (D-T at
+  `T_DT`/`T_DTt`, D-D at `T_D`/`T_mix`/`T_tail`) through the same per-particle
+  branch roulette, card energy marginals, and `deuterium tail` drift row
+  (rate-weighted tail share). Anchors: the 70/30 blend at `(T_D, T_T) =
+  (20, 30)` keV with `η = 0.05` at `T_tail = 60` keV gives `S =
+  1177836136801.1577` at `n = 1e20` m⁻³ (reconstructed from the per-node
+  branch weights) with the five Ballabio lines at 24/48/20/40/60 keV;
+  `η = 0` reproduces the no-tail lattice kernel bit-for-bit (any `T_tail`),
+  and a tail without a fuel mixture is loud. Python gains the
+  `deuterium_tail` dict on lattice specs; WASM `sampleLatticeSource`
+  gains the `fuelDeuterium`/`fuelTritium` mixture pair plus
+  `tailFraction`/`tailTempKev` (both-or-neither loud, needs the mixture).
+
 - Python tutorial "Solve activation with ACTINV"
   (`docs/tutorials/python/solve-with-actinv.md`): maps one material, one
   spectrum, and one schedule from the Nucleide ALARA/R2S surfaces to an

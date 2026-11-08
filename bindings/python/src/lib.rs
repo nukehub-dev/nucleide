@@ -7445,7 +7445,11 @@ fn parse_plasma_parametric_spec(
 /// `{"D": f_D, "T": f_T}` (then `reaction` is optional and unused), plus the
 /// optional `species_temperatures` dict (both keys; single-fuel D-T reacts
 /// at `T_DT`, single-fuel D-D at `T_D`, mixtures at the same pair
-/// temperatures), plus
+/// temperatures), plus the optional `deuterium_tail` dict
+/// `{"fraction": eta, "temperature_kev": T_tail_kev}` (both keys; a single
+/// global tail applied per node with the node temperature as the bulk `T_D`;
+/// requires a `fuel` dict; `eta = 0` recovers the no-tail kernel exactly),
+/// plus
 /// the optional `field_periods`/`base_angle` symmetry pair (both or neither;
 /// `field_periods >= 1`, finite `base_angle` [rad]). Non-finite, negative,
 /// or misshapen entries are loud errors.
@@ -7562,6 +7566,48 @@ fn parse_plasma_lattice_spec(
         }
         None => None,
     };
+    // Deuterium hot tail: deuterium_tail={"fraction": eta,
+    // "temperature_kev": T_tail_kev}. Both keys are required when the dict is
+    // present; DeuteriumTail::new carries the loud parameter errors, and
+    // config validation requires a fuel mixture alongside (the global
+    // (eta, T_tail) applies per node with the node temperature as bulk T_D).
+    let tail = match spec.get("deuterium_tail") {
+        Some(value) => {
+            let params: BTreeMap<String, f64> = value.extract(py).map_err(|_| {
+                PyValueError::new_err(
+                    "`deuterium_tail` must be a dict of parameters like \
+                     {\"fraction\": 0.05, \"temperature_kev\": 60.0}",
+                )
+            })?;
+            for key in params.keys() {
+                if !matches!(key.as_str(), "fraction" | "temperature_kev") {
+                    return Err(PyValueError::new_err(format!(
+                        "unsupported deuterium tail parameter `{key}` \
+                         (supported keys: fraction, temperature_kev)"
+                    )));
+                }
+            }
+            let missing = |key: &str| {
+                PyValueError::new_err(format!(
+                    "`deuterium_tail` dict needs both `fraction` and `temperature_kev` \
+                     (missing `{key}`)"
+                ))
+            };
+            let fraction = params
+                .get("fraction")
+                .copied()
+                .ok_or_else(|| missing("fraction"))?;
+            let temperature_kev = params
+                .get("temperature_kev")
+                .copied()
+                .ok_or_else(|| missing("temperature_kev"))?;
+            Some(
+                ps::DeuteriumTail::new(fraction, temperature_kev)
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?,
+            )
+        }
+        None => None,
+    };
     // Field-period symmetry: both keys or neither (the core
     // `LatticeSymmetry::new` carries the loud range errors).
     let symmetry = match (spec.get("field_periods"), spec.get("base_angle")) {
@@ -7608,6 +7654,7 @@ fn parse_plasma_lattice_spec(
         reaction: fuel,
         fuel_mixture,
         species_temperatures,
+        tail,
         symmetry,
         weight: 1.0,
     };

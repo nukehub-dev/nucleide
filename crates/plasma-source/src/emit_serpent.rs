@@ -308,6 +308,24 @@ pub fn emit_serpent_lattice(
             hist.node_count, hist.total_rate,
         ),
     ));
+    if let Some(tail) = &config.tail {
+        if tail.fraction > 0.0 {
+            let share = config.total_tail_strength().unwrap_or(f64::NAN)
+                / config.total_strength().unwrap_or(f64::NAN);
+            drift.push(crate::report::DriftRow::new(
+                "deuterium tail",
+                1.0,
+                false,
+                format!(
+                    "deuterium hot-tail fraction {:.6} at {:.6} keV folded into the \
+                     marginal energy spectrum as Ballabio sub-lines \
+                     (effective-temperature convention); tail neutron share of the \
+                     rate-weighted cloud = {:.6} (analytic by design)",
+                    tail.fraction, tail.temperature_kev, share,
+                ),
+            ));
+        }
+    }
     Ok(EmittedCard { text, drift })
 }
 
@@ -469,5 +487,40 @@ mod tests {
             ]
         );
         assert!(!card.drift.rows[0].reparsed, "analytic by design");
+    }
+
+    #[test]
+    fn lattice_tail_card_carries_tail_drift_row() {
+        let config = crate::lattice::tests::tail_lattice();
+        let card = emit_serpent_lattice(&config, 15).unwrap();
+        let quantities: Vec<&str> = card
+            .drift
+            .rows
+            .iter()
+            .map(|row| row.quantity.as_str())
+            .collect();
+        assert_eq!(
+            quantities,
+            [
+                "emission probability",
+                "spatial marginals",
+                "joint correlation",
+                "lattice discretization",
+                "deuterium tail"
+            ]
+        );
+        let tail_row = &card.drift.rows[4];
+        assert!(!tail_row.reparsed, "analytic by design");
+        assert!(tail_row.note.contains("0.050000"));
+        assert!(tail_row.note.contains("rate-weighted cloud"));
+        // η = 0 emits no tail row: cards are the landed no-tail ones.
+        let mut base = config.clone();
+        base.tail = None;
+        let mut zero = config;
+        zero.tail = Some(crate::parametric::DeuteriumTail::new(0.0, 1.0e6).unwrap());
+        let a = emit_serpent_lattice(&base, 15).unwrap();
+        let b = emit_serpent_lattice(&zero, 15).unwrap();
+        assert_eq!(a.text, b.text);
+        assert_eq!(a.drift, b.drift);
     }
 }

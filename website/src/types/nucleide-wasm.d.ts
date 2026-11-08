@@ -781,6 +781,10 @@ export interface LatticeSourceSpec {
   baseAngle?: number;
   speciesDeuteriumKev?: number;
   speciesTritiumKev?: number;
+  fuelDeuterium?: number;
+  fuelTritium?: number;
+  tailFraction?: number;
+  tailTempKev?: number;
   species?: string;
   n: number;
   seed: number;

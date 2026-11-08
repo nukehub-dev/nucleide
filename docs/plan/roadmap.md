@@ -149,7 +149,8 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 - Deuterium hot-tail fraction (`plasma-source`): the one pinned
   single-tail-temperature non-Maxwellian shape on a D/T fuel mixture (bulk
   plus hot tail reacting at their own effective temperatures, five
-  sub-branches through strengths, sampler, cards, and drift row).
+  sub-branches through strengths, sampler, cards, and drift row; the
+  lattice carries one global tail applied per node).
 - Closed-form ECRH accessibility kernel (`plasma-source`): cold
   electron-cyclotron resonance, the weakly-relativistic thermal shift, and
   the O1/X1 cut-off densities located by interpolation along a caller

@@ -103,8 +103,10 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   Eriksson generalization; the per-species-temperature form is supported via
   `SpeciesIonTemperatures` — on parametric and lattice configs, including
   single-fuel configs, which react at the pair temperatures — the
-  single-tail-temperature form via `DeuteriumTail` — parametric-only, there
-  is no tail spelling on lattice configs), and profile
+  single-tail-temperature form via `DeuteriumTail` — on parametric and
+  lattice configs with one global `(η, T_tail)` applied per node, the node
+  temperature staying the bulk `T_D` per node; `η = 0` recovers the landed
+  kernel bit-for-bit on both), and profile
   self-consistency (zero total strength). Mixture fractions, species
   temperatures, tail parameters, lattice clouds/symmetry, and sector angles carry their own loud errors
   (`Error::NonFinite`, `Error::InvalidFuelMixture`,
@@ -137,6 +139,9 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
 - Lattice changes keep the sampler draw accounting: no new RNG draws on any
   path (the symmetry copy comes from the within-bin fraction), so the
   folded/expanded bit-identity and the single-point recovery anchors hold.
+  Lattice hot-tail routing keeps the same accounting (one branch-roulette
+  draw per particle on the mixture path, tail or no tail), so the `η = 0`
+  recovery holds bit-for-bit.
 
 ## Verification
 
@@ -158,7 +163,10 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   single-node regression), ring-limit moment closure, equal-pair recovery,
   single-fuel pair hand vectors and per-branch spectra + equal-T bit-for-bit
   recovery, card round trips with the lattice row, loud lattice/symmetry
-  errors).
+  errors, lattice-tail gates: per-node sub-rate hand vectors at 1e-12
+  (including the flat-profile S vector reconstructed from the branch
+  weights), five-sub-branch spectra per node, eta=0 bit-for-bit recovery,
+  loud tail errors, tail drift row).
 - `pytest tests/test_plasma_source.py` after `maturin develop`.
 - `validation/plasma_source_vs_openmc.py` runs inside `run_all.sh`
   (two-part: P1–P13 always, O1–O13 vs openmc-plasma-source/NeSST

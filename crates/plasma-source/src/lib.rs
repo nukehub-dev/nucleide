@@ -13,9 +13,11 @@
 //! 611) and Ballabio-broadened spectra. Profiles are caller inputs — nothing
 //! computes profiles and no equilibrium is solved. What stays out (loud
 //! [`Error::NotYetSupported`], never a guess): reactant distributions beyond
-//! a single deuterium hot-tail fraction on D/T mixtures ([`parametric`] —
-//! the one pinned single-tail-temperature Eriksson et al., Comput. Phys.
-//! Commun. **199** (2016) 40 shape is supported via [`DeuteriumTail`]; the
+//! a single deuterium hot-tail fraction on D/T mixtures ([`parametric`] /
+//! [`lattice`] — the one pinned single-tail-temperature Eriksson et al.,
+//! Comput. Phys.
+//! Commun. **199** (2016) 40 shape is supported via [`DeuteriumTail`] on
+//! parametric and lattice configs; the
 //! rest of the full Eriksson generalization stays out), T-T neutron transport (the pinned
 //! three-branch normalization lives in [`parametric`], but no publishable
 //! T-T reactivity fit or Ballabio-class line exists — the oracle's vendored
