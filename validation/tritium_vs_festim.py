@@ -47,14 +47,64 @@ never PASS.
 
 from __future__ import annotations
 
+import importlib.metadata
+import inspect
 import math
+import platform
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
+# Probe-image bootstrap: inside the probe-only dolfinx image the only
+# nucleide on disk is this repo's ``python/`` tree (no maturin-develop
+# editable install), so add it to sys.path (harmless when already present).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
+
+import common
 import numpy as np
 from common import Report, fmt, rel_diff
 
 import nucleide.tritium as tri
+
+_REAL_ENVIRONMENT = common.environment
+
+
+def _tolerant_environment() -> dict[str, str]:
+    """Best-effort environment metadata when distributions are missing.
+
+    Follow the ``activation_vs_refs.py`` precedent: the canonical container
+    always has nucleide/PyNE/OpenMC installed, so the real collector
+    succeeds there unchanged. The probe image has no PyNE/OpenMC/nucleide
+    distributions, so fall back to "not installed" markers instead of
+    raising (same convention as ``common._dist_version``).
+    """
+    try:
+        return _REAL_ENVIRONMENT()
+    except Exception:
+        try:
+            nucleide = importlib.metadata.version("nucleide")
+        except importlib.metadata.PackageNotFoundError:
+            nucleide = "not installed"
+        try:
+            pyne = importlib.metadata.version("pyne")
+        except importlib.metadata.PackageNotFoundError:
+            pyne = "not installed"
+        try:
+            openmc = importlib.metadata.version("openmc")
+        except importlib.metadata.PackageNotFoundError:
+            openmc = "not installed"
+        return {
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "python": platform.python_version(),
+            "platform": platform.platform(),
+            "nucleide": nucleide,
+            "pyne": pyne,
+            "openmc": openmc,
+        }
+
+
+common.environment = _tolerant_environment
 
 FAILURES = 0
 
@@ -115,11 +165,19 @@ DT_PER_LEG = {
     "F4": (0.1, 0.2),
 }
 
-# FESTIM fine/coarse mesh sizes (vertices) and fixed stepsizes [s].
+# FESTIM fine/coarse mesh sizes (vertices) and fixed stepsizes [s]. The early
+# breakthrough front (first gated output at t ~= 42 s, J/J_ss ~= 1.5%) is
+# step-dominated: dt = 1 s over-smooths it by ~34% vs the analytic series
+# while dt = 0.1 s errs by ~3.4%; fine/coarse self-change at 0.025/0.05 s is
+# 6.6e-3 (< 1/3 of the 3% J(t) gate). The F4 interface front is worse: its
+# Nitsche-coupled interface needs half the step again (self-change
+# 1.05e-2 -> 1.4e-3 at 0.0125/0.025 s), so F4 overrides the pair. Calibrated
+# from the first probe runs; gates unchanged.
 MESH_FINE = 200
 MESH_COARSE = 100
-DT_FESTIM_FINE = 1.0
-DT_FESTIM_COARSE = 2.0
+DT_FESTIM_FINE = 0.025
+DT_FESTIM_COARSE = 0.05
+DT_FESTIM_F4 = (0.0125, 0.025)
 
 
 def _check(ok: bool, label: str) -> str:
@@ -191,10 +249,14 @@ def _max_norm_profile(
 
     Comparison is restricted to the overlap of the two grids (no endpoint
     clamping) and, per ``splits``, to each continuous segment (never
-    interpolated across a solubility jump at an interface).
+    interpolated across a solubility jump at an interface). Reference points
+    sitting exactly on a split are skipped: there the field is
+    double-valued by construction, so its single-sided limits are compared
+    at the neighbouring nodes instead.
     """
     if len(ref_x) < 2 or len(other_x) < 2:
         return float("nan")
+    split_points = set(splits or [])
     bounds = [float(ref_x[0]), *(splits or []), float(ref_x[-1])]
     worst = 0.0
     saw_point = False
@@ -207,6 +269,8 @@ def _max_norm_profile(
         o_x = np.asarray([p[0] for p in other_seg])
         o_c = np.asarray([p[1] for p in other_seg])
         for x, c in ref_seg:
+            if x in split_points:
+                continue
             if o_x[0] <= x <= o_x[-1]:
                 other_at = float(np.interp(x, o_x, o_c))
                 worst = max(worst, abs(float(c) - other_at) / C0)
@@ -464,11 +528,26 @@ def _festim_run(festim: Any, model: Any, flux_export: Any, profile_exports: list
     model.show_progress_bar = False
     model.initialise()
     model.run()
-    n = min(len(model.timesteps), len(flux_export.data))
+    n = len(flux_export.data)
     if n < 2:
         raise ProbeSkip("FESTIM flux export has fewer than 2 timesteps")
-    times = [float(t) for t in model.timesteps[:n]]
-    flux = [abs(float(v)) for v in flux_export.data[:n]]
+    if len(model.timesteps) >= 2:
+        m = min(len(model.timesteps), n)
+        times = [float(t) for t in model.timesteps[:m]]
+    else:
+        # HydrogenTransportProblemDiscontinuous (FESTIM 2.1) does not
+        # populate ``model.timesteps`` on the discontinuous path; the export
+        # is sampled every fixed step, so the probe's uniform-stepsize
+        # cadence gives the export times exactly.
+        dt_fixed = float(model.settings.stepsize.initial_value)
+        times = [i * dt_fixed for i in range(n)]
+        m = n
+    # Signed flux: FESTIM's SurfaceFlux export at the right face is already
+    # positive in the +x direction for F1/F2/F4. abs() was destructive for
+    # F3, whose physical flux is negative for ~120 s (the interior starts at
+    # zero, below the 2 mol/m^3 outlet Sieverts value, and fills up from the
+    # left); flipping its sign corrupts the cumulative-flux t_lag fit.
+    flux = [float(v) for v in flux_export.data[:m]]
     xs: list[float] = []
     cs: list[float] = []
     for profile in profile_exports:
@@ -498,12 +577,21 @@ def _festim_slab(
     model.species = [tritium]
     model.temperature = 500.0
     if leg == "F3":
+        # FESTIM 2.1 SievertsBC asserts its value function returns a UFL
+        # expression; with all-float S_0/E_S/pressure the isothermal
+        # (E_S = 0) law collapses to a plain float ("<class 'float'>" assert).
+        # The documented spelling is S_0 as float-or-fem.Constant
+        # (SievertsBC docstring), so pass the synthetic constant as a
+        # mesh-bound dolfinx Constant. Physics unchanged.
+        from dolfinx import fem
+
+        sievert_k = fem.Constant(model.mesh.mesh, SIEVERT_K)
         model.boundary_conditions = [
             festim.SievertsBC(
-                subdomain=left, S_0=SIEVERT_K, E_S=0.0, pressure=P_IN, species=tritium
+                subdomain=left, S_0=sievert_k, E_S=0.0, pressure=P_IN, species=tritium
             ),
             festim.SievertsBC(
-                subdomain=right, S_0=SIEVERT_K, E_S=0.0, pressure=P_OUT, species=tritium
+                subdomain=right, S_0=sievert_k, E_S=0.0, pressure=P_OUT, species=tritium
             ),
         ]
     else:
@@ -555,8 +643,58 @@ def _festim_slab(
     return result
 
 
+_scifem_shim_installed = False
+
+
+def _compat_scifem_transfer_shim() -> None:
+    """Adapt FESTIM 2.1's meshtag transfer call to the scifem 0.27 signature.
+
+    FESTIM 2.1 calls ``scifem.mesh.transfer_meshtags_to_submesh(tag, submesh,
+    v_map, cell_map)`` positionally; scifem 0.27 made ``vertex_to_parent`` /
+    ``cell_to_parent`` keyword-only, so the discontinuous-leg initialise
+    raises ``TypeError: takes 2 positional arguments but 4 were given``.
+    Rebind the module-global festim imports to the keyword form of the same
+    call (identical arguments, semantics); no-op when the positional form
+    still exists (detected by signature). Only the F4 leg hits this path.
+    """
+    global _scifem_shim_installed
+    if _scifem_shim_installed:
+        return
+    _scifem_shim_installed = True
+    try:
+        import festim.subdomain.volume_subdomain as vsd
+
+        original = vsd.transfer_meshtags_to_submesh
+        keyword_only = {
+            p.name
+            for p in inspect.signature(original).parameters.values()
+            if p.kind == inspect.Parameter.KEYWORD_ONLY
+        }
+        if "vertex_to_parent" not in keyword_only:
+            return
+
+        def _keyword_transfer(entity_tag, submesh, vertex_to_parent=None, cell_to_parent=None):
+            return original(
+                entity_tag,
+                submesh,
+                vertex_to_parent=vertex_to_parent,
+                cell_to_parent=cell_to_parent,
+            )
+
+        vsd.transfer_meshtags_to_submesh = _keyword_transfer
+    except Exception:  # noqa: BLE001 — shim failure surfaces as the leg's own error
+        pass
+
+
 def _festim_two_layer(festim: Any, n_per_layer: int, times_grid: list[float], dt: float) -> dict:
-    """Two-layer discontinuous FESTIM leg (Sieverts interface law)."""
+    """Two-layer discontinuous FESTIM leg (Sieverts interface law).
+
+    Species carry the new 2.1 ``subdomains`` attribute (the discontinuous
+    problem rejects a species without it), and the internal interface is
+    represented by ``Interface`` alone: a separate mid ``SurfaceSubdomain1D``
+    in ``subdomains`` is connected to both volumes and is rejected.
+    """
+    _compat_scifem_transfer_shim()
     l1, l2 = 5e-4, 5e-4
     total = l1 + l2
     verts = np.concatenate(
@@ -571,7 +709,6 @@ def _festim_two_layer(festim: Any, n_per_layer: int, times_grid: list[float], dt
     vol2 = festim.VolumeSubdomain1D(id=2, borders=[l1, total], material=mat2)
     left = festim.SurfaceSubdomain1D(id=1, x=0.0)
     right = festim.SurfaceSubdomain1D(id=2, x=total)
-    mid = festim.SurfaceSubdomain1D(id=3, x=l1)
     interface = festim.Interface(id=3, subdomains=[vol1, vol2])
     try:
         model = festim.HydrogenTransportProblemDiscontinuous(interfaces=[interface])
@@ -579,8 +716,8 @@ def _festim_two_layer(festim: Any, n_per_layer: int, times_grid: list[float], dt
         model = festim.HydrogenTransportProblemDiscontinuous()
         model.interfaces = [interface]
     model.mesh = festim.Mesh1D(vertices=verts)
-    model.subdomains = [vol1, vol2, left, right, mid]
-    tritium = festim.Species("T")
+    model.subdomains = [vol1, vol2, left, right]
+    tritium = festim.Species("T", subdomains=[vol1, vol2])
     model.species = [tritium]
     model.temperature = 500.0
     model.boundary_conditions = [
@@ -692,9 +829,10 @@ def probe_legs(fine_legs: dict[str, dict]) -> tuple[list[list[str]], list[str], 
     version = getattr(festim, "__version__", "unknown")
     notes.append(f"FESTIM probe running: version {version} (pinned 2.1, black-box).")
     for leg in ("F1", "F2", "F3", "F4"):
+        dt_fine, dt_coarse = DT_FESTIM_F4 if leg == "F4" else (DT_FESTIM_FINE, DT_FESTIM_COARSE)
         try:
-            fine_festim = _festim_leg(festim, leg, MESH_FINE, DT_FESTIM_FINE)
-            coarse_festim = _festim_leg(festim, leg, MESH_COARSE, DT_FESTIM_COARSE)
+            fine_festim = _festim_leg(festim, leg, MESH_FINE, dt_fine)
+            coarse_festim = _festim_leg(festim, leg, MESH_COARSE, dt_coarse)
         except ProbeSkip as exc:
             note = f"{leg} probe leg SKIPPED: {exc}"
             print(note)
