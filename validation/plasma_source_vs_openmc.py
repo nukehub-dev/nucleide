@@ -21,7 +21,8 @@ Two parts:
    plus P12 on the arbitrary-3D birth-rate lattice (hand-vector totals and
    means, single-point bit-for-bit recovery of the point source, ring-limit
    moment closure, symmetry-fold replication and totals, card round trip
-   with the lattice drift row, mixture branch fire, loud errors),
+   with the lattice drift row, mixture branch fire, loud errors, plus the
+   single-fuel species-pair arms with bit-for-bit equal-T recovery),
    plus P13 on the deuterium hot-tail fraction (sub-rate-rule moments and
    branch share vs quadrature, the card drift tail-neutron share, bit-for-bit
    zero-fraction recovery, loud errors).
@@ -1011,12 +1012,74 @@ def lattice_gates() -> tuple[list[list[str]], list[str]]:
             _check(0.002 < frac_dd < 0.015, "P12 branches"),
         ]
     )
+    # P12f: single-fuel species pair (solo port, same report). D-T reacts at
+    # T_DT = 24 keV, D-D at T_D = 20 keV for (T_D, T_T) = (20, 30) keV:
+    # card spectrum moments sit on the pair-temperature Ballabio lines, and
+    # the equal pair (20, 20) reproduces the shared kernel bit-for-bit.
+    solo_base = {
+        "kind": "lattice",
+        "reaction": "dt",
+        "points": [
+            {"position": [10.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 20.0},
+            {"position": [0.0, 10.0, 5.0], "rate": 3.0, "ion_temperature_kev": 20.0},
+        ],
+    }
+    solo_pair = dict(solo_base, species_temperatures={"D": 20.0, "T": 30.0})
+    mu_dt, sigma_dt = _ballabio_moments("dt", 24.0)
+    cards_solo = ps.emit_source_cards(solo_pair, bins=8)
+    rows.append(
+        [
+            "P12 single-fuel D-T pair mean E",
+            fmt(cards_solo["spectrum"]["mean_mev"] - mu_dt),
+            "< 1e-12",
+            _check(
+                abs(cards_solo["spectrum"]["mean_mev"] - mu_dt) < 1e-12
+                and abs(cards_solo["spectrum"]["sigma_mev"] - sigma_dt) < 1e-12,
+                "P12 single DT pair",
+            ),
+        ]
+    )
+    solo_dd = dict(solo_pair, reaction="dd")
+    mu_dd, sigma_dd = _ballabio_moments("dd", 20.0)
+    cards_solo_dd = ps.emit_source_cards(solo_dd, bins=8)
+    rows.append(
+        [
+            "P12 single-fuel D-D pair mean E",
+            fmt(cards_solo_dd["spectrum"]["mean_mev"] - mu_dd),
+            "< 1e-12",
+            _check(
+                abs(cards_solo_dd["spectrum"]["mean_mev"] - mu_dd) < 1e-12
+                and abs(cards_solo_dd["spectrum"]["sigma_mev"] - sigma_dd) < 1e-12,
+                "P12 single DD pair",
+            ),
+        ]
+    )
+    solo_equal = dict(solo_base, species_temperatures={"D": 20.0, "T": 20.0})
+    a_solo = ps.particles(solo_base, 512, seed=17)
+    b_solo = ps.particles(solo_equal, 512, seed=17)
+    recovered_solo = all(
+        bool((a_solo[key] == b_solo[key]).all()) for key in ("x", "y", "z", "energy")
+    )
+    rows.append(
+        ["P12 single-fuel equal-T stream", "-", "exact", _check(recovered_solo, "P12 solo stream")]
+    )
+    cards_a_solo = ps.emit_source_cards(solo_base, bins=8)
+    cards_b_solo = ps.emit_source_cards(solo_equal, bins=8)
+    same_cards_solo = (
+        cards_b_solo["sdef"]["card"] == cards_a_solo["sdef"]["card"]
+        and cards_b_solo["serpent"]["card"] == cards_a_solo["serpent"]["card"]
+    )
+    rows.append(
+        ["P12 single-fuel equal-T cards", "-", "exact", _check(same_cards_solo, "P12 solo cards")]
+    )
     notes.append(
         f"P12 arbitrary-3D birth-rate lattice: two-point hand vectors (total 3, "
         f"mean x 100 cm, mono 14.021 MeV), single-point bit-for-bit recovery of "
         f"the landed point source, ring-limit moment closure (n={N}), 4-period "
         f"symmetry-fold replication with period-scaled totals, card round trip "
-        f"with the lattice drift row, and 70/30 mixture branch fire."
+        f"with the lattice drift row, 70/30 mixture branch fire, and the solo "
+        f"single-fuel pair (D-T at T_DT=24 keV, D-D at T_D, equal-T bit-for-bit "
+        f"recovery)."
     )
     return rows, notes
 

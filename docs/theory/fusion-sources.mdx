@@ -360,7 +360,12 @@ $\eta = 0$ reproduces the no-tail mixture kernel exactly.
 The lattice tier drops the last tokamak assumption, axisymmetry. The caller
 supplies the full 3D birth distribution as a point list — positions,
 relative birth-rate weights, and per-point ion temperatures — and the same
-fuel mixtures, Ballabio lines, and card emission apply per node. An
+fuel mixtures, Ballabio lines, and card emission apply per node. A single-fuel
+lattice carrying a species pair $(T_D, T_T)$ reacts at the same landed pair
+temperatures as the parametric solo port — single-fuel D-T at the
+mass-weighted $T_{DT} = T_D + \tfrac{2}{5}(T_T - T_D)$, single-fuel D-D at
+$T_D$ — with the Ballabio lines following per branch; an equal pair $(T, T)$
+reproduces the shared-temperature kernel bit-for-bit. An
 optional field-period symmetry declares the points to be one base-sector
 cloud replicated $n$ times around the machine axis (toroidal angles
 identified modulo $2\pi/n$), with the symmetric total scaled by $n$; $n = 1$

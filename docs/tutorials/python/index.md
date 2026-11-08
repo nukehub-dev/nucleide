@@ -54,12 +54,19 @@ and assumes you have already installed the project (see
     adjustment, including the IRDFF response pack.
 21. [Clearance screening](clearance-screening.md) — classify parsed activation
     inventories against the EU or Spanish clearance tables.
+22. [Fusion first wall](fusion-first-wall.md) — run the end-to-end
+    first-wall workflow from tokamak source to a foil check (synthetic
+    numbers only).
+23. [Solve activation with ACTINV](solve-with-actinv.md) — map one material,
+    spectrum, and schedule to an `actinv-spec-1` problem, solve with the
+    optional ACTINV solver, and read the photon source back with Nucleide.
 
 ## End-to-end notebooks
 
 Single-topic pages above compose into full workflows in
 [`notebooks/`](https://github.com/nukehub-dev/nucleide/tree/main/notebooks):
-first-wall damage + UQ, activation screening + radiological totals, and
-tokamak source sampling + card emission. Every notebook executes in CI with
+first-wall damage + UQ, activation screening + radiological totals,
+tokamak source sampling + card emission, and the end-to-end first-wall
+workflow. Every notebook executes in CI with
 fixed seeds over committed fixtures, so the workflows are verified examples,
 not sketches.

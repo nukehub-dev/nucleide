@@ -35,6 +35,29 @@
 //! `(T_D, T_T)` exactly like the parametric pair rule (equal-T recovery is
 //! bit-for-bit, see below).
 //!
+//! # Single-fuel species pair (solo port)
+//!
+//! The pair also applies to single-fuel lattice configs (the parametric solo
+//! convention, ported verbatim): single-fuel D-T reacts at the mass-weighted
+//! `T_DT = T_D + (2/5)·(T_T − T_D)`, single-fuel D-D at `T_D`, with the
+//! Ballabio lines following per branch — the D-T line at `T_DT`, the D-D line
+//! at `T_D`. The node ion temperature is then unused for rate and spectrum
+//! (still validated), while the node rate keeps shaping the birth weight.
+//! The `None`-pair path keeps the landed expression verbatim (one branch
+//! either way, so no new RNG draws), and an equal pair `(T, T)` on a
+//! single-fuel config reproduces the shared-temperature lattice kernel
+//! bit-for-bit (stream and cards) because `T_DT` computes to `T_D` exactly.
+//!
+//! Single-fuel hand vectors (`(T_D, T_T) = (20, 30)` keV; `T_DT = 24.0` keV
+//! exactly, pinned reactivity `⟨σv⟩_DT(24) = 5.414667327922193e-22` m³/s):
+//!
+//! ```text
+//! single-fuel D-T + pair: D-T Ballabio line at 24 keV: mean 14.077934372230146 MeV,
+//!                         sigma 0.3700390508551786 MeV
+//! single-fuel D-D + pair: D-D Ballabio line at T_D = 20 keV
+//!                         (the landed shared-temperature line; T_T unused)
+//! ```
+//!
 //! Hand vectors (D-T, `Ti = 0`, nominal 14.021 MeV):
 //!
 //! ```text
@@ -85,7 +108,9 @@
 //!   (`<R>`, `z`, Ballabio mean) to sampling tolerance, and the total equals
 //!   the summed rates exactly.
 //! - Equal species pair `(T, T)` reproduces the shared-temperature lattice
-//!   kernel bit-for-bit (stream and cards), the parametric spelling.
+//!   kernel bit-for-bit (stream and cards), the parametric spelling — with
+//!   a fuel mixture, and (solo port) on a single-fuel config whose nodes
+//!   sit at `Ti = T`.
 //!
 //! # Card emission
 //!
@@ -231,8 +256,10 @@ pub struct LatticeSourceConfig {
     /// evaluated per node at the node temperatures).
     pub fuel_mixture: Option<FuelMixture>,
     /// Optional uniform per-species ion temperatures (the parametric pair
-    /// rule — every node reacts at `(T_D, T_T)`; node temperatures are then
-    /// unused for rate and spectrum, still validated).
+    /// rule — every node reacts at `(T_D, T_T)`; single-fuel D-T reacts at
+    /// `T_DT`, single-fuel D-D at `T_D`, with the Ballabio lines following
+    /// per branch; node temperatures are then unused for rate and spectrum,
+    /// still validated).
     pub species_temperatures: Option<SpeciesIonTemperatures>,
     /// Optional field-period symmetry (module rustdoc).
     pub symmetry: Option<LatticeSymmetry>,
@@ -256,11 +283,6 @@ impl LatticeSourceConfig {
         }
         if let Some(pair) = &self.species_temperatures {
             pair.validate()?;
-            if self.fuel_mixture.is_none() {
-                return Err(Error::NotYetSupported(
-                    "per-species ion temperatures need a D/T fuel mixture",
-                ));
-            }
         }
         if let Some(symmetry) = &self.symmetry {
             symmetry.validate()?;
@@ -305,9 +327,11 @@ impl LatticeSourceConfig {
     /// Neutron-branch spectra at species temperatures `(t_d, t_t)` \[keV\]:
     /// `(reaction, weight, mean, sigma)` tuples with weights summing to 1 —
     /// the same rate rule as the parametric kernel (single fuel → one
-    /// unit-weight branch; mixture → D-T at the pair effective temperature
-    /// and D-D at `t_d`, degenerating to the D-T line where both
-    /// reactivities vanish).
+    /// unit-weight branch, at the shared temperature when the pair is `None`
+    /// — the landed call verbatim — or at the landed pair temperature when
+    /// the pair is set: D-T at `T_DT`, D-D at `t_d`; mixture → D-T at the
+    /// pair effective temperature and D-D at `t_d`, degenerating to the D-T
+    /// line where both reactivities vanish).
     pub fn spectrum_branches(
         &self,
         t_d: f64,
@@ -315,7 +339,18 @@ impl LatticeSourceConfig {
     ) -> Result<Vec<(FusionReaction, f64, f64, f64)>> {
         match &self.fuel_mixture {
             None => {
-                let (mu, sigma) = self.reaction.moments_mev(t_d)?;
+                // Single-fuel + pair: the Ballabio line follows the landed
+                // pair temperature (D-T at T_DT, D-D at t_d); the None-pair
+                // path keeps the landed call verbatim. One branch either way,
+                // so the sampler draws no roulette uniform on any single-fuel
+                // path and equal (T, T) recovers bit-for-bit.
+                let t_line = match self.reaction {
+                    FusionReaction::Dt if self.species_temperatures.is_some() => {
+                        SpeciesIonTemperatures::dt_effective_kev(t_d, t_t)
+                    }
+                    _ => t_d,
+                };
+                let (mu, sigma) = self.reaction.moments_mev(t_line)?;
                 Ok(vec![(self.reaction, 1.0, mu, sigma)])
             }
             Some(mixture) => {
@@ -1080,6 +1115,113 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn single_fuel_species_pair_anchors() {
+        // T_DT hand vector: (T_D, T_T) = (20, 30) keV gives T_DT = 24.0 keV
+        // exactly (parametric hand vectors, ported verbatim).
+        assert_eq!(SpeciesIonTemperatures::dt_effective_kev(20.0, 30.0), 24.0);
+        assert_eq!(
+            FusionReaction::Dt.reactivity_m3_per_s(24.0).unwrap(),
+            5.414667327922193e-22
+        );
+        let (mu_dt, sigma_dt) = FusionReaction::Dt.moments_mev(24.0).unwrap();
+        assert_eq!(mu_dt, 14.077934372230146);
+        assert_eq!(sigma_dt, 0.3700390508551786);
+        // Single-fuel D-T + pair: one unit-weight D-T branch at T_DT.
+        let dt_pair = LatticeSourceConfig {
+            points: vec![LatticePoint {
+                position_cm: [0.0, 0.0, 0.0],
+                rate: 1.0,
+                ion_temperature_kev: 0.0,
+            }],
+            reaction: FusionReaction::Dt,
+            fuel_mixture: None,
+            species_temperatures: Some(SpeciesIonTemperatures::new(20.0, 30.0).unwrap()),
+            symmetry: None,
+            weight: 1.0,
+        };
+        assert!(dt_pair.validate().is_ok());
+        let branches = dt_pair.spectrum_branches(20.0, 30.0).unwrap();
+        assert_eq!(
+            branches,
+            vec![(FusionReaction::Dt, 1.0, mu_dt, sigma_dt)],
+            "one branch, no roulette draw"
+        );
+        assert_eq!(dt_pair.mean_birth_energy().unwrap(), mu_dt);
+        // Single-fuel D-D + pair: one unit-weight D-D branch at T_D.
+        let (mu_dd, sigma_dd) = FusionReaction::Dd.moments_mev(20.0).unwrap();
+        let dd_pair = LatticeSourceConfig {
+            reaction: FusionReaction::Dd,
+            ..dt_pair.clone()
+        };
+        let branches = dd_pair.spectrum_branches(20.0, 30.0).unwrap();
+        assert_eq!(branches, vec![(FusionReaction::Dd, 1.0, mu_dd, sigma_dd)]);
+        assert_eq!(dd_pair.mean_birth_energy().unwrap(), mu_dd);
+        // Node temperatures are overridden by the pair (still validated):
+        // a node claiming 0 keV still reacts at T_DT = 24 keV on the D-T arm.
+        assert_ne!(
+            dt_pair.mean_birth_energy().unwrap(),
+            FusionReaction::Dt.moments_mev(0.0).unwrap().0
+        );
+    }
+
+    #[test]
+    fn single_fuel_species_equal_temperatures_recover_shared_kernel_bit_for_bit() {
+        // Equal pair (T, T) on a single-fuel config reproduces the
+        // shared-temperature single-fuel kernel bit-for-bit (strengths,
+        // stream, cards) for both fuels. Nodes sit at Ti = T so the pair
+        // overrides them with the same value.
+        for reaction in [FusionReaction::Dt, FusionReaction::Dd] {
+            let flat = LatticeSourceConfig {
+                points: vec![
+                    LatticePoint {
+                        position_cm: [10.0, 0.0, 0.0],
+                        rate: 1.0,
+                        ion_temperature_kev: 20.0,
+                    },
+                    LatticePoint {
+                        position_cm: [0.0, 10.0, 5.0],
+                        rate: 3.0,
+                        ion_temperature_kev: 20.0,
+                    },
+                ],
+                reaction,
+                fuel_mixture: None,
+                species_temperatures: None,
+                symmetry: None,
+                weight: 1.0,
+            };
+            let pair = LatticeSourceConfig {
+                species_temperatures: Some(SpeciesIonTemperatures::new(20.0, 20.0).unwrap()),
+                ..flat.clone()
+            };
+            assert_eq!(
+                flat.total_strength().unwrap(),
+                pair.total_strength().unwrap(),
+                "strengths"
+            );
+            assert_eq!(
+                flat.mean_birth_energy().unwrap(),
+                pair.mean_birth_energy().unwrap(),
+                "mean energy"
+            );
+            for seed in [0, 17] {
+                let a = LatticeSampler::new(flat.clone(), seed)
+                    .unwrap()
+                    .sample_n(128);
+                let b = LatticeSampler::new(pair.clone(), seed)
+                    .unwrap()
+                    .sample_n(128);
+                assert_eq!(a, b, "seed {seed}");
+            }
+            assert_eq!(
+                lattice_emission_histograms(&flat, 8).unwrap(),
+                lattice_emission_histograms(&pair, 8).unwrap(),
+                "cards"
+            );
+        }
+    }
+
+    #[test]
     fn mixture_lattice_fires_both_branches() {
         let config = LatticeSourceConfig {
             points: vec![LatticePoint {
@@ -1149,10 +1291,30 @@ pub(crate) mod tests {
                 "field-period fold needs matching ion temperatures across each orbit"
             ))
         );
-        // Species pair without a mixture stays loud.
+        // Species pair without a mixture now validates (solo port):
+        // single-fuel D-T/D-D react at the pair temperatures.
         let mut no_mixture = two_point_lattice();
         no_mixture.species_temperatures = Some(SpeciesIonTemperatures::new(20.0, 20.0).unwrap());
-        assert!(no_mixture.validate().is_err());
+        assert!(no_mixture.validate().is_ok());
+        // …but malformed species temperatures stay loud on the solo path.
+        let mut bad_pair = two_point_lattice();
+        bad_pair.species_temperatures = Some(SpeciesIonTemperatures {
+            deuterium_kev: -1.0,
+            tritium_kev: 20.0,
+        });
+        assert_eq!(
+            bad_pair.validate(),
+            Err(Error::NegativeIonTemperature(-1.0))
+        );
+        let mut nan_pair = two_point_lattice();
+        nan_pair.species_temperatures = Some(SpeciesIonTemperatures {
+            deuterium_kev: f64::NAN,
+            tritium_kev: 20.0,
+        });
+        assert_eq!(
+            nan_pair.validate(),
+            Err(Error::NonFinite("deuterium ion temperature"))
+        );
     }
 
     #[test]

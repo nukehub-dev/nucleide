@@ -850,19 +850,19 @@ Backing crate: [`nucleide-tritium`](../architecture/crate-responsibilities.md#nu
 
 Backing crate: [`nucleide-plasma-source`](../architecture/crate-responsibilities.md#nucleide-plasma-source) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/plasma-source)
 
-- [`particles(spec: dict[str, Any], n: int, seed: int) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L93)
-- [`emit_source_cards(spec: dict[str, Any], bins: int = 21) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L124)
-- [`spectrum_moments(reaction: str, ion_temperature_kev: float) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L148)
-- [`reactivity(reaction: str, ion_temperature_kev: float) -> float`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L158)
-- [`proton_accounting(spec: dict[str, Any]) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L167)
+- [`particles(spec: dict[str, Any], n: int, seed: int) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L96)
+- [`emit_source_cards(spec: dict[str, Any], bins: int = 21) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L130)
+- [`spectrum_moments(reaction: str, ion_temperature_kev: float) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L154)
+- [`reactivity(reaction: str, ion_temperature_kev: float) -> float`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L164)
+- [`proton_accounting(spec: dict[str, Any]) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L173)
 
-- [`ecrh_scalars`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L183):
+- [`ecrh_scalars`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L189):
 
   ```python
   ecrh_scalars(frequency_ghz: float, harmonic: int = 1, electron_temperature_kev: float | None = None, field_t: float | None = None) -> dict[str, Any]
   ```
 
-- [`ecrh_accessibility`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L204):
+- [`ecrh_accessibility`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/plasma_source.py#L210):
 
   ```python
   ecrh_accessibility(s_m: list[float], b_t: list[float], ne_m3: list[float], frequency_ghz: float, harmonic: int = 1, electron_temperature_kev: float | None = None) -> dict[str, Any]

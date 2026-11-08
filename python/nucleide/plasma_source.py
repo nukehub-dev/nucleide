@@ -57,8 +57,11 @@ dicts (relative birth-rate weights, arbitrary global scale; ``Ti = 0`` is the
 monoenergetic nominal line). Fuel is ``reaction`` or the ``fuel`` dict (then
 ``reaction`` is optional and unused), with the same per-node branch roulette;
 the optional ``species_temperatures`` pair reacts every node at ``(T_D, T_T)``
-(requires ``fuel``; node temperatures then unused for rate/spectrum, still
-validated). The optional ``field_periods``/``base_angle`` pair declares
+(node temperatures then unused for rate/spectrum, still validated) — on a
+mixture the D-T arm reacts at ``T_DT`` and the D-D arm at ``T_D``, and on a
+single-fuel config the same pair rule applies (single-fuel D-T at ``T_DT``,
+single-fuel D-D at ``T_D``). A uniform ``T_D = T_T`` pair reproduces the
+shared-temperature kernel exactly. The optional ``field_periods``/``base_angle`` pair declares
 field-period symmetry (both or neither; ``field_periods >= 1``): the points
 are the base-sector cloud, replicated uniformly around the axis. Cards carry
 the cloud's cylindrical-``R``/vertical/energy marginals with drift rows plus
@@ -112,8 +115,11 @@ def particles(spec: dict[str, Any], n: int, seed: int) -> dict[str, Any]:
     [rad] (both or neither). Lattice sources take ``points`` (a list of
     ``{"position", "rate", "ion_temperature_kev"}`` dicts), plus either
     ``reaction`` or the ``fuel`` dict, plus the optional
-    ``species_temperatures`` dict, plus the optional
-    ``field_periods``/``base_angle`` symmetry pair (both or neither).
+    ``species_temperatures`` dict ``{"D": T_D, "T": T_T}`` [keV] for distinct
+    species temperatures (both keys; single-fuel D-T reacts at ``T_DT``,
+    single-fuel D-D at ``T_D``, mixtures at the same pair temperatures), plus
+    the optional ``field_periods``/``base_angle`` symmetry pair (both or
+    neither).
     Returns ``x``/``y``/
     ``z`` [cm], direction cosines ``u``/``v``/``w`` (unit vectors), ``energy``
     [MeV], and ``weight``. The same ``seed`` reproduces the same stream.

@@ -273,9 +273,10 @@ and the drift report quantifies the tabulation truncation and the
 joint-correlation distance a product-form card cannot carry; Serpent rows
 are analytic by design. Profiles are caller inputs — nothing computes them.
 Out of scope (loud `NotYetSupported`): T-T neutron transport, proton
-transport, reactant distributions beyond the one pinned tail shape (the
-rest of the full Eriksson generalization; no tail spelling on lattice
-configs), and per-species temperatures without a fuel mixture.
+transport, and reactant distributions beyond the one pinned tail shape (the
+rest of the full Eriksson generalization; the tail is parametric-only — no
+tail spelling on lattice configs). Per-species temperatures are supported
+on single-fuel and mixture configs (D-T at `T_DT`, D-D at `T_D`).
 MCPL projection stays caller-side (`vr-tools` KDE layering rule). Depends on
 `nucleide-mcnp-io` and `nucleide-nuclei`; never on `mcpl-io`, never on
 bindings.

@@ -868,6 +868,75 @@ def test_lattice_mixture_fires_both_branches() -> None:
     assert 0.0 < acc["proton_per_neutron"] < 0.05
 
 
+def test_lattice_single_fuel_species_pair_reacts_at_pair_temperatures() -> None:
+    # Single-fuel + pair reacts at the landed mixture pair temperatures:
+    # D-T at T_DT = 24 keV for (T_D, T_T) = (20, 30) keV, D-D at T_D.
+    # Pinned anchors: T_DT, <sv>_DT(24), and the D-T Ballabio line.
+    assert 20.0 + 0.4 * (30.0 - 20.0) == 24.0
+    assert ps.reactivity("dt", 24.0) == 5.414667327922193e-22
+    mu_dt, sigma_dt = _ballabio_moments("dt", 24.0)
+    assert mu_dt == pytest.approx(14.077934372230146, rel=1e-12)
+    assert sigma_dt == pytest.approx(0.3700390508551786, rel=1e-12)
+    base_dt = {
+        "kind": "lattice",
+        "reaction": "dt",
+        "points": [
+            {"position": [10.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 20.0},
+            {"position": [0.0, 10.0, 5.0], "rate": 3.0, "ion_temperature_kev": 20.0},
+        ],
+    }
+    pair_dt = dict(base_dt, species_temperatures={"D": 20.0, "T": 30.0})
+    cards_pair = ps.emit_source_cards(pair_dt, bins=15)
+    cards_none = ps.emit_source_cards(base_dt, bins=15)
+    assert cards_pair["spectrum"]["mean_mev"] == pytest.approx(mu_dt, rel=1e-12)
+    assert cards_pair["spectrum"]["sigma_mev"] == pytest.approx(sigma_dt, rel=1e-12)
+    assert cards_pair["spectrum"]["mean_mev"] != pytest.approx(
+        cards_none["spectrum"]["mean_mev"], rel=1e-9
+    )
+    # Sampled mean sits on the D-T line at 24 keV; node temperatures are
+    # overridden by the pair (a node claiming 0 keV still fires at 24 keV).
+    cold_node = dict(
+        pair_dt,
+        points=[{"position": [0.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 0.0}],
+    )
+    out = ps.particles(cold_node, 20_000, seed=13)
+    assert abs(float(out["energy"].mean()) - mu_dt) < 6.0 * sigma_dt / math.sqrt(20_000)
+    # Single-fuel D-D + pair reacts at T_D: identical spectrum to the None
+    # path when T_D equals the node temperature.
+    base_dd = dict(base_dt, reaction="dd")
+    pair_dd = dict(base_dd, species_temperatures={"D": 20.0, "T": 30.0})
+    cards_dd_pair = ps.emit_source_cards(pair_dd, bins=15)
+    cards_dd_none = ps.emit_source_cards(base_dd, bins=15)
+    assert cards_dd_pair["spectrum"]["mean_mev"] == pytest.approx(
+        cards_dd_none["spectrum"]["mean_mev"], rel=1e-12
+    )
+
+
+def test_lattice_single_fuel_species_equal_temperatures_recover_shared_kernel() -> None:
+    # Equal pair (T, T) on a single-fuel lattice reproduces the
+    # shared-temperature kernel bit-for-bit end to end: the same seeded
+    # stream and the same cards, for both fuels.
+    for reaction in ("dt", "dd"):
+        base = {
+            "kind": "lattice",
+            "reaction": reaction,
+            "points": [
+                {"position": [10.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 20.0},
+                {"position": [0.0, 10.0, 5.0], "rate": 3.0, "ion_temperature_kev": 20.0},
+            ],
+        }
+        pair = dict(base, species_temperatures={"D": 20.0, "T": 20.0})
+        a = ps.particles(base, 512, seed=17)
+        b = ps.particles(pair, 512, seed=17)
+        for key in ("x", "y", "z", "u", "v", "w", "energy", "weight"):
+            assert bool((a[key] == b[key]).all())
+        cards_a = ps.emit_source_cards(base, bins=8)
+        cards_b = ps.emit_source_cards(pair, bins=8)
+        assert cards_b["sdef"]["card"] == cards_a["sdef"]["card"]
+        assert cards_b["sdef"]["drift"] == cards_a["sdef"]["drift"]
+        assert cards_b["serpent"]["card"] == cards_a["serpent"]["card"]
+
+
 def test_lattice_errors_are_loud() -> None:
     with pytest.raises(ValueError, match="kind"):
         ps.particles(dict(_two_point_lattice_spec(), kind="cloud"), 4, seed=0)
@@ -889,9 +958,17 @@ def test_lattice_errors_are_loud() -> None:
         ps.particles(dict(_two_point_lattice_spec(), base_angle=0.0), 4, seed=0)
     with pytest.raises(ValueError, match="periods"):
         ps.particles(dict(_two_point_lattice_spec(), field_periods=0, base_angle=0.0), 4, seed=0)
-    with pytest.raises(ValueError, match="not yet supported"):
+    # Single-fuel species pairs are supported (solo port); non-finite or
+    # negative species temperatures stay loud on the solo path.
+    with pytest.raises(ValueError, match=">= 0"):
         ps.particles(
-            dict(_two_point_lattice_spec(), species_temperatures={"D": 20.0, "T": 20.0}),
+            dict(_two_point_lattice_spec(), species_temperatures={"D": -1.0, "T": 20.0}),
+            4,
+            seed=0,
+        )
+    with pytest.raises(ValueError, match="non-finite"):
+        ps.particles(
+            dict(_two_point_lattice_spec(), species_temperatures={"D": float("nan"), "T": 20.0}),
             4,
             seed=0,
         )

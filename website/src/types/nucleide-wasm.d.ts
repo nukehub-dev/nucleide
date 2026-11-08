@@ -768,6 +768,8 @@ export interface LatticeSourceSpec {
   reaction: string;
   fieldPeriods?: number;
   baseAngle?: number;
+  speciesDeuteriumKev?: number;
+  speciesTritiumKev?: number;
   n: number;
   seed: number;
 }

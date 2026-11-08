@@ -7397,7 +7397,9 @@ fn parse_plasma_parametric_spec(
 /// distribution without symmetry, or the base-sector cloud with symmetry),
 /// plus either `reaction` (`"dt"`/`"dd"`) or the `fuel` dict
 /// `{"D": f_D, "T": f_T}` (then `reaction` is optional and unused), plus the
-/// optional `species_temperatures` dict (both keys; requires `fuel`), plus
+/// optional `species_temperatures` dict (both keys; single-fuel D-T reacts
+/// at `T_DT`, single-fuel D-D at `T_D`, mixtures at the same pair
+/// temperatures), plus
 /// the optional `field_periods`/`base_angle` symmetry pair (both or neither;
 /// `field_periods >= 1`, finite `base_angle` [rad]). Non-finite, negative,
 /// or misshapen entries are loud errors.
@@ -7482,7 +7484,8 @@ fn parse_plasma_lattice_spec(
     // Per-species ion temperatures, upstream spelling: species_temperatures=
     // {"D": T_D_kev, "T": T_T_kev}. Both keys are required when the dict is
     // present; SpeciesIonTemperatures::new carries the loud temperature
-    // errors, and config validation requires a fuel mixture alongside.
+    // errors. The pair also applies to single-fuel lattice specs (D-T at
+    // T_DT, D-D at T_D).
     let species_temperatures = match spec.get("species_temperatures") {
         Some(value) => {
             let temps: BTreeMap<String, f64> = value.extract(py).map_err(|_| {

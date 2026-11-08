@@ -6016,7 +6016,9 @@ struct LatticePointJson {
 ///
 /// `spec` takes `points` (one `{positionCm: [x, y, z], rate, tiKev}` row per
 /// node, lengths in cm, temperatures in keV), `reaction` (`"dt"`/`"dd"`),
-/// optional `fieldPeriods`/`baseAngle` symmetry, `n` (capped at
+/// optional `fieldPeriods`/`baseAngle` symmetry, optional
+/// `speciesDeuteriumKev` + `speciesTritiumKev` (both or neither; single-fuel
+/// D-T reacts at the mass-weighted `T_DT`, D-D at `T_D`), `n` (capped at
 /// [`MAX_FUSION_SAMPLES`]) and an integer `seed`. Returns `{kind:
 /// "lattice", totalStrength, count, particles}` with one `{positionCm,
 /// direction, energyMeV, weight}` row per particle.
@@ -6031,6 +6033,10 @@ pub fn sample_lattice_source(spec: JsValue) -> Result<JsValue, JsValue> {
         field_periods: Option<f64>,
         #[serde(rename = "baseAngle")]
         base_angle: Option<f64>,
+        #[serde(rename = "speciesDeuteriumKev")]
+        species_deuterium_kev: Option<f64>,
+        #[serde(rename = "speciesTritiumKev")]
+        species_tritium_kev: Option<f64>,
     }
     let parsed: LatticeSpecJson = serde_wasm_bindgen::from_value(spec.clone()).map_err(js_err)?;
     if parsed.points.is_empty() {
@@ -6056,11 +6062,25 @@ pub fn sample_lattice_source(spec: JsValue) -> Result<JsValue, JsValue> {
         }
         None => None,
     };
+    // Per-species ion temperatures on lattice configs: single-fuel D-T
+    // reacts at the mass-weighted T_DT, single-fuel D-D at T_D (the parametric
+    // solo convention). Pair entries validate loudly in the core.
+    let species_temperatures = match (parsed.species_deuterium_kev, parsed.species_tritium_kev) {
+        (Some(d), Some(t)) => {
+            Some(nucleide_plasma_source::SpeciesIonTemperatures::new(d, t).map_err(js_err)?)
+        }
+        (None, None) => None,
+        _ => {
+            return Err(js_err(
+                "speciesDeuteriumKev and speciesTritiumKev must be given together",
+            ));
+        }
+    };
     let config = LatticeSourceConfig {
         points,
         reaction: parse_fusion_reaction(&parsed.reaction)?,
         fuel_mixture: None,
-        species_temperatures: None,
+        species_temperatures,
         symmetry,
         weight: 1.0,
     };

@@ -39,6 +39,11 @@ reference tally (`magic_tally.txt`), and the committed results document.
   from `fixtures/` and patches only at runtime, in memory.
 - Oracle comparisons (`parsers_vs_refs.py`) must never skip silently: every
   skip is printed and recorded in the report prose with its reason.
+- Probe-only external oracles that need a separate image
+  (`validation/tritium_vs_festim.py`: docker + `dolfinx/dolfinx:stable`,
+  `festim==2.1`) run outside the main `Containerfile` — their legs SKIP
+  loudly when the oracle is unavailable and never add FESTIM/FEniCS to the
+  validation container.
 
 ## Work Guidance
 

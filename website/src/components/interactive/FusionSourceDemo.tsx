@@ -140,11 +140,23 @@ export function FusionSourceDemo() {
     if (!Number.isInteger(fieldPeriods) || fieldPeriods < 1)
       throw new Error(`bad field periods \`${periodsText}\` (expected an integer >= 1)`);
     const baseAngle = parseEntry(baseAngleText, "base angle");
+    // Blank species pair reacts at the node temperature; a set pair
+    // reacts single-fuel D-T at T_DT and D-D at T_D (the solo port).
+    const spDBlank = speciesDText.trim() === "";
+    const spTBlank = speciesTText.trim() === "";
+    let speciesDeuteriumKev: number | undefined;
+    let speciesTritiumKev: number | undefined;
+    if (!spDBlank || !spTBlank) {
+      speciesDeuteriumKev = parseEntry(speciesDText, "species D temperature");
+      speciesTritiumKev = parseEntry(speciesTText, "species T temperature");
+    }
     return {
       points: LATTICE_PRESET.map((p) => ({ ...p, tiKev })),
       reaction,
       fieldPeriods,
       baseAngle,
+      speciesDeuteriumKev,
+      speciesTritiumKev,
       n,
       seed,
     };

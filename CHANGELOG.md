@@ -13,6 +13,51 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Added
+
+- End-to-end first-wall workflow (tutorial
+  `docs/tutorials/python/fusion-first-wall.md` and notebook
+  `notebooks/first-wall-workflow.ipynb`): screening-level chain from a
+  synthetic parametric D-T source and caller wall-load flux through CSG
+  translation, weight windows, MCPL exchange, R2S/ALARA/FISPACT parsing,
+  one-full-power-year damage with uncertainty, clearance screening over the
+  parsed inventory, tritium permeation scoping, and a SAND-II foil check.
+  Every number is synthetic, the wall load defaults to 1.5 MW/m² with a
+  caller override, and both the tutorial and the notebook execute in CI.
+
+- FESTIM parity probe `validation/tritium_vs_festim.py`: a black-box
+  comparison of the 1D tritium kernel against FESTIM 2.1 (`festim==2.1`,
+  Apache-2.0, v2.x API) over trap-free, one-trap, Sieverts, and two-layer
+  legs with manufactured-solution and analytic-permeation self-gates.
+  The probe runs only in the probe-only `dolfinx/dolfinx:stable` image
+  (docker route, documented in `validation/README.md`) and SKIPs loudly
+  with its reason everywhere else; FESTIM never enters the main
+  validation container or the Rust workspace. Committed `results.md`
+  numbers regenerate only from a probe-image run.
+
+- Per-species ion temperatures on single-fuel lattice configs in
+  `nucleide-plasma-source` (the 0.16 parametric solo convention ported to
+  `LatticeSourceConfig`): single-fuel D-T reacts at the mass-weighted
+  `T_DT = T_D + (2/5)·(T_T − T_D)`, single-fuel D-D at `T_D`, with the
+  Ballabio lines following per branch (D-T at `T_DT`, D-D at `T_D`). Equal
+  pair temperatures `(T, T)` reproduce the shared-temperature single-fuel
+  lattice kernel bit-for-bit (strengths, sampled stream, cards). Anchors:
+  `(T_D, T_T) = (20, 30)` keV gives `T_DT = 24` keV with the D-T line at mean
+  14.077934372230146 MeV, sigma 0.3700390508551786 MeV. Mixture paths are
+  untouched; the `None`-pair path keeps the landed expression trees verbatim
+  (no new RNG draws); the per-node tail spelling stays out of scope.
+
+- Python tutorial "Solve activation with ACTINV"
+  (`docs/tutorials/python/solve-with-actinv.md`): maps one material, one
+  spectrum, and one schedule from the Nucleide ALARA/R2S surfaces to an
+  `actinv-spec-1` problem, solves with the optional ACTINV CLI (pinned
+  `actinv==1.4.0`, data catalog `1.1.0` with the recorded library hash),
+  and reads the photon source back with Nucleide's existing
+  `.photonSrc` readers. Docs only — no Nucleide dependency on ACTINV,
+  no vendored code or data; the example files stay in the ACTINV
+  repository. Carries the research-grade qualification, the TENDL-2025
+  data defects, and the TOTAL-only photon limit.
+
 ## [0.16.0] - 2026-09-18
 
 ### Added

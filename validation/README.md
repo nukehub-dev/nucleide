@@ -20,6 +20,7 @@ committed `results.md` holds the measured numbers that the paper quotes.
 | `decay_vs_radioactivedecay.py` | Single-nuclide decay (H-3, Co-60, Cs-137) vs the radioactivedecay oracle (ICRP-107, container-only) |
 | `unfold_vs_analytic.py` | SAND-II neutron spectrum unfolding: synthetic forward-fold round-trips + IRDFF-II analytical benchmark shapes (published facts, cited; no external unfolding oracle exists) |
 | `equilib_vs_desc.py` | Equilibrium data readers: synthetic classic-`wout` magic/format/Jacobian gates + `&INDATA` grammar gates (always run) with DESC/simsopt container probes (loud SKIP outside) |
+| `tritium_vs_festim.py` | 1D tritium kernel parity probe vs FESTIM 2.1 (black-box; probe-only image; see probe section below) |
 | `timings.py` | Coarse wall-time comparisons (Python overhead included) |
 | `make_figures.py` | Generates the paper figures in `figures/` from the JSON reports |
 | `common.py` | Shared helpers and `Report` class used by the comparison scripts |
@@ -158,6 +159,39 @@ reads PyNE's bundled `nuc_data.h5` (`/neutron/simple_xs` via
 against hardcoded NIST NCNR anchors, and checks decay energies against
 hardcoded chain/ENDF-derived spot values; `depletion_vs_openmc.py` builds its
 synthetic A→B→C chain inline in a temp file (no new fixtures).
+
+## Tritium/FESTIM parity probe (probe-only image)
+
+`tritium_vs_festim.py` compares the `nucleide.tritium` 1D kernel against
+FESTIM 2.1 (Apache-2.0, `festim==2.1`, v2.x API) black-box only: the script
+drives FESTIM's documented surface (`HydrogenTransportProblem`,
+`Mesh1D`, `Material`, `Species`/`Reaction`, BC classes, `Settings`,
+exports) and reads only the exported flux and profile numbers. No FESTIM
+code is read, copied, or vendored, and no synthetic-input rule is bent —
+every probe parameter is a hand-picked value in the script.
+
+FESTIM 2.1 needs DOLFINx, so the probe never runs in the main
+`Containerfile` image (which stays FESTIM-free by contract) and never in
+the Rust workspace. It runs in the separate probe-only image
+`dolfinx/dolfinx:stable`. On boxes without podman, docker is the accepted
+route for the probe (the main harness still uses podman):
+
+```bash
+docker run --rm -v "$PWD:/work" -w /work dolfinx/dolfinx:stable \
+    bash -c "pip install festim==2.1 && python validation/tritium_vs_festim.py"
+```
+
+Progression: F1 trap-free Dirichlet-Dirichlet → F2 one McNabb-Foster trap
+→ F3 Sieverts ends → F4 two-layer stack. Recombination ends are excluded
+(the exact-face versus surface-flux formulations are an uncharacterized
+mismatch zone). Gates: J_ss 2%, J(t) 3% above a `1e-3·J_ss` floor excluding
+t < 0.2·t_lag, t_lag 5%, steady c(x) 2% max-norm; each side self-converges
+to < 1/3 of its gate first, otherwise the leg is inconclusive, never a
+pass. Always-run legs VV Val-1da (analytic permeation) and M1
+(manufactured-solution order) gate the Nucleide side in any environment.
+Outside the probe image the FESTIM legs SKIP loudly with their reason and
+are recorded as executed probes, never as silent passes. `results.md`
+numbers for this section are regenerated only by a probe-image run.
 
 ## Parser oracle notes
 

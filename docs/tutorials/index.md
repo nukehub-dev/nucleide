@@ -15,7 +15,7 @@ assumes you have already installed the project (see
 2. [Interactive tutorials](interactive/index.mdx) — run Nucleide in your browser,
    no installation required.
 3. [Python tutorials](python/index.md) — then follow its suggested order:
-   seventeen short guides covering parsing, materials, solvers, emission,
+   twenty-two short guides covering parsing, materials, solvers, emission,
    CSG translation, and UQ.
 
 ## Finding more examples

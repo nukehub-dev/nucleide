@@ -91,11 +91,10 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   stay neutron-only), reactant distributions beyond the one pinned
   deuterium hot-tail fraction on a D/T mixture (the rest of the full
   Eriksson generalization; the per-species-temperature form is supported via
-  `SpeciesIonTemperatures` — including on single-fuel configs, which react
-  at the pair temperatures — the single-tail-temperature form via
-  `DeuteriumTail` — both parametric-only, there is no tail spelling on
-  lattice configs), per-species temperatures without a fuel mixture on
-  lattice configs, and profile
+  `SpeciesIonTemperatures` — on parametric and lattice configs, including
+  single-fuel configs, which react at the pair temperatures — the
+  single-tail-temperature form via `DeuteriumTail` — parametric-only, there
+  is no tail spelling on lattice configs), and profile
   self-consistency (zero total strength). Mixture fractions, species
   temperatures, tail parameters, lattice clouds/symmetry, and sector angles carry their own loud errors
   (`Error::NonFinite`, `Error::InvalidFuelMixture`,
@@ -144,7 +143,9 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   two-point hand vectors, single-point bit-for-bit point-source recovery,
   expand/fold exactness, folded-vs-expanded stream bit-identity (incl. the
   single-node regression), ring-limit moment closure, equal-pair recovery,
-  card round trips with the lattice row, loud lattice/symmetry errors).
+  single-fuel pair hand vectors and per-branch spectra + equal-T bit-for-bit
+  recovery, card round trips with the lattice row, loud lattice/symmetry
+  errors).
 - `pytest tests/test_plasma_source.py` after `maturin develop`.
 - `validation/plasma_source_vs_openmc.py` runs inside `run_all.sh`
   (two-part: P1–P13 always, O1–O13 vs openmc-plasma-source/NeSST
