@@ -1,7 +1,7 @@
 //! Seeded sampling of source configurations to particle vectors.
 //!
 //! [`SourceSampler`] turns a [`PlasmaSourceConfig`] into a stream of
-//! [`Particle`] records (position, direction, energy, weight) over a small
+//! [`Particle`] records (species, position, direction, energy, weight) over a small
 //! self-contained RNG (SplitMix64 seeding + xoshiro256**), so a pinned seed
 //! reproduces the same stream on a given platform. There is deliberately no
 //! MCPL (or any file-format) dependency here: MCPL projection stays
@@ -13,14 +13,30 @@
 //! `sin`/`cos`/`ln`/`sqrt` come from the platform libm, so the last-ulp
 //! stream can differ across platforms; moments and card text are unaffected
 //! at any meaningful tolerance.
+//!
+//! The D(d,p)T proton sampler ([`SourceSampler::proton`]) is an independent
+//! instance with its own `Rng(seed)`: never a joint neutron+proton stream,
+//! never a per-event product roulette on the neutron path. Its draw
+//! accounting mirrors the neutron path (ring azimuth 1 uniform, energy
+//! Box–Muller ≤ 2 uniforms, direction 2 uniforms), so sampling neutrons
+//! then protons from two samplers with the same seed leaves the neutron
+//! stream bit-for-bit.
 
 use std::f64::consts::PI;
 
-use crate::{PlasmaSourceConfig, Result, SourceModel, SpectrumSpec};
+use nucleide_nuclei::particles::ParticleId;
+
+use crate::{Error, FusionReaction, PlasmaSourceConfig, Result, SourceModel, SpectrumSpec};
 
 /// One sampled source particle.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Particle {
+    /// Source particle species: [`ParticleId::Neutron`] on neutron streams,
+    /// [`ParticleId::Proton`] on proton streams. Proton streams are
+    /// independent sampler instances (own `Rng(seed)`), never a joint
+    /// neutron+proton stream and never a per-event roulette on the neutron
+    /// path.
+    pub species: ParticleId,
     /// Birth position `(x, y, z)` \[cm\].
     pub position_cm: [f64; 3],
     /// Unit direction `(u, v, w)`.
@@ -131,20 +147,54 @@ impl Rng {
 pub struct SourceSampler {
     config: PlasmaSourceConfig,
     spectrum: SpectrumSpec,
+    species: ParticleId,
     rng: Rng,
 }
 
 impl SourceSampler {
-    /// New sampler over `config` pinned to `seed`.
+    /// New neutron sampler over `config` pinned to `seed`.
     ///
     /// Errors: the configuration is validated up front (see
     /// [`PlasmaSourceConfig::validate`]).
     pub fn new(config: PlasmaSourceConfig, seed: u64) -> Result<Self> {
+        Self::build(config, seed, ParticleId::Neutron)
+    }
+
+    /// New D(d,p)T proton sampler over `config` pinned to `seed`.
+    ///
+    /// The proton spectrum is the Brysk-Gaussian 3.02 MeV line
+    /// ([`SpectrumSpec::from_proton`]); the warm draw accounting mirrors the
+    /// neutron path (ring azimuth 1 uniform, energy Box–Muller ≤ 2
+    /// uniforms, direction 2 uniforms) on a fresh `Rng(seed)` instance, so
+    /// a neutron sampler with the same seed reproduces its stream
+    /// bit-for-bit (module rustdoc: separate streams, no neutron-path
+    /// draws).
+    ///
+    /// Errors: the configuration is validated up front, and a D-T-only
+    /// config is loud: [`Error::NotYetSupported`]
+    /// (`"proton sampling needs a D-D source"`).
+    pub fn proton(config: PlasmaSourceConfig, seed: u64) -> Result<Self> {
+        Self::build(config, seed, ParticleId::Proton)
+    }
+
+    /// Shared construction: neutron (the landed path) and proton (the
+    /// D(d,p)T branch) select only the species tag and the spectrum; the
+    /// per-particle draw accounting is identical.
+    fn build(config: PlasmaSourceConfig, seed: u64, species: ParticleId) -> Result<Self> {
         config.validate()?;
-        let spectrum = config.spectrum()?;
+        let spectrum = match species {
+            ParticleId::Proton => {
+                if config.reaction != FusionReaction::Dd {
+                    return Err(Error::NotYetSupported("proton sampling needs a D-D source"));
+                }
+                SpectrumSpec::from_proton(config.ion_temperature_kev)?
+            }
+            _ => config.spectrum()?,
+        };
         Ok(Self {
             config,
             spectrum,
+            species,
             rng: Rng::new(seed),
         })
     }
@@ -186,6 +236,7 @@ impl SourceSampler {
             } => mean_mev + sigma_mev * self.standard_normal(),
         };
         Particle {
+            species: self.species,
             position_cm,
             direction: self.isotropic_direction(),
             energy_mev,
@@ -366,5 +417,87 @@ mod tests {
     fn invalid_config_fails_at_construction() {
         let config = PlasmaSourceConfig::ring(0.0, 0.0, FusionReaction::Dt, 10.0);
         assert!(SourceSampler::new(config, 0).is_err());
+    }
+
+    #[test]
+    fn neutron_stream_tags_neutron_species() {
+        let particles = SourceSampler::new(ring_config(), 2026)
+            .unwrap()
+            .sample_n(16);
+        assert!(particles
+            .iter()
+            .all(|p| p.species == nucleide_nuclei::particles::ParticleId::Neutron));
+        assert!(particles.iter().all(|p| (p.weight - 1.0).abs() < 1e-12));
+    }
+
+    #[test]
+    fn proton_moments_match_brysk_line_at_8_sigma() {
+        // D(d,p)T proton line at Ti = 20 keV: mean 3.02 MeV, sigma 0.173782
+        // MeV (reaction.rs hand vectors). 8 standard errors at N = 200k.
+        let config = PlasmaSourceConfig::ring(300.0, 25.0, FusionReaction::Dd, 20.0);
+        let mut sampler = SourceSampler::proton(config, 7).unwrap();
+        let particles = sampler.sample_n(N);
+        assert!(particles
+            .iter()
+            .all(|p| p.species == nucleide_nuclei::particles::ParticleId::Proton));
+        let (mean, sigma) = (3.02_f64, 0.173782_f64);
+        let mut e_mean = 0.0;
+        let mut e_sq = 0.0;
+        for p in &particles {
+            e_mean += p.energy_mev;
+            e_sq += p.energy_mev * p.energy_mev;
+        }
+        e_mean /= N as f64;
+        let e_std = (e_sq / N as f64 - e_mean * e_mean).sqrt();
+        let se_mean = sigma / (N as f64).sqrt();
+        let se_std = sigma / (2.0 * N as f64).sqrt();
+        assert!(
+            (e_mean - mean).abs() < 8.0 * se_mean,
+            "sampled mean {e_mean} vs {mean}"
+        );
+        assert!(
+            (e_std - sigma).abs() < 8.0 * se_std,
+            "sampled sigma {e_std} vs {sigma}"
+        );
+        // Weight is config.weight, exactly like neutrons.
+        assert!(particles.iter().all(|p| p.weight == 1.0));
+    }
+
+    #[test]
+    fn proton_zero_temperature_is_monoenergetic() {
+        let config = PlasmaSourceConfig::point(1.0, 2.0, 3.0, FusionReaction::Dd, 0.0);
+        let particles = SourceSampler::proton(config, 9).unwrap().sample_n(32);
+        assert!(particles.iter().all(|p| p.energy_mev == 3.02));
+        assert!(particles
+            .iter()
+            .all(|p| p.species == nucleide_nuclei::particles::ParticleId::Proton));
+    }
+
+    #[test]
+    fn proton_dt_only_is_loud() {
+        let config = PlasmaSourceConfig::ring(300.0, 0.0, FusionReaction::Dt, 20.0);
+        assert_eq!(
+            SourceSampler::proton(config, 1).map(|_| ()),
+            Err(crate::Error::NotYetSupported(
+                "proton sampling needs a D-D source"
+            ))
+        );
+    }
+
+    #[test]
+    fn neutron_stream_is_independent_of_proton_sampler_same_seed() {
+        // Separate instances, own Rng(seed): building/sampling a proton
+        // sampler with the same seed cannot move the neutron stream.
+        let reference = SourceSampler::new(ring_config(), 1234)
+            .unwrap()
+            .sample_n(64);
+        let proton_config = PlasmaSourceConfig::ring(300.0, 25.0, FusionReaction::Dd, 20.0);
+        let _protons = SourceSampler::proton(proton_config, 1234)
+            .unwrap()
+            .sample_n(64);
+        let again = SourceSampler::new(ring_config(), 1234)
+            .unwrap()
+            .sample_n(64);
+        assert_eq!(reference, again);
     }
 }

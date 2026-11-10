@@ -83,6 +83,24 @@ pub enum Error {
         /// Index of the zero-variance dimension.
         dim: usize,
     },
+    /// A KDE adaptive kNN bandwidth has an invalid neighbour rank or
+    /// scale: `k` must satisfy `1 <= k <= n - 1` for `n` samples, and
+    /// `scale` must be finite and positive.
+    BadAdaptiveKnn {
+        /// Fitted sample count.
+        n: usize,
+        /// Caller-supplied 1-based neighbour rank.
+        k: usize,
+        /// Caller-supplied scale factor.
+        scale: f64,
+    },
+    /// A KDE adaptive kNN sample has a zero `k`-th-neighbour distance
+    /// (duplicate points): a zero bandwidth is a delta spike, never a
+    /// density. Mirrors [`Error::ZeroVarianceDim`].
+    ZeroAdaptiveBandwidth {
+        /// Index of the sample with zero `dist_k`.
+        sample: usize,
+    },
     /// A KDE draw uniform falls outside `[0, 1)`.
     BadDraw {
         /// The offending uniform value.
@@ -161,6 +179,21 @@ impl std::fmt::Display for Error {
                 write!(
                     f,
                     "kde dimension {dim} has zero variance; use a fixed bandwidth"
+                )
+            }
+            Error::BadAdaptiveKnn { n, k, scale } => {
+                write!(
+                    f,
+                    "adaptive kNN bandwidth out of range: k = {k}, n = {n}, \
+                     scale = {scale}; requires 1 <= k <= n - 1 and a finite \
+                     positive scale"
+                )
+            }
+            Error::ZeroAdaptiveBandwidth { sample } => {
+                write!(
+                    f,
+                    "kde sample {sample} has a zero k-th-neighbour distance \
+                     (duplicate points); a zero bandwidth is a delta spike"
                 )
             }
             Error::BadDraw { value } => {
@@ -243,6 +276,15 @@ mod tests {
                 "flux[7]",
             ),
             (Error::ZeroVarianceDim { dim: 1 }, "dimension 1"),
+            (
+                Error::BadAdaptiveKnn {
+                    n: 4,
+                    k: 0,
+                    scale: 1.0,
+                },
+                "k = 0",
+            ),
+            (Error::ZeroAdaptiveBandwidth { sample: 2 }, "sample 2"),
             (Error::BadDraw { value: 1.5 }, "outside [0, 1)"),
             (
                 Error::NegativeWindow {

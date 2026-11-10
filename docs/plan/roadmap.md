@@ -87,7 +87,8 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   drift reports (GDML lattices expand to per-element placements).
 
 - Gaussian KDE source resampling (`vr-tools`): `KdeSampler` fits over caller
-  particle vectors with deterministic draw/pdf.
+  particle vectors with deterministic draw/pdf, including adaptive per-sample
+  kNN bandwidths (`Bandwidth::AdaptiveKnn`).
 - Typed legacy SDEF fixed-source reader (`mcnp-io`): keyword and discrete
   `SI`/`SP`/`SB` subset with canonical re-emission.
 - EPA FGR 15 runtime-download dosimetry pack (`nuclei` + `nucleide.data`):
@@ -103,9 +104,12 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   gates, and marginal-histogram source cards with joint-correlation drift.
   Fuel is equimolar D-T, pure D-D, or a D/T mixture at the shared ion
   temperature (Eriksson/DRESS two-branch rate); toroidal sectors, per-species
-  ion temperatures, the D(d,p)T proton branch, and the pinned T-T
-  normalization also landed (sectors scale totals by rotation/2π with a PHI
-  marginal; sampler and cards stay neutron-only).
+  ion temperatures, and the pinned T-T normalization also landed (sectors
+  scale totals by rotation/2π with a PHI marginal). D(d,p)T proton
+  transport landed for deuterium-bearing ring/point and parametric sources
+  (Brysk 3.02 MeV line, pinned 50/50 or opt-in Bosch–Hale D(d,p) rate,
+  MCNP6-only `PAR=h` cards, no Serpent proton cards; lattice protons stay
+  accounting-only).
 - Damage and gas-production metrics (`damage`): NRT-dpa and arc-dpa
   displacement functions (NRT 1975; Nordlund 2018), He/H appm and He/dpa
   ratios by spectral folding of caller flux with caller response functions,
@@ -147,7 +151,8 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 - Deuterium hot-tail fraction (`plasma-source`): the one pinned
   single-tail-temperature non-Maxwellian shape on a D/T fuel mixture (bulk
   plus hot tail reacting at their own effective temperatures, five
-  sub-branches through strengths, sampler, cards, and drift row).
+  sub-branches through strengths, sampler, cards, and drift row; the
+  lattice carries one global tail applied per node).
 - Closed-form ECRH accessibility kernel (`plasma-source`): cold
   electron-cyclotron resonance, the weakly-relativistic thermal shift, and
   the O1/X1 cut-off densities located by interpolation along a caller

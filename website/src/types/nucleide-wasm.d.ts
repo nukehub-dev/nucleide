@@ -323,6 +323,30 @@ export interface SampledVoxelSummary {
   weight: number;
 }
 
+export interface KdeFitSpec {
+  samples: number[][];
+  rule?: "silverman" | "fixed" | "adaptive";
+  k?: number;
+  scale?: number;
+  widths?: number[];
+}
+
+export interface KdePdfSpec extends KdeFitSpec {
+  point: number[];
+}
+
+export interface KdeDrawSpec extends KdeFitSpec {
+  u: number;
+  normals: number[];
+}
+
+export interface KdeFitResult {
+  nSamples: number;
+  dims: number;
+  bandwidths: number[];
+  sampleBandwidths: number[][];
+}
+
 export interface AlaraMixtureJson {
   name: string;
   entries: string[];
@@ -694,11 +718,19 @@ export interface FusionSpectrumMoments {
   mono: boolean;
 }
 
+export interface FusionProtonMoments {
+  nominalMeV: number;
+  meanMeV: number;
+  sigmaMeV: number;
+  mono: boolean;
+}
+
 export interface FusionParticleJson {
   positionCm: [number, number, number];
   direction: [number, number, number];
   energyMeV: number;
   weight: number;
+  species: string;
 }
 
 export interface FusionSampleResult {
@@ -713,6 +745,7 @@ export interface FusionRingSpec {
   heightCm: number;
   reaction: string;
   tiKev: number;
+  species?: string;
   n: number;
   seed: number;
 }
@@ -724,6 +757,7 @@ export interface FusionPointSpec {
   zCm: number;
   reaction: string;
   tiKev: number;
+  species?: string;
   n: number;
   seed: number;
 }
@@ -753,6 +787,8 @@ export interface FusionParametricSpec {
   tailTempKev?: number;
   speciesDeuteriumKev?: number;
   speciesTritiumKev?: number;
+  protonRateModel?: "pinned_50_50" | "bosch_hale_ddp";
+  species?: string;
   n: number;
   seed: number;
 }
@@ -768,6 +804,13 @@ export interface LatticeSourceSpec {
   reaction: string;
   fieldPeriods?: number;
   baseAngle?: number;
+  speciesDeuteriumKev?: number;
+  speciesTritiumKev?: number;
+  fuelDeuterium?: number;
+  fuelTritium?: number;
+  tailFraction?: number;
+  tailTempKev?: number;
+  species?: string;
   n: number;
   seed: number;
 }
@@ -962,11 +1005,12 @@ export interface FusionCardsSpec {
   pedestalRadiusCm?: number;
   nBins?: number;
   mcnpVersion?: number;
+  species?: string;
 }
 
 export interface FusionCardsResult {
   mcnp: string;
-  serpent: string;
+  serpent: string | null;
 }
 
 export interface SandiiSolutionJson {
@@ -1087,6 +1131,10 @@ export interface WasmApi {
     r1: number,
     r2: number,
   ): SampledVoxelSummary;
+  kdeFit(spec: KdeFitSpec): KdeFitResult;
+  kdePdf(spec: KdePdfSpec): number;
+  kdeDraw(spec: KdeDrawSpec): number[];
+  kdeSampleBandwidths(spec: KdeFitSpec): number[][];
   parseAlaraDeck(text: string): AlaraDeckSummary;
   parseAlaraOutput(text: string, runLbl: string): AlaraOutputSummary;
   parseFispactOutput(text: string, runLbl: string): FispactOutputSummary;
@@ -1188,6 +1236,7 @@ export interface WasmApi {
   arcEfficiency(tDamEv: number, edEv: number, bArc: number, cArc: number): number;
   fusionSpectrumMoments(reaction: string, tiKev: number): FusionSpectrumMoments;
   fusionReactivity(reaction: string, tiKev: number): number;
+  fusionProtonMoments(tiKev: number): FusionProtonMoments;
   sampleFusionSource(spec: FusionSourceSpec): FusionSampleResult;
   emitFusionSourceCards(spec: FusionCardsSpec): FusionCardsResult;
   ecrhScalars(frequencyGhz: number, harmonic: number, bT: number, teKev?: number): EcrhScalars;

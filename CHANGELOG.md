@@ -13,6 +13,128 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-08
+
+### Added
+
+- D(d,p)T proton transport in `nucleide-plasma-source` for deuterium-bearing
+  ring/point and parametric sources (lattice stays rate-accounting-only):
+  `Particle.species` (`Neutron` default, `Proton` additive),
+  `SourceSampler::proton` and `ParametricProtonSampler` as independent
+  seeded instances (zero new draws on any neutron path), the Brysk-Gaussian
+  proton line (`reaction::proton_moments_mev`, `SpectrumSpec::from_proton`;
+  `E0 = 3.02` MeV, `sigma = sqrt(1.51·Ti [MeV])`; `Ti = 20` keV → 3.02 MeV,
+  `0.173782` MeV), and MCNP6-only `PAR=h` SDEF cards
+  (`emit_sdef_proton` / `emit_sdef_parametric_proton`) with a `proton branch`
+  drift row. The proton rate is the D-D neutron-branch rate reused
+  bit-for-bit (50/50; flat-profile anchors `P = 13012914793.607618`
+  pure D-D and `P = 6376328248.867733` for 70/30). D-T-only proton
+  requests, MCNP5 proton cards, and lattice proton transport stay loud;
+  there are no Serpent proton cards (its `PART='p'` means photons), so the
+  Python/WASM facades return `serpent: None` for proton specs. Python gains
+  the optional `species` spec key, the `species` particle array,
+  `proton_moments()`, and a `mcnp_version=6` requirement for proton cards;
+  WASM gains `fusionProtonMoments()`, `species` on fusion sample/card
+  specs, and per-particle `species`. The interactive fusion demo's lattice
+  panel now exposes the species-temperature pair.
+
+- Optional separate D(d,p) proton-rate model in `nucleide-plasma-source`:
+  parametric specs take `proton_rate_model="bosch_hale_ddp"` (Python key;
+  WASM `protonRateModel`) to use the published Bosch–Hale D(d,p) Table VII
+  fit instead of the pinned 50/50 accounting anchor. The default
+  `"pinned_50_50"` stays bit-for-bit; the opt-in branch ratio is `0.9218`
+  at 20 keV (7.8% below the D(d,n) branch), so `proton_per_neutron` for
+  pure D-D becomes that physical share. The proton line shape, sampler
+  draw accounting, and card syntax are unchanged; `proton_accounting`
+  reports the selected `proton_rate_model`, and the `proton branch` drift
+  row names it. Ring/point and lattice accounting keep the pinned
+  convention.
+
+- End-to-end first-wall workflow (tutorial
+  `docs/tutorials/python/fusion-first-wall.md` and notebook
+  `notebooks/first-wall-workflow.ipynb`): screening-level chain from a
+  synthetic parametric D-T source and caller wall-load flux through CSG
+  translation, weight windows, MCPL exchange, R2S/ALARA/FISPACT parsing,
+  one-full-power-year damage with uncertainty, clearance screening over the
+  parsed inventory, tritium permeation scoping, and a SAND-II foil check.
+  Every number is synthetic, the wall load defaults to 1.5 MW/m² with a
+  caller override, and both the tutorial and the notebook execute in CI.
+
+- FESTIM parity probe `validation/tritium_vs_festim.py`: a black-box
+  comparison of the 1D tritium kernel against FESTIM 2.1 (`festim==2.1`,
+  Apache-2.0, v2.x API) over trap-free, one-trap, Sieverts, and two-layer
+  legs with manufactured-solution and analytic-permeation self-gates.
+  The probe runs only in the probe-only `dolfinx/dolfinx:stable` image
+  (docker route, documented in `validation/README.md`) and SKIPs loudly
+  with its reason everywhere else; FESTIM never enters the main
+  validation container or the Rust workspace. Committed `results.md`
+  numbers regenerate only from a probe-image run.
+
+- Per-species ion temperatures on single-fuel lattice configs in
+  `nucleide-plasma-source` (the 0.16 parametric solo convention ported to
+  `LatticeSourceConfig`): single-fuel D-T reacts at the mass-weighted
+  `T_DT = T_D + (2/5)·(T_T − T_D)`, single-fuel D-D at `T_D`, with the
+  Ballabio lines following per branch (D-T at `T_DT`, D-D at `T_D`). Equal
+  pair temperatures `(T, T)` reproduce the shared-temperature single-fuel
+  lattice kernel bit-for-bit (strengths, sampled stream, cards). Anchors:
+  `(T_D, T_T) = (20, 30)` keV gives `T_DT = 24` keV with the D-T line at mean
+  14.077934372230146 MeV, sigma 0.3700390508551786 MeV. Mixture paths are
+  untouched; the `None`-pair path keeps the landed expression trees verbatim
+  (no new RNG draws); the per-node tail spelling stays out of scope.
+
+- Deuterium hot-tail fraction on lattice configs in `nucleide-plasma-source`
+  (the parametric `DeuteriumTail` rule ported per node): `LatticeSourceConfig`
+  gains an optional `tail` mirroring `ParametricPlasmaConfig::tail` — one
+  global `(η, T_tail)` applied at every node with the node temperature as
+  the bulk `T_D`, reacting the five bulk/tail sub-branches (D-T at
+  `T_DT`/`T_DTt`, D-D at `T_D`/`T_mix`/`T_tail`) through the same per-particle
+  branch roulette, card energy marginals, and `deuterium tail` drift row
+  (rate-weighted tail share). Anchors: the 70/30 blend at `(T_D, T_T) =
+  (20, 30)` keV with `η = 0.05` at `T_tail = 60` keV gives `S =
+  1177836136801.1577` at `n = 1e20` m⁻³ (reconstructed from the per-node
+  branch weights) with the five Ballabio lines at 24/48/20/40/60 keV;
+  `η = 0` reproduces the no-tail lattice kernel bit-for-bit (any `T_tail`),
+  and a tail without a fuel mixture is loud. Python gains the
+  `deuterium_tail` dict on lattice specs; WASM `sampleLatticeSource`
+  gains the `fuelDeuterium`/`fuelTritium` mixture pair plus
+  `tailFraction`/`tailTempKev` (both-or-neither loud, needs the mixture).
+
+- Python tutorial "Solve activation with ACTINV"
+  (`docs/tutorials/python/solve-with-actinv.md`): maps one material, one
+  spectrum, and one schedule from the Nucleide ALARA/R2S surfaces to an
+  `actinv-spec-1` problem, solves with the optional ACTINV CLI (pinned
+  `actinv==1.4.0`, data catalog `1.1.0` with the recorded library hash),
+  and reads the photon source back with Nucleide's existing
+  `.photonSrc` readers. Docs only — no Nucleide dependency on ACTINV,
+  no vendored code or data; the example files stay in the ACTINV
+  repository. Carries the research-grade qualification, the TENDL-2025
+  data defects, and the TOTAL-only photon limit.
+
+- Adaptive per-sample bandwidths for Gaussian KDE source sampling in
+  `nucleide-vr-tools`: `Bandwidth::AdaptiveKnn { k, scale }` (a synthetic
+  KDSource-class case) gives each fitted sample its own width
+  `h_i0 = scale · dist_k(x_i)` in σ-scaled coordinates with
+  `h_ij = h_i0 · σ_j`, so tight clusters smooth lightly and sparse tails
+  smooth broadly. `dist_k` is the 1-based leave-one-out `k`-th nearest
+  neighbour (`1 <= k <= n - 1`); `pdf` normalizes per sample and `draw`
+  perturbs the centre with its own width row, keeping the deterministic
+  caller-random style. Invalid rank/scale, duplicate points (zero
+  distance), and zero-variance dims are loud errors — a zero bandwidth is
+  never a delta spike. Python: `KdeSampler(rows, "adaptive", k=k,
+  scale=scale)` plus `sample_bandwidths()`. Hand vector: `{0, 0.2, 0.4,
+  10}` with `k = 1` gives widths `0.2, 0.2, 0.2, 9.6` and
+  `pdf(0) = 0.8746688805236177`.
+
+- Interactive demo parity (0.17.0): the variance-reduction demo gains a
+  KDE section (Silverman/fixed/adaptive rule selector, synthetic
+  `{0, 0.2, 0.4, 10}` default rows, fitted bandwidths, density curve,
+  and a deterministic draw; WASM `kdeFit`/`kdePdf`/`kdeDraw`/
+  `kdeSampleBandwidths` mirroring the Python kwargs), the fusion demo's
+  lattice tab gains the fuel/tail inputs blank by default, the
+  parametric tab gains a Neutron/Proton selector with D(d,p)T proton
+  moments, and the tritium tutorial notes the FESTIM 2.1 parity
+  (F1–F4 PASS over `J_ss`/`J(t)`/`t_lag`/`c(x)`).
+
 ## [0.16.0] - 2026-09-18
 
 ### Added

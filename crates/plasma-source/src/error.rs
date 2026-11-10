@@ -8,15 +8,17 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Errors raised while validating source configurations, tabulating spectra,
 /// or rendering source cards.
 ///
-/// Out-of-scope requests (T-T neutron transport, proton transport, reactant
-/// distributions beyond a single deuterium hot-tail fraction on a D/T fuel
-/// mixture, a deuterium hot tail without a D/T fuel mixture, per-species ion
-/// temperatures without a D/T fuel mixture on lattice configs) are reported through
-/// [`Error::NotYetSupported`] — a loud named error, never a
-/// panic or a silent fallback. The D(d,p)T proton *rate* is not out of
-/// scope: it is accounted alongside the neutron source
-/// (`proton_strength_density` / `total_proton_strength`, 50/50 with the D-D
-/// neutron branch) while the sampler and the cards stay neutron-only.
+/// Out-of-scope requests (T-T neutron transport, D-T-only proton requests,
+/// lattice proton transport, Serpent proton cards, MCNP5 proton cards,
+/// reactant distributions beyond a single deuterium hot-tail fraction on a D/T
+/// fuel mixture, a deuterium hot tail without a D/T fuel mixture) are reported
+/// through [`Error::NotYetSupported`] — a loud named error, never a
+/// panic or a silent fallback. The D(d,p)T proton *rate* is pinned 50/50
+/// with the D-D neutron branch (`proton_strength_density` /
+/// `total_proton_strength`), and parametric + ring/point proton transport is
+/// supported through the proton samplers and the MCNP6-only `PAR=h` SDEF
+/// emitters; the lattice keeps the rate accounting only and Serpent has
+/// no proton emitter (its `PART='p'` means photons).
 /// Invalid fuel-mixture fractions, invalid deuterium-tail parameters,
 /// invalid lattice clouds and symmetry folds, and invalid
 /// toroidal-sector angles carry their own named errors ([`Error::NonFinite`],

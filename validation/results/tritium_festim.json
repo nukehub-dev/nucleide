@@ -1,0 +1,425 @@
+{
+  "schema": 1,
+  "name": "tritium_festim",
+  "title": "Tritium 1D kernel vs FESTIM 2.1 probe (`tritium_vs_festim.py`)",
+  "environment": {
+    "date": "2026-11-08",
+    "python": "3.12.3",
+    "platform": "Linux-7.2.15-1-omarchy-x86_64-with-glibc2.39",
+    "nucleide": "not installed",
+    "pyne": "not installed",
+    "openmc": "not installed"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "text": "Black-box parity probe between the `nucleide.tritium` 1D diffusion-trapping kernel and FESTIM 2.1 (Apache-2.0, `festim==2.1`, v2.x API), driven in the probe-only `dolfinx/dolfinx:stable` image (docker; never the main validation container, never the Rust workspace). Progression F1 trap-free Dirichlet-Dirichlet, F2 one McNabb-Foster trap, F3 Sieverts ends, F4 two-layer stack; recombination ends are excluded. Always-run legs VV Val-1da (analytic permeation) and M1 (manufactured-solution order) gate the Nucleide side everywhere; every FESTIM leg SKIPs loudly with its reason outside the probe image."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Value",
+        "Expected",
+        "Status"
+      ],
+      "rows": [
+        [
+          "V1 J/J_ss vs Val-1da series",
+          "5.685683e-16",
+          "< 3%",
+          "PASS"
+        ],
+        [
+          "V1 J_ss vs D*c0/L",
+          "1.588187e-14",
+          "< 2%",
+          "PASS"
+        ],
+        [
+          "V1 t_lag vs L^2/6D",
+          "0.000000e+00",
+          "< 5%",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "V1 VV Val-1da (analytic permeation, 3 gated of 7 outputs): worst J/J_ss deviation 5.686e-16 on the published series definition."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Value",
+        "Expected",
+        "Status"
+      ],
+      "rows": [
+        [
+          "M1 MMS order (200->400)",
+          "2.000",
+          "1.5-2.5",
+          "PASS"
+        ],
+        [
+          "M1 MMS max error (400 cells)",
+          "1.028079e-06",
+          "< 5e-6",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "M1 manufactured steady solution c* = (1-x/L) + 0.2*sin(pi x/L) with source S = D*B*(pi/L)^2*sin(pi x/L); max-norm errors 6.58e-05, 1.64e-05, 4.11e-06, 1.03e-06 on [50, 100, 200, 400] cells (orders 2.00, 2.00, 2.00)."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Self-convergence (< gate/3)",
+        "Change",
+        "Threshold",
+        "Status"
+      ],
+      "rows": [
+        [
+          "F1 J_ss (Nucleide fine-coarse)",
+          "2.392868e-14",
+          "< 6.67e-03",
+          "PASS"
+        ],
+        [
+          "F1 J(t) (Nucleide fine-coarse)",
+          "6.834505e-04",
+          "< 1.00e-02",
+          "PASS"
+        ],
+        [
+          "F1 t_lag (Nucleide fine-coarse)",
+          "6.513226e-06",
+          "< 1.67e-02",
+          "PASS"
+        ],
+        [
+          "F1 c(x) (Nucleide fine-coarse)",
+          "1.909584e-14",
+          "< 6.67e-03",
+          "PASS"
+        ],
+        [
+          "F2 J_ss (Nucleide fine-coarse)",
+          "2.392868e-14",
+          "< 6.67e-03",
+          "PASS"
+        ],
+        [
+          "F2 J(t) (Nucleide fine-coarse)",
+          "5.321537e-04",
+          "< 1.00e-02",
+          "PASS"
+        ],
+        [
+          "F2 t_lag (Nucleide fine-coarse)",
+          "7.052899e-06",
+          "< 1.67e-02",
+          "PASS"
+        ],
+        [
+          "F2 c(x) (Nucleide fine-coarse)",
+          "1.909584e-14",
+          "< 6.67e-03",
+          "PASS"
+        ],
+        [
+          "F3 J_ss (Nucleide fine-coarse)",
+          "5.929231e-14",
+          "< 6.67e-03",
+          "PASS"
+        ],
+        [
+          "F3 J(t) (Nucleide fine-coarse)",
+          "1.272851e-04",
+          "< 1.00e-02",
+          "PASS"
+        ],
+        [
+          "F3 t_lag (Nucleide fine-coarse)",
+          "5.035534e-05",
+          "< 1.67e-02",
+          "PASS"
+        ],
+        [
+          "F3 c(x) (Nucleide fine-coarse)",
+          "1.358913e-13",
+          "< 6.67e-03",
+          "PASS"
+        ],
+        [
+          "F4 J_ss (Nucleide fine-coarse)",
+          "5.681738e-14",
+          "< 6.67e-03",
+          "PASS"
+        ],
+        [
+          "F4 J(t) (Nucleide fine-coarse)",
+          "3.022274e-03",
+          "< 1.00e-02",
+          "PASS"
+        ],
+        [
+          "F4 t_lag (Nucleide fine-coarse)",
+          "9.665528e-06",
+          "< 1.67e-02",
+          "PASS"
+        ],
+        [
+          "F4 c(x) (Nucleide fine-coarse)",
+          "5.417888e-14",
+          "< 6.67e-03",
+          "PASS"
+        ],
+        [
+          "F1 J_ss (FESTIM fine-coarse)",
+          "1.874521e-04",
+          "< 6.67e-3",
+          "PASS"
+        ],
+        [
+          "F1 J(t) (FESTIM fine-coarse)",
+          "6.629193e-03",
+          "< 1.00e-2",
+          "PASS"
+        ],
+        [
+          "F1 t_lag (FESTIM fine-coarse)",
+          "1.008075e-04",
+          "< 1.67e-2",
+          "PASS"
+        ],
+        [
+          "F1 c(x) (FESTIM fine-coarse)",
+          "5.963728e-05",
+          "< 6.67e-3",
+          "PASS"
+        ],
+        [
+          "F2 J_ss (FESTIM fine-coarse)",
+          "2.334039e-04",
+          "< 6.67e-3",
+          "PASS"
+        ],
+        [
+          "F2 J(t) (FESTIM fine-coarse)",
+          "1.319545e-03",
+          "< 1.00e-2",
+          "PASS"
+        ],
+        [
+          "F2 t_lag (FESTIM fine-coarse)",
+          "6.703334e-05",
+          "< 1.67e-2",
+          "PASS"
+        ],
+        [
+          "F2 c(x) (FESTIM fine-coarse)",
+          "6.746083e-05",
+          "< 6.67e-3",
+          "PASS"
+        ],
+        [
+          "F3 J_ss (FESTIM fine-coarse)",
+          "4.906111e-08",
+          "< 6.67e-3",
+          "PASS"
+        ],
+        [
+          "F3 J(t) (FESTIM fine-coarse)",
+          "1.769997e-03",
+          "< 1.00e-2",
+          "PASS"
+        ],
+        [
+          "F3 t_lag (FESTIM fine-coarse)",
+          "6.036446e-04",
+          "< 1.67e-2",
+          "PASS"
+        ],
+        [
+          "F3 c(x) (FESTIM fine-coarse)",
+          "1.051087e-07",
+          "< 6.67e-3",
+          "PASS"
+        ],
+        [
+          "F4 J_ss (FESTIM fine-coarse)",
+          "2.525526e-04",
+          "< 6.67e-3",
+          "PASS"
+        ],
+        [
+          "F4 J(t) (FESTIM fine-coarse)",
+          "1.387797e-03",
+          "< 1.00e-2",
+          "PASS"
+        ],
+        [
+          "F4 t_lag (FESTIM fine-coarse)",
+          "5.689682e-05",
+          "< 1.67e-2",
+          "PASS"
+        ],
+        [
+          "F4 c(x) (FESTIM fine-coarse)",
+          "9.383278e-05",
+          "< 6.67e-3",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "F1 Nucleide reference: J_ss=1.000000e-06 mol/m^2/s, t_lag=160.36908906135844 (fit over 5 points)."
+    },
+    {
+      "kind": "prose",
+      "text": "F2 Nucleide reference: J_ss=1.000000e-06 mol/m^2/s, t_lag=383.8783657699159 (fit over 5 points)."
+    },
+    {
+      "kind": "prose",
+      "text": "F3 Nucleide reference: J_ss=6.000000e-06 mol/m^2/s, t_lag=323.4076940150998 (fit over 4 points)."
+    },
+    {
+      "kind": "prose",
+      "text": "F4 Nucleide reference: J_ss=2.222222e-07 mol/m^2/s, t_lag=210.3389418174856 (fit over 4 points)."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Cross-code gate",
+        "Value",
+        "Gate",
+        "Status"
+      ],
+      "rows": [
+        [
+          "F1 J_ss parity",
+          "6.350130e-04",
+          "< 2%",
+          "PASS"
+        ],
+        [
+          "F1 J(t) parity",
+          "7.728970e-03",
+          "< 3%",
+          "PASS"
+        ],
+        [
+          "F1 t_lag parity",
+          "2.831329e-04",
+          "< 5%",
+          "PASS"
+        ],
+        [
+          "F1 c(x) parity (max-norm)",
+          "2.021330e-04",
+          "< 2%",
+          "PASS"
+        ],
+        [
+          "F2 J_ss parity",
+          "7.910508e-04",
+          "< 2%",
+          "PASS"
+        ],
+        [
+          "F2 J(t) parity",
+          "3.721859e-03",
+          "< 3%",
+          "PASS"
+        ],
+        [
+          "F2 t_lag parity",
+          "5.393354e-04",
+          "< 5%",
+          "PASS"
+        ],
+        [
+          "F2 c(x) parity (max-norm)",
+          "2.288235e-04",
+          "< 2%",
+          "PASS"
+        ],
+        [
+          "F3 J_ss parity",
+          "1.725391e-04",
+          "< 2%",
+          "PASS"
+        ],
+        [
+          "F3 J(t) parity",
+          "1.154637e-03",
+          "< 3%",
+          "PASS"
+        ],
+        [
+          "F3 t_lag parity",
+          "3.514262e-04",
+          "< 5%",
+          "PASS"
+        ],
+        [
+          "F3 c(x) parity (max-norm)",
+          "3.295289e-04",
+          "< 2%",
+          "PASS"
+        ],
+        [
+          "F4 J_ss parity",
+          "8.562998e-04",
+          "< 2%",
+          "PASS"
+        ],
+        [
+          "F4 J(t) parity",
+          "5.829738e-03",
+          "< 3%",
+          "PASS"
+        ],
+        [
+          "F4 t_lag parity",
+          "2.012533e-04",
+          "< 5%",
+          "PASS"
+        ],
+        [
+          "F4 c(x) parity (max-norm)",
+          "3.188604e-04",
+          "< 2%",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "FESTIM probe running: version 2.1 (pinned 2.1, black-box)."
+    },
+    {
+      "kind": "prose",
+      "text": "F1 parity: Nucleide J_ss=1.000000e-06 vs FESTIM J_ss=9.993650e-07; FESTIM t_lag=160.32368329264926 (fit over 5 points)."
+    },
+    {
+      "kind": "prose",
+      "text": "F2 parity: Nucleide J_ss=1.000000e-06 vs FESTIM J_ss=9.992089e-07; FESTIM t_lag=383.67132659464056 (fit over 5 points)."
+    },
+    {
+      "kind": "prose",
+      "text": "F3 parity: Nucleide J_ss=6.000000e-06 vs FESTIM J_ss=5.998965e-06; FESTIM t_lag=323.2940400890323 (fit over 4 points)."
+    },
+    {
+      "kind": "prose",
+      "text": "F4 parity: Nucleide J_ss=2.222222e-07 vs FESTIM J_ss=2.220319e-07; FESTIM t_lag=210.29661041457058 (fit over 4 points)."
+    }
+  ]
+}

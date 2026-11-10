@@ -126,6 +126,7 @@ const INTERACTIVE_PAGES: InteractivePage[] = [
     extraSteps: [
       { button: "Sample index", output: "text=Sampled index:" },
       { button: "Sample voxel", output: "text=index=" },
+      { button: "Fit KDE", output: "text=KDE moments", chart: ".js-plotly-plot" },
     ],
   },
   {

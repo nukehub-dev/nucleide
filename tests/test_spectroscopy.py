@@ -34,6 +34,16 @@ ATOMIC = {
 }
 
 
+def _assert_pairs(actual: list[tuple[float, float]], expected: list[tuple[float, float]]) -> None:
+    """Compare ``(energy, intensity)`` rows column-wise.
+
+    ``pytest.approx`` rejects nested sequences (pytest >= 9.2), so unpack
+    the pairs explicitly and keep the order-sensitive comparison.
+    """
+    assert [row[0] for row in actual] == pytest.approx([row[0] for row in expected])
+    assert [row[1] for row in actual] == pytest.approx([row[1] for row in expected])
+
+
 def test_e1_rect_smooth() -> None:
     # Hand-computed m=5, ext=2: [2, 5, 17/5, 23/5, 22/5, 8, 4].
     assert sp.rect_smooth(COUNTS, 5) == pytest.approx([2.0, 5.0, 3.4, 4.6, 4.4, 8.0, 4.0])
@@ -157,7 +167,7 @@ def test_e9_sdef_fixture_goldens() -> None:
 
 def test_e9_normalization_merges_duplicates_and_sorts() -> None:
     bins, card = sp.sdef_decay_source([(1.0, 2.0), (0.5, 1.0), (1.0, 1.0)])
-    assert bins == pytest.approx([(0.5, 0.25), (1.0, 0.75)])
+    _assert_pairs(bins, [(0.5, 0.25), (1.0, 0.75)])
     assert "\nSI1 L 0.5 1\nSP1 D 0.25 0.75" in card
 
 
@@ -201,7 +211,7 @@ def test_e9_rejected_inputs() -> None:
 
 def test_e9_zero_intensity_line_drops_to_single_line_form() -> None:
     bins, card = sp.sdef_decay_source([(0.662, 2.0), (1.17, 0.0)])
-    assert bins == pytest.approx([(0.662, 1.0)])
+    _assert_pairs(bins, [(0.662, 1.0)])
     assert card == "SDEF POS=0 0 0\n     ERG=0.662\n     WGT=1\n     PAR=n"
 
 
@@ -209,12 +219,13 @@ def test_e9_lines_tsv_fixture_feeds_normalization() -> None:
     # decay_lines_sample.tsv rows (0.662x2 + 1.0, 1.170x1.0) merge to
     # (0.662 → 3/4, 1.17 → 1/4) through the same E9 path as list input.
     text = (FIX / "decay_lines_sample.tsv").read_text()
-    assert sp.parse_lines_tsv(text) == pytest.approx([(0.662, 2.0), (1.17, 1.0), (0.662, 1.0)])
-    assert sp.read_decay_lines(str(FIX / "decay_lines_sample.tsv")) == pytest.approx(
-        [(0.662, 2.0), (1.17, 1.0), (0.662, 1.0)]
+    _assert_pairs(sp.parse_lines_tsv(text), [(0.662, 2.0), (1.17, 1.0), (0.662, 1.0)])
+    _assert_pairs(
+        sp.read_decay_lines(str(FIX / "decay_lines_sample.tsv")),
+        [(0.662, 2.0), (1.17, 1.0), (0.662, 1.0)],
     )
     bins, _ = sp.sdef_decay_source(sp.parse_lines_tsv(text))
-    assert bins == pytest.approx([(0.662, 0.75), (1.17, 0.25)])
+    _assert_pairs(bins, [(0.662, 0.75), (1.17, 0.25)])
 
 
 def test_e9_lines_tsv_rejects_malformed_rows() -> None:

@@ -5,9 +5,10 @@ sidebar:
   order: 10
 ---
 
-The `vr-tools` crate provides two variance-reduction primitives used with MCNP
-mesh tallies: MAGIC weight-window generation and Walker/Vose alias-table source
-sampling.
+The `vr-tools` crate provides variance-reduction tools used with MCNP
+mesh tallies and caller particle data: MAGIC weight-window generation,
+Walker/Vose alias-table source sampling, and Gaussian KDE source
+resampling.
 
 ## MAGIC weight windows
 
@@ -34,6 +35,19 @@ supporting analog, uniform, and user-biased modes (the demo below
 exposes the analog and uniform modes). Non-finite tally, tolerance,
 null-value, or PDF entries are rejected with an inline error before any
 computation runs.
+
+## KDE source resampling
+
+`KdeSampler` fits an axis-aligned Gaussian KDE over caller-supplied
+particle rows (for example projected MCPL fields) and deterministically
+resamples with caller-supplied uniforms and normals — no RNG inside.
+Three bandwidth rules mirror the Python kwargs: Silverman (one global
+width per dimension, the default), fixed caller widths, and adaptive
+per-sample kNN widths (`k`/`scale`, defaults 1/1.0). The demo below
+fits the synthetic $\{0, 0.2, 0.4, 10\}$ hand vector, highlights the
+fitted bandwidths, evaluates the density curve, and draws a resampled
+row. Zero-variance dimensions and duplicate-point zero distances raise
+a clear error.
 
 <InteractiveDemo kind="variance-reduction" />
 

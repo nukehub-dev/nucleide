@@ -16,6 +16,11 @@
 //! with `T_i` in keV. At `T_i = 0` both corrections vanish and the spectrum
 //! degenerates to the nominal monoenergetic line `E0` (14.021 MeV for D-T,
 //! 2.4495 MeV for D-D).
+//!
+//! The twin D(d,p)T proton branch uses the Brysk-Gaussian line (no Ballabio
+//! proton line exists — Ballabio et al. 1998 covers the D(d,n)³He and
+//! T(d,n)⁴He neutron spectra only): [`proton_moments_mev`] at the 3.02 MeV
+//! cold line, [`PROTON_NOMINAL_MEV`].
 
 use crate::{Error, Result};
 
@@ -33,8 +38,8 @@ struct BallabioFit {
     width: (f64, f64, f64, f64, f64),
 }
 
-/// D(d,n)³He fit (neutron branch only; the twin D(d,p)T proton branch is out
-/// of scope for a neutron source crate).
+/// D(d,n)³He fit (neutron branch; the twin D(d,p)T proton branch shares
+/// the D-D rate 50/50 and uses the Brysk line — see [`proton_moments_mev`]).
 const DD: BallabioFit = BallabioFit {
     e0_mev: 2.449_5,
     mean: (4.695_15, -0.040_729, 0.47, 0.818_44),
@@ -114,6 +119,46 @@ impl FusionReaction {
     pub fn moments_mev(self, ti_kev: f64) -> Result<(f64, f64)> {
         Ok((self.mean_energy_mev(ti_kev)?, self.sigma_mev(ti_kev)?))
     }
+}
+
+/// D(d,p)T proton line (module rustdoc): the 3.02 MeV cold line
+/// (`Q = 4.03` MeV, triton companion 1.01 MeV at 50/50 with the D-D
+/// neutron branch).
+pub const PROTON_NOMINAL_MEV: f64 = 3.02;
+
+/// Brysk-Gaussian width factor \[MeV\]: `sigma² = 1.51 · Ti` \[MeV\] with
+/// `1.51 = 2·m_p·E0/(m_p + m_t) = E0/2` MeV (emitted proton `m_p = 1`,
+/// triton companion `m_t = 3`, mass numbers, Coulomb-free; the D(d,p)T
+/// proton line is the published-form Gaussian, see
+/// [`proton_moments_mev`]). Hand vectors are pinned in
+/// [`proton_moments_mev`] and in the `proton_moments_hand_vectors` test.
+const PROTON_WIDTH_MEV: f64 = 1.51;
+
+/// Mean and Gaussian width \[MeV\] of the D(d,p)T proton line at ion
+/// temperature `ti_kev` \[keV\] (Brysk Gaussian, implemented closed form):
+///
+/// ```text
+/// mean(Ti) = 3.02 MeV (no shift in v1; the Ballabio-class shift ~50 keV at
+///           20 keV is omitted and documented as the v1 residual)
+/// sigma(Ti) = sqrt(1.51 · Ti [MeV])   [MeV], mass-number convention
+///           m_p = 1, m_t = 3, Coulomb-free
+/// ```
+///
+/// At `Ti = 0` the line is monoenergetic at 3.02 MeV (`sigma = 0`).
+/// Hand vectors (the closed form quoted to 6 decimals; the tests pin the
+/// exact closed form at full precision and these decimals at 2e-5):
+/// `Ti = 0 → (3.02, 0.0)`; `Ti = 1 → (3.02, 0.038858)`;
+/// `Ti = 10 → (3.02, 0.122876)`; `Ti = 20 → (3.02, 0.173782)`;
+/// `Ti = 40 → (3.02, 0.245752)` MeV; FWHM coefficient `w0 = 91.54`
+/// keV/√keV.
+///
+/// Errors: [`Error::NonFinite`] / [`Error::NegativeIonTemperature`].
+pub fn proton_moments_mev(ti_kev: f64) -> Result<(f64, f64)> {
+    let ti = validate_ti(ti_kev)?;
+    Ok((
+        PROTON_NOMINAL_MEV,
+        (PROTON_WIDTH_MEV * (ti / 1000.0)).sqrt(),
+    ))
 }
 
 /// Shared ion-temperature validation for the moment functions.
@@ -228,6 +273,49 @@ mod tests {
         );
         assert_eq!(
             FusionReaction::Dd.mean_energy_mev(f64::INFINITY),
+            Err(Error::NonFinite("ion temperature"))
+        );
+    }
+
+    #[test]
+    fn proton_moments_hand_vectors() {
+        // Brysk-Gaussian D(d,p)T line (module rustdoc): mean pinned at
+        // 3.02 MeV with no shift, sigma = sqrt(1.51 * Ti [MeV]). The
+        // exact closed-form assertion pins the transcription at full
+        // precision; the 6-decimal goldens pin the quoted hand vectors
+        // (2e-5 covers the brief's last-digit rounding).
+        let gold: &[(f64, f64, f64)] = &[
+            (0.0, 3.02, 0.0),
+            (1.0, 3.02, 0.038858),
+            (10.0, 3.02, 0.122876),
+            (20.0, 3.02, 0.173782),
+            (40.0, 3.02, 0.245752),
+        ];
+        assert_eq!(PROTON_NOMINAL_MEV, 3.02);
+        for &(ti, mean, sigma) in gold {
+            let (m, s) = proton_moments_mev(ti).unwrap();
+            assert_eq!(m, mean, "proton mean at Ti={ti}");
+            assert_eq!(s, (1.51 * (ti / 1000.0)).sqrt(), "proton sigma at Ti={ti}");
+            assert!(
+                (s - sigma).abs() < 2e-5,
+                "proton sigma {s} vs {sigma} at Ti={ti}"
+            );
+        }
+        assert_eq!(proton_moments_mev(0.0).unwrap(), (3.02, 0.0));
+    }
+
+    #[test]
+    fn proton_moments_bad_temperatures_are_loud() {
+        assert_eq!(
+            proton_moments_mev(-1.0),
+            Err(Error::NegativeIonTemperature(-1.0))
+        );
+        assert_eq!(
+            proton_moments_mev(f64::NAN),
+            Err(Error::NonFinite("ion temperature"))
+        );
+        assert_eq!(
+            proton_moments_mev(f64::INFINITY),
             Err(Error::NonFinite("ion temperature"))
         );
     }

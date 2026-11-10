@@ -1320,6 +1320,175 @@ pub fn mesh_source_sample(
     })
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KdeSpecBase {
+    /// Caller-supplied rows (e.g. projected MCPL particle fields); never
+    /// parsed from a file.
+    samples: Vec<Vec<f64>>,
+    rule: Option<String>,
+    k: Option<f64>,
+    scale: Option<f64>,
+    widths: Option<Vec<f64>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KdePdfSpecJson {
+    samples: Vec<Vec<f64>>,
+    rule: Option<String>,
+    k: Option<f64>,
+    scale: Option<f64>,
+    widths: Option<Vec<f64>>,
+    point: Vec<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KdeDrawSpecJson {
+    samples: Vec<Vec<f64>>,
+    rule: Option<String>,
+    k: Option<f64>,
+    scale: Option<f64>,
+    widths: Option<Vec<f64>>,
+    u: f64,
+    normals: Vec<f64>,
+}
+
+#[derive(Serialize)]
+struct KdeFitResultJson {
+    #[serde(rename = "nSamples")]
+    n_samples: usize,
+    dims: usize,
+    bandwidths: Vec<f64>,
+    #[serde(rename = "sampleBandwidths")]
+    sample_bandwidths: Vec<Vec<f64>>,
+}
+
+/// Mirror the Python `KdeSampler` kwargs: `rule` is `"silverman"`
+/// (absent, the default), `"fixed"` (with `widths`), or `"adaptive"`
+/// (with optional `k`/`scale`, defaults 1/1.0). `k`/`scale` with any
+/// other rule and `widths` with a non-`"fixed"` rule are loud errors.
+fn kde_sampler(
+    samples: &[Vec<f64>],
+    rule: Option<&str>,
+    k: Option<f64>,
+    scale: Option<f64>,
+    widths: Option<&[f64]>,
+) -> Result<nucleide_vr_tools::kde::KdeSampler, JsValue> {
+    let rule = rule.unwrap_or("silverman").to_ascii_lowercase();
+    let bandwidth = match rule.as_str() {
+        "silverman" => {
+            if k.is_some() || scale.is_some() || widths.is_some() {
+                return Err(js_err(
+                    "k/scale only apply when rule is \"adaptive\" and widths only when rule is \"fixed\"",
+                ));
+            }
+            nucleide_vr_tools::kde::Bandwidth::Silverman
+        }
+        "fixed" => {
+            if k.is_some() || scale.is_some() {
+                return Err(js_err("k/scale only apply when rule is \"adaptive\""));
+            }
+            let widths =
+                widths.ok_or_else(|| js_err("widths is required when rule is \"fixed\""))?;
+            nucleide_vr_tools::kde::Bandwidth::Fixed(widths.to_vec())
+        }
+        "adaptive" => {
+            if widths.is_some() {
+                return Err(js_err("widths only apply when rule is \"fixed\""));
+            }
+            let k = match k {
+                Some(v) => {
+                    if !v.is_finite() || v.fract() != 0.0 || v < 1.0 || v > 9007199254740991.0 {
+                        return Err(js_err(format!("k must be a positive integer (got {v})")));
+                    }
+                    v as usize
+                }
+                None => 1,
+            };
+            let scale = scale.unwrap_or(1.0);
+            nucleide_vr_tools::kde::Bandwidth::AdaptiveKnn { k, scale }
+        }
+        other => {
+            return Err(js_err(format!(
+                "unknown KDE rule `{other}` (supported: silverman, fixed, adaptive)"
+            )));
+        }
+    };
+    nucleide_vr_tools::kde::KdeSampler::fit(samples, bandwidth).map_err(js_err)
+}
+
+/// Fit a Gaussian KDE over caller-supplied `samples` and report the
+/// fitted widths. `rule` mirrors the Python kwargs (`"silverman"`,
+/// `"fixed"` with `widths`, or `"adaptive"` with `k`/`scale` defaults
+/// 1/1.0). Returns `{nSamples, dims, bandwidths, sampleBandwidths}`.
+#[wasm_bindgen(js_name = kdeFit)]
+pub fn kde_fit(spec: JsValue) -> Result<JsValue, JsValue> {
+    let parsed: KdeSpecBase = serde_wasm_bindgen::from_value(spec).map_err(js_err)?;
+    let sampler = kde_sampler(
+        &parsed.samples,
+        parsed.rule.as_deref(),
+        parsed.k,
+        parsed.scale,
+        parsed.widths.as_deref(),
+    )?;
+    to_js(&KdeFitResultJson {
+        n_samples: sampler.n_samples(),
+        dims: sampler.dims(),
+        bandwidths: sampler.bandwidths().to_vec(),
+        sample_bandwidths: sampler.sample_bandwidths().to_vec(),
+    })
+}
+
+/// KDE density at `point`; `spec` carries the same fit fields as
+/// [`kde_fit`] plus `point`.
+#[wasm_bindgen(js_name = kdePdf)]
+pub fn kde_pdf(spec: JsValue) -> Result<f64, JsValue> {
+    let parsed: KdePdfSpecJson = serde_wasm_bindgen::from_value(spec).map_err(js_err)?;
+    let sampler = kde_sampler(
+        &parsed.samples,
+        parsed.rule.as_deref(),
+        parsed.k,
+        parsed.scale,
+        parsed.widths.as_deref(),
+    )?;
+    sampler.pdf(&parsed.point).map_err(js_err)
+}
+
+/// Resample one particle: `u` in `[0, 1)` selects the kernel centre and
+/// `normals` (one value per dimension) perturbs it; `spec` carries the
+/// same fit fields as [`kde_fit`] plus `u`/`normals`. Returns the drawn
+/// row.
+#[wasm_bindgen(js_name = kdeDraw)]
+pub fn kde_draw(spec: JsValue) -> Result<JsValue, JsValue> {
+    let parsed: KdeDrawSpecJson = serde_wasm_bindgen::from_value(spec).map_err(js_err)?;
+    let sampler = kde_sampler(
+        &parsed.samples,
+        parsed.rule.as_deref(),
+        parsed.k,
+        parsed.scale,
+        parsed.widths.as_deref(),
+    )?;
+    to_js(&sampler.draw(parsed.u, &parsed.normals).map_err(js_err)?)
+}
+
+/// Per-sample physical bandwidths `h_ij` for the fit in `spec` (the
+/// `sampleBandwidths` half of [`kde_fit`], exposed on its own for
+/// callers that only need the widths).
+#[wasm_bindgen(js_name = kdeSampleBandwidths)]
+pub fn kde_sample_bandwidths(spec: JsValue) -> Result<JsValue, JsValue> {
+    let parsed: KdeSpecBase = serde_wasm_bindgen::from_value(spec).map_err(js_err)?;
+    let sampler = kde_sampler(
+        &parsed.samples,
+        parsed.rule.as_deref(),
+        parsed.k,
+        parsed.scale,
+        parsed.widths.as_deref(),
+    )?;
+    to_js(&sampler.sample_bandwidths())
+}
+
 // ---------------------------------------------------------------------------
 // Activation (ALARA deck/output, FISPACT-II output, R2S workflow)
 // ---------------------------------------------------------------------------
@@ -5397,6 +5566,33 @@ pub fn fusion_reactivity(reaction: &str, ti_kev: f64) -> Result<f64, JsValue> {
         .map_err(js_err)
 }
 
+#[derive(Serialize)]
+struct FusionProtonMoments {
+    #[serde(rename = "nominalMeV")]
+    nominal_mev: f64,
+    #[serde(rename = "meanMeV")]
+    mean_mev: f64,
+    #[serde(rename = "sigmaMeV")]
+    sigma_mev: f64,
+    mono: bool,
+}
+
+/// D(d,p)T proton spectrum moments at ion temperature `ti_kev` [keV]: the
+/// Brysk-Gaussian 3.02 MeV proton line (`sigma = sqrt(1.51·Ti [MeV])`,
+/// pinned 50/50 with the D-D neutron branch; `sigma` zero at `T_i = 0`,
+/// the monoenergetic line).
+#[wasm_bindgen(js_name = fusionProtonMoments)]
+pub fn fusion_proton_moments(ti_kev: f64) -> Result<JsValue, JsValue> {
+    let (mean_mev, sigma_mev) =
+        nucleide_plasma_source::reaction::proton_moments_mev(ti_kev).map_err(js_err)?;
+    to_js(&FusionProtonMoments {
+        nominal_mev: nucleide_plasma_source::reaction::PROTON_NOMINAL_MEV,
+        mean_mev,
+        sigma_mev,
+        mono: sigma_mev == 0.0,
+    })
+}
+
 #[derive(Deserialize)]
 struct FusionRingSpecJson {
     #[serde(rename = "radiusCm", alias = "radius_cm")]
@@ -5469,6 +5665,8 @@ struct FusionParametricSpecJson {
     species_deuterium_kev: Option<f64>,
     #[serde(rename = "speciesTritiumKev", alias = "species_tritium_kev")]
     species_tritium_kev: Option<f64>,
+    #[serde(rename = "protonRateModel", alias = "proton_rate_model")]
+    proton_rate_model: Option<String>,
 }
 
 /// Read one string field off a raw JS object.
@@ -5519,13 +5717,15 @@ fn point_config(spec: &JsValue) -> Result<nucleide_plasma_source::PlasmaSourceCo
 fn parametric_config(
     spec: &JsValue,
 ) -> Result<nucleide_plasma_source::ParametricPlasmaConfig, JsValue> {
-    // The sampling envelope (`kind` dispatch, `n`/`seed` counts) rides on the
-    // same object `sample_fusion_source` matches on, but the spec struct
-    // denies unknown fields (so a stray `fuel_mixture`/`species_temperatures`/
-    // `sector` key fails loudly instead of silently sampling the wrong
-    // plasma). Strip just the envelope keys before struct parsing.
+    // The sampling envelope (`kind` dispatch, `n`/`seed` counts, the
+    // optional `species` key, and the card `nBins`/`mcnpVersion` keys)
+    // rides on the same object `sample_fusion_source` matches on, but the
+    // spec struct denies unknown fields (so a stray `fuel_mixture`/
+    // `species_temperatures`/`sector` key fails loudly instead of
+    // silently sampling the wrong plasma). Strip just the envelope keys
+    // before struct parsing.
     let body: js_sys::Object = spec.clone().into();
-    for key in ["kind", "n", "seed"] {
+    for key in ["kind", "n", "seed", "species", "nBins", "mcnpVersion"] {
         let _ = js_sys::Reflect::delete_property(&body, &JsValue::from_str(key));
     }
     let parsed: FusionParametricSpecJson =
@@ -5574,6 +5774,14 @@ fn parametric_config(
             ));
         }
     };
+    let proton_rate_model = match parsed.proton_rate_model.as_deref() {
+        None => nucleide_plasma_source::ProtonRateModel::Pinned50_50,
+        Some(name) => nucleide_plasma_source::ProtonRateModel::parse(name).ok_or_else(|| {
+            js_err(format!(
+                "unknown protonRateModel `{name}` (supported: pinned_50_50, bosch_hale_ddp)"
+            ))
+        })?,
+    };
     Ok(ParametricPlasmaConfig {
         geometry: MillerGeometry {
             major_radius_cm: parsed.major_radius_cm,
@@ -5601,6 +5809,7 @@ fn parametric_config(
         fuel_mixture,
         species_temperatures,
         tail,
+        proton_rate_model,
         sector: None,
         weight: 1.0,
     })
@@ -5614,6 +5823,8 @@ struct FusionParticleJson {
     #[serde(rename = "energyMeV")]
     energy_mev: f64,
     weight: f64,
+    /// Source particle species (`"neutron"` / `"proton"`).
+    species: String,
 }
 
 #[derive(Serialize)]
@@ -5631,8 +5842,34 @@ fn particle_json(particles: &[nucleide_plasma_source::Particle]) -> Vec<FusionPa
             direction: p.direction,
             energy_mev: p.energy_mev,
             weight: p.weight,
+            species: match p.species {
+                nucleide_nuclei::particles::ParticleId::Proton => "proton",
+                _ => "neutron",
+            }
+            .to_string(),
         })
         .collect()
+}
+
+/// Read the optional `species` key off a raw spec object: `"neutron"`
+/// (absent, the default) or `"proton"`. Unknown values are loud errors.
+fn parse_fusion_species(spec: &JsValue) -> Result<bool, JsValue> {
+    match js_sys::Reflect::get(spec, &JsValue::from_str("species"))
+        .ok()
+        .filter(|v| !(v.is_null() || v.is_undefined()))
+    {
+        None => Ok(false),
+        Some(value) => match value.as_string() {
+            Some(name) => match name.to_ascii_lowercase().as_str() {
+                "neutron" => Ok(false),
+                "proton" => Ok(true),
+                other => Err(js_err(format!(
+                    "unknown fusion source species `{other}` (supported: neutron, proton)"
+                ))),
+            },
+            None => Err(js_err("`species` must be a string".to_string())),
+        },
+    }
 }
 
 /// Sample `n` seeded fusion-source particles.
@@ -5646,18 +5883,32 @@ fn particle_json(particles: &[nucleide_plasma_source::Particle]) -> Vec<FusionPa
 /// `densityPeaking`, `pedestalDensityM3`, `separatrixDensityM3`,
 /// `centreTempKev`, `tempPeaking`, `tempBeta`, `pedestalTempKev`,
 /// `separatrixTempKev`, `pedestalRadiusCm`). All kinds take `n` (capped at
-/// [`MAX_FUSION_SAMPLES`]) and an integer `seed`. Returns `{kind, count,
-/// particles}` with one `{positionCm, direction, energyMeV, weight}` row per
-/// particle (lengths in cm, energies in MeV).
+/// [`MAX_FUSION_SAMPLES`]), an integer `seed`, and an optional `species`
+/// (`"neutron"`, the default, or `"proton"` — the independent D(d,p)T
+/// proton stream; lattice-kinds and D-T-only proton requests are loud).
+/// Parametric specs also take optional `protonRateModel`
+/// (`"pinned_50_50"` default or `"bosch_hale_ddp"` for the separate
+/// Bosch-Hale D(d,p) rate).
+/// Returns `{kind, count, particles}` with one `{positionCm, direction,
+/// energyMeV, weight, species}` row per particle (lengths in cm, energies
+/// in MeV).
 #[wasm_bindgen(js_name = sampleFusionSource)]
 pub fn sample_fusion_source(spec: JsValue) -> Result<JsValue, JsValue> {
     let kind = js_get_string(&spec, "kind")?.to_ascii_lowercase();
     let (n, seed) = sample_args(&spec)?;
+    let is_proton = parse_fusion_species(&spec)?;
     let result = match kind.as_str() {
         "ring" => {
-            let mut sampler = nucleide_plasma_source::SourceSampler::new(ring_config(&spec)?, seed)
-                .map_err(js_err)?;
-            let particles = sampler.sample_n(n);
+            let config = ring_config(&spec)?;
+            let particles = if is_proton {
+                nucleide_plasma_source::SourceSampler::proton(config, seed)
+                    .map_err(js_err)?
+                    .sample_n(n)
+            } else {
+                nucleide_plasma_source::SourceSampler::new(config, seed)
+                    .map_err(js_err)?
+                    .sample_n(n)
+            };
             FusionSampleResult {
                 kind: "ring".to_string(),
                 count: particles.len(),
@@ -5665,10 +5916,16 @@ pub fn sample_fusion_source(spec: JsValue) -> Result<JsValue, JsValue> {
             }
         }
         "point" => {
-            let mut sampler =
-                nucleide_plasma_source::SourceSampler::new(point_config(&spec)?, seed)
-                    .map_err(js_err)?;
-            let particles = sampler.sample_n(n);
+            let config = point_config(&spec)?;
+            let particles = if is_proton {
+                nucleide_plasma_source::SourceSampler::proton(config, seed)
+                    .map_err(js_err)?
+                    .sample_n(n)
+            } else {
+                nucleide_plasma_source::SourceSampler::new(config, seed)
+                    .map_err(js_err)?
+                    .sample_n(n)
+            };
             FusionSampleResult {
                 kind: "point".to_string(),
                 count: particles.len(),
@@ -5676,10 +5933,16 @@ pub fn sample_fusion_source(spec: JsValue) -> Result<JsValue, JsValue> {
             }
         }
         "parametric" => {
-            let mut sampler =
-                nucleide_plasma_source::ParametricSampler::new(parametric_config(&spec)?, seed)
-                    .map_err(js_err)?;
-            let particles = sampler.sample_n(n);
+            let config = parametric_config(&spec)?;
+            let particles = if is_proton {
+                nucleide_plasma_source::ParametricProtonSampler::new(config, seed)
+                    .map_err(js_err)?
+                    .sample_n(n)
+            } else {
+                nucleide_plasma_source::ParametricSampler::new(config, seed)
+                    .map_err(js_err)?
+                    .sample_n(n)
+            };
             FusionSampleResult {
                 kind: "parametric".to_string(),
                 count: particles.len(),
@@ -5706,15 +5969,21 @@ fn sample_args(spec: &JsValue) -> Result<(usize, u64), JsValue> {
 #[derive(Serialize)]
 struct FusionCardsResult {
     mcnp: String,
-    serpent: String,
+    /// Serpent `src` text, or [`None`] for proton specs (Serpent
+    /// transports neutrons and photons only — never a phantom photon card).
+    serpent: Option<String>,
 }
 
 /// Emit MCNP `SDEF` and Serpent `src` cards for one fusion source.
 ///
 /// `spec` matches [`sample_fusion_source`] (the `n`/`seed` fields are
 /// ignored); optional `nBins` (default 21) sets the Gaussian tabulation bin
-/// count and `mcnpVersion` (default 6) selects the `PAR=` designator dialect
-/// for the `SDEF` card. Returns `{mcnp, serpent}` card texts.
+/// count, `mcnpVersion` (default 6) selects the `PAR=` designator dialect
+/// for the `SDEF` card, optional `species` selects `"neutron"` (the
+/// default) or `"proton"` (MCNP6-only `PAR=h`, `serpent: null`), and the
+/// parametric `protonRateModel` selects the pinned 50/50 convention
+/// (default) or the separate Bosch-Hale D(d,p) rate. Returns
+/// `{mcnp, serpent}` card texts.
 #[wasm_bindgen(js_name = emitFusionSourceCards)]
 pub fn emit_fusion_source_cards(spec: JsValue) -> Result<JsValue, JsValue> {
     let get_opt = |key: &str| -> Option<f64> {
@@ -5724,7 +5993,35 @@ pub fn emit_fusion_source_cards(spec: JsValue) -> Result<JsValue, JsValue> {
     };
     let n_bins = get_opt("nBins").unwrap_or(21.0) as usize;
     let version = get_opt("mcnpVersion").unwrap_or(6.0) as u32;
+    let is_proton = parse_fusion_species(&spec)?;
     let kind = js_get_string(&spec, "kind")?.to_ascii_lowercase();
+    if is_proton {
+        let mcnp = match kind.as_str() {
+            "ring" | "point" => {
+                let config = if kind == "ring" {
+                    ring_config(&spec)?
+                } else {
+                    point_config(&spec)?
+                };
+                nucleide_plasma_source::emit_sdef_proton(&config, version, n_bins)
+                    .map_err(js_err)?
+            }
+            "parametric" => {
+                let config = parametric_config(&spec)?;
+                nucleide_plasma_source::emit_sdef_parametric_proton(&config, version, n_bins)
+                    .map_err(js_err)?
+            }
+            other => {
+                return Err(js_err(format!(
+                    "unknown fusion source kind `{other}` (supported: ring, point, parametric)"
+                )));
+            }
+        };
+        return to_js(&FusionCardsResult {
+            mcnp: mcnp.text,
+            serpent: None,
+        });
+    }
     let (mcnp, serpent) = match kind.as_str() {
         "ring" | "point" => {
             let config = if kind == "ring" {
@@ -5753,7 +6050,7 @@ pub fn emit_fusion_source_cards(spec: JsValue) -> Result<JsValue, JsValue> {
     };
     to_js(&FusionCardsResult {
         mcnp: mcnp.text,
-        serpent: serpent.text,
+        serpent: Some(serpent.text),
     })
 }
 
@@ -6016,21 +6313,49 @@ struct LatticePointJson {
 ///
 /// `spec` takes `points` (one `{positionCm: [x, y, z], rate, tiKev}` row per
 /// node, lengths in cm, temperatures in keV), `reaction` (`"dt"`/`"dd"`),
-/// optional `fieldPeriods`/`baseAngle` symmetry, `n` (capped at
+/// optional `fuelDeuterium` + `fuelTritium` (both or neither; a D/T mixture
+/// through the same Eriksson/DRESS rate rule per node, then `reaction` is
+/// optional and unused),
+/// optional `fieldPeriods`/`baseAngle` symmetry, optional
+/// `speciesDeuteriumKev` + `speciesTritiumKev` (both or neither; single-fuel
+/// D-T reacts at the mass-weighted `T_DT`, D-D at `T_D`), optional
+/// `tailFraction` + `tailTempKev` (both or neither; one global deuterium
+/// hot-tail fraction applied per node with the node temperature as the bulk
+/// `T_D`, needs the fuel mixture, `eta = 0` recovers the no-tail kernel),
+/// `n` (capped at
 /// [`MAX_FUSION_SAMPLES`]) and an integer `seed`. Returns `{kind:
 /// "lattice", totalStrength, count, particles}` with one `{positionCm,
-/// direction, energyMeV, weight}` row per particle.
+/// direction, energyMeV, weight, species}` row per particle. Lattice
+/// proton transport stays out: `species: "proton"` is a loud error
+/// (lattice proton rates stay accounting-only).
 #[wasm_bindgen(js_name = sampleLatticeSource)]
 pub fn sample_lattice_source(spec: JsValue) -> Result<JsValue, JsValue> {
+    if parse_fusion_species(&spec)? {
+        return Err(js_err(
+            "lattice proton transport is not yet supported (accounting only)".to_string(),
+        ));
+    }
     use nucleide_plasma_source::lattice::{LatticePoint, LatticeSourceConfig, LatticeSymmetry};
     #[derive(Deserialize)]
     struct LatticeSpecJson {
         points: Vec<LatticePointJson>,
-        reaction: String,
+        reaction: Option<String>,
         #[serde(rename = "fieldPeriods")]
         field_periods: Option<f64>,
         #[serde(rename = "baseAngle")]
         base_angle: Option<f64>,
+        #[serde(rename = "speciesDeuteriumKev")]
+        species_deuterium_kev: Option<f64>,
+        #[serde(rename = "speciesTritiumKev")]
+        species_tritium_kev: Option<f64>,
+        #[serde(rename = "fuelDeuterium")]
+        fuel_deuterium: Option<f64>,
+        #[serde(rename = "fuelTritium")]
+        fuel_tritium: Option<f64>,
+        #[serde(rename = "tailFraction")]
+        tail_fraction: Option<f64>,
+        #[serde(rename = "tailTempKev")]
+        tail_temp_kev: Option<f64>,
     }
     let parsed: LatticeSpecJson = serde_wasm_bindgen::from_value(spec.clone()).map_err(js_err)?;
     if parsed.points.is_empty() {
@@ -6056,11 +6381,62 @@ pub fn sample_lattice_source(spec: JsValue) -> Result<JsValue, JsValue> {
         }
         None => None,
     };
+    // Per-species ion temperatures on lattice configs: single-fuel D-T
+    // reacts at the mass-weighted T_DT, single-fuel D-D at T_D (the parametric
+    // solo convention). Pair entries validate loudly in the core.
+    let species_temperatures = match (parsed.species_deuterium_kev, parsed.species_tritium_kev) {
+        (Some(d), Some(t)) => {
+            Some(nucleide_plasma_source::SpeciesIonTemperatures::new(d, t).map_err(js_err)?)
+        }
+        (None, None) => None,
+        _ => {
+            return Err(js_err(
+                "speciesDeuteriumKev and speciesTritiumKev must be given together",
+            ));
+        }
+    };
+    // D/T fuel mixture per node: both fractions or neither (the core
+    // FuelMixture::new carries the loud fraction errors); with a mixture the
+    // `reaction` key is optional and unused.
+    let fuel_mixture = match (parsed.fuel_deuterium, parsed.fuel_tritium) {
+        (Some(d), Some(t)) => Some(nucleide_plasma_source::FuelMixture::new(d, t).map_err(js_err)?),
+        (None, None) => None,
+        _ => {
+            return Err(js_err(
+                "fuelDeuterium and fuelTritium must be given together",
+            ));
+        }
+    };
+    // One global deuterium hot-tail fraction applied per node (node
+    // temperature stays the bulk T_D): both keys or neither, needs the fuel
+    // mixture (the core carries the loud scope error as well).
+    let tail = match (parsed.tail_fraction, parsed.tail_temp_kev) {
+        (Some(f), Some(t)) => {
+            if fuel_mixture.is_none() {
+                return Err(js_err(
+                    "tailFraction/tailTempKev need a D/T fuel mixture (fuelDeuterium + fuelTritium)",
+                ));
+            }
+            Some(nucleide_plasma_source::DeuteriumTail::new(f, t).map_err(js_err)?)
+        }
+        (None, None) => None,
+        _ => {
+            return Err(js_err(
+                "tailFraction and tailTempKev must be given together",
+            ));
+        }
+    };
+    let reaction = match &parsed.reaction {
+        Some(name) => parse_fusion_reaction(name)?,
+        None if fuel_mixture.is_some() => nucleide_plasma_source::FusionReaction::Dt,
+        None => return Err(js_err("lattice spec missing `reaction`")),
+    };
     let config = LatticeSourceConfig {
         points,
-        reaction: parse_fusion_reaction(&parsed.reaction)?,
-        fuel_mixture: None,
-        species_temperatures: None,
+        reaction,
+        fuel_mixture,
+        species_temperatures,
+        tail,
         symmetry,
         weight: 1.0,
     };

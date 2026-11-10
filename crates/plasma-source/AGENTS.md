@@ -58,10 +58,23 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   publishable T-T reactivity fit (Bosch & Hale 1992 covers only D(d,n),
   D(d,p), D-T, D-³He) or Ballabio-class line (three-body continuum) exists,
   and the oracle's vendored tables stay out of scope. The D(d,p)T proton
-  *rate* is accounted alongside the neutron source
-  (`proton_strength_density` / `total_proton_strength`, 50/50 with the D-D
-  neutron branch, bit-for-bit; `proton_accounting` facade) while the
-  sampler and the cards stay neutron-only; proton transport stays out.
+  branch shares the D-D neutron-branch rate 50/50 bit-for-bit by default
+  (`proton_strength_density` / `total_proton_strength`, `proton_accounting`
+  facade); the opt-in `ProtonRateModel::BoschHaleDdp`
+  (`proton_rate_model="bosch_hale_ddp"`) uses the separate Bosch–Hale
+  D(d,p) Table VII fit (branch ratio `0.9218` at 20 keV, 7.8% below
+  D(d,n); tail sub-branches weight each fit at its own sub-pair
+  temperature). Protons are transported for deuterium-bearing ring/point
+  and parametric sources: `Particle.species` (`Neutron` default, `Proton`
+  additive), independent proton sampler instances with their own
+  `Rng(seed)` (zero new draws on any neutron path), the Brysk-Gaussian
+  3.02 MeV proton line (`proton_moments_mev` / `SpectrumSpec::from_proton`,
+  `sigma = sqrt(1.51·Ti [MeV])`; tail sub-branches follow the D-D neutron
+  sub-weights), and MCNP6-only `PAR=h` SDEF cards
+  (`emit_sdef_proton` / `emit_sdef_parametric_proton`) with a
+  `proton branch` drift row. Lattice proton transport stays out
+  (accounting-only), Serpent has no proton emitter (`PART='p'` means
+  photons), and MCNP5 has no proton designator — all loud.
   The normalization is pinned with hand vectors in the `parametric` module
   rustdoc, and the recovery anchors are regression gates: `f_D=f_T=1/2`
   reproduces the equimolar kernel's D-T branch bit-for-bit, `f_D=1`
@@ -85,17 +98,19 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
 - Loud boundary (`Error::NotYetSupported` / `ValueError`, never a guess):
   T-T neutron transport
   (third-term normalization pinned, `tt_neutron_coefficient`; no
-  publishable fit or line exists) and proton transport (the D(d,p)T proton
-  *rate* is accounted: `proton_strength_density` /
-  `total_proton_strength`, `proton_accounting` facade; sampler and cards
-  stay neutron-only), reactant distributions beyond the one pinned
+  publishable fit or line exists), D-T-only proton requests
+  (`"proton sampling needs a D-D source"`), lattice proton transport
+  (lattice keeps the `total_dd_strength` accounting only), Serpent proton
+  cards (no emitter — Serpent transports neutrons and photons only), and
+  MCNP5 proton cards (MCNP6-only `PAR=h`; `mcnp_version=6` required) — plus reactant distributions beyond the one pinned
   deuterium hot-tail fraction on a D/T mixture (the rest of the full
   Eriksson generalization; the per-species-temperature form is supported via
-  `SpeciesIonTemperatures` — including on single-fuel configs, which react
-  at the pair temperatures — the single-tail-temperature form via
-  `DeuteriumTail` — both parametric-only, there is no tail spelling on
-  lattice configs), per-species temperatures without a fuel mixture on
-  lattice configs, and profile
+  `SpeciesIonTemperatures` — on parametric and lattice configs, including
+  single-fuel configs, which react at the pair temperatures — the
+  single-tail-temperature form via `DeuteriumTail` — on parametric and
+  lattice configs with one global `(η, T_tail)` applied per node, the node
+  temperature staying the bulk `T_D` per node; `η = 0` recovers the landed
+  kernel bit-for-bit on both), and profile
   self-consistency (zero total strength). Mixture fractions, species
   temperatures, tail parameters, lattice clouds/symmetry, and sector angles carry their own loud errors
   (`Error::NonFinite`, `Error::InvalidFuelMixture`,
@@ -128,6 +143,9 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
 - Lattice changes keep the sampler draw accounting: no new RNG draws on any
   path (the symmetry copy comes from the within-bin fraction), so the
   folded/expanded bit-identity and the single-point recovery anchors hold.
+  Lattice hot-tail routing keeps the same accounting (one branch-roulette
+  draw per particle on the mixture path, tail or no tail), so the `η = 0`
+  recovery holds bit-for-bit.
 
 ## Verification
 
@@ -140,11 +158,21 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   errors, species gates: T_DT hand vectors, pair-temperature strength and
   per-branch spectra, equal-T bit-for-bit recovery, loud temperature
   errors, tail gates: sub-rate hand vectors at 1e-12, five-sub-branch
-  spectra, eta=0 bit-for-bit recovery, loud tail errors, lattice gates:
+  spectra, eta=0 bit-for-bit recovery, loud tail errors, proton gates:
+  Brysk line hand vectors, Bosch–Hale D(d,p) hand vectors and branch-ratio
+  pins, the pinned default bit-for-bit anchor, tail-weighted branch ratio,
+  8σ sampled moments, eta=0/equal-T/exact-2π proton recovery anchors,
+  PAR=h round trips, D-T-only/MCNP5/Serpent/lattice loud gates, lattice
+  gates:
   two-point hand vectors, single-point bit-for-bit point-source recovery,
   expand/fold exactness, folded-vs-expanded stream bit-identity (incl. the
   single-node regression), ring-limit moment closure, equal-pair recovery,
-  card round trips with the lattice row, loud lattice/symmetry errors).
+  single-fuel pair hand vectors and per-branch spectra + equal-T bit-for-bit
+  recovery, card round trips with the lattice row, loud lattice/symmetry
+  errors, lattice-tail gates: per-node sub-rate hand vectors at 1e-12
+  (including the flat-profile S vector reconstructed from the branch
+  weights), five-sub-branch spectra per node, eta=0 bit-for-bit recovery,
+  loud tail errors, tail drift row).
 - `pytest tests/test_plasma_source.py` after `maturin develop`.
 - `validation/plasma_source_vs_openmc.py` runs inside `run_all.sh`
   (two-part: P1–P13 always, O1–O13 vs openmc-plasma-source/NeSST

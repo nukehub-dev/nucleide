@@ -8,6 +8,7 @@
 //! tails beyond a symmetric `±width_sigma` window; the dropped probability is
 //! reported as [`SpectrumTable::coverage`] drift in the emission report.
 
+use crate::reaction::proton_moments_mev;
 use crate::{Error, FusionReaction, Result};
 
 /// Standard normal CDF `Phi(z) = 0.5 * (1 + erf(z / sqrt(2)))`.
@@ -56,6 +57,21 @@ impl SpectrumSpec {
     /// degenerates to the monoenergetic nominal line.
     pub fn from_reaction(reaction: FusionReaction, ti_kev: f64) -> Result<Self> {
         let (mean, sigma) = reaction.moments_mev(ti_kev)?;
+        if sigma == 0.0 {
+            Ok(SpectrumSpec::Mono { energy_mev: mean })
+        } else {
+            Ok(SpectrumSpec::Gaussian {
+                mean_mev: mean,
+                sigma_mev: sigma,
+            })
+        }
+    }
+
+    /// D(d,p)T proton spectrum at `ti_kev` \[keV\] (the Brysk-Gaussian
+    /// 3.02 MeV line, [`proton_moments_mev`](crate::reaction::proton_moments_mev)).
+    /// Zero ion temperature degenerates to the monoenergetic 3.02 MeV line.
+    pub fn from_proton(ti_kev: f64) -> Result<Self> {
+        let (mean, sigma) = proton_moments_mev(ti_kev)?;
         if sigma == 0.0 {
             Ok(SpectrumSpec::Mono { energy_mev: mean })
         } else {
@@ -245,5 +261,25 @@ mod tests {
         let spec = SpectrumSpec::from_reaction(FusionReaction::Dt, 0.0).unwrap();
         assert_eq!(spec, SpectrumSpec::Mono { energy_mev: 14.021 });
         assert!(spec.is_mono());
+    }
+
+    #[test]
+    fn proton_spectrum_is_brysk_gaussian_or_mono() {
+        // Hand vector: Ti = 20 keV -> (3.02, 0.173782) MeV (reaction.rs).
+        let spec = SpectrumSpec::from_proton(20.0).unwrap();
+        assert_eq!(
+            spec,
+            SpectrumSpec::Gaussian {
+                mean_mev: 3.02,
+                sigma_mev: (1.51 * 0.02_f64).sqrt(),
+            }
+        );
+        let mono = SpectrumSpec::from_proton(0.0).unwrap();
+        assert_eq!(mono, SpectrumSpec::Mono { energy_mev: 3.02 });
+        assert!(mono.is_mono());
+        assert_eq!(
+            SpectrumSpec::from_proton(-1.0),
+            Err(Error::NegativeIonTemperature(-1.0))
+        );
     }
 }

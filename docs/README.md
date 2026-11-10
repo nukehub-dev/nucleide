@@ -101,6 +101,8 @@ status, and license.
 | [Fusion sources](tutorials/python/fusion-sources.md) | Build ring, point, and parametric tokamak neutron sources and emit MCNP/Serpent source cards |
 | [Unfold a spectrum](tutorials/python/unfold-spectrum.md) | Recover a neutron spectrum from activation detector measurements with SAND-II, least-squares, or GRAVEL adjustment, including an IRDFF response pack |
 | [Clearance screening](tutorials/python/clearance-screening.md) | Classify parsed activation inventories against EU or Spanish clearance tables |
+| [Fusion first wall](tutorials/python/fusion-first-wall.md) | Run the end-to-end first-wall workflow from tokamak source to a foil check |
+| [Solve activation with ACTINV](tutorials/python/solve-with-actinv.md) | Map one material, spectrum, and schedule to an `actinv-spec-1` problem, solve with the optional ACTINV solver, and read the photon source back with Nucleide |
 | [Interactive tutorials](tutorials/interactive/index.mdx) | Run Nucleide in the browser through the WASM build |
 | [Interactive — nuclides](tutorials/interactive/nuclides.mdx) | Nuclide identifiers and nuclear data |
 | [Interactive — materials](tutorials/interactive/materials.mdx) | Formulas, fractions, mixing, and XML export |
@@ -111,7 +113,7 @@ status, and license.
 | [Interactive — FLUKA I/O](tutorials/interactive/fluka-io.mdx) | Read USRBIN mesh tallies from `.lis` files |
 | [Interactive — deck editor](tutorials/interactive/deck-editor.mdx) | Parse, validate, and edit full MCNP decks |
 | [Interactive — deterministic I/O](tutorials/interactive/deterministic.mdx) | ISOTXS fluxes and PARTISN decks |
-| [Interactive — variance reduction](tutorials/interactive/variance-reduction.mdx) | MAGIC bounds and alias-table sampling |
+| [Interactive — variance reduction](tutorials/interactive/variance-reduction.mdx) | MAGIC bounds, alias-table sampling, and KDE source resampling |
 | [Interactive — MCPL particle lists](tutorials/interactive/mcpl-io.mdx) | Read and write MCPL particle lists |
 | [Interactive — code-card emission](tutorials/interactive/emitter.mdx) | Five-dialect card emission with a per-dialect mass-drift audit |
 | [Interactive — fusion sources](tutorials/interactive/fusion-sources.mdx) | Sample D-D/D-T ring, lattice, and parametric sources (mixtures, single-fuel species pairs), emit SDEF cards, and check ECRH access |

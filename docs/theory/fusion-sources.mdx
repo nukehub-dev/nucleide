@@ -353,14 +353,56 @@ species-pair lines, since the published fits assumed single-temperature
 Maxwellians. The pinned hand vector (flat profile, $n = 10^{20}$ m⁻³,
 $f_D = 0.7$, $f_T = 0.3$, $T_D = 20$ keV, $T_T = 30$ keV, $\eta = 0.05$,
 $T_\mathrm{tail} = 60$ keV) gates the rate at $10^{-12}$ relative, and
-$\eta = 0$ reproduces the no-tail mixture kernel exactly.
+$\eta = 0$ reproduces the no-tail mixture kernel exactly. The lattice tier
+applies the same rule per node with one global $(\eta, T_\mathrm{tail})$ (the
+node temperature stays the bulk $T_D$ per node; there is no per-node
+$\eta$ spelling), routing strengths, the per-particle branch roulette, card
+marginals, and the drift row identically — there too $\eta = 0$ recovers
+the no-tail lattice kernel exactly.
+
+### S5-Pr — D(d,p)T proton transport
+
+The twin D(d,p)T proton branch is transported on request via the optional
+`species` key for deuterium-bearing ring/point and parametric sources. The
+default `proton_rate_model="pinned_50_50"` reuses the D-D neutron-branch
+rate bit-for-bit (the landed `proton_accounting` anchor). The opt-in
+`proton_rate_model="bosch_hale_ddp"` uses the separate Bosch–Hale D(d,p)
+Table VII fit; its branch ratio is about $0.9218$ at 20 keV (7.8% below the
+D(d,n) branch), not the $C_1$ ratio $1.041$. On a hot-tail mixture the
+sub-line roulette weights use the same selected fit at
+$T_D$/$T_\mathrm{mix}$/$T_\mathrm{tail}$. There is no Ballabio-class
+proton line (Ballabio et al. 1998 covers neutrons only), so the v1 proton
+line is Brysk-Gaussian at the 3.02 MeV cold line ($Q = 4.03$ MeV),
+
+$$
+\mu = 3.02\ \mathrm{MeV}, \qquad \sigma = \sqrt{1.51 \cdot T_i[\mathrm{MeV}]}\ \mathrm{MeV}\ \text{(mass numbers $m_p = 1$, $m_t = 3$)},
+\tag{S5-Pr}
+$$
+
+with $T_i = 0$ degenerating to the monoenergetic 3.02 MeV line. Proton
+samplers draw on independent seeds with zero new draws on any neutron
+path; protons emit MCNP6-only `PAR=h` SDEF cards with the same
+$\pm 4\sigma$ histogram shape and a `proton branch` drift row, and no
+Serpent card exists (its `PART='p'` means photons). Proton validation is
+analytic (Bosch–Hale hand vectors, branch-ratio pins, sampled moments, and
+recovery anchors); no independent proton-spectrum oracle is wired yet.
 
 ### S6 — Arbitrary-3D birth-rate lattice
 
 The lattice tier drops the last tokamak assumption, axisymmetry. The caller
 supplies the full 3D birth distribution as a point list — positions,
 relative birth-rate weights, and per-point ion temperatures — and the same
-fuel mixtures, Ballabio lines, and card emission apply per node. An
+fuel mixtures, Ballabio lines, and card emission apply per node. A single-fuel
+lattice carrying a species pair $(T_D, T_T)$ reacts at the same landed pair
+temperatures as the parametric solo port — single-fuel D-T at the
+mass-weighted $T_{DT} = T_D + \tfrac{2}{5}(T_T - T_D)$, single-fuel D-D at
+$T_D$ — with the Ballabio lines following per branch; an equal pair $(T, T)$
+reproduces the shared-temperature kernel bit-for-bit. A global deuterium
+hot-tail fraction (S5-T) applies per node the same way: each node computes
+bulk plus tail sub-branches at the node $T_D$ with the shared $\eta$ and
+$T_\mathrm{tail}$, mirroring parametric routing (strengths, per-particle
+branch roulette, card marginals, drift row); $\eta = 0$ reproduces the
+no-tail lattice kernel exactly, and a tail needs a fuel mixture. An
 optional field-period symmetry declares the points to be one base-sector
 cloud replicated $n$ times around the machine axis (toroidal angles
 identified modulo $2\pi/n$), with the symmetric total scaled by $n$; $n = 1$
@@ -568,15 +610,23 @@ byte-identically through `nucleide.mcnp.parse_sdef` (the typed `SDEF` reader).
   `deuterium_tail` fraction `{"fraction": η, "temperature_kev": T_tail}`
   adds the one pinned non-Maxwellian shape (S5-T: bulk plus hot tail with
   per-sub-pair lines); `η = 0` recovers the no-tail kernel exactly, and the
-  tail needs a `fuel` mixture. Fuel
+  tail needs a `fuel` mixture. On lattice clouds the same tail applies per
+  node with one global $(\eta, T_\mathrm{tail})$ (node temperature stays the
+  bulk $T_D$ per node). Fuel
   fractions that are negative, non-finite, or do not sum to 1 raise a clear
   error, as do negative temperatures and out-of-range tail parameters.
   General non-Maxwellian distributions beyond this shape stay out.
-- **Neutron branches plus proton bookkeeping.** The sampler and the emitted
-  cards are neutron-only (D-T + D-D lines; no T-T neutron branch — a pure-T
-  mixture is a loud error). The D(d,p)T proton branch is reported as
-  bookkeeping next to the source (the proton density is the D-D
-  neutron-branch density, pinned 50/50); proton transport is out of scope.
+- **Neutron branches plus proton transport.** The default sampler and the
+  emitted cards are neutron-only (D-T + D-D lines; no T-T neutron branch —
+  a pure-T mixture is a loud error). The D(d,p)T proton branch shares the
+  D-D neutron-branch rate 50/50 (`proton_accounting` reports it alongside
+  the source) and is transported on request via `species="proton"` for
+  deuterium-bearing ring/point and parametric sources: the Brysk 3.02 MeV
+  proton line on an independent seeded stream, with MCNP6-only cards
+  (`PAR=h`, no Serpent card — Serpent transports neutrons and photons
+  only). D-T-only proton requests raise a clear error, lattice proton
+  transport stays accounting-only, and MCNP5 has no proton designator
+  (`mcnp_version=6` is required for proton cards).
 - **Profiles are caller inputs.** Nothing computes or fits profiles and no
   equilibrium is solved. Malformed geometry or profile parameters (non-positive
   minor radius or elongation, triangularity outside $(-1, 1)$, pedestal radius

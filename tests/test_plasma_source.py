@@ -471,6 +471,36 @@ def _flat_l_mode_spec() -> dict[str, object]:
     return spec
 
 
+def test_proton_rate_model_bosch_hale_ddp_is_opt_in() -> None:
+    # Default stays the pinned 50/50 convention (ratio exactly 1.0 for pure
+    # D-D); the opt-in uses the separate Bosch-Hale D(d,p) fit, whose branch
+    # ratio at 20 keV is ~0.921759 (not the C1 ratio 1.041).
+    flat_dd = dict(_flat_l_mode_spec(), reaction="dd")
+    pinned = ps.proton_accounting(flat_dd)
+    assert pinned["proton_per_neutron"] == 1.0
+    assert pinned["proton_rate_model"] == "pinned_50_50"
+    opt = ps.proton_accounting(dict(flat_dd, proton_rate_model="bosch_hale_ddp"))
+    want = 2.398954986744111e-24 / 2.602582958721524e-24
+    assert opt["proton_per_neutron"] == pytest.approx(want, rel=1e-14)
+    assert opt["proton_rate_model"] == "bosch_hale_ddp"
+    assert "Bosch-Hale D(d,p)" in opt["note"]
+    assert opt["proton_total"] < opt["neutron_total"]
+    # The proton stream and card remain available under the opt-in model.
+    proton = dict(flat_dd, species="proton", proton_rate_model="bosch_hale_ddp")
+    out = ps.particles(proton, 512, seed=23)
+    assert set(map(str, out["species"])) == {"proton"}
+    assert abs(float(out["energy"].mean()) - 3.02) < 0.01
+    cards = ps.emit_source_cards(dict(proton, mcnp_version=6), bins=15)
+    branch = next(row for row in cards["sdef"]["drift"] if row["quantity"] == "proton branch")
+    assert "Bosch-Hale D(d,p) fit" in branch["note"]
+    with pytest.raises(ValueError, match="unknown proton_rate_model"):
+        ps.proton_accounting(dict(flat_dd, proton_rate_model="not-a-model"))
+    with pytest.raises(ValueError, match="parametric specs"):
+        ps.proton_accounting(dict(RING_SPEC, reaction="dd", proton_rate_model="bosch_hale_ddp"))
+    with pytest.raises(ValueError, match="parametric-only"):
+        ps.proton_accounting(dict(_two_point_lattice_spec(), proton_rate_model="bosch_hale_ddp"))
+
+
 def test_species_temperatures_fire_both_branches_at_pair_temperatures() -> None:
     # 70/30 blend at T_D = 20 keV, T_T = 30 keV: the D-T branch reacts at
     # T_DT = 24 keV and the D-D branch at T_D, so both lines fire in the
@@ -868,6 +898,75 @@ def test_lattice_mixture_fires_both_branches() -> None:
     assert 0.0 < acc["proton_per_neutron"] < 0.05
 
 
+def test_lattice_single_fuel_species_pair_reacts_at_pair_temperatures() -> None:
+    # Single-fuel + pair reacts at the landed mixture pair temperatures:
+    # D-T at T_DT = 24 keV for (T_D, T_T) = (20, 30) keV, D-D at T_D.
+    # Pinned anchors: T_DT, <sv>_DT(24), and the D-T Ballabio line.
+    assert 20.0 + 0.4 * (30.0 - 20.0) == 24.0
+    assert ps.reactivity("dt", 24.0) == 5.414667327922193e-22
+    mu_dt, sigma_dt = _ballabio_moments("dt", 24.0)
+    assert mu_dt == pytest.approx(14.077934372230146, rel=1e-12)
+    assert sigma_dt == pytest.approx(0.3700390508551786, rel=1e-12)
+    base_dt = {
+        "kind": "lattice",
+        "reaction": "dt",
+        "points": [
+            {"position": [10.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 20.0},
+            {"position": [0.0, 10.0, 5.0], "rate": 3.0, "ion_temperature_kev": 20.0},
+        ],
+    }
+    pair_dt = dict(base_dt, species_temperatures={"D": 20.0, "T": 30.0})
+    cards_pair = ps.emit_source_cards(pair_dt, bins=15)
+    cards_none = ps.emit_source_cards(base_dt, bins=15)
+    assert cards_pair["spectrum"]["mean_mev"] == pytest.approx(mu_dt, rel=1e-12)
+    assert cards_pair["spectrum"]["sigma_mev"] == pytest.approx(sigma_dt, rel=1e-12)
+    assert cards_pair["spectrum"]["mean_mev"] != pytest.approx(
+        cards_none["spectrum"]["mean_mev"], rel=1e-9
+    )
+    # Sampled mean sits on the D-T line at 24 keV; node temperatures are
+    # overridden by the pair (a node claiming 0 keV still fires at 24 keV).
+    cold_node = dict(
+        pair_dt,
+        points=[{"position": [0.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 0.0}],
+    )
+    out = ps.particles(cold_node, 20_000, seed=13)
+    assert abs(float(out["energy"].mean()) - mu_dt) < 6.0 * sigma_dt / math.sqrt(20_000)
+    # Single-fuel D-D + pair reacts at T_D: identical spectrum to the None
+    # path when T_D equals the node temperature.
+    base_dd = dict(base_dt, reaction="dd")
+    pair_dd = dict(base_dd, species_temperatures={"D": 20.0, "T": 30.0})
+    cards_dd_pair = ps.emit_source_cards(pair_dd, bins=15)
+    cards_dd_none = ps.emit_source_cards(base_dd, bins=15)
+    assert cards_dd_pair["spectrum"]["mean_mev"] == pytest.approx(
+        cards_dd_none["spectrum"]["mean_mev"], rel=1e-12
+    )
+
+
+def test_lattice_single_fuel_species_equal_temperatures_recover_shared_kernel() -> None:
+    # Equal pair (T, T) on a single-fuel lattice reproduces the
+    # shared-temperature kernel bit-for-bit end to end: the same seeded
+    # stream and the same cards, for both fuels.
+    for reaction in ("dt", "dd"):
+        base = {
+            "kind": "lattice",
+            "reaction": reaction,
+            "points": [
+                {"position": [10.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 20.0},
+                {"position": [0.0, 10.0, 5.0], "rate": 3.0, "ion_temperature_kev": 20.0},
+            ],
+        }
+        pair = dict(base, species_temperatures={"D": 20.0, "T": 20.0})
+        a = ps.particles(base, 512, seed=17)
+        b = ps.particles(pair, 512, seed=17)
+        for key in ("x", "y", "z", "u", "v", "w", "energy", "weight"):
+            assert bool((a[key] == b[key]).all())
+        cards_a = ps.emit_source_cards(base, bins=8)
+        cards_b = ps.emit_source_cards(pair, bins=8)
+        assert cards_b["sdef"]["card"] == cards_a["sdef"]["card"]
+        assert cards_b["sdef"]["drift"] == cards_a["sdef"]["drift"]
+        assert cards_b["serpent"]["card"] == cards_a["serpent"]["card"]
+
+
 def test_lattice_errors_are_loud() -> None:
     with pytest.raises(ValueError, match="kind"):
         ps.particles(dict(_two_point_lattice_spec(), kind="cloud"), 4, seed=0)
@@ -889,9 +988,258 @@ def test_lattice_errors_are_loud() -> None:
         ps.particles(dict(_two_point_lattice_spec(), base_angle=0.0), 4, seed=0)
     with pytest.raises(ValueError, match="periods"):
         ps.particles(dict(_two_point_lattice_spec(), field_periods=0, base_angle=0.0), 4, seed=0)
-    with pytest.raises(ValueError, match="not yet supported"):
+    # Single-fuel species pairs are supported (solo port); non-finite or
+    # negative species temperatures stay loud on the solo path.
+    with pytest.raises(ValueError, match=">= 0"):
         ps.particles(
-            dict(_two_point_lattice_spec(), species_temperatures={"D": 20.0, "T": 20.0}),
+            dict(_two_point_lattice_spec(), species_temperatures={"D": -1.0, "T": 20.0}),
             4,
             seed=0,
         )
+    with pytest.raises(ValueError, match="non-finite"):
+        ps.particles(
+            dict(_two_point_lattice_spec(), species_temperatures={"D": float("nan"), "T": 20.0}),
+            4,
+            seed=0,
+        )
+
+
+def _lattice_tail_spec() -> dict[str, object]:
+    """Pinned lattice tail spec: single node (bulk Ti = 20 keV) on a 70/30
+    blend at T_D = 20 keV, T_T = 30 keV with a 5% deuterium hot tail at
+    60 keV (sub-pairs at T_DT = 24, T_DTt = 48, T_D = 20, T_mix = 40,
+    T_tail = 60 keV) — the parametric tail hand vector per node."""
+    return {
+        "kind": "lattice",
+        "fuel": {"D": 0.7, "T": 0.3},
+        "species_temperatures": {"D": 20.0, "T": 30.0},
+        "deuterium_tail": {"fraction": 0.05, "temperature_kev": 60.0},
+        "points": [{"position": [0.0, 0.0, 0.0], "rate": 1.0, "ion_temperature_kev": 20.0}],
+    }
+
+
+def _lattice_tail_base() -> dict[str, object]:
+    spec = _lattice_tail_spec()
+    del spec["deuterium_tail"]
+    return spec
+
+
+def test_lattice_deuterium_tail_fires_all_sub_branches() -> None:
+    # All five bulk/tail sub-lines fire per node at the sub-rate-rule shares,
+    # and the mean energy matches the five-branch weighted mean.
+    spec = _lattice_tail_spec()
+    n = 20_000
+    out = ps.particles(spec, n, seed=13)
+    energy = out["energy"]
+    p, branches = _tail_sub_weights()
+    p_dd = p[2] + p[3] + p[4]
+    frac_dd = float((energy < 10.0).mean())
+    se = math.sqrt(p_dd * (1.0 - p_dd) / n)
+    assert abs(frac_dd - p_dd) < 8.0 * se
+    moments = [_ballabio_moments(reaction, ti) for reaction, ti in branches]
+    want = sum(pi * mu for pi, (mu, _) in zip(p, moments, strict=True))
+    var = sum(pi * (sigma**2 + mu**2) for pi, (mu, sigma) in zip(p, moments, strict=True)) - want**2
+    assert abs(float(energy.mean()) - want) < 6.0 * math.sqrt(var / n)
+
+
+def test_lattice_deuterium_tail_zero_fraction_recovers_no_tail() -> None:
+    # eta = 0 reproduces the no-tail lattice kernel bit-for-bit end to end:
+    # the same seeded stream and the same emitted cards (even at an extreme
+    # T_tail spelling — the tail evaluations are skipped at eta == 0).
+    base = _lattice_tail_base()
+    zero = dict(base, deuterium_tail={"fraction": 0.0, "temperature_kev": 1.0e6})
+    a = ps.particles(base, 512, seed=17)
+    b = ps.particles(zero, 512, seed=17)
+    for key in ("x", "y", "z", "u", "v", "w", "energy", "weight"):
+        assert bool((a[key] == b[key]).all())
+    cards_a = ps.emit_source_cards(base, bins=15)
+    cards_b = ps.emit_source_cards(zero, bins=15)
+    assert cards_b["sdef"]["card"] == cards_a["sdef"]["card"]
+    assert cards_b["sdef"]["drift"] == cards_a["sdef"]["drift"]
+    assert cards_b["serpent"]["card"] == cards_a["serpent"]["card"]
+
+
+def test_lattice_deuterium_tail_card_carries_drift_row() -> None:
+    # A nonzero tail folds its Ballabio sub-lines into the energy marginal
+    # and appends the deuterium-tail drift row (after the lattice row);
+    # the SDEF card still round-trips through the typed reader.
+    out = ps.emit_source_cards(_lattice_tail_spec(), bins=15)
+    card = out["sdef"]["card"]
+    parsed = mcnp.parse_sdef(card)
+    assert parsed["card"] == card
+    assert parsed["rad"] == "D1"
+    assert parsed["ext"] == "D2"
+    assert parsed["erg"] == "D3"
+    quantities = [row["quantity"] for row in out["sdef"]["drift"]]
+    assert quantities == [
+        "emission probability",
+        "spatial marginals",
+        "joint correlation",
+        "lattice discretization",
+        "deuterium tail",
+    ]
+    tail_row = out["sdef"]["drift"][4]
+    assert tail_row["reparsed"] is True
+    assert "0.050000" in tail_row["note"] and "60.000000" in tail_row["note"]
+    assert out["serpent"]["drift"][-1]["quantity"] == "deuterium tail"
+    assert out["serpent"]["drift"][-1]["reparsed"] is False
+
+
+def test_lattice_deuterium_tail_is_loud() -> None:
+    # Non-finite, out-of-range, or negative tail parameters never reach the
+    # sampler; the dict needs both fraction and temperature_kev keys; and
+    # the tail without a fuel mixture is a loud scope error, never a silent
+    # single-fuel fallback.
+    base = _lattice_tail_base()
+    bad_tails = [
+        {"fraction": -0.1, "temperature_kev": 60.0},
+        {"fraction": 1.1, "temperature_kev": 60.0},
+        {"fraction": 0.05, "temperature_kev": -1.0},
+        {"fraction": float("nan"), "temperature_kev": 60.0},
+        {"fraction": 0.05, "temperature_kev": float("inf")},
+        {"fraction": 0.05},  # missing temperature_kev
+        {"temperature_kev": 60.0},  # missing fraction
+        {"fraction": 0.05, "temperature_kev": 60.0, "shape": "slowing-down"},
+    ]
+    for tail in bad_tails:
+        with pytest.raises(ValueError):
+            ps.particles(dict(base, deuterium_tail=tail), 4, seed=0)
+    with pytest.raises(ValueError, match="not yet supported"):
+        ps.particles(
+            dict(
+                _two_point_lattice_spec(),
+                deuterium_tail={"fraction": 0.05, "temperature_kev": 60.0},
+            ),
+            4,
+            seed=0,
+        )
+
+
+# ---------------------------------------------------------------------------
+# D(d,p)T proton transport (Brysk 3.02 MeV line, 50/50 with the D-D branch)
+# ---------------------------------------------------------------------------
+
+_PROTON_RING_DD = dict(RING_SPEC, reaction="dd", species="proton", mcnp_version=6)
+
+
+def _proton_sigma(ti_kev: float) -> float:
+    return math.sqrt(1.51 * (ti_kev / 1000.0))
+
+
+def test_proton_moments_match_brysk_line() -> None:
+    # Hand vectors: Ti=0 -> (3.02, 0.0); Ti=20 -> 0.173782 (6 decimals).
+    vectors = ((0.0, 0.0), (1.0, 0.038858), (10.0, 0.122876), (20.0, 0.173782), (40.0, 0.245752))
+    for ti, sigma6 in vectors:
+        got = ps.proton_moments(ti)
+        assert got["nominal_mev"] == pytest.approx(3.02)
+        assert got["mean_mev"] == pytest.approx(3.02, rel=1e-12)
+        # Exact closed form at full precision; quoted 6-decimal vector at 2e-5.
+        assert got["sigma_mev"] == pytest.approx(_proton_sigma(ti), rel=1e-12)
+        assert abs(got["sigma_mev"] - sigma6) < 2e-5
+        assert got["mono"] is (sigma6 == 0.0)
+    with pytest.raises(ValueError, match=">= 0"):
+        ps.proton_moments(-1.0)
+    with pytest.raises(ValueError, match="non-finite"):
+        ps.proton_moments(float("nan"))
+
+
+def test_particles_adds_species_array_and_neutron_arrays_unchanged() -> None:
+    neutron = ps.particles(RING_SPEC, 512, seed=1234)
+    assert list(neutron["species"]) == ["neutron"] * 512
+    # The additive key leaves every neutron array unchanged (same seed ->
+    # same stream as the pre-species build, pinned by the Rust golden).
+    proton = ps.particles(_PROTON_RING_DD, 512, seed=1234)
+    assert list(proton["species"]) == ["proton"] * 512
+    assert abs(float(proton["energy"].mean()) - 3.02) < 8 * _proton_sigma(20.0) / math.sqrt(512)
+    # Independent streams: sampling protons with the same seed cannot move
+    # the neutron stream.
+    again = ps.particles(RING_SPEC, 512, seed=1234)
+    for key in ("x", "y", "z", "u", "v", "w", "energy", "weight"):
+        assert bool((neutron[key] == again[key]).all())
+
+
+def test_proton_ring_moments_match_line_at_8_sigma() -> None:
+    n = 200_000
+    out = ps.particles(_PROTON_RING_DD, n, seed=7)
+    sigma = _proton_sigma(20.0)
+    se_mean = sigma / math.sqrt(n)
+    se_std = sigma / math.sqrt(2 * n)
+    assert abs(float(out["energy"].mean()) - 3.02) < 8 * se_mean
+    assert abs(float(out["energy"].std(ddof=0)) - sigma) < 8 * se_std
+
+
+def test_parametric_proton_stream_matches_line_and_tags_species() -> None:
+    spec = dict(PARAMETRIC_SPEC, reaction="dd", species="proton")
+    n = 20_000
+    out = ps.particles(spec, n, seed=23)
+    assert set(map(str, out["species"])) == {"proton"}
+    # The H-mode profile mixes temperatures, so the mean sits on the
+    # profile-weighted 3.02 MeV line between the centre and edge widths.
+    assert abs(float(out["energy"].mean()) - 3.02) < 0.01
+    a = ps.particles(spec, 512, seed=17)
+    b = ps.particles(spec, 512, seed=17)
+    for key in ("x", "y", "z", "u", "v", "w", "energy", "weight"):
+        assert bool((a[key] == b[key]).all())
+
+
+def test_proton_loud_gates() -> None:
+    # D-T-only proton sampling is loud (sampler + cards agree).
+    with pytest.raises(ValueError, match="neutron|D-D"):
+        ps.particles(dict(RING_SPEC, species="proton"), 4, seed=0)
+    with pytest.raises(ValueError, match="not yet supported"):
+        ps.particles(dict(PARAMETRIC_SPEC, species="proton"), 4, seed=0)
+    # Lattice proton transport stays out (accounting-only).
+    with pytest.raises(ValueError, match="lattice proton"):
+        ps.particles(dict(_two_point_lattice_spec(), species="proton"), 4, seed=0)
+    # Unknown species values are loud.
+    with pytest.raises(ValueError, match="unknown source species"):
+        ps.particles(dict(RING_SPEC, species="electron"), 4, seed=0)
+    with pytest.raises(ValueError, match="mcnp_version=6"):
+        ps.emit_source_cards(dict(_PROTON_RING_DD, mcnp_version=5))
+    with pytest.raises(ValueError, match="mcnp_version=6"):
+        ps.emit_source_cards(_PROTON_RING_DD | {"mcnp_version": 5})
+    # Default mcnp_version (5) + proton is loud with the pinned message.
+    no_version = dict(_PROTON_RING_DD)
+    del no_version["mcnp_version"]
+    with pytest.raises(ValueError, match="proton SDEF needs mcnp_version=6"):
+        ps.emit_source_cards(no_version)
+    with pytest.raises(ValueError, match="lattice proton"):
+        ps.emit_source_cards(dict(_two_point_lattice_spec(), species="proton", mcnp_version=6))
+    with pytest.raises(ValueError, match="not yet supported"):
+        ps.emit_source_cards(dict(PARAMETRIC_SPEC, species="proton", mcnp_version=6))
+
+
+def test_proton_cards_carry_par_h_and_round_trip() -> None:
+    out = ps.emit_source_cards(_PROTON_RING_DD)
+    assert out["serpent"] is None
+    card = out["sdef"]["card"]
+    parsed = mcnp.parse_sdef(card)
+    assert parsed["card"] == card
+    assert parsed["par"] == "h"
+    assert any(
+        row["quantity"] == "proton branch" and row["accounted"] == 1.0 and row["reparsed"]
+        for row in out["sdef"]["drift"]
+    )
+    assert out["spectrum"]["nominal_mev"] == pytest.approx(3.02)
+    assert out["spectrum"]["mean_mev"] == pytest.approx(3.02, rel=1e-12)
+    assert out["spectrum"]["sigma_mev"] == pytest.approx(_proton_sigma(20.0), rel=1e-12)
+    # Parametric proton cards: same PAR=h shape, axis proton moments.
+    param_spec = dict(PARAMETRIC_SPEC, reaction="dd", species="proton", mcnp_version=6)
+    param = ps.emit_source_cards(param_spec, bins=15)
+    assert param["serpent"] is None
+    parsed_p = mcnp.parse_sdef(param["sdef"]["card"])
+    assert parsed_p["card"] == param["sdef"]["card"]
+    assert parsed_p["par"] == "h"
+    assert [row["quantity"] for row in param["sdef"]["drift"]][-1] == "proton branch"
+    assert param["spectrum"]["nominal_mev"] == pytest.approx(3.02)
+    assert param["spectrum"]["mean_mev"] == pytest.approx(3.02, rel=1e-12)
+
+
+def test_neutron_cards_bit_for_bit_after_proton_surface() -> None:
+    # The neutron default is untouched: same cards, same stream, same
+    # spectrum, whether or not the proton surface was exercised.
+    _ = ps.emit_source_cards(_PROTON_RING_DD)
+    out = ps.emit_source_cards(RING_SPEC)
+    assert "PAR=n" in out["sdef"]["card"]
+    assert out["serpent"] is not None
+    assert out["spectrum"]["nominal_mev"] == pytest.approx(14.021)

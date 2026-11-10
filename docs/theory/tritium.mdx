@@ -564,14 +564,15 @@ flux is still `≈2.3e-3 J_ss` at `t = 31.6 s` and reaches `0.9999 J_ss` by
   tolerances and replay G5/G6 and the multi-layer G7/G8/G9/G10/G11 gates as in-test
   closed forms (synthetic stacks with hand-derived series-resistance and
   vented-sink oracles; the multi-layer goldens live in unit tests, not
-  `fixtures/tritium/`), following the kinetics oracle pattern. No
-  `validation/*_vs_*.py` script exists — there is no external oracle to
-  wire, so none was added.
-- **No external probe**: a FESTIM cross-check, if
-  ever attempted, stays a loud-SKIP probe. Do **not** add FESTIM/FEniCS to
-  the validation container: the conda weight is intolerable for an
-  optional nicety, and the analytic gates stand alone.
-- `validation/` is untouched by this spec change.
+  `fixtures/tritium/`), following the kinetics oracle pattern.
+- **Probe-only external oracle**: `validation/tritium_vs_festim.py` compares
+  the kernel against FESTIM 2.1 (Apache-2.0, black-box v2.x API) on
+  trap-free, one-trap, Sieverts, and two-layer legs, with the always-run
+  V1/M1 analytic legs gating the Nucleide side. The probe needs DOLFINx, so
+  it runs only in the separate `dolfinx/dolfinx:stable` image; outside that
+  image the cross-code legs SKIP loudly with their reason. FESTIM/FEniCS
+  never enter the main validation container or the Rust workspace, and
+  FESTIM is never a dependency.
 
 ## Related work beyond Nucleide
 

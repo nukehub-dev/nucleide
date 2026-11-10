@@ -147,10 +147,11 @@ facade, the `TritiumBreakthrough` demo, and
   (bindings thin, no logic).
 - Keep the layering: this crate depends on `nucleide-linalg` (tridiag)
   only; bindings depend on it, never the reverse.
-- No `validation/*_vs_*.py` script: no external oracle exists (analytic-gate
-  replay only, per the theory validation section). A FESTIM
-  cross-check, if ever attempted, stays a loud-SKIP probe and never adds
-  FESTIM/FEniCS to the validation container.
+- No FESTIM/FEniCS/dolfinx dependency (kernel stays pure 1D finite
+  volume). The black-box parity probe `validation/tritium_vs_festim.py`
+  runs Nucleide vs FESTIM 2.1 in the probe-only `dolfinx/dolfinx:stable`
+  image (docker route; loud SKIP outside); its gates never tune kernel
+  tolerances or scope.
 
 ## Verification
 
