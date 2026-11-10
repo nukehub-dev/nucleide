@@ -294,9 +294,9 @@ executable, reproducible artifact rather than a worked listing. The
 vendored validation harness (`validation/`) reruns the measured claims in
 this paper against PyNE and OpenMC from a container image, with every
 number quoted here drawn from the committed reports. Classroom use is
-enabled by the WASM interactive tutorials — twenty-three demos now cover
+enabled by the WASM interactive tutorials — twenty-three demos, including
 the 0.15–0.16 additions (equilibrium, blanket, wall load, radiological
-totals, He/dpa UQ) with no installation. External adoption and citation
+totals, He/dpa UQ), with no installation. External adoption and citation
 tracking are the next step, via the NukeIDE/NukeHub ecosystem dependency
 declaration.
 

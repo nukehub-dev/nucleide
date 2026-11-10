@@ -25,7 +25,9 @@
 use nucleide_mcnp_io::sdef::{SdefCard, SdefDist, SdefProblem, SdefRef};
 use nucleide_nuclei::particles::ParticleId;
 
-use crate::parametric::{emission_histograms, proton_emission_histograms, ParametricPlasmaConfig};
+use crate::parametric::{
+    emission_histograms, proton_emission_histograms, ParametricPlasmaConfig, ProtonRateModel,
+};
 use crate::{
     DriftReport, DriftRow, Error, FusionReaction, PlasmaSourceConfig, Result, SourceModel,
     SpectrumSpec,
@@ -81,15 +83,21 @@ fn proton_designator(version: u32) -> Result<&'static str> {
     }
 }
 
-/// Shared `proton branch` drift row for the proton SDEF emissions:
-/// pinned 50/50 D-D rate on the Brysk 3.02 MeV line, MCNP6-only.
-fn proton_branch_row() -> DriftRow {
+/// Shared `proton branch` drift row for the proton SDEF emissions: the
+/// selected D(d,p) rate convention, the Brysk 3.02 MeV line, MCNP6-only.
+fn proton_branch_row(model: ProtonRateModel) -> DriftRow {
+    let rate = match model {
+        ProtonRateModel::Pinned50_50 => "pinned 50/50 D-D rate",
+        ProtonRateModel::BoschHaleDdp => "separate Bosch-Hale D(d,p) fit",
+    };
     DriftRow::new(
         "proton branch",
         1.0,
         true,
-        "D(d,p)T proton branch: 50/50 D-D rate, Brysk 3.02 MeV line, \
-         MCNP6-only (PAR=h; Serpent transports neutrons and photons only)",
+        format!(
+            "D(d,p)T proton branch: {rate}, Brysk 3.02 MeV line, \
+             MCNP6-only (PAR=h; Serpent transports neutrons and photons only)"
+        ),
     )
 }
 
@@ -232,7 +240,7 @@ pub fn emit_sdef_proton(
 
     let text = SdefProblem { card, dists }.emit();
     let mut drift = drift_report(&spectrum, &table, true);
-    drift.push(proton_branch_row());
+    drift.push(proton_branch_row(ProtonRateModel::Pinned50_50));
     Ok(EmittedCard { text, drift })
 }
 
@@ -491,7 +499,7 @@ pub fn emit_sdef_parametric_proton(
             ));
         }
     }
-    report.push(proton_branch_row());
+    report.push(proton_branch_row(config.proton_rate_model));
     Ok(EmittedCard {
         text,
         drift: report,
@@ -987,6 +995,24 @@ mod tests {
         assert_eq!(parsed.dists.len(), 3);
         let sp3: f64 = parsed.dists[2].sp.as_ref().unwrap().iter().sum();
         assert!((sp3 - 1.0).abs() < 5e-3, "energy masses {sp3}");
+    }
+
+    #[test]
+    fn parametric_proton_rate_model_carries_its_drift_note() {
+        let mut config = crate::parametric::tests::iter_h_mode();
+        config.fuel = FusionReaction::Dd;
+        config.proton_rate_model = crate::parametric::ProtonRateModel::BoschHaleDdp;
+        let card = emit_sdef_parametric_proton(&config, 6, 15).unwrap();
+        card.verify_round_trip().unwrap();
+        let row = card
+            .drift
+            .rows
+            .iter()
+            .find(|row| row.quantity == "proton branch")
+            .expect("proton branch row");
+        assert!(row.note.contains("Bosch-Hale D(d,p) fit"), "{}", row.note);
+        assert!(!row.note.contains("50/50"), "{}", row.note);
+        assert!(row.note.contains("3.02 MeV"));
     }
 
     #[test]

@@ -212,7 +212,7 @@ print(ps.proton_accounting(dict(parametric, fuel={"D": 1.0, "T": 0.0})))
 ```text
 [14.0354892  13.72427193]
 [14.67928853 14.07698386]
-{'proton_per_neutron': 1.0, 'neutron_total': 1.04538109404429e+19, 'proton_total': 1.04538109404429e+19, 'note': 'D(d,p)T proton rate = D-D neutron-branch rate (pinned 50/50 convention); sampler and cards stay neutron-only, proton transport out of scope'}
+{'proton_per_neutron': 1.0, 'neutron_total': 1.04538109404429e+19, 'proton_total': 1.04538109404429e+19, 'proton_rate_model': 'pinned_50_50', 'note': 'D(d,p)T proton rate = D-D neutron-branch rate (pinned 50/50 convention); proton transport is available via species="proton" (ring/point and parametric, MCNP6 PAR=h cards); lattice stays accounting-only'}
 ```
 
 Out-of-range angles, negative temperatures, and pure-tritium mixtures raise
@@ -222,9 +222,9 @@ a clear error instead of guessing.
 
 An optional `species` key (`"proton"`; the default stays `"neutron"`) asks
 for the twin D(d,p)T proton branch instead of neutrons: an independent
-stream (same seed, separate sequence) on the 3.02 MeV proton line, at half
-the D-D rate. Proton cards use the MCNP6-only proton designator and carry
-no Serpent card:
+stream (same seed, separate sequence) on the 3.02 MeV proton line, at the
+D-D neutron-branch rate by default (pinned 50/50 accounting). Proton cards
+use the MCNP6-only proton designator and carry no Serpent card:
 
 ```python
 proton_spec = {
@@ -258,6 +258,15 @@ kinds. D-T-only and lattice proton requests raise a clear error (lattice
 proton rates stay accounting-only), as do Serpent proton cards — Serpent
 transports neutrons and photons only, so proton specs return `serpent` as
 `None` instead of a photon card.
+
+The default proton rate is the pinned 50/50 accounting anchor (proton rate
+equals the D-D neutron-branch rate). For a more physical proton rate, a
+parametric spec can opt into the separate Bosch–Hale D(d,p) fit with
+`proton_rate_model="bosch_hale_ddp"`. The two D-D branch fits differ by
+more than their `C1` ratio: at 20 keV the D(d,p) rate is about 7.8% below
+the D(d,n) rate (`0.9218`), so `proton_per_neutron` is no longer exactly
+1.0 for pure D-D. Ring/point and lattice accounting keep the pinned
+convention. The proton line shape is unchanged by this switch.
 
 Malformed inputs raise a clear error at every entry point — for example a
 zero ring radius (`ring radius must be > 0 cm`) or a two-entry point

@@ -18,6 +18,10 @@
 //! `pdf(x) = (1/N) Σ_i ∏_j N(x_j; p_ij, h_ij²)` and [`KdeSampler::draw`]
 //! perturbs the selected centre row by `h_ij · z_j` per dimension — the
 //! same deterministic shape as the Silverman path, with per-sample widths.
+//! Fit uses exact pairwise distances (`O(N²·d)` time, `O(N)` scratch per
+//! sample; the k-th distance is selected, not sorted) — no spatial index,
+//! so source clouds large enough to need one should use the global rules
+//! or an external kNN index.
 //! Hand vector: samples `0, 0.2, 0.4, 10` (`d = 1`, `n = 4`), `k = 1`,
 //! `scale = 1` gives `h = 0.2, 0.2, 0.2, 9.6` (the cluster is tight, the
 //! tail is smooth) with `σ = 4.9027203333115645`, hence scaled base
@@ -176,7 +180,7 @@ impl KdeSampler {
                 let mut base_widths = Vec::with_capacity(n_usize);
                 let mut sample_widths = Vec::with_capacity(n_usize);
                 for (i, row) in samples.iter().enumerate() {
-                    let mut dists = Vec::with_capacity(n_usize - 1);
+                    let mut dist2 = Vec::with_capacity(n_usize - 1);
                     for (m, other) in samples.iter().enumerate() {
                         if m == i {
                             continue;
@@ -186,10 +190,14 @@ impl KdeSampler {
                             let z = (a - b) / sigmas[j];
                             d2 += z * z;
                         }
-                        dists.push(d2.sqrt());
+                        dist2.push(d2);
                     }
-                    dists.sort_by(|a, b| a.total_cmp(b));
-                    let dist_k = dists[k - 1];
+                    // Only the k-th smallest distance is needed: an
+                    // order-statistic selection is O(n) average instead of
+                    // the O(n log n) full sort, and taking the square root
+                    // after selection saves one sqrt per neighbour.
+                    dist2.select_nth_unstable_by(k - 1, |a, b| a.total_cmp(b));
+                    let dist_k = dist2[k - 1].sqrt();
                     if dist_k <= 0.0 {
                         return Err(Error::ZeroAdaptiveBandwidth { sample: i });
                     }

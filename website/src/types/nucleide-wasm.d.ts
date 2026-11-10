@@ -787,6 +787,7 @@ export interface FusionParametricSpec {
   tailTempKev?: number;
   speciesDeuteriumKev?: number;
   speciesTritiumKev?: number;
+  protonRateModel?: "pinned_50_50" | "bosch_hale_ddp";
   species?: string;
   n: number;
   seed: number;

@@ -181,7 +181,8 @@ among workspace crates; bindings depend on it, never the reverse.
 MAGIC weight-window generation, OpenMC/Serpent weight-window emission over
 `MagicOutput` (pinned `<weight_windows>`/WWINP spellings; Serpent text
 re-parses through the `nucleide-mcnp-io` WWINP reader), mesh source sampling
-with alias tables, and Gaussian KDE source sampling (`KdeSampler`). Depends
+with alias tables, and Gaussian KDE source sampling (`KdeSampler`; Silverman,
+fixed, or adaptive kNN bandwidths). Depends
 on `nucleide-mcnp-io` (`nucleide-nuclei` comes in transitively).
 
 ### `nucleide-cccc-io`
@@ -260,10 +261,12 @@ An arbitrary-3D birth-rate lattice drops axisymmetry for
 stellarator-class callers (caller point cloud with field-period symmetry
 reduction, same machinery per node, including the global hot-tail rule
 applied per node). The D(d,p)T proton branch shares the
-D-D rate 50/50 and is transported for deuterium-bearing ring/point and
-parametric sources on the Brysk 3.02 MeV line (independent seeded streams,
-MCNP6-only `PAR=h` cards, no Serpent proton cards — its `PART='p'` means
-photons); the lattice keeps the proton rate accounting only. The T-T neutron term is pinned as the third mixture term
+D-D rate 50/50 by default (opt-in separate Bosch–Hale D(d,p) fit,
+`ProtonRateModel::BoschHaleDdp`) and is transported for deuterium-bearing
+ring/point and parametric sources on the Brysk 3.02 MeV line (independent
+seeded streams, MCNP6-only `PAR=h` cards, no Serpent proton cards — its
+`PART='p'` means photons); the lattice keeps the proton rate accounting
+only. The T-T neutron term is pinned as the third mixture term
 but not transported. Closed-form ECRH accessibility (cold resonance,
 relativistic shift, O1/X1 cut-offs, beamline locators) reports
 heating-access positions for blanket bookkeeping — no ray tracing, no

@@ -51,7 +51,9 @@ cards with ``PAR=h``, Serpent returns ``None``) for D-D-bearing ring/point
 and parametric specs; D-T-only proton requests are loud errors, and lattice
 proton requests stay loud (lattice proton rates stay accounting-only).
 ``proton_accounting`` reports the D(d,p)T proton rate alongside the neutron
-source (pinned 50/50 with the D-D neutron branch). Lengths are
+source (pinned 50/50 with the D-D neutron branch by default; the optional
+``proton_rate_model="bosch_hale_ddp"`` parametric key uses the separate
+Bosch-Hale D(d,p) fit, about 7.8% below the D(d,n) branch at 20 keV). Lengths are
 centimetres, energies MeV, ion temperature keV. MCPL
 projection stays caller-side: write particle vectors with ``nucleide.mcpl``
 when a file is wanted.
@@ -126,7 +128,9 @@ def particles(spec: dict[str, Any], n: int, seed: int) -> dict[str, Any]:
     single-fuel D-D at ``T_D``, mixtures at the same pair temperatures), plus
     the optional ``deuterium_tail`` dict ``{"fraction": eta,
     "temperature_kev": T_tail}`` for the deuterium hot-tail fraction on a
-    mixture (both keys; requires ``fuel``), plus
+    mixture (both keys; requires ``fuel``), plus the optional
+    ``proton_rate_model`` (``"pinned_50_50"`` default or
+    ``"bosch_hale_ddp"``; proton accounting/transport only), plus
     the optional ``start_angle``/``rotation_angle`` toroidal-sector pair
     [rad] (both or neither). Lattice sources take ``points`` (a list of
     ``{"position", "rate", "ion_temperature_kev"}`` dicts), plus either
@@ -224,8 +228,12 @@ def proton_accounting(spec: dict[str, Any]) -> dict[str, Any]:
     carry no density model, so their totals are ``None``) and a ``note``
     stating the convention. Proton transport is available separately via
     ``species="proton"`` (ring/point and parametric, D-D-bearing sources
-    only; lattice proton transports stay accounting-only). A pure-tritium mixture
-    (no T-T neutron branch) is a loud error, like sampling it.
+    only; lattice proton transports stay accounting-only). The returned
+    ``proton_rate_model`` is ``"pinned_50_50"`` (default) or
+    ``"bosch_hale_ddp"`` for a parametric spec that opted into the separate
+    D(d,p) fit; ring/point and lattice accounting stay on the pinned
+    convention. A pure-tritium mixture (no T-T neutron branch) is a loud
+    error, like sampling it.
     """
     return plasma_source_proton_accounting(spec)
 

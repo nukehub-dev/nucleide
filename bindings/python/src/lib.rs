@@ -7137,6 +7137,12 @@ fn parse_plasma_basic_spec(
     kind: &str,
 ) -> PyResult<nucleide_plasma_source::PlasmaSourceConfig> {
     use nucleide_plasma_source as ps;
+    if spec.contains_key("proton_rate_model") {
+        return Err(PyValueError::new_err(
+            "`proton_rate_model` only applies to parametric specs; ring/point \
+             proton accounting stays on the pinned 50/50 convention",
+        ));
+    }
     let num = |key: &str| -> PyResult<f64> {
         spec.get(key)
             .ok_or_else(|| PyValueError::new_err(format!("source spec missing `{key}`")))?
@@ -7236,6 +7242,11 @@ fn parse_plasma_basic_spec(
 /// mixture is required with it, `eta = 0` recovers the no-tail kernel
 /// exactly, and non-finite, out-of-range, or negative parameters are loud
 /// errors.
+///
+/// Proton rate: the optional `proton_rate_model` key is `"pinned_50_50"`
+/// (default; proton rate = the D-D neutron-branch rate bit-for-bit) or
+/// `"bosch_hale_ddp"` (the separate Bosch-Hale D(d,p) Table VII fit; about
+/// 7.8% below the D(d,n) branch at 20 keV). Unknown values are loud errors.
 fn parse_plasma_parametric_spec(
     spec: &BTreeMap<String, Py<PyAny>>,
     py: Python<'_>,
@@ -7373,6 +7384,23 @@ fn parse_plasma_parametric_spec(
         }
         None => None,
     };
+    // Optional D(d,p) proton-rate convention: the default keeps the landed
+    // 50/50 accounting anchor; "bosch_hale_ddp" opts into the separate
+    // Bosch-Hale D(d,p) fit for the proton spatial/accounting weight.
+    let proton_rate_model = match spec.get("proton_rate_model") {
+        None => ps::ProtonRateModel::Pinned50_50,
+        Some(value) => {
+            let name: String = value
+                .extract(py)
+                .map_err(|_| PyValueError::new_err("`proton_rate_model` must be a string"))?;
+            ps::ProtonRateModel::parse(&name).ok_or_else(|| {
+                PyValueError::new_err(format!(
+                    "unknown proton_rate_model `{name}` (supported: pinned_50_50, \
+                     bosch_hale_ddp)"
+                ))
+            })?
+        }
+    };
     let mode = ps::ProfileMode::parse(&get_str(
         spec,
         py,
@@ -7422,6 +7450,7 @@ fn parse_plasma_parametric_spec(
         species_temperatures,
         sector,
         tail,
+        proton_rate_model,
         weight: 1.0,
     };
     if let Some(weight) = spec.get("weight") {
@@ -7458,6 +7487,12 @@ fn parse_plasma_lattice_spec(
     py: Python<'_>,
 ) -> PyResult<nucleide_plasma_source::LatticeSourceConfig> {
     use nucleide_plasma_source as ps;
+    if spec.contains_key("proton_rate_model") {
+        return Err(PyValueError::new_err(
+            "`proton_rate_model` is parametric-only; lattice proton accounting \
+             stays on the caller-rate D-D share",
+        ));
+    }
     let points: Vec<BTreeMap<String, Py<PyAny>>> = spec
         .get("points")
         .ok_or_else(|| PyValueError::new_err("lattice spec missing `points`"))?
@@ -8066,16 +8101,20 @@ fn plasma_source_reactivity(reaction: &str, ion_temperature_kev: f64) -> PyResul
 ///
 /// Thin wrapper over the parametric
 /// [`ParametricPlasmaConfig::proton_strength_density`] /
-/// [`ParametricPlasmaConfig::total_proton_strength`] accounting: the proton
-/// branch shares the D-D total rate 50/50 with the neutron branch, so the
-/// proton density IS the D-D neutron-branch density. Returns
+/// [`ParametricPlasmaConfig::total_proton_strength`] accounting. The default
+/// proton branch shares the D-D neutron-branch rate (pinned 50/50
+/// convention), so `proton_per_neutron` is exactly 1.0 for pure D-D;
+/// `proton_rate_model="bosch_hale_ddp"` uses the separate Bosch-Hale D(d,p)
+/// fit instead (about 7.8% below the D(d,n) branch at 20 keV). Returns
 /// `proton_per_neutron` (protons per neutron in the same arbitrary scale —
-/// exactly 1.0 for pure D-D, 0.0 for D-T-only) plus, for `kind="parametric"`
-/// only, the integrated `neutron_total` and `proton_total` (sector-aware;
-/// ring/point specs carry no density model, so their totals are `None`) and
-/// a `note` stating the convention. The sampler and the emitted cards stay
-/// neutron-only; proton transport is out of scope. A pure-tritium mixture
-/// (no T-T neutron branch) is a loud error, like sampling it.
+/// 1.0 for pure D-D on the pinned convention, 0.0 for D-T-only) plus, for
+/// `kind="parametric"` only, the integrated `neutron_total` and
+/// `proton_total` (sector-aware; ring/point specs carry no density model, so
+/// their totals are `None`), the `proton_rate_model` used, and a `note`
+/// stating the convention. Proton transport is available separately
+/// via `species="proton"` (ring/point and parametric, D-D-bearing sources
+/// only); the lattice stays accounting-only. A pure-tritium mixture (no T-T
+/// neutron branch) is a loud error, like sampling it.
 #[pyfunction]
 #[pyo3(signature = (spec,))]
 fn plasma_source_proton_accounting(
@@ -8084,8 +8123,15 @@ fn plasma_source_proton_accounting(
 ) -> PyResult<Py<PyAny>> {
     use nucleide_plasma_source as ps;
     use pyo3::types::PyDict;
+    let source = parse_plasma_source_spec(&spec, py)?;
+    let rate_model = match &source {
+        PyPlasmaSource::Parametric(config) => config.proton_rate_model,
+        // Ring/point and lattice keep the pinned convention: neither has a
+        // reactivity-derived proton density to apply the branch fit to.
+        PyPlasmaSource::Basic(_) | PyPlasmaSource::Lattice(_) => ps::ProtonRateModel::Pinned50_50,
+    };
     let out = PyDict::new(py);
-    match parse_plasma_source_spec(&spec, py)? {
+    match source {
         PyPlasmaSource::Basic(config) => {
             let ratio = match config.reaction {
                 ps::FusionReaction::Dd => 1.0,
@@ -8123,12 +8169,22 @@ fn plasma_source_proton_accounting(
             out.set_item("proton_total", proton)?;
         }
     }
-    out.set_item(
-        "note",
-        "D(d,p)T proton rate = D-D neutron-branch rate (pinned 50/50 \
-         convention); sampler and cards stay neutron-only, proton transport \
-         out of scope",
-    )?;
+    out.set_item("proton_rate_model", rate_model.as_str())?;
+    let note = match rate_model {
+        ps::ProtonRateModel::Pinned50_50 => {
+            "D(d,p)T proton rate = D-D neutron-branch rate (pinned 50/50 \
+             convention); proton transport is available via species=\"proton\" \
+             (ring/point and parametric, MCNP6 PAR=h cards); lattice stays \
+             accounting-only"
+        }
+        ps::ProtonRateModel::BoschHaleDdp => {
+            "D(d,p)T proton rate = separate Bosch-Hale D(d,p) fit (not 50/50 \
+             with the D(d,n) branch); proton transport is available via \
+             species=\"proton\" (parametric, MCNP6 PAR=h cards); lattice and \
+             ring/point accounting stay on the pinned convention"
+        }
+    };
+    out.set_item("note", note)?;
     Ok(out.into_any().unbind())
 }
 

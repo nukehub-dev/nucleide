@@ -471,6 +471,36 @@ def _flat_l_mode_spec() -> dict[str, object]:
     return spec
 
 
+def test_proton_rate_model_bosch_hale_ddp_is_opt_in() -> None:
+    # Default stays the pinned 50/50 convention (ratio exactly 1.0 for pure
+    # D-D); the opt-in uses the separate Bosch-Hale D(d,p) fit, whose branch
+    # ratio at 20 keV is ~0.921759 (not the C1 ratio 1.041).
+    flat_dd = dict(_flat_l_mode_spec(), reaction="dd")
+    pinned = ps.proton_accounting(flat_dd)
+    assert pinned["proton_per_neutron"] == 1.0
+    assert pinned["proton_rate_model"] == "pinned_50_50"
+    opt = ps.proton_accounting(dict(flat_dd, proton_rate_model="bosch_hale_ddp"))
+    want = 2.398954986744111e-24 / 2.602582958721524e-24
+    assert opt["proton_per_neutron"] == pytest.approx(want, rel=1e-14)
+    assert opt["proton_rate_model"] == "bosch_hale_ddp"
+    assert "Bosch-Hale D(d,p)" in opt["note"]
+    assert opt["proton_total"] < opt["neutron_total"]
+    # The proton stream and card remain available under the opt-in model.
+    proton = dict(flat_dd, species="proton", proton_rate_model="bosch_hale_ddp")
+    out = ps.particles(proton, 512, seed=23)
+    assert set(map(str, out["species"])) == {"proton"}
+    assert abs(float(out["energy"].mean()) - 3.02) < 0.01
+    cards = ps.emit_source_cards(dict(proton, mcnp_version=6), bins=15)
+    branch = next(row for row in cards["sdef"]["drift"] if row["quantity"] == "proton branch")
+    assert "Bosch-Hale D(d,p) fit" in branch["note"]
+    with pytest.raises(ValueError, match="unknown proton_rate_model"):
+        ps.proton_accounting(dict(flat_dd, proton_rate_model="not-a-model"))
+    with pytest.raises(ValueError, match="parametric specs"):
+        ps.proton_accounting(dict(RING_SPEC, reaction="dd", proton_rate_model="bosch_hale_ddp"))
+    with pytest.raises(ValueError, match="parametric-only"):
+        ps.proton_accounting(dict(_two_point_lattice_spec(), proton_rate_model="bosch_hale_ddp"))
+
+
 def test_species_temperatures_fire_both_branches_at_pair_temperatures() -> None:
     # 70/30 blend at T_D = 20 keV, T_T = 30 keV: the D-T branch reacts at
     # T_DT = 24 keV and the D-D branch at T_D, so both lines fire in the

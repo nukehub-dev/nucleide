@@ -127,9 +127,10 @@ impl FusionReaction {
 pub const PROTON_NOMINAL_MEV: f64 = 3.02;
 
 /// Brysk-Gaussian width factor \[MeV\]: `sigma² = 1.51 · Ti` \[MeV\] with
-/// `1.51 = E0/2` MeV (mass-number convention `m_D = 2`, `m_p = 1`,
-/// Coulomb-free; the D(d,p)T proton line is the published-form Gaussian,
-/// see [`proton_moments_mev`]). Hand vectors are pinned in
+/// `1.51 = 2·m_p·E0/(m_p + m_t) = E0/2` MeV (emitted proton `m_p = 1`,
+/// triton companion `m_t = 3`, mass numbers, Coulomb-free; the D(d,p)T
+/// proton line is the published-form Gaussian, see
+/// [`proton_moments_mev`]). Hand vectors are pinned in
 /// [`proton_moments_mev`] and in the `proton_moments_hand_vectors` test.
 const PROTON_WIDTH_MEV: f64 = 1.51;
 
@@ -140,7 +141,7 @@ const PROTON_WIDTH_MEV: f64 = 1.51;
 /// mean(Ti) = 3.02 MeV (no shift in v1; the Ballabio-class shift ~50 keV at
 ///           20 keV is omitted and documented as the v1 residual)
 /// sigma(Ti) = sqrt(1.51 · Ti [MeV])   [MeV], mass-number convention
-///           m_D = 2, m_p = 1, Coulomb-free
+///           m_p = 1, m_t = 3, Coulomb-free
 /// ```
 ///
 /// At `Ti = 0` the line is monoenergetic at 3.02 MeV (`sigma = 0`).

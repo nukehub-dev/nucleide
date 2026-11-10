@@ -39,6 +39,7 @@ fn iter_h_mode() -> ParametricPlasmaConfig {
         fuel_mixture: None,
         species_temperatures: None,
         tail: None,
+        proton_rate_model: nucleide_plasma_source::ProtonRateModel::Pinned50_50,
         sector: None,
         weight: 1.0,
     }

@@ -127,11 +127,12 @@ pub use lattice::{
 pub use miller::MillerGeometry;
 pub use parametric::{
     proton_emission_histograms, BinnedDistribution, DeuteriumTail, EmissionHistograms, FuelMixture,
-    ParametricPlasmaConfig, ParametricProtonSampler, ParametricSampler, SpeciesIonTemperatures,
-    ToroidalSector,
+    ParametricPlasmaConfig, ParametricProtonSampler, ParametricSampler, ProtonRateModel,
+    SpeciesIonTemperatures, ToroidalSector,
 };
 pub use profile::{DensityProfile, ProfileMode, TemperatureProfile};
 pub use reaction::FusionReaction;
+pub use reactivity::ddp_reactivity_m3_per_s;
 pub use report::{DriftReport, DriftRow};
 pub use sample::{Particle, SourceSampler};
 pub use source::{PlasmaSourceConfig, PointSource, RingSource, SourceModel};

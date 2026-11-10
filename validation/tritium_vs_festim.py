@@ -20,8 +20,11 @@ Two parts:
 Probe environment (never the main validation container, never the Rust
 workspace): FESTIM 2.1 needs DOLFINx, so the probe runs in the separate
 probe-only image ``dolfinx/dolfinx:stable`` (see ``validation/README.md``,
-section "Tritium/FESTIM parity probe (probe-only image)")::
+section "Tritium/FESTIM parity probe (probe-only image)"). The image has
+no Rust toolchain, so run ``maturin develop`` first to write
+``python/nucleide/_internal.abi3.so`` into the mounted checkout::
 
+    maturin develop
     docker run --rm -v "$PWD:/work" -w /work dolfinx/dolfinx:stable \\
         bash -c "pip install festim==2.1 && python validation/tritium_vs_festim.py"
 

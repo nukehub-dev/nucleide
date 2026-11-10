@@ -38,6 +38,18 @@ workspace crates from tags.
   specs, and per-particle `species`. The interactive fusion demo's lattice
   panel now exposes the species-temperature pair.
 
+- Optional separate D(d,p) proton-rate model in `nucleide-plasma-source`:
+  parametric specs take `proton_rate_model="bosch_hale_ddp"` (Python key;
+  WASM `protonRateModel`) to use the published Bosch–Hale D(d,p) Table VII
+  fit instead of the pinned 50/50 accounting anchor. The default
+  `"pinned_50_50"` stays bit-for-bit; the opt-in branch ratio is `0.9218`
+  at 20 keV (7.8% below the D(d,n) branch), so `proton_per_neutron` for
+  pure D-D becomes that physical share. The proton line shape, sampler
+  draw accounting, and card syntax are unchanged; `proton_accounting`
+  reports the selected `proton_rate_model`, and the `proton branch` drift
+  row names it. Ring/point and lattice accounting keep the pinned
+  convention.
+
 - End-to-end first-wall workflow (tutorial
   `docs/tutorials/python/fusion-first-wall.md` and notebook
   `notebooks/first-wall-workflow.ipynb`): screening-level chain from a

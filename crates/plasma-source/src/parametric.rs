@@ -35,9 +35,10 @@
 //! Commun. **199** (2016) 40, and the mixture form upstream
 //! `openmc-plasma-source` implements): the D-T term pairs every D with
 //! every T (`f_D·f_T`), while the D-D term halves the `f_D²` self-pair
-//! count so identical reactants are not double-counted. Both branches keep
-//! the landed neutron-branch convention — the T-T branch and the D(d,p)T
-//! proton branch stay out of scope.
+//! count so identical reactants are not double-counted. Both terms keep
+//! the landed neutron-branch convention — the T-T neutron branch stays out
+//! of scope; the D(d,p)T proton branch shares the D-D rate (see the proton
+//! section below) and is not a separate rate term.
 //!
 //! Hand vectors (flat profile, `T_i = 20` keV, `n = 1e20` m⁻³; the pinned
 //! reactivity goldens `⟨σv⟩_DT = 4.330220397689175e-22` and
@@ -98,12 +99,14 @@
 //!
 //! ## D(d,p)T protons: 50/50 rate, Brysk line, parametric + ring/point transport
 //!
-//! The D(d,p)T proton branch shares the D-D total rate 50/50 with the
-//! neutron branch (Bosch & Hale resolve the two D-D branches to ~4–8% at
-//! 10–20 keV; the pinned v1 convention reports them equal —
+//! The default D(d,p)T proton convention pins the proton rate to the D-D
+//! neutron-branch rate (50/50 bookkeeping), so
 //! [`ParametricPlasmaConfig::proton_strength_density`] IS the D-D neutron
-//! branch density, bit-for-bit; no new reactivity function, no separate
-//! D(d,p) fit). Protons are transported by independent sampler instances
+//! branch density bit-for-bit. [`ProtonRateModel::BoschHaleDdp`] opts into
+//! the separate Bosch–Hale D(d,p) Table VII fit instead; the branch ratio is
+//! not the `C1` ratio — at 20 keV the D(d,p) fit is `0.9217…` of the
+//! D(d,n) fit, so the proton strength drops by about 7.8%. Protons are
+//! transported by independent sampler instances
 //! ([`ParametricProtonSampler`] for the parametric source, plus the
 //! ring/point [`SourceSampler::proton`](crate::SourceSampler::proton)) and
 //! emitted as MCNP6-only `PAR=h` SDEF cards
@@ -605,6 +608,46 @@ impl DeuteriumTail {
     }
 }
 
+/// Proton-rate convention for the D(d,p)T branch.
+///
+/// The two D-D branch fits differ; the default [`Self::Pinned50_50`] keeps
+/// the landed accounting anchor (proton rate IS the D-D neutron-branch
+/// rate, bit-for-bit, so `proton_per_neutron = 1` for pure D-D).
+/// [`Self::BoschHaleDdp`] uses the separate Bosch–Hale D(d,p) Table VII
+/// fit for the proton spatial/accounting weight, which is about 7.8% below
+/// the D(d,n) branch at 20 keV (branch ratio `0.9217…`). The per-line
+/// moments are unchanged; the proton rate multiplier changes, and on a hot
+/// tail the sub-line roulette weights follow the same selected fit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ProtonRateModel {
+    /// Proton rate = the D-D neutron-branch rate (pinned 50/50 convention).
+    #[default]
+    Pinned50_50,
+    /// Proton rate = the separate Bosch–Hale D(d,p) fit at each sub-pair
+    /// temperature (D-D neutron and proton branches remain distinct).
+    BoschHaleDdp,
+}
+
+impl ProtonRateModel {
+    /// Parse the facade spelling (`"pinned_50_50"` / `"bosch_hale_ddp"`).
+    /// Unknown values are `None`; callers turn that into a loud error.
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "pinned_50_50" => Some(Self::Pinned50_50),
+            "bosch_hale_ddp" => Some(Self::BoschHaleDdp),
+            _ => None,
+        }
+    }
+
+    /// Facade spelling of this model.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pinned50_50 => "pinned_50_50",
+            Self::BoschHaleDdp => "bosch_hale_ddp",
+        }
+    }
+}
+
 /// Parametric tokamak plasma source configuration.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ParametricPlasmaConfig {
@@ -638,6 +681,11 @@ pub struct ParametricPlasmaConfig {
     /// [`Self::species_temperatures`] (`T_D`/`T_T` from the pair when set,
     /// else the shared profile temperature).
     pub tail: Option<DeuteriumTail>,
+    /// D(d,p)T proton-rate convention ([`ProtonRateModel`]). The default
+    /// keeps the pinned 50/50 accounting anchor bit-for-bit; the
+    /// `BoschHaleDdp` choice uses the separate D(d,p) fit for the proton
+    /// spatial/accounting weight.
+    pub proton_rate_model: ProtonRateModel,
     /// Optional toroidal sector (module rustdoc normalization). `None` —
     /// the default — keeps the landed full-torus kernel bit-for-bit.
     pub sector: Option<ToroidalSector>,
@@ -807,14 +855,59 @@ impl ParametricPlasmaConfig {
 
     /// Relative D(d,p)T proton production density \[protons/s/cm³, same
     /// arbitrary global scale as [`Self::strength_density`] at minor radius
-    /// `r` \[cm\]: the pinned v1 convention (module rustdoc) — the proton
-    /// branch shares the D-D total rate 50/50 with the neutron branch, so
-    /// this IS the D-D neutron-branch density, bit-for-bit (the branch
-    /// tuple's second element, not a re-expression). Zero for D-T-only
-    /// configurations. The proton sampler and the proton cards build on it.
+    /// `r` \[cm\]. The default [`ProtonRateModel::Pinned50_50`] returns the
+    /// D-D neutron-branch density bit-for-bit (the branch tuple's second
+    /// element, not a re-expression), preserving the landed accounting
+    /// anchor. [`ProtonRateModel::BoschHaleDdp`] scales that density by the
+    /// per-sub-branch D(d,p)/D(d,n) reactivity ratio, so tail sub-lines use
+    /// the D(d,p) fit at their own `T_D`/`T_mix`/`T_tail`. Zero for
+    /// D-T-only configurations. The proton sampler and the proton cards
+    /// build on it.
     pub fn proton_strength_density(&self, r: f64) -> Result<f64> {
         let (_, s_dd) = self.branch_strength_density(r)?;
-        Ok(s_dd)
+        match self.proton_rate_model {
+            ProtonRateModel::Pinned50_50 => Ok(s_dd),
+            ProtonRateModel::BoschHaleDdp => {
+                if s_dd == 0.0 {
+                    return Ok(0.0);
+                }
+                Ok(s_dd * self.proton_rate_ratio(r)?)
+            }
+        }
+    }
+
+    /// D(d,p)/D(d,n) rate ratio at the same D-D sub-branch temperatures
+    /// (dimensionless). The no-tail/single-fuel path uses one ratio at
+    /// `T_D`; a hot tail weights the three sub-branch ratios by the same
+    /// `(1−η)², 2η(1−η), η²` rule as the D-D strength. Callers only use
+    /// this when the D-D strength is nonzero.
+    fn proton_rate_ratio(&self, r: f64) -> Result<f64> {
+        let (t_d, _) = self.species_temperatures_at(r);
+        let ratio_at = |ti_kev: f64| -> Result<f64> {
+            Ok(crate::reactivity::ddp_reactivity_m3_per_s(ti_kev)?
+                / FusionReaction::Dd.reactivity_m3_per_s(ti_kev)?)
+        };
+        match &self.tail {
+            Some(tail) if tail.fraction > 0.0 && self.fuel_mixture.is_some() => {
+                let eta = tail.fraction;
+                let t_tail = tail.temperature_kev;
+                let t_mix = 0.5 * (t_d + t_tail);
+                let w0 = (1.0 - eta) * (1.0 - eta);
+                let w1 = 2.0 * eta * (1.0 - eta);
+                let w2 = eta * eta;
+                let denom = w0 * FusionReaction::Dd.reactivity_m3_per_s(t_d)?
+                    + w1 * FusionReaction::Dd.reactivity_m3_per_s(t_mix)?
+                    + w2 * FusionReaction::Dd.reactivity_m3_per_s(t_tail)?;
+                if denom == 0.0 {
+                    return Ok(0.0);
+                }
+                let numer = w0 * crate::reactivity::ddp_reactivity_m3_per_s(t_d)?
+                    + w1 * crate::reactivity::ddp_reactivity_m3_per_s(t_mix)?
+                    + w2 * crate::reactivity::ddp_reactivity_m3_per_s(t_tail)?;
+                Ok(numer / denom)
+            }
+            _ => ratio_at(t_d),
+        }
     }
 
     /// True when this config makes D(d,p)T protons (D-D-bearing: single-fuel
@@ -959,8 +1052,9 @@ impl ParametricPlasmaConfig {
     /// (module rustdoc): single fuel D-D and any no-tail mixture → one line
     /// at `t_d`; a [`DeuteriumTail`] expands the D-D arm to the three
     /// sub-lines `(1−η)² @ T_D`, `2η(1−η) @ T_mix`, `η² @ T_tail`
-    /// (the neutron D-D sub-weights restricted to the D-D arm); `η == 0`
-    /// returns the landed single line. Where the sub-rate total
+    /// (the selected [`ProtonRateModel`] evaluated at each sub-pair
+    /// temperature); `η == 0` returns the landed single line. Where the
+    /// sub-rate total
     /// underflows, the single `t_d` line is returned (the cold-annulus
     /// convention of [`Self::spectrum_branches`]).
     ///
@@ -986,9 +1080,22 @@ impl ParametricPlasmaConfig {
                 let t_tail = tail.temperature_kev;
                 let t_mix = 0.5 * (t_d + t_tail);
                 let k_dd = mixture.branch_weights().1;
-                let sv_dd = FusionReaction::Dd.reactivity_m3_per_s(t_d)?;
-                let sv_dd_mix = FusionReaction::Dd.reactivity_m3_per_s(t_mix)?;
-                let sv_dd_tail = FusionReaction::Dd.reactivity_m3_per_s(t_tail)?;
+                // The sub-branch roulette weights follow the selected
+                // D(d,p) rate model: the pinned convention reuses the landed
+                // D(d,n) fit; the opt-in uses the separate D(d,p) fit.
+                let sv = |ti_kev: f64| -> Result<f64> {
+                    match self.proton_rate_model {
+                        ProtonRateModel::Pinned50_50 => {
+                            FusionReaction::Dd.reactivity_m3_per_s(ti_kev)
+                        }
+                        ProtonRateModel::BoschHaleDdp => {
+                            crate::reactivity::ddp_reactivity_m3_per_s(ti_kev)
+                        }
+                    }
+                };
+                let sv_dd = sv(t_d)?;
+                let sv_dd_mix = sv(t_mix)?;
+                let sv_dd_tail = sv(t_tail)?;
                 let subs = [
                     (k_dd * (1.0 - eta) * (1.0 - eta) * sv_dd, t_d),
                     (k_dd * 2.0 * eta * (1.0 - eta) * sv_dd_mix, t_mix),
@@ -1908,6 +2015,7 @@ pub(crate) mod tests {
             fuel_mixture: None,
             species_temperatures: None,
             tail: None,
+            proton_rate_model: ProtonRateModel::Pinned50_50,
             sector: None,
             weight: 1.0,
         }
@@ -3521,5 +3629,107 @@ pub(crate) mod tests {
             "proton marginal mean {}",
             mean / energy_sum
         );
+    }
+
+    #[test]
+    fn proton_rate_model_default_is_bit_for_bit_pinned() {
+        let base = {
+            let mut c = flat_config(1.85, 0.0, 0.0);
+            c.fuel = FusionReaction::Dd;
+            c
+        };
+        let mut explicit = base;
+        explicit.proton_rate_model = ProtonRateModel::Pinned50_50;
+        let (_, branch) = base.branch_strength_density(0.0).unwrap();
+        assert_eq!(base.proton_strength_density(0.0).unwrap(), branch);
+        assert_eq!(
+            base.proton_strength_density(0.0).unwrap(),
+            explicit.proton_strength_density(0.0).unwrap()
+        );
+        assert_eq!(
+            base.total_proton_strength().unwrap(),
+            explicit.total_proton_strength().unwrap()
+        );
+    }
+
+    #[test]
+    fn proton_rate_model_bosch_hale_uses_the_branch_fit() {
+        // Flat pure D-D at 20 keV: the opt-in D(d,p) fit is 0.921759… of the
+        // landed D(d,n) fit, so the proton strength and total scale exactly
+        // by that ratio (the line shape is unchanged).
+        let mut config = flat_config(1.85, 0.0, 0.0);
+        config.fuel = FusionReaction::Dd;
+        let pinned = config.proton_strength_density(0.0).unwrap();
+        let pinned_total = config.total_proton_strength().unwrap();
+        config.proton_rate_model = ProtonRateModel::BoschHaleDdp;
+        let bosch = config.proton_strength_density(0.0).unwrap();
+        let bosch_total = config.total_proton_strength().unwrap();
+        let want_ratio = crate::reactivity::ddp_reactivity_m3_per_s(20.0).unwrap()
+            / FusionReaction::Dd.reactivity_m3_per_s(20.0).unwrap();
+        assert!(
+            (bosch / pinned - want_ratio).abs() < 1e-15,
+            "{} vs {want_ratio}",
+            bosch / pinned
+        );
+        assert!(
+            (bosch_total / pinned_total - want_ratio).abs() < 1e-15,
+            "{} vs {want_ratio}",
+            bosch_total / pinned_total
+        );
+        // Default still reports the pinned ratio; the opt-in reports the
+        // physical branch share.
+        assert_eq!(ProtonRateModel::Pinned50_50.as_str(), "pinned_50_50");
+        assert_eq!(config.proton_rate_model.as_str(), "bosch_hale_ddp");
+    }
+
+    #[test]
+    fn proton_rate_model_tail_weights_each_sub_branch() {
+        // Tail ratio = weighted D(d,p)/D(d,n) at the five sub-pair
+        // temperatures, with the same (1−η)² / 2η(1−η) / η² weights as the
+        // D-D strength. The D-T tail does not enter the proton rate.
+        let mut config = tail_config();
+        let pinned = config.proton_strength_density(123.0).unwrap();
+        config.proton_rate_model = ProtonRateModel::BoschHaleDdp;
+        let bosch = config.proton_strength_density(123.0).unwrap();
+        let eta = 0.05_f64;
+        let (t_d, t_tail, t_mix) = (20.0, 60.0, 40.0);
+        let w0 = (1.0 - eta) * (1.0 - eta);
+        let w1 = 2.0 * eta * (1.0 - eta);
+        let w2 = eta * eta;
+        let ddn = |t| FusionReaction::Dd.reactivity_m3_per_s(t).unwrap();
+        let ddp = |t| crate::reactivity::ddp_reactivity_m3_per_s(t).unwrap();
+        let want = (w0 * ddp(t_d) + w1 * ddp(t_mix) + w2 * ddp(t_tail))
+            / (w0 * ddn(t_d) + w1 * ddn(t_mix) + w2 * ddn(t_tail));
+        assert!(
+            (bosch / pinned - want).abs() < 1e-15,
+            "{} vs {want}",
+            bosch / pinned
+        );
+        assert!(
+            (want - 0.910_807_935_692_595_3).abs() < 1e-3,
+            "tail branch ratio {want}"
+        );
+    }
+
+    #[test]
+    fn proton_rate_model_tail_branch_weights_follow_the_selected_fit() {
+        let mut config = tail_config();
+        config.proton_rate_model = ProtonRateModel::BoschHaleDdp;
+        let branches = config.proton_spectrum_branches(20.0, 30.0).unwrap();
+        assert_eq!(branches.len(), 3);
+        let eta = 0.05_f64;
+        let (t_d, t_mix, t_tail) = (20.0, 40.0, 60.0);
+        let w = [
+            (1.0 - eta) * (1.0 - eta) * crate::reactivity::ddp_reactivity_m3_per_s(t_d).unwrap(),
+            2.0 * eta * (1.0 - eta) * crate::reactivity::ddp_reactivity_m3_per_s(t_mix).unwrap(),
+            eta * eta * crate::reactivity::ddp_reactivity_m3_per_s(t_tail).unwrap(),
+        ];
+        let total: f64 = w.iter().sum();
+        let got: Vec<f64> = branches.iter().map(|b| b.0).collect();
+        for (g, want) in got.iter().zip(w.iter()) {
+            assert!((g - want / total).abs() < 1e-15, "{g} vs {}", want / total);
+        }
+        let sum: f64 = got.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-15);
     }
 }

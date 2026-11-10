@@ -87,7 +87,8 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   drift reports (GDML lattices expand to per-element placements).
 
 - Gaussian KDE source resampling (`vr-tools`): `KdeSampler` fits over caller
-  particle vectors with deterministic draw/pdf.
+  particle vectors with deterministic draw/pdf, including adaptive per-sample
+  kNN bandwidths (`Bandwidth::AdaptiveKnn`).
 - Typed legacy SDEF fixed-source reader (`mcnp-io`): keyword and discrete
   `SI`/`SP`/`SB` subset with canonical re-emission.
 - EPA FGR 15 runtime-download dosimetry pack (`nuclei` + `nucleide.data`):
@@ -106,8 +107,9 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   ion temperatures, and the pinned T-T normalization also landed (sectors
   scale totals by rotation/2π with a PHI marginal). D(d,p)T proton
   transport landed for deuterium-bearing ring/point and parametric sources
-  (Brysk 3.02 MeV line, MCNP6-only `PAR=h` cards, no Serpent proton cards;
-  lattice protons stay accounting-only).
+  (Brysk 3.02 MeV line, pinned 50/50 or opt-in Bosch–Hale D(d,p) rate,
+  MCNP6-only `PAR=h` cards, no Serpent proton cards; lattice protons stay
+  accounting-only).
 - Damage and gas-production metrics (`damage`): NRT-dpa and arc-dpa
   displacement functions (NRT 1975; Nordlund 2018), He/H appm and He/dpa
   ratios by spectral folding of caller flux with caller response functions,

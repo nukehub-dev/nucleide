@@ -174,9 +174,13 @@ FESTIM 2.1 needs DOLFINx, so the probe never runs in the main
 `Containerfile` image (which stays FESTIM-free by contract) and never in
 the Rust workspace. It runs in the separate probe-only image
 `dolfinx/dolfinx:stable`. On boxes without podman, docker is the accepted
-route for the probe (the main harness still uses podman):
+route for the probe (the main harness still uses podman). The probe image
+has no Rust toolchain, so build the extension into the mounted checkout
+first (`maturin develop` from the repo root writes
+`python/nucleide/_internal.abi3.so`):
 
 ```bash
+maturin develop
 docker run --rm -v "$PWD:/work" -w /work dolfinx/dolfinx:stable \
     bash -c "pip install festim==2.1 && python validation/tritium_vs_festim.py"
 ```
@@ -191,7 +195,10 @@ pass. Always-run legs VV Val-1da (analytic permeation) and M1
 (manufactured-solution order) gate the Nucleide side in any environment.
 Outside the probe image the FESTIM legs SKIP loudly with their reason and
 are recorded as executed probes, never as silent passes. `results.md`
-numbers for this section are regenerated only by a probe-image run.
+numbers for this section are regenerated only by a probe-image run. The
+image tag is a moving reference: record the resolved image digest and the
+tested git commit with the probe results, and pin the digest when quoting
+those numbers.
 
 ## Parser oracle notes
 

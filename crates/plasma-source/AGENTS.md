@@ -58,10 +58,14 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   publishable T-T reactivity fit (Bosch & Hale 1992 covers only D(d,n),
   D(d,p), D-T, D-³He) or Ballabio-class line (three-body continuum) exists,
   and the oracle's vendored tables stay out of scope. The D(d,p)T proton
-  branch shares the D-D neutron-branch rate 50/50 bit-for-bit
+  branch shares the D-D neutron-branch rate 50/50 bit-for-bit by default
   (`proton_strength_density` / `total_proton_strength`, `proton_accounting`
-  facade) and is transported for deuterium-bearing ring/point and
-  parametric sources: `Particle.species` (`Neutron` default, `Proton`
+  facade); the opt-in `ProtonRateModel::BoschHaleDdp`
+  (`proton_rate_model="bosch_hale_ddp"`) uses the separate Bosch–Hale
+  D(d,p) Table VII fit (branch ratio `0.9218` at 20 keV, 7.8% below
+  D(d,n); tail sub-branches weight each fit at its own sub-pair
+  temperature). Protons are transported for deuterium-bearing ring/point
+  and parametric sources: `Particle.species` (`Neutron` default, `Proton`
   additive), independent proton sampler instances with their own
   `Rng(seed)` (zero new draws on any neutron path), the Brysk-Gaussian
   3.02 MeV proton line (`proton_moments_mev` / `SpectrumSpec::from_proton`,
@@ -155,9 +159,11 @@ Owns `crates/plasma-source/src/` (`reaction.rs`, `reactivity.rs`,
   per-branch spectra, equal-T bit-for-bit recovery, loud temperature
   errors, tail gates: sub-rate hand vectors at 1e-12, five-sub-branch
   spectra, eta=0 bit-for-bit recovery, loud tail errors, proton gates:
-  Brysk line hand vectors, 8σ sampled moments, eta=0/equal-T/exact-2π
-  proton recovery anchors, PAR=h round trips, D-T-only/MCNP5/Serpent/lattice
-  loud gates, lattice gates:
+  Brysk line hand vectors, Bosch–Hale D(d,p) hand vectors and branch-ratio
+  pins, the pinned default bit-for-bit anchor, tail-weighted branch ratio,
+  8σ sampled moments, eta=0/equal-T/exact-2π proton recovery anchors,
+  PAR=h round trips, D-T-only/MCNP5/Serpent/lattice loud gates, lattice
+  gates:
   two-point hand vectors, single-point bit-for-bit point-source recovery,
   expand/fold exactness, folded-vs-expanded stream bit-identity (incl. the
   single-node regression), ring-limit moment closure, equal-pair recovery,

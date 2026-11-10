@@ -54,6 +54,59 @@ fn eval_poly(c: &[f64; 4], t: f64) -> f64 {
     c[3] + t * (c[2] + t * (c[1] + t * c[0]))
 }
 
+/// D(d,p)T branch reactivity ⟨σv⟩ \[m³/s\] at ion temperature `ti_kev`
+/// \[keV\], the separate Bosch–Hale Table VII fit (Eqs. 12–14):
+///
+/// ```text
+/// C1 = 5.65718e-12, C2 = 3.41267e-3, C3 = 1.99167e-3, C4 = 0,
+/// C5 = 1.05060e-5, C6 = C7 = 0, G = 31.3970, m_r c² = 937814 keV
+/// θ = T·(1 − T(C2 + T(C4 + T·C6))/(1 + T(C3 + T(C5 + T·C7))))⁻¹
+/// ξ = (G²/(4θ))^(1/3)
+/// ⟨σv⟩ [cm³/s] = C1·θ·sqrt(ξ/(m_r c² T³))·exp(−3ξ)
+/// ```
+///
+/// This is the twin of the landed D(d,n) fit used by
+/// [`FusionReaction::Dd`](crate::FusionReaction::Dd): the two branch fits
+/// differ by more than their `C1` ratio (at 20 keV the branch ratio is
+/// `0.9217…`, not `C1_p/C1_n = 1.041…`). Hand vectors (m³/s):
+/// 1 keV `1.0165806360667495e-28`, 10 keV `5.78126926016618e-25`,
+/// 20 keV `2.398954986744111e-24`, 30 keV `4.728252714517674e-24`; the
+/// 30 keV value also appears in the independent `fusion_neutron_utils`
+/// Bosch–Hale table.
+///
+/// Errors: [`Error::NonFinite`] / [`Error::NegativeIonTemperature`], and
+/// [`Error::FitOutOfDomain`] when the fit shape diverges.
+pub fn ddp_reactivity_m3_per_s(ti_kev: f64) -> Result<f64> {
+    if !ti_kev.is_finite() {
+        return Err(Error::NonFinite("ion temperature"));
+    }
+    if ti_kev < 0.0 {
+        return Err(Error::NegativeIonTemperature(ti_kev));
+    }
+    if ti_kev == 0.0 {
+        return Ok(0.0);
+    }
+    const C1: f64 = 5.65718e-12;
+    const C2: f64 = 3.41267e-3;
+    const C3: f64 = 1.99167e-3;
+    const C5: f64 = 1.05060e-5;
+    const GAMOV: f64 = 31.3970;
+    const MRC2_KEV: f64 = 937_814.0;
+    // Eq. (13): C4 = C6 = C7 = 0 for D(d,p), so the numerator is T·C2 and
+    // the denominator is 1 + T·C3 + T²·C5.
+    let theta = ti_kev * (1.0 - (ti_kev * C2) / (1.0 + ti_kev * (C3 + ti_kev * C5))).powi(-1);
+    let xi = (GAMOV * GAMOV / (4.0 * theta)).powf(1.0 / 3.0);
+    let value_cm3 = C1 * theta * (xi / (MRC2_KEV * ti_kev.powi(3))).sqrt() * (-3.0 * xi).exp();
+    let value = value_cm3 * 1e-6;
+    if !value.is_finite() {
+        return Err(Error::FitOutOfDomain {
+            reaction: "D(d,p)",
+            ti_kev,
+        });
+    }
+    Ok(value)
+}
+
 impl FusionReaction {
     /// The published reactivity fit for this reaction.
     fn reactivity_fit(self) -> &'static ReactivityFit {
@@ -148,6 +201,40 @@ mod tests {
         assert_eq!(
             FusionReaction::Dt.reactivity_m3_per_s(-1.0),
             Err(Error::NegativeIonTemperature(-1.0))
+        );
+    }
+
+    #[test]
+    fn ddp_reactivity_matches_bosch_hale_table() {
+        // Independent float64 recomputation from the published Bosch–Hale
+        // Table VII coefficients (also reproduced by fusion_neutron_utils).
+        let gold: &[(f64, f64)] = &[
+            (1.0, 1.016_580_636_066_749_5e-28),
+            (10.0, 5.781_269_260_166_18e-25),
+            (20.0, 2.398_954_986_744_111e-24),
+            (30.0, 4.728_252_714_517_674e-24),
+            (50.0, 9.838_325_616_341_082e-24),
+            (100.0, 2.243_927_748_623_255_2e-23),
+        ];
+        for &(ti, want) in gold {
+            let got = ddp_reactivity_m3_per_s(ti).unwrap();
+            assert!(
+                (got - want).abs() < 1e-14 * want,
+                "D(d,p) T={ti}: {got} vs {want}"
+            );
+        }
+        // The branch ratio is not the C1 ratio: 20 keV gives ~0.9218.
+        let ratio = ddp_reactivity_m3_per_s(20.0).unwrap()
+            / FusionReaction::Dd.reactivity_m3_per_s(20.0).unwrap();
+        assert!((ratio - 0.921_759_277_146_177_1).abs() < 1e-14, "{ratio}");
+        assert_eq!(ddp_reactivity_m3_per_s(0.0).unwrap(), 0.0);
+        assert_eq!(
+            ddp_reactivity_m3_per_s(-1.0),
+            Err(Error::NegativeIonTemperature(-1.0))
+        );
+        assert_eq!(
+            ddp_reactivity_m3_per_s(f64::NAN),
+            Err(Error::NonFinite("ion temperature"))
         );
     }
 

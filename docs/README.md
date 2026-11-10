@@ -113,7 +113,7 @@ status, and license.
 | [Interactive — FLUKA I/O](tutorials/interactive/fluka-io.mdx) | Read USRBIN mesh tallies from `.lis` files |
 | [Interactive — deck editor](tutorials/interactive/deck-editor.mdx) | Parse, validate, and edit full MCNP decks |
 | [Interactive — deterministic I/O](tutorials/interactive/deterministic.mdx) | ISOTXS fluxes and PARTISN decks |
-| [Interactive — variance reduction](tutorials/interactive/variance-reduction.mdx) | MAGIC bounds and alias-table sampling |
+| [Interactive — variance reduction](tutorials/interactive/variance-reduction.mdx) | MAGIC bounds, alias-table sampling, and KDE source resampling |
 | [Interactive — MCPL particle lists](tutorials/interactive/mcpl-io.mdx) | Read and write MCPL particle lists |
 | [Interactive — code-card emission](tutorials/interactive/emitter.mdx) | Five-dialect card emission with a per-dialect mass-drift audit |
 | [Interactive — fusion sources](tutorials/interactive/fusion-sources.mdx) | Sample D-D/D-T ring, lattice, and parametric sources (mixtures, single-fuel species pairs), emit SDEF cards, and check ECRH access |

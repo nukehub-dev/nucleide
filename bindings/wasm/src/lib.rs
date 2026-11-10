@@ -5665,6 +5665,8 @@ struct FusionParametricSpecJson {
     species_deuterium_kev: Option<f64>,
     #[serde(rename = "speciesTritiumKev", alias = "species_tritium_kev")]
     species_tritium_kev: Option<f64>,
+    #[serde(rename = "protonRateModel", alias = "proton_rate_model")]
+    proton_rate_model: Option<String>,
 }
 
 /// Read one string field off a raw JS object.
@@ -5772,6 +5774,14 @@ fn parametric_config(
             ));
         }
     };
+    let proton_rate_model = match parsed.proton_rate_model.as_deref() {
+        None => nucleide_plasma_source::ProtonRateModel::Pinned50_50,
+        Some(name) => nucleide_plasma_source::ProtonRateModel::parse(name).ok_or_else(|| {
+            js_err(format!(
+                "unknown protonRateModel `{name}` (supported: pinned_50_50, bosch_hale_ddp)"
+            ))
+        })?,
+    };
     Ok(ParametricPlasmaConfig {
         geometry: MillerGeometry {
             major_radius_cm: parsed.major_radius_cm,
@@ -5799,6 +5809,7 @@ fn parametric_config(
         fuel_mixture,
         species_temperatures,
         tail,
+        proton_rate_model,
         sector: None,
         weight: 1.0,
     })
@@ -5875,6 +5886,9 @@ fn parse_fusion_species(spec: &JsValue) -> Result<bool, JsValue> {
 /// [`MAX_FUSION_SAMPLES`]), an integer `seed`, and an optional `species`
 /// (`"neutron"`, the default, or `"proton"` — the independent D(d,p)T
 /// proton stream; lattice-kinds and D-T-only proton requests are loud).
+/// Parametric specs also take optional `protonRateModel`
+/// (`"pinned_50_50"` default or `"bosch_hale_ddp"` for the separate
+/// Bosch-Hale D(d,p) rate).
 /// Returns `{kind, count, particles}` with one `{positionCm, direction,
 /// energyMeV, weight, species}` row per particle (lengths in cm, energies
 /// in MeV).
@@ -5965,8 +5979,10 @@ struct FusionCardsResult {
 /// `spec` matches [`sample_fusion_source`] (the `n`/`seed` fields are
 /// ignored); optional `nBins` (default 21) sets the Gaussian tabulation bin
 /// count, `mcnpVersion` (default 6) selects the `PAR=` designator dialect
-/// for the `SDEF` card, and optional `species` selects `"neutron"` (the
-/// default) or `"proton"` (MCNP6-only `PAR=h`, `serpent: null`). Returns
+/// for the `SDEF` card, optional `species` selects `"neutron"` (the
+/// default) or `"proton"` (MCNP6-only `PAR=h`, `serpent: null`), and the
+/// parametric `protonRateModel` selects the pinned 50/50 convention
+/// (default) or the separate Bosch-Hale D(d,p) rate. Returns
 /// `{mcnp, serpent}` card texts.
 #[wasm_bindgen(js_name = emitFusionSourceCards)]
 pub fn emit_fusion_source_cards(spec: JsValue) -> Result<JsValue, JsValue> {

@@ -611,6 +611,23 @@ def parametric_gates() -> tuple[list[list[str]], list[str]]:
             ),
         ]
     )
+    flat_dd = dict(flat, reaction="dd")
+    opt_in = ps.proton_accounting(dict(flat_dd, proton_rate_model="bosch_hale_ddp"))
+    # ddp/ddn at 20 keV from the published Bosch-Hale Table VII fits; the
+    # Rust hand vectors pin the same value.
+    want_ddp_ratio = 0.9217592771461771
+    rows.append(
+        [
+            "P9 opt-in D(d,p) rate ratio",
+            fmt(opt_in["proton_per_neutron"] - want_ddp_ratio),
+            "< 1e-12",
+            _check(
+                abs(opt_in["proton_per_neutron"] - want_ddp_ratio) < 1e-12
+                and opt_in["proton_rate_model"] == "bosch_hale_ddp",
+                "P9 Ddp",
+            ),
+        ]
+    )
     dt_acc = ps.proton_accounting(PARAMETRIC_SPEC)
     rows.append(
         [
@@ -648,7 +665,10 @@ def parametric_gates() -> tuple[list[list[str]], list[str]]:
     rows.append(["P9 pure-T loud", "-", "raises", _check(loud_ok, "P9 pure-T")])
     notes.append(
         "P9 D(d,p)T proton bookkeeping (pinned 50/50 with the D-D neutron "
-        "branch; sampler and cards stay neutron-only): exact pure-fuel "
+        'branch; proton transport is available via species="proton" on '
+        "ring/point and parametric sources, MCNP6 PAR=h cards; the lattice "
+        "stays accounting-only; the opt-in separate Bosch-Hale D(d,p) fit "
+        "gives the pinned 20 keV branch ratio 0.921759): exact pure-fuel "
         "ratios, the 70/30 share vs the P8 quadrature (tolerance is the "
         "256-vs-400 grid precision on the H-mode pedestal kink — exactness "
         "is pinned by the crate hand vectors), the no-T recovery anchor, "
