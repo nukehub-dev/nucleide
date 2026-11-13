@@ -39,6 +39,8 @@ workspace crates from tags.
 
 ### Fixed
 
+- ACTINV source links and probe provenance identify the release's underlying
+  commit instead of its annotated tag object, fixing pinned GitHub links.
 - Activation regrouping form groups source and target inputs in responsive
   panels, with shorter labels, separate units and clearer spacing.
 - Citation version metadata matches the workspace; release version bumps also

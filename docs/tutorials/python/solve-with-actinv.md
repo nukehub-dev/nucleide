@@ -30,7 +30,7 @@ The expected archive SHA-256 is
 the extracted binary's SHA-256 is
 `7d52a7b234f3125cc48ce222b32a1c22235acb756d89adbff386260387cf28d1`.
 The release tag resolves to source commit
-`c0634be52a99cf76ee40413216d9c861f940b932`.
+`d3dc4e463346c1a6d3dc426432048022932e14c5`.
 
 The older published **1.4.0** release predates `export-source alara`.
 Reproducing the older upstream example requires its specified source
@@ -54,7 +54,7 @@ actinv data verify
 Release 1.7.2 defaults to catalog **1.2.0**, distinct from the older
 example's 1.1.0. Its default `tendl-2025-neutron` bundle reports about
 185.5 MiB download and 276.2 MiB installed. The
-[pinned catalog](https://github.com/AvilaLabs/ACTINV/blob/c0634be52a99cf76ee40413216d9c861f940b932/crates/actinv-data/data/actinv-data-catalog-v1.2.0.json)
+[pinned catalog](https://github.com/AvilaLabs/ACTINV/blob/d3dc4e463346c1a6d3dc426432048022932e14c5/crates/actinv-data/data/actinv-data-catalog-v1.2.0.json)
 expects activation artifact `tendl-2025-neutron-709g` to have SHA-256
 `ec4c72bf598dc8ad3d533d9cfafdcf493e2d1f949a3e4db6251495659b68cc44`.
 Record all installed artifact hashes, not just that library's hash.
@@ -247,7 +247,7 @@ insufficient to establish a dose result.
 
 - [Activation analysis](activation-analysis.md) for the deck, flux,
   schedule and R2S workflow APIs.
-- ACTINV's [pinned specification](https://github.com/AvilaLabs/ACTINV/blob/c0634be52a99cf76ee40413216d9c861f940b932/docs/guide/specification.md)
-  and [iron example](https://github.com/AvilaLabs/ACTINV/tree/c0634be52a99cf76ee40413216d9c861f940b932/examples/fns_iron).
+- ACTINV's [pinned specification](https://github.com/AvilaLabs/ACTINV/blob/d3dc4e463346c1a6d3dc426432048022932e14c5/docs/guide/specification.md)
+  and [iron example](https://github.com/AvilaLabs/ACTINV/tree/d3dc4e463346c1a6d3dc426432048022932e14c5/examples/fns_iron).
 - [Python API reference](../../reference/python-api.mdx#nucleidealara)
   for the ALARA and R2S signatures.

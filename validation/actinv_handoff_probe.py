@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 ACTINV_RELEASE = "1.7.2"
-ACTINV_COMMIT = "c0634be52a99cf76ee40413216d9c861f940b932"
+ACTINV_COMMIT = "d3dc4e463346c1a6d3dc426432048022932e14c5"
 ACTINV_SHA256 = "7d52a7b234f3125cc48ce222b32a1c22235acb756d89adbff386260387cf28d1"
 ROOT = Path(__file__).resolve().parent.parent
 
