@@ -34,6 +34,10 @@ Comparisons cover:
 - **Parsers** — Serpent `res`/`dep`/`det` readers vs serpentTools, and MCNP
   `xsdir`/surface-source/PTRAC readers vs PyNE, on the committed fixtures
   (PyMOAB-dependent oracles skip with an explicit note).
+- **Activation workflow arithmetic** — flat-energy spectral regrouping against
+  independent hand values and PyNE's public overlap API when available;
+  volume-weighted source splitting against per-zone conservation vectors.
+  These checks do not establish activation-rate or transport-dose equivalence.
 - **Timings** — mean wall-time over 20 repeats for the depletion, enrichment,
   and MAGIC solves, plus native Rust Criterion figures.
 
@@ -54,7 +58,15 @@ One command from the repository root:
 
 ```bash
 ./validation/run_container.sh
+# Select Docker explicitly when desired:
+CONTAINER_ENGINE=docker ./validation/run_container.sh
 ```
+
+The script prefers installed Podman and otherwise uses Docker. An explicit
+engine selection fails clearly if unavailable. Both run the same environment
+and comparisons. Runtime jobs use 6 GiB memory, no swap, 128 tasks and two
+CPUs; OpenMC and Rust builds use two jobs. Numerical library threads are
+limited to two so timing results reflect that execution budget.
 
 This builds the image once, rebuilds the Nucleide wheel, runs every comparison,
 and regenerates `validation/results.md` from the machine-readable JSON reports

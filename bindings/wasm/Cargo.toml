@@ -30,6 +30,7 @@ nucleide-mcpl-io.workspace = true
 nucleide-kinetics.workspace = true
 nucleide-spectroscopy.workspace = true
 nucleide-alara-io.workspace = true
+nucleide-r2s.workspace = true
 nucleide-cccc-io.workspace = true
 nucleide-fispact-io.workspace = true
 nucleide-serpent-io.workspace = true

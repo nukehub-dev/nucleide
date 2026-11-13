@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useWasm } from "../../lib/wasm";
 import type {
   AlaraDeckSummary,
+  AlaraFluxRegroupSummary,
   AlaraOutputSummary,
   FispactOutputSummary,
   OrigenTape5Summary,
@@ -28,6 +29,7 @@ const BASE = import.meta.env.BASE_URL.endsWith("/")
 
 type ActivationMode =
   | "alara-deck"
+  | "regroup"
   | "alara-output"
   | "fispact"
   | "origen-tape5"
@@ -137,6 +139,7 @@ const DEFAULT_VOXEL_NUCLIDES = "mn-56, co-60";
 // Browser-demo cap on voxel counts (mirrors the WASM `MAX_VOXEL_TAGS` cap
 // and the RTFLUX values-cap precedent).
 const VOXEL_CAP = 200;
+const REGROUP_CAP = 200;
 
 type VoxelView = "scatter" | "bar" | "heatmap" | "histogram";
 
@@ -159,6 +162,7 @@ function parseNumberList(text: string, label: string): number[] {
 
 const DEFAULTS: Record<ActivationMode, string> = {
   "alara-deck": DEFAULT_DECK,
+  regroup: "",
   "alara-output": DEFAULT_ALARA_OUTPUT,
   fispact: DEFAULT_FISPACT,
   "origen-tape5": DEFAULT_ORIGEN_TAPE5,
@@ -171,6 +175,7 @@ const DEFAULTS: Record<ActivationMode, string> = {
 
 const MODES: { value: ActivationMode; label: string }[] = [
   { value: "alara-deck", label: "ALARA deck" },
+  { value: "regroup", label: "Regroup flux" },
   { value: "alara-output", label: "ALARA output" },
   { value: "fispact", label: "FISPACT output" },
   { value: "origen-tape5", label: "ORIGEN TAPE5" },
@@ -199,7 +204,14 @@ export function ActivationDemo() {
   const [snapshots, setSnapshots] = useState<string[]>([DEFAULT_STEP_SNAPSHOT]);
   const [voxelTotals, setVoxelTotals] = useState(DEFAULT_VOXEL_TOTALS);
   const [voxelMap, setVoxelMap] = useState(DEFAULT_VOXEL_MAP);
-  const [voxelSplit, setVoxelSplit] = useState(false);
+  const [voxelAllocation, setVoxelAllocation] = useState<"copy" | "equal" | "volume">("copy");
+  const [voxelVolumes, setVoxelVolumes] = useState("1, 3, 2");
+  const [sourceEdges, setSourceEdges] = useState("0, 2, 5");
+  const [sourceFlux, setSourceFlux] = useState("4, 9");
+  const [targetEdges, setTargetEdges] = useState("0, 1, 3, 5");
+  const [regrouped, setRegrouped] = useState<
+    (AlaraFluxRegroupSummary & { edges: number[] }) | null
+  >(null);
   const [voxelPhoton, setVoxelPhoton] = useState(DEFAULT_VOXEL_PHOTON);
   const [voxelNuclides, setVoxelNuclides] = useState(DEFAULT_VOXEL_NUCLIDES);
   const [voxelTime, setVoxelTime] = useState("0");
@@ -231,6 +243,45 @@ export function ActivationDemo() {
     setSubletHeat(null);
     setVoxelTags(null);
     setVoxelPhotonSums(null);
+    setRegrouped(null);
+  }
+
+  function clearVoxelResults() {
+    setVoxelTags(null);
+    setVoxelPhotonSums(null);
+    clearError();
+  }
+
+  function clearRegroupResults() {
+    setRegrouped(null);
+    clearError();
+  }
+
+  function regroupFlux() {
+    if (!wasm) return;
+    clearRegroupResults();
+    try {
+      const sourceEdgesEv = parseNumberList(sourceEdges, "Source energy edges");
+      const flux = parseNumberList(sourceFlux, "Source group-integrated flux");
+      const targetEdgesEv = parseNumberList(targetEdges, "Target energy edges");
+      if (
+        sourceEdgesEv.length > REGROUP_CAP + 1 ||
+        targetEdgesEv.length > REGROUP_CAP + 1 ||
+        flux.length > REGROUP_CAP
+      )
+        throw new Error(`Demo limit: ${REGROUP_CAP} source and target groups`);
+      setRegrouped({
+        ...wasm.regroupAlaraFlux({
+          sourceEdgesEv,
+          sourceFlux: flux,
+          targetEdgesEv,
+          model: "flat_energy",
+        }),
+        edges: targetEdgesEv,
+      });
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   function selectMode(next: ActivationMode) {
@@ -328,7 +379,16 @@ export function ActivationDemo() {
       if (!Number.isFinite(timeS))
         throw new Error("Photon time must be a finite number of seconds");
       const nuclides = voxelNuclides.split(/[\s,;]+/).filter((t) => t.length > 0);
-      setVoxelTags(wasm.voxelTagsFromTotals({ totals, zoneOfVoxel, split: voxelSplit }));
+      setVoxelTags(
+        wasm.voxelTagsFromTotals({
+          totals,
+          zoneOfVoxel,
+          split: voxelAllocation !== "copy",
+          ...(voxelAllocation === "volume"
+            ? { voxelVolumesCm3: parseNumberList(voxelVolumes, "Voxel volumes") }
+            : {}),
+        }),
+      );
       setVoxelPhotonSums(wasm.voxelPhotonSums({ photonText: voxelPhoton, nuclides, timeS }));
       clearError();
     } catch (e) {
@@ -415,14 +475,17 @@ export function ActivationDemo() {
             ))}
           </div>
 
-          <Textarea
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              clearError();
-            }}
-            className="font-mono text-xs"
-          />
+          {mode !== "regroup" && (
+            <Textarea
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                clearResults();
+                clearError();
+              }}
+              className="font-mono text-xs"
+            />
+          )}
 
           {needsRunLbl && (
             <div className="w-48 space-y-1">
@@ -437,14 +500,162 @@ export function ActivationDemo() {
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={run}>Parse</Button>
-            {SAMPLE_URLS[mode] && (
-              <Button variant="outline" onClick={loadSample} disabled={loadingSample}>
-                {loadingSample ? "Loading…" : "Load sample"}
-              </Button>
-            )}
-          </div>
+          {mode !== "regroup" && (
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={run}>Parse</Button>
+              {SAMPLE_URLS[mode] && (
+                <Button variant="outline" onClick={loadSample} disabled={loadingSample}>
+                  {loadingSample ? "Loading…" : "Load sample"}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {mode === "regroup" && (
+            <div className="not-prose space-y-5" data-testid="regroup-panel">
+              <div className="space-y-1">
+                <p className="text-base font-semibold">Regroup neutron flux</p>
+                <p className="text-sm text-muted-foreground">
+                  Move a spectrum onto a new energy grid while preserving its total flux.
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="min-w-0 rounded-lg border border-border/60 bg-muted/20 p-4 space-y-4">
+                  <p className="text-sm font-medium">Source spectrum</p>
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="regroup-source-edges"
+                      className="flex items-center justify-between gap-3 text-xs"
+                    >
+                      Energy edges <span className="font-normal text-muted-foreground">eV</span>
+                    </Label>
+                    <Input
+                      id="regroup-source-edges"
+                      aria-label="Source energy edges (eV)"
+                      aria-describedby="regroup-source-help"
+                      value={sourceEdges}
+                      onChange={(e) => {
+                        setSourceEdges(e.target.value);
+                        clearRegroupResults();
+                      }}
+                      className="h-10 rounded-md bg-background font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="regroup-source-flux"
+                      className="flex items-center justify-between gap-3 text-xs"
+                    >
+                      Flux per group{" "}
+                      <span className="whitespace-nowrap font-normal text-muted-foreground">
+                        n/cm²/s
+                      </span>
+                    </Label>
+                    <Input
+                      id="regroup-source-flux"
+                      aria-label="Source group-integrated flux (n/cm²/s)"
+                      aria-describedby="regroup-source-help"
+                      value={sourceFlux}
+                      onChange={(e) => {
+                        setSourceFlux(e.target.value);
+                        clearRegroupResults();
+                      }}
+                      className="h-10 rounded-md bg-background font-mono text-sm"
+                    />
+                    <p
+                      id="regroup-source-help"
+                      className="text-xs leading-relaxed text-muted-foreground"
+                    >
+                      Enter ascending edges and one integrated flux value per interval.
+                    </p>
+                  </div>
+                </div>
+                <div className="min-w-0 rounded-lg border border-border/60 bg-muted/20 p-4 space-y-4">
+                  <p className="text-sm font-medium">Target grid</p>
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="regroup-target-edges"
+                      className="flex items-center justify-between gap-3 text-xs"
+                    >
+                      Energy edges <span className="font-normal text-muted-foreground">eV</span>
+                    </Label>
+                    <Input
+                      id="regroup-target-edges"
+                      aria-label="Target energy edges (eV)"
+                      aria-describedby="regroup-target-help"
+                      value={targetEdges}
+                      onChange={(e) => {
+                        setTargetEdges(e.target.value);
+                        clearRegroupResults();
+                      }}
+                      className="h-10 rounded-md bg-background font-mono text-sm"
+                    />
+                    <p
+                      id="regroup-target-help"
+                      className="text-xs leading-relaxed text-muted-foreground"
+                    >
+                      Choose new ascending edges over the same minimum and maximum energy.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={regroupFlux}>Calculate regrouped flux</Button>
+                <span className="text-xs text-muted-foreground">
+                  Up to {REGROUP_CAP} groups per grid
+                </span>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Assumes uniform flux per eV within each source group. Total flux is conserved;
+                activation rates can change when groups are split.
+              </p>
+              {regrouped && (
+                <div
+                  className="space-y-3 rounded-lg border border-border/60 p-4"
+                  data-testid="regroup-result"
+                >
+                  <p className="text-sm">Regrouped flux: {regrouped.flux.join(", ")} n/cm²/s</p>
+                  <p className="text-sm">
+                    Source total: {regrouped.source_total}; target total: {regrouped.target_total}{" "}
+                    n/cm²/s. Split source groups (zero-based):{" "}
+                    {regrouped.split_source_groups.join(", ") || "none"}.
+                  </p>
+                  <DataTable
+                    data={regrouped.flux.map((flux, i) => ({
+                      group: i,
+                      lower: regrouped.edges[i],
+                      upper: regrouped.edges[i + 1],
+                      flux,
+                    }))}
+                    columns={[
+                      { key: "group", header: "Target group", align: "right" },
+                      { key: "lower", header: "Lower edge (eV)", align: "right" },
+                      { key: "upper", header: "Upper edge (eV)", align: "right" },
+                      { key: "flux", header: "Flux (n/cm²/s)", align: "right" },
+                    ]}
+                  />
+                  <Plotly
+                    aspect="video"
+                    data={[
+                      {
+                        type: "bar" as const,
+                        x: regrouped.flux.map(
+                          (_, i) => `${regrouped.edges[i]}–${regrouped.edges[i + 1]}`,
+                        ),
+                        y: regrouped.flux,
+                        name: "Target flux",
+                      },
+                    ]}
+                    layout={{
+                      xaxis: { title: { text: "Target energy interval (eV)" }, type: "category" },
+                      yaxis: { title: { text: "Integrated flux (n/cm²/s)" } },
+                      margin: { t: 16, r: 16, b: 56, l: 64 },
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {deck && (
             <div className="space-y-3">
@@ -817,41 +1028,83 @@ export function ActivationDemo() {
               <p className="text-sm font-medium">R2S voxels (per-voxel photon-source tags)</p>
               <p className="text-xs text-muted-foreground">
                 Zone totals map onto voxels of the native structured mesh: copy mode tags every
-                voxel with its zone total, split mode divides each zone total conservatively over
-                its voxels. Photon group spectra select `.photonSrc` rows by nuclide and cooling
-                time. Demo limit: {VOXEL_CAP} voxels.
+                voxel with its zone total. Equal splitting divides by voxel count; volume splitting
+                divides in proportion to voxel volume and assumes uniform source density within each
+                zone. Zone totals and voxel strengths are integrated photons/s. Photon group spectra
+                select `.photonSrc` rows by nuclide and cooling time. Demo limit: {VOXEL_CAP}{" "}
+                voxels.
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label>Zone totals</Label>
+                  <Label htmlFor="voxel-zone-totals">Zone totals (photons/s)</Label>
                   <Input
+                    id="voxel-zone-totals"
                     value={voxelTotals}
                     onChange={(e) => {
                       setVoxelTotals(e.target.value);
-                      clearError();
+                      clearVoxelResults();
                     }}
                     className="font-mono text-xs"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Zone of voxel</Label>
+                  <Label htmlFor="voxel-zone-map">Zone of voxel</Label>
                   <Input
+                    id="voxel-zone-map"
                     value={voxelMap}
                     onChange={(e) => {
                       setVoxelMap(e.target.value);
-                      clearError();
+                      clearVoxelResults();
                     }}
                     className="font-mono text-xs"
                   />
                 </div>
               </div>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Voxel allocation">
+                {(
+                  [
+                    ["copy", "Copy totals"],
+                    ["equal", "Split equally"],
+                    ["volume", "Split by volume"],
+                  ] as const
+                ).map(([allocation, label]) => (
+                  <Button
+                    key={allocation}
+                    variant={voxelAllocation === allocation ? "default" : "outline"}
+                    aria-pressed={voxelAllocation === allocation}
+                    onClick={() => {
+                      setVoxelAllocation(allocation);
+                      clearVoxelResults();
+                    }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              {voxelAllocation === "volume" && (
+                <div className="space-y-1">
+                  <Label htmlFor="voxel-volumes">Voxel volumes (cm³)</Label>
+                  <Input
+                    id="voxel-volumes"
+                    value={voxelVolumes}
+                    onChange={(e) => {
+                      setVoxelVolumes(e.target.value);
+                      clearVoxelResults();
+                    }}
+                    className="font-mono text-xs"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Supply one finite positive volume for each voxel, in map order.
+                  </p>
+                </div>
+              )}
               <div className="space-y-1">
                 <Label>Photon source (.photonSrc rows)</Label>
                 <Textarea
                   value={voxelPhoton}
                   onChange={(e) => {
                     setVoxelPhoton(e.target.value);
-                    clearError();
+                    clearVoxelResults();
                   }}
                   className="font-mono text-xs"
                 />
@@ -863,7 +1116,7 @@ export function ActivationDemo() {
                     value={voxelNuclides}
                     onChange={(e) => {
                       setVoxelNuclides(e.target.value);
-                      clearError();
+                      clearVoxelResults();
                     }}
                     className="font-mono text-xs"
                   />
@@ -874,23 +1127,20 @@ export function ActivationDemo() {
                     value={voxelTime}
                     onChange={(e) => {
                       setVoxelTime(e.target.value);
-                      clearError();
+                      clearVoxelResults();
                     }}
                     className="font-mono text-xs"
                   />
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => setVoxelSplit(!voxelSplit)}>
-                  Split: {voxelSplit ? "on" : "off"}
-                </Button>
                 <Button onClick={tagVoxels}>Tag voxels</Button>
               </div>
               {voxelTags && (
-                <div className="space-y-3">
+                <div className="space-y-3" data-testid="voxel-tags-result">
                   <p className="text-sm">
                     Voxel tags: {voxelTags.n_voxels} voxels over {voxelTags.n_zones} zones, total{" "}
-                    {voxelTags.total.toExponential(4)} (zone totals:{" "}
+                    {voxelTags.total.toExponential(4)} photons/s (zone totals:{" "}
                     {voxelTags.zone_totals.map((v) => v.toExponential(2)).join(", ")})
                   </p>
                   <DataTable
@@ -903,7 +1153,7 @@ export function ActivationDemo() {
                     columns={[
                       { key: "voxel", header: "Voxel" },
                       { key: "zone", header: "Zone", align: "right" },
-                      { key: "strength", header: "Strength", align: "right" },
+                      { key: "strength", header: "Strength (photons/s)", align: "right" },
                       { key: "decay", header: "Decay (s)", align: "right" },
                     ]}
                   />
@@ -925,10 +1175,14 @@ export function ActivationDemo() {
                       data={voxelChartData}
                       layout={{
                         xaxis: {
-                          title: { text: voxelView === "histogram" ? "Strength" : "Voxel" },
+                          title: {
+                            text: voxelView === "histogram" ? "Strength (photons/s)" : "Voxel",
+                          },
                         },
                         yaxis: {
-                          title: { text: voxelView === "histogram" ? "Count" : "Strength" },
+                          title: {
+                            text: voxelView === "histogram" ? "Count" : "Strength (photons/s)",
+                          },
                         },
                         margin: { t: 16, r: 16, b: 48, l: 64 },
                       }}

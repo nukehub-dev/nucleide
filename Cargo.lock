@@ -1042,6 +1042,7 @@ dependencies = [
  "nucleide-nuclei",
  "nucleide-origen-io",
  "nucleide-plasma-source",
+ "nucleide-r2s",
  "nucleide-serpent-io",
  "nucleide-spectroscopy",
  "nucleide-tritium",

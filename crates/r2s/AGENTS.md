@@ -18,6 +18,18 @@ Owns `crates/r2s/src/` (`workflow.rs`, `tags.rs`, `photon.rs`,
 
 - `workflow`: zone-to-flux linking, schedule expansion, per-step deck
   emission; uniform-split photon assembly.
+- `tags`: legacy count-based splitting keeps its signed-tag and unmapped-zone
+  semantics. `split_zone_totals_by_volume` splits integrated photons/s by
+  caller-supplied positive voxel volumes in cm³, assuming uniform density
+  within each zone; returns integrated photons/s in caller voxel order at
+  shutdown (`0.0`). Require finite nonnegative zone totals, finite positive
+  volumes and per-zone volume sums, matching lengths and valid indices;
+  reject unmapped positive sources. Empty meshes allow only zero sources.
+  Python `tag_zone_strength(..., voxel_volumes_cm3=...)` requires `split=True`.
+  Compensate source/volume sums and the returned Python total; preserve legacy
+  total getters; `checked_total_strength` provides an additive finite aggregate.
+  Underflowing strengths can round to zero, so relative
+  conservation cannot be promised below the representable range.
 - `snapshot`: ARMI dict-in bridge (never touches HDF5, never mirrors
   ARMI internals); `snapshot_inventory` totals atoms per bare name
   (`N × V × 1e-24`) for facility snapshot differencing.

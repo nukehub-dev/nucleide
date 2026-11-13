@@ -1,5 +1,5 @@
 {
-    "Nucleide": "abi3 release wheel (maturin container)",
+    "Nucleide": "abi3 release wheel (maturin container); Docker/Podman runtime: 6 GiB RAM, no swap, 128 tasks, 2 CPUs and 2 numerical-library threads",
     "PyNE": "conda-forge `nomoab_noopenmc` build",
     "OpenMC": "built from the upstream `v0.16.0` release tag",
     "PyRK": "upstream git `c2bfebf9` (point-kinetics oracle only)",
@@ -11,6 +11,7 @@
     "openmc-plasma-source": "PyPI `0.7.0` + NeSST `1.1.5` (MIT; ring/point/parametric tokamak-source oracle probes only)",
     "poppler-utils": "apt `pdftotext` (SPECTER report text extraction only)",
     "sandy": "PyPI `1.1.0` (UQ-lite oracle probe only; NJOY-gated comparisons stay SKIP)",
-    "festim": "PyPI `festim==2.1` in the probe-only `dolfinx/dolfinx:stable` image (Apache-2.0; tritium parity probe legs SKIP outside; never in the main container or Rust workspace)",
-    "Python": "miniforge3 base"
+    "festim": "PyPI `festim==2.1` in the probe-only `dolfinx/dolfinx@sha256:2ae4bfbc0d9077268880faf04c72750528bee986c94ab223a2c159969bd56fa8` (Python 3.12.3, DOLFINx 0.11.0.post0, scifem 0.27.0, io4dolfinx 1.5.0, fenicsx-compat 0.4.0, NumPy 2.4.6) image (Apache-2.0; tritium parity probe legs SKIP outside; never in the main container or Rust workspace)",
+    "Python": "miniforge3 base",
+    "ACTINV": "Optional standalone synthetic export/readback probe: released Linux 1.7.2 binary SHA-256 7d52a7b234f3125cc48ce222b32a1c22235acb756d89adbff386260387cf28d1; explicit caller path, no evaluated-data solve, never in the main container"
 }

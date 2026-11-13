@@ -3,17 +3,17 @@
   "name": "plasma_source",
   "title": "Tokamak fusion sources (`plasma_source_vs_openmc.py`)",
   "environment": {
-    "date": "2026-09-18",
-    "python": "3.12.14",
-    "platform": "Linux-7.2.6-arch2-1-x86_64-with-glibc2.39",
-    "nucleide": "0.16.0",
+    "date": "2026-11-13",
+    "python": "3.12.16",
+    "platform": "Linux-7.2.15-1-omarchy-x86_64-with-glibc2.39",
+    "nucleide": "0.17.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
   "sections": [
     {
       "kind": "prose",
-      "text": "Two-part oracle for `nucleide.plasma_source`: analytic gates P1-P4 on the synthetic ring spec (closed-form ring/spectrum moments, sampler determinism, card emission), P5-P7 on a parametric Miller-geometry plasma (flat-profile Jacobian closed forms, Bosch-Hale reactivity transcription, sampled moments vs fine quadrature), P8 on a pinned 70/30 D/T fuel blend (mixture-rule moments and the D-D branch share vs in-script mixture quadrature), and P9 on the D(d,p)T proton bookkeeping (exact pure-fuel ratios, the 70/30 share, the no-T recovery anchor, the loud pure-T error), and P10 on toroidal sectors (in-sector uniform births, bit-for-bit full-rotation recovery, the PHI=D4 marginal with its drift row), and P11 on per-species ion temperatures (pair-temperature moments and branch share, bit-for-bit equal-T recovery, plus the single-fuel pair arms at the same landed temperatures with their own equal-T recovery), and P12 on the arbitrary-3D birth-rate lattice (hand-vector totals and means, single-point recovery, ring-limit closure, symmetry-fold replication, card round trip, mixture branch fire), and P13 on the deuterium hot-tail fraction (sub-rate-rule moments and branch share, the drift tail-neutron share, zero-fraction recovery) \u2014 always run \u2014 plus container-only cross-checks O1-O13 against the upstream openmc-plasma-source package and NeSST (Ballabio helpers, sampled ring/point sources, Miller map, Fausser profiles, reactivities, end-to-end parametric moments, the pinned 70/30 blend, the tritium-rich 10/90 T-T divergence probe, the partial-sector moment cross-check, the distinct-temperature blend probe, the lattice ring-limit probe, and the hot-tail blend probe; protons have no oracle \u2014 upstream models neutrons only)."
+      "text": "Two-part oracle for `nucleide.plasma_source`: analytic gates P1-P4 on the synthetic ring spec (closed-form ring/spectrum moments, sampler determinism, card emission), P5-P7 on a parametric Miller-geometry plasma (flat-profile Jacobian closed forms, Bosch-Hale reactivity transcription, sampled moments vs fine quadrature), P8 on a pinned 70/30 D/T fuel blend (mixture-rule moments and the D-D branch share vs in-script mixture quadrature), and P9 on the D(d,p)T proton bookkeeping (exact pure-fuel ratios, the 70/30 share, the no-T recovery anchor, the loud pure-T error), and P10 on toroidal sectors (in-sector uniform births, bit-for-bit full-rotation recovery, the PHI=D4 marginal with its drift row), and P11 on per-species ion temperatures (pair-temperature moments and branch share, bit-for-bit equal-T recovery, plus the single-fuel pair arms at the same landed temperatures with their own equal-T recovery), and P12 on the arbitrary-3D birth-rate lattice (hand-vector totals and means, single-point recovery, ring-limit closure, symmetry-fold replication, card round trip, mixture branch fire, plus the per-node hot tail: five-branch moments, drift tail share, zero-fraction recovery, loud errors), and P13 on the deuterium hot-tail fraction (sub-rate-rule moments and branch share, the drift tail-neutron share, zero-fraction recovery) \u2014 always run \u2014 plus container-only cross-checks O1-O13 against the upstream openmc-plasma-source package and NeSST (Ballabio helpers, sampled ring/point sources, Miller map, Fausser profiles, reactivities, end-to-end parametric moments, the pinned 70/30 blend, the tritium-rich 10/90 T-T divergence probe, the partial-sector moment cross-check, the distinct-temperature blend probe, the lattice ring-limit probe, and the hot-tail blend probe; protons have no oracle \u2014 upstream models neutrons only)."
     },
     {
       "kind": "prose",
@@ -140,7 +140,7 @@
     },
     {
       "kind": "prose",
-      "text": "P9 D(d,p)T proton bookkeeping (pinned 50/50 with the D-D neutron branch; sampler and cards stay neutron-only): exact pure-fuel ratios, the 70/30 share vs the P8 quadrature (tolerance is the 256-vs-400 grid precision on the H-mode pedestal kink \u2014 exactness is pinned by the crate hand vectors), the no-T recovery anchor, and the loud pure-T error."
+      "text": "P9 D(d,p)T proton bookkeeping (pinned 50/50 with the D-D neutron branch; proton transport is available via species=\"proton\" on ring/point and parametric sources, MCNP6 PAR=h cards; the lattice stays accounting-only; the opt-in separate Bosch-Hale D(d,p) fit gives the pinned 20 keV branch ratio 0.921759): exact pure-fuel ratios, the 70/30 share vs the P8 quadrature (tolerance is the 256-vs-400 grid precision on the H-mode pedestal kink \u2014 exactness is pinned by the crate hand vectors), the no-T recovery anchor, and the loud pure-T error."
     },
     {
       "kind": "prose",
@@ -221,6 +221,12 @@
           "P9 pure D-D proton/neutron",
           "0.000000e+00",
           "exact",
+          "PASS"
+        ],
+        [
+          "P9 opt-in D(d,p) rate ratio",
+          "5.551115e-16",
+          "< 1e-12",
           "PASS"
         ],
         [
@@ -359,7 +365,7 @@
     },
     {
       "kind": "prose",
-      "text": "P12 arbitrary-3D birth-rate lattice: two-point hand vectors (total 3, mean x 100 cm, mono 14.021 MeV), single-point bit-for-bit recovery of the landed point source, ring-limit moment closure (n=200000), 4-period symmetry-fold replication with period-scaled totals, card round trip with the lattice drift row, and 70/30 mixture branch fire."
+      "text": "P12 arbitrary-3D birth-rate lattice: two-point hand vectors (total 3, mean x 100 cm, mono 14.021 MeV), single-point bit-for-bit recovery of the landed point source, ring-limit moment closure (n=200000), 4-period symmetry-fold replication with period-scaled totals, card round trip with the lattice drift row, 70/30 mixture branch fire, the solo single-fuel pair (D-T at T_DT=24 keV, D-D at T_D, equal-T bit-for-bit recovery), and the lattice hot tail (one global eta=0.05 at T_tail=60 keV applied per node: five-branch mean and D-D share vs the sub-rate rule, drift tail share, zero-fraction bit-for-bit recovery, loud errors)."
     },
     {
       "kind": "table",
@@ -440,6 +446,72 @@
           "P12 mixture D-D branch fires",
           "6.800000e-03",
           "0.002-0.015",
+          "PASS"
+        ],
+        [
+          "P12 single-fuel D-T pair mean E",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "P12 single-fuel D-D pair mean E",
+          "0.000000e+00",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "P12 single-fuel equal-T stream",
+          "-",
+          "exact",
+          "PASS"
+        ],
+        [
+          "P12 single-fuel equal-T cards",
+          "-",
+          "exact",
+          "PASS"
+        ],
+        [
+          "P12 lattice tail mean birth energy",
+          "3.552902e-05",
+          "< 1e-2",
+          "PASS"
+        ],
+        [
+          "P12 lattice tail D-D branch share",
+          "-4.330329e-05",
+          "< 8 sigma",
+          "PASS"
+        ],
+        [
+          "P12 lattice tail neutron share",
+          "4.569096e-07",
+          "< 1e-6",
+          "PASS"
+        ],
+        [
+          "P12 lattice tail drift row",
+          "-",
+          "present",
+          "PASS"
+        ],
+        [
+          "P12 lattice zero-tail stream recovery",
+          "-",
+          "exact",
+          "PASS"
+        ],
+        [
+          "P12 lattice zero-tail card recovery",
+          "-",
+          "exact",
+          "PASS"
+        ],
+        [
+          "P12 lattice tail loud errors",
+          "-",
+          "raise",
           "PASS"
         ]
       ]

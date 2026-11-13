@@ -464,3 +464,69 @@ class TestSubletS7:
             nucleide.alara.alara_iaea_clearance_index(2.0, [iaea_entry("Co60", 1.0, 0.0)])
         with pytest.raises(ValueError):
             nucleide.alara.alara_iaea_clearance_index(2.0, [iaea_entry("Xx999", 1.0, 10.0)])
+
+
+@pytest.mark.parametrize("keyword", ["volume", "volumes"])  # type: ignore[untyped-decorator]
+def test_ordered_zone_mappings_and_explicit_volumes(keyword: str) -> None:
+    text = f"""geometry rectangular
+mixture Steel
+material external_steel 1 1
+end
+mixture Water
+material external_water 1 1
+end
+mat_loading
+ZoneB Water
+ZoneA Steel
+Empty void
+end
+{keyword}
+2 ZoneA
+3 ZoneB
+1 Empty
+end
+"""
+    deck = nucleide.alara.alara_parse_deck(text)
+    assert deck["mat_loading"] == [
+        {"zone": "ZoneB", "mixture": "Water"},
+        {"zone": "ZoneA", "mixture": "Steel"},
+        {"zone": "Empty", "mixture": "void"},
+    ]
+    assert deck["volumes"] == [
+        {"zone": "ZoneA", "volume_cm3": 2.0},
+        {"zone": "ZoneB", "volume_cm3": 3.0},
+        {"zone": "Empty", "volume_cm3": 1.0},
+    ]
+    volumes = {e["zone"]: e["volume_cm3"] for e in deck["volumes"]}
+    assert [(e["mixture"], volumes[e["zone"]]) for e in deck["mat_loading"]] == [
+        ("Water", 3.0),
+        ("Steel", 2.0),
+        ("void", 1.0),
+    ]
+    nucleide.alara.alara_validate_deck(text)
+
+
+def test_absent_mapping_blocks_and_explicit_validation() -> None:
+    deck = nucleide.alara.alara_parse_deck("geometry rectangular\n")
+    assert deck["mat_loading"] == deck["volumes"] == []
+    text = "geometry rectangular\nmat_loading\nZoneA Missing\nend\n"
+    assert nucleide.alara.alara_parse_deck(text)["mat_loading"][0]["mixture"] == "Missing"
+    with pytest.raises(ValueError, match="undefined mixture"):
+        nucleide.alara.alara_validate_deck(text)
+
+
+def test_regroup_flux_explicit_model_and_report() -> None:
+    out = nucleide.alara.regroup_flux([0, 2, 5], [4, 9], [0, 1, 3, 5], model="flat_energy")
+    assert out == {
+        "flux": [2.0, 5.0, 6.0],
+        "model": "flat_energy",
+        "source_total": 13.0,
+        "target_total": 13.0,
+        "split_source_groups": [0, 1],
+    }
+    with pytest.raises(TypeError):
+        nucleide.alara.regroup_flux([0, 1], [1], [0, 1])  # type: ignore[call-arg]
+    with pytest.raises(ValueError, match="model"):
+        nucleide.alara.regroup_flux([0, 1], [1], [0, 1], model="lethargy")
+    with pytest.raises(ValueError):
+        nucleide.alara.regroup_flux([0, 1], [1], [0, 2], model="flat_energy")

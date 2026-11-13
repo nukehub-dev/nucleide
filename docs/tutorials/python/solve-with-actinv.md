@@ -4,151 +4,184 @@ sidebar:
   order: 23
 ---
 
-Nucleide builds R2S workflows, reads activation-code inputs and outputs,
-and assembles shutdown photon sources — but it does not solve activation
-itself. [ACTINV](https://github.com/AvilaLabs/ACTINV) is an optional
-external solver that fills that seat: you drive it from its command
-line, with problem files written in the `actinv-spec-1` JSON format.
-Nucleide never requires it — everything in Nucleide works without
-it. The ACTINV example files live in the ACTINV repository (they
-maintain them against their releases); this page shows where Nucleide
-hands off.
+Nucleide reads activation inputs and outputs and builds rigorous two-step
+(R2S) workflows. [ACTINV](https://github.com/AvilaLabs/ACTINV) is an
+optional external activation solver. This page explains the exchange
+boundaries, records a fresh activation comparison, and demonstrates source readback; ACTINV
+and evaluated nuclear data are not Nucleide dependencies.
 
-## Check whether ACTINV is installed
+## Install software separately from nuclear data
 
-```python
-import shutil
-
-print(shutil.which("actinv"))
-```
-
-```text
-None
-```
-
-`None` simply means the external solver is not on your `PATH` yet —
-skip to the install step below. Your Nucleide workflow is unaffected.
-
-## Install the solver and its data
-
-ACTINV software and its nuclear data are separate downloads. The
-software installs with pip; the data (the activation library, decay
-data, and their index files) is fetched by the CLI into a versioned
-folder and checked by SHA-256 before use:
+Use the [ACTINV 1.7.2 release](https://github.com/AvilaLabs/ACTINV/releases/tag/v1.7.2)
+for the commands below. Its released Linux binary was tested with
+`mesh`, `run`, `export-r2s`, and `export-source alara` using verified nuclear data. Download the
+`actinv-1.7.2-linux-x86_64.tar.gz` asset and `SHA256SUMS`, verify the archive,
+and extract it into a separate directory:
 
 ```bash
-python -m pip install actinv==1.4.0
+sha256sum --ignore-missing --check SHA256SUMS
+tar -xzf actinv-1.7.2-linux-x86_64.tar.gz
+export PATH="$PWD/target/x86_64-unknown-linux-gnu/release:$PATH"
+actinv --version
+```
+
+The expected archive SHA-256 is
+`ad39446999ef79575b77ac6daafa2d720304073b0e0700d1a962b7b1de393a1d`;
+the extracted binary's SHA-256 is
+`7d52a7b234f3125cc48ce222b32a1c22235acb756d89adbff386260387cf28d1`.
+The release tag resolves to source commit
+`c0634be52a99cf76ee40413216d9c861f940b932`.
+
+The older published **1.4.0** release predates `export-source alara`.
+Reproducing the older upstream example requires its specified source
+commit `0353d5e3288a90cfefaabe7d2263b22fbaeeecad` and a source build
+(`cargo build --release -p actinv-cli` in that checkout), rather than
+installing the published 1.4.0 package and assuming the exporter exists.
+The end-to-end adapter is recorded in
+[upstream PR 6](https://github.com/AvilaLabs/ACTINV/pull/6), revision
+[`6f8f893fdfc1dbe76257705d54f77b1ee68c633b`](https://github.com/AvilaLabs/ACTINV/tree/6f8f893fdfc1dbe76257705d54f77b1ee68c633b/contrib/nucleide_r2s).
+That revision was unmerged when inspected on 2026-11-12; its adapter and
+reported calculation results remain maintained by ACTINV.
+
+Nuclear data is a second download:
+
+```bash
+actinv data manifest
 actinv data fetch
 actinv data verify
 ```
 
-The default data bundle is `tendl-2025-neutron` from data catalog
-`1.1.0` (about 140 MiB to download). The default neutron library
-artifact `tendl-2025-neutron-709g` is pinned to SHA-256
-`ec4c72bf598dc8ad3d533d9cfafdcf493e2d1f949a3e4db6251495659b68cc44`;
-`actinv data manifest` prints the catalog with every artifact hash, and
-`actinv data verify` re-checks installed files against it. Record the
-hashes you actually used with your calculation — a different bundle
-changes the answer.
+Release 1.7.2 defaults to catalog **1.2.0**, distinct from the older
+example's 1.1.0. Its default `tendl-2025-neutron` bundle reports about
+185.5 MiB download and 276.2 MiB installed. The
+[pinned catalog](https://github.com/AvilaLabs/ACTINV/blob/c0634be52a99cf76ee40413216d9c861f940b932/crates/actinv-data/data/actinv-data-catalog-v1.2.0.json)
+expects activation artifact `tendl-2025-neutron-709g` to have SHA-256
+`ec4c72bf598dc8ad3d533d9cfafdcf493e2d1f949a3e4db6251495659b68cc44`.
+Record all installed artifact hashes, not just that library's hash.
+All six catalog artifacts were installed and hash-verified for the fresh
+comparison below. The data and prepared solver cache stay outside the package.
 
-## Map your Nucleide inputs
+## Fresh activation comparison
 
-The smallest mapping is one material, one spectrum, and one schedule,
-written as an `actinv-spec-1` document. The three Nucleide inputs come
-from the same surfaces used in
-[Activation analysis](activation-analysis.md): deck mixtures,
-group fluxes, and the expanded irradiation schedule.
+The pinned upstream example was executed with ACTINV 1.7.2, the rebuilt
+Nucleide release wheel, NumPy 2.5.3, and catalog 1.2.0. Its compatibility
+patch changes only the example's catalog-version check from `1.1.0` to
+`1.2.0`; the activation, index, and two decay artifact hashes are identical
+between these catalogs. No physical inputs or acceptance thresholds changed.
+
+The case uses 15.748 g of Fe-56 in 2 cm³, a native 709-group neutron grid
+with total flux 10¹² n/(cm²·s), 300 s irradiation, and 3600 s cooling.
+The Nucleide-translated mesh calculation and a separately specified direct
+ACTINV calculation produced identical 24-group photon strengths and Mn-56
+activity: **463393807.7641661 photons/s** and **20622094.12329952 Bq/g**.
+The comparison requires relative agreement within `1e-9`, with `1e-12`
+absolute tolerance. ALARA export/readback reconstructed the integrated
+photon total with relative error `1.2863e-16` (required: `1e-10`).
+The text export contains 18 groups: its six trailing zero groups are omitted.
+
+This establishes a fresh activation solve and agreement between two input
+paths through the same solver. It does not independently validate the
+evaluated nuclear data or experimental activation accuracy. See the
+[validation instructions](../../../validation/README.md#fresh-actinv-activation-comparison)
+for reproduction and provenance.
+
+## Keep six exchange boundaries explicit
+
+| Boundary | Required mapping |
+| --- | --- |
+| Zone and mixture | `alara_parse_deck(...)["mat_loading"]` preserves zone/mixture associations. Join explicit `volumes` by zone name; their list order need not match. Parsing exposes declarations; call `alara_validate_deck` separately to check references. |
+| Composition and mass | A mixture reference is not an evaluated isotopic composition. Resolve external material libraries yourself, choose nuclide fractions and mass, and convert names such as `mn-56` to ACTINV's `Mn56`. Do not supply both an element and its explicit isotopes in the same composition. |
+| Neutron flux | Supply physical group-integrated flux in n/(cm²·s), with energy edges and ordering matching the activation library. Select the interval after the deck's `skip` count and apply its `scale`. ACTINV's spectrum total must equal the intended physical sum. |
+| Time | Expand irradiation/pulse schedules into durations and flux-on/off steps. ALARA cooling requests are times after shutdown; convert successive requests into incremental cooling durations. |
+| Evaluated data | Provision and verify the actual activation/decay files separately. Retain software pins, data hashes, problem and result ledger with each calculation. |
+| Photon readback | Select the requested cooling time and `TOTAL` rows, then multiply photon density by activation-zone volume exactly once to obtain integrated photons/s before voxel splitting. |
+
+A 175-group ALARA spectrum is not a 709-group spectrum. The
+`nucleide.alara.regroup_flux(..., model="flat_energy")` helper can
+conserve integrated flux using explicit ascending eV edges and constant
+differential flux within each source interval. Splitting a coarse group
+can change reaction rates despite conserving the total. Use matching
+native neutron edges for the activation comparison; a conservative
+regrouping alone does not establish equivalent activation input.
+
+## Parse a small synthetic input
+
+This example uses a two-group spectrum solely to show interval selection,
+scaling and time conversion. It is not a spectrum for the 709-group library.
 
 ```python
-from pathlib import Path
+from nucleide.alara import (
+    alara_expand_schedule,
+    alara_parse_deck,
+    alara_parse_flux,
+    alara_validate_deck,
+)
 
-from nucleide.alara import alara_parse_deck, alara_parse_flux
-
-deck_text = Path("fixtures/alara/decks/sample2").read_text()
+# FE56 is an external material-library reference, not a resolved composition.
+deck_text = """geometry rectangular
+volume
+2 zone1
+end
+mixture iron
+material FE56 1 1
+end
+mat_loading
+zone1 iron
+end
+flux neutron synthetic.flux 2.5 1 default
+schedule exposure
+300 s neutron steady 0 s
+end
+pulsehistory steady
+1 0 s
+end
+cooling
+600 s
+3600 s
+end
+"""
 deck = alara_parse_deck(deck_text)
-print(deck["geometry"], [m["name"] for m in deck["mixtures"]])
+alara_validate_deck(deck_text)
+mixture_by_zone = {row["zone"]: row["mixture"] for row in deck["mat_loading"]}
+volume_by_zone = {row["zone"]: row["volume_cm3"] for row in deck["volumes"]}
+assert mixture_by_zone["zone1"] == "iron"
+assert volume_by_zone["zone1"] == 2.0
 
-flux = alara_parse_flux(Path("fixtures/alara/flux/fluxin2").read_text(), "fluxin2")
-print(flux["groups_per_interval"], flux["num_intervals"], flux["total"])
-```
-
-```text
-rectangular ['inner_mix', 'outer_mix']
-175 3 4177383924000000.0
-```
-
-Expanding the deck's hierarchical schedule gives flat steps — each a
-duration in seconds plus the flux name it runs at (an empty flux name
-means cooling):
-
-```python
-from nucleide.alara import alara_expand_schedule
+spectra = alara_parse_flux("100 200\n\n4 8\n", "synthetic")
+flux_definition = deck["fluxes"][0]
+selected = spectra["intervals"][flux_definition["skip"]]
+physical_flux = [value * flux_definition["scale"] for value in selected]
+assert physical_flux == [10.0, 20.0]
 
 steps = alara_expand_schedule(deck_text)
-print(steps)
-```
-
-```text
-[{'duration_s': 31557600.0, 'flux': 'flux_1', 'is_cooling': False}]
-```
-
-Each input maps onto the spec as follows (all six points are stated,
-not assumed):
-
-| # | Nucleide side | `actinv-spec-1` side |
-| --- | --- | --- |
-| 1 | Group fluxes in ALARA group order (175 groups per interval here) | `spectrum.structure: "fispact-709"` with exactly 709 group-integrated fluxes, or a `custom` structure whose boundaries match the library. An ALARA-order file cannot be pasted as-is — supply a 709-group spectrum (for example a transport spectrum) or rebin onto the library boundaries while conserving the total flux. |
-| 2 | Deck `flux <name> <file> <scale>` scaling on top of the file values | Physical group-integrated fluxes in n/cm²/s. Fold the deck scale into your numbers first, then write `spectrum.total` for the sum you intend; ACTINV rescales the vector to that total while preserving its shape. |
-| 3 | ALARA output spellings such as `mn-56` | Canonical `Mn56` (isomers such as `Ba137m1`; a bare `m` means `m1`). Composition keys accept an element (`Fe`) or an explicit nuclide (`Fe56`), but never both together. Nucleide's own reader accepts both spellings, so the conversion happens at this boundary. A wrong key raises a clear error. |
-| 4 | `FlatStep {duration_s, flux}` with delay steps flux-off | `schedule` entries `{"dt": ..., "flux": ...}` — irradiation at `flux: 1.0`, cooling (any flux-off step) at `flux: 0.0`. Seconds are accepted, as are minutes, hours, days, and years. |
-| 5 | — | Data provisioning: run `actinv data fetch`, keep the library hash with the calculation record, and check hashes with `actinv validate ... --hashes` before running. |
-| 6 | The photon-source handoff below | Return path carries `TOTAL` rows only (no per-nuclide spectra), on a centroid grid, one volume element per zone in the demo. Treat it as a source input, not as nuclide-resolved data. |
-
-Building the spec for the iron case the ACTINV example ships —
-one gram of pure iron, the measured 709-group spectrum stored
-highest-energy-first (`descending: true`) at its recorded total, and
-five minutes of irradiation followed by cooling — looks like this:
-
-```python
 schedule = [
-    {"dt": f"{step['duration_s']} s", "flux": 0.0 if step["is_cooling"] else 1.0}
+    {"dt": step["duration_s"], "flux": 0.0 if step["is_cooling"] else 1.0}
     for step in steps
 ]
-spec = {
-    "spec": "actinv-spec-1",
-    "title": "FNS Fe, 5-minute irradiation, 1996 campaign",
-    "projectile": "neutron",
-    "library": {"path": "catalog:tendl-2025-neutron-709g"},
-    "decay": {
-        "primary": "catalog:endfb-viii-0-decay",
-        "fallback": "catalog:jeff-3-3-decay",
-    },
-    "material": {"mass_g": 1.0, "basis": "wt_percent", "composition": {"Fe": 100.0}},
-    "spectrum": {
-        "structure": "fispact-709",
-        "descending": True,
-        "total": 1.116e10,
-        "flux_per_group": "<709 group-integrated fluxes>",
-    },
-    "schedule": [{"dt": "300.0 s", "flux": 1.0}, {"dt": "3600.0 s", "flux": 0.0}],
-}
-print(spec["material"]["composition"], spec["spectrum"]["structure"])
-print(schedule)
+previous = 0.0
+for cooling_time in deck["cooling_times_s"]:
+    schedule.append({"dt": cooling_time - previous, "flux": 0.0})
+    previous = cooling_time
+assert [step["dt"] for step in schedule] == [300.0, 600.0, 3000.0]
+assert sum(step["dt"] for step in schedule) == 3900.0
 ```
 
-```text
-{'Fe': 100.0} fispact-709
-[{'dt': '31557600.0 s', 'flux': 1.0}]
-```
+The two requested cooling times are 600 s and 3600 s after the same
+shutdown at absolute time 300 s. Adding cooling durations of 600 s and
+3600 s would select the wrong final time. For multiple activation zones,
+select each zone's corresponding interval after the skip offset; do not
+reuse the first selected interval for every zone.
 
-In practice you start from `actinv new problem.json` (a complete,
-editable iron example with the full spectrum — you do not type a
-709-group vector) and edit the title, composition, and schedule toward
-your case. Reuse the shipped spectrum only when it represents your
-irradiation; changing the material does not make that spectrum
-appropriate for a different facility.
+For a real `actinv-spec-1` problem, start from `actinv new problem.json`
+and replace its composition, mass, matching-grid spectrum and schedule
+with reviewed inputs. The pinned upstream adapter describes the full
+translation. Nucleide does not own an activation driver or resolve
+ACTINV's data paths.
 
-## Validate and solve
+## Validate, solve and export externally
+
+These commands require the optional solver and verified nuclear data;
+they are not run by the synthetic example above:
 
 ```bash
 actinv new problem.json
@@ -156,93 +189,65 @@ actinv validate problem.json --hashes
 actinv run problem.json result.json
 ```
 
-Or shell out from Python:
-
-<!-- code-test: skip -->
-```python
-import subprocess
-
-subprocess.run(["actinv", "validate", "problem.json", "--hashes"], check=True)
-subprocess.run(["actinv", "run", "problem.json", "result.json"], check=True)
-```
-
-Read the final step of the result:
-
-<!-- code-test: skip -->
-```python
-import json
-from pathlib import Path
-
-result = json.loads(Path("result.json").read_text(encoding="utf-8"))
-last = result["steps"][-1]
-print("Time (s):", last["t_s"])
-print("Activity (Bq/g):", sum(last["activity_Bq_per_g"].values()))
-print("Decay heat (W/g):", last["heat_W_per_g"]["total"])
-```
-
-The result's `ledger` lists data and calculation notes — which data
-files were used, and which reactions or products were not covered.
-Keep it with the result: missing coverage is reported there, never
-silently filled in.
-
-## Read the photon source back with Nucleide
-
-For an R2S calculation, export the decay photon source and read it
-with Nucleide's own ALARA photon-source readers. A multi-cell mesh
-calculation exports through `actinv export-r2s` and then one ALARA
-`.photonSrc` file per cell plus a provenance index:
+Keep the result's `ledger`, including missing reaction/product coverage.
+For a mesh calculation, export the selected step and pass the physical
+shutdown time (replace `STEP` with its step index):
 
 ```bash
 actinv export-r2s mesh-result.ndjson STEP r2s-source.ndjson
-actinv export-source alara r2s-source.ndjson photon-src --shutdown-t-s T
+actinv export-source alara r2s-source.ndjson photon-src --shutdown-t-s 300
 ```
 
-<!-- code-test: skip -->
-```python
-from pathlib import Path
+An absolute source time of 3900 s then becomes 3600 s cooling in
+`actinv-alara-index.json` and the emitted `.photonSrc` rows. Read each
+index entry's file and `volume_cm3` together. The released CLI's
+synthetic 2 cm³ export reconstructed 12 photons/s from densities `[2, 4]`;
+this checks the exchange format, not an activation solve.
 
-from nucleide.alara import alara_photon_total_strength
+## Read and split a synthetic photon source
+
+This runs without ACTINV or nuclear data. Distinct cooling rows make
+accidental time selection visible. The selected density is
+6 photons/(s·cm³); multiplying by 2 cm³ gives 12 photons/s:
+
+```python
 from nucleide.r2s import photon_group_sums, tag_zone_strength
 
-index_text = Path("photon-src/actinv-alara-index.json").read_text()
-# For each cell entry in the index, load its .photonSrc file with
-# Nucleide's readers and tag the voxel through r2s.tag_zone_strength
-# (one voxel per zone, since mesh cells are already independent
-# volume elements).
+photon_text = "TOTAL 600 s 8 4\nTOTAL 3600 s 2 4\n"
+source = photon_group_sums(photon_text, ["TOTAL"], 3600.0)
+assert source["sums"] == [2.0, 4.0]
+assert source["total"] == 6.0
+zone_total_photons_s = source["total"] * 2.0
+
+tags = tag_zone_strength(
+    [zone_total_photons_s],
+    [0, 0],
+    split=True,
+    voxel_volumes_cm3=[0.5, 1.5],
+)
+assert tags["source_strength"] == [3.0, 9.0]
+assert tags["total"] == 12.0
 ```
 
-A single-cell calculation instead exports a point source with
-`actinv export-openmc result.json STEP source.py` or
-`actinv export-mcnp result.json STEP source.sdef`. The ACTINV
-repository's output-side demo (`contrib/nucleide_r2s`) runs exactly
-this readback and prints a conservation table: each cell's reconstructed
-total against the declared photons per second.
+Volume-weighted splitting assumes uniform source density within each
+activation zone and returns integrated voxel strengths. Volumes must be
+finite and positive; every positive-strength zone must have a voxel.
+Without volumes, `split=True` retains the existing equal-count split.
+Tag decay-time metadata remains shutdown `0.0`; retain the selected
+cooling time separately when using these tags downstream.
 
-## Caveats
-
-- **Research-grade.** ACTINV is calculation software for research, not
-  a licensing or safety basis. Record the exact software version,
-  problem, data versions, and hashes; apply your own applicability,
-  uncertainty, and independent-review process.
-- **Known data defects.** The default TENDL-2025 neutron corpus carries
-  known upstream defects, including affected product-state data for 17
-  IRDFF-II benchmark targets. Check target coverage for your
-  reactions before trusting an inventory, and read the result ledger.
-- **TOTAL-only photons.** The return path carries total photon rows,
-  not per-nuclide spectra, on a centroid grid rather than energy-bin
-  bounds. Supply the matching bounds yourself if you run the transport
-  leg downstream.
-- **Data is separate from software.** Installing `actinv` does not
-  install data, and updating the solver does not update your data.
-  Verify hashes; for offline machines, transfer the files listed by
-  `actinv data manifest` and check them with `actinv data verify`.
+The exporter supplies **TOTAL-only photon spectra** on energy-centroid
+labels. Centroids do not determine bin edges. A transport source needs
+reviewed photon edges and an explicit mapping that preserves the groups'
+meaning. An export containing 18 nonzero centroids is not automatically
+a complete 24-group photon representation; matching its total is
+insufficient to establish a dose result.
 
 ## See also
 
-- [Activation analysis](activation-analysis.md) for the Nucleide-side
-  deck, flux, schedule, and R2S workflow surfaces.
-- ACTINV's [handbook and specification](https://github.com/AvilaLabs/ACTINV/blob/master/docs/guide/specification.md),
-  its [iron example](https://github.com/AvilaLabs/ACTINV/tree/master/examples/fns_iron),
-  and its [Nucleide R2S demo](https://github.com/AvilaLabs/ACTINV/tree/master/contrib/nucleide_r2s).
-- [Python API reference](../../reference/python-api.mdx#nucleidealara) for
-  the full `nucleide.alara` and `nucleide.r2s` signatures.
+- [Activation analysis](activation-analysis.md) for the deck, flux,
+  schedule and R2S workflow APIs.
+- ACTINV's [pinned specification](https://github.com/AvilaLabs/ACTINV/blob/c0634be52a99cf76ee40413216d9c861f940b932/docs/guide/specification.md)
+  and [iron example](https://github.com/AvilaLabs/ACTINV/tree/c0634be52a99cf76ee40413216d9c861f940b932/examples/fns_iron).
+- [Python API reference](../../reference/python-api.mdx#nucleidealara)
+  for the ALARA and R2S signatures.

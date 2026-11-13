@@ -16,6 +16,7 @@ FROM docker.io/condaforge/miniforge3:latest
 SHELL ["/bin/bash", "-c"]
 
 ARG OPENMC_VERSION=v0.16.0
+ARG BUILD_JOBS=2
 
 # Build toolchain for the OpenMC C++ library.
 RUN apt-get update -qq \
@@ -23,14 +24,20 @@ RUN apt-get update -qq \
       g++ make cmake git libhdf5-dev ca-certificates poppler-utils \
  && rm -rf /var/lib/apt/lists/*
 
-# PyNE and OpenMC's Python dependencies (OpenMC itself is pip-installed
-# --no-deps below, so its deps come from here).
-RUN mamba install -y -c conda-forge \
+# Keep Python 3.12 and its oracles separate from the rolling Miniforge base.
+# A fresh package cache avoids inherited extracted-package metadata, and
+# creating a prefix avoids replacing the running package manager's Python.
+ENV CONDA_PKGS_DIRS=/opt/validation-pkgs
+# OpenMC itself is pip-installed --no-deps below.
+RUN mamba create -y -p /opt/validation -c conda-forge \
       python=3.12 \
       "pyne=0.7.5=nomoab_noopenmc*" \
       numpy scipy h5py pandas lxml uncertainties ipython matplotlib endf \
       setuptools_scm \
  && mamba clean -afy
+ENV PATH=/opt/validation/bin:$PATH
+ENV CONDA_PREFIX=/opt/validation
+ENV CONDA_DEFAULT_ENV=/opt/validation
 
 # OpenMC C++ library + Python API from the release tag. The CMake build drops
 # libopenmc.so into openmc/lib/ inside the source tree, where
@@ -39,7 +46,7 @@ RUN git clone --depth 1 -b ${OPENMC_VERSION} https://github.com/openmc-dev/openm
  && cmake -S /opt/openmc -B /opt/openmc/build \
       -DCMAKE_BUILD_TYPE=Release \
       -DOPENMC_USE_MPI=off \
- && cmake --build /opt/openmc/build -j"$(nproc)" \
+ && cmake --build /opt/openmc/build --parallel "${BUILD_JOBS}" \
  && cmake --install /opt/openmc/build \
  && pip install --no-deps --no-build-isolation /opt/openmc \
  && rm -rf /opt/openmc/build /opt/openmc/.git \

@@ -3,10 +3,10 @@
   "name": "timings",
   "title": "Timings (`timings.py`)",
   "environment": {
-    "date": "2026-09-18",
-    "python": "3.12.14",
-    "platform": "Linux-7.2.6-arch2-1-x86_64-with-glibc2.39",
-    "nucleide": "0.16.0",
+    "date": "2026-11-13",
+    "python": "3.12.16",
+    "platform": "Linux-7.2.15-1-omarchy-x86_64-with-glibc2.39",
+    "nucleide": "0.17.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
@@ -25,34 +25,42 @@
       "rows": [
         [
           "CRAM-48 solve (`chain_ni.xml`)",
-          "1.332032e-04 s",
-          "OpenMC CRAM48: 2.866490e-03 s"
+          "1.520497e-04 s",
+          "OpenMC CRAM48: 3.055646e-03 s"
         ],
         [
           "Default uranium enrichment solve",
-          "1.068744e-04 s",
-          "PyNE multicomponent: 5.583892e-03 s"
+          "1.110913e-04 s",
+          "PyNE multicomponent: 5.925579e-03 s"
         ],
         [
           "MAGIC total-mode solve (synthetic tally)",
-          "5.991003e-07 s",
-          "PyNE-equivalent pure Python: 3.777150e-06 s"
+          "6.334501e-07 s",
+          "PyNE-equivalent pure Python: 3.960400e-06 s"
         ],
         [
           "Native Rust CRAM-48 solve (Criterion, no Python)",
-          "8.465243e-05 s",
+          "8.978922e-05 s",
           "\u2014"
         ],
         [
           "Native Rust deplete end-to-end (Criterion, no Python)",
-          "8.640163e-05 s",
+          "9.088389e-05 s",
           "\u2014"
         ]
       ]
     },
     {
       "kind": "prose",
-      "text": "The native Rust Criterion numbers were obtained with `cargo bench -p depletion`\nand represent the same `chain_ni.xml` CRAM-48 solve without any Python/PyO3 overhead."
+      "text": "Native estimates represent the same `chain_ni.xml` CRAM-48 solve without Python/PyO3 overhead. Generate fresh artifacts with `cargo bench -p nucleide-depletion --bench depletion_bench -- depletion_ni_chain`."
+    },
+    {
+      "kind": "prose",
+      "text": "Native cram48_solve: read `target/criterion/depletion_ni_chain/cram48_solve/new/estimates.json` (SHA-256 `a9387b44492a5e29904090260ce9ff0e3bf261ae2a4aa00d60578ef0190abe2c`). The container reads these host benchmark artifacts; it does not execute the Rust benchmark itself."
+    },
+    {
+      "kind": "prose",
+      "text": "Native deplete_end_to_end: read `target/criterion/depletion_ni_chain/deplete_end_to_end/new/estimates.json` (SHA-256 `7963cce607844963ac369e938569629653fa1a7f60079ebaa1b0bdd2a7829103`). The container reads these host benchmark artifacts; it does not execute the Rust benchmark itself."
     }
   ]
 }

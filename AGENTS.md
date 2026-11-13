@@ -280,7 +280,8 @@ Git tags of the form `vX.Y.Z` trigger `.github/workflows/release.yml`, which:
    section.
 
 Use `scripts/bump-version.sh X.Y.Z` to bump the workspace version and stamp
-`CHANGELOG.md` before tagging.
+`CHANGELOG.md` before tagging. The script also synchronizes `CITATION.cff`
+with the workspace version, including when rerun to repair stale metadata.
 
 ## Common pitfalls
 
@@ -304,6 +305,8 @@ Use `scripts/bump-version.sh X.Y.Z` to bump the workspace version and stamp
 
 ## Child NAD Index
 
+- `crates/alara-io/AGENTS.md` — ALARA parsing, ordered Python zone/volume
+  summaries, and explicit flat-energy spectral regrouping contracts.
 - `crates/csg-xlate/AGENTS.md` — MCNP→OpenMC/Serpent/PHITS/GDML CSG
   translation (surfaces, cells, nested universes, rectangular `LAT=1`
   lattices) + drift-report contracts.

@@ -20,6 +20,10 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
   (`mcnp-io`).
 - Serpent `_res.m`, `_dep.m`, `_det.m` readers (`serpent-io`).
 - FLUKA USRBIN reader and material/compound card generation (`fluka-io`).
+- Conservative spectral regrouping with an explicit flat-per-eV assumption,
+  ordered ALARA zone/mixture and explicit-volume summaries, and volume-weighted
+  integrated R2S source splitting (uniform within each zone). The browser
+  activation tutorial demonstrates regrouping and all three source-allocation modes.
 - ALARA Phase 1 interop (`alara-io`): deck/flux/libs/output/photon/schedule
   glue (solver out of scope), plus clearance / waste-classification
   analytics: clearance index CI = Σ Aᵢ/CLᵢ and sum-of-fractions screening

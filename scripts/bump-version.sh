@@ -12,6 +12,7 @@
 # Updates:
 #   Cargo.toml              - [workspace.package] version
 #   Cargo.lock              - workspace member versions (committed lockfile)
+#   CITATION.cff            - cited software version
 #   website/package.json    - website package version
 #   website/package-lock.json - website version fields (CI uses `npm ci`)
 #   CHANGELOG.md            - stamps [Unreleased] with the new version + date
@@ -33,6 +34,12 @@ _version="${1:-}"
     || die "usage: scripts/bump-version.sh <X.Y.Z>  (e.g. scripts/bump-version.sh 0.2.0)"
 
 _date="$(date +%F)"
+
+# Reject missing/ambiguous citation metadata before changing release files.
+_citation="$DIR/CITATION.cff"
+[[ -f "$_citation" ]] || die "CITATION.cff is missing"
+[[ "$(grep -c '^version: ' "$_citation")" == 1 ]] \
+    || die "CITATION.cff must contain exactly one top-level version field"
 
 # Cargo.toml: update [workspace.package] version and internal crate dependency
 # versions only if they differ.
@@ -68,6 +75,16 @@ done
 [[ "$_mismatch" -eq 0 ]] || die "Cargo.lock verification failed"
 echo "  Cargo.lock -> $_version (verified for all workspace members)"
 
+# Keep the cited software version synchronized, including on same-version
+# reruns that repair stale metadata without stamping another release.
+_current_citation_version="$(sed -n 's/^version: //p' "$_citation")"
+if [[ "$_current_citation_version" == "$_version" ]]; then
+    echo "note: CITATION.cff already at $_version; left unchanged"
+else
+    sed -i "s/^version: .*/version: $_version/" "$_citation"
+    echo "  CITATION.cff -> $_version"
+fi
+
 # website/package.json: update version only if it differs.
 _website_pkg="$DIR/website/package.json"
 _current_website_version="$(sed -n 's/^[[:space:]]*"version": "\([^"]*\)".*/\1/p' "$_website_pkg" | head -n1)"
@@ -100,8 +117,8 @@ echo
 echo "Bumped to $_version."
 echo
 echo "Next steps:"
-echo "  git diff Cargo.toml Cargo.lock website/package.json website/package-lock.json CHANGELOG.md"
-echo "  git add Cargo.toml Cargo.lock website/package.json website/package-lock.json CHANGELOG.md"
+echo "  git diff Cargo.toml Cargo.lock CITATION.cff website/package.json website/package-lock.json CHANGELOG.md"
+echo "  git add Cargo.toml Cargo.lock CITATION.cff website/package.json website/package-lock.json CHANGELOG.md"
 echo "  git commit -m \"chore: bump version to $_version\""
 echo "  git tag v$_version"
 echo "  git push origin main --tags   # CI publishes wheels from the tag"

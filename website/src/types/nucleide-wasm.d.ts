@@ -585,6 +585,22 @@ export interface VoxelTagsInputJson {
   totals: number[];
   zoneOfVoxel: number[];
   split?: boolean;
+  voxelVolumesCm3?: number[];
+}
+
+export interface AlaraFluxRegroupInput {
+  sourceEdgesEv: number[];
+  sourceFlux: number[];
+  targetEdgesEv: number[];
+  model: "flat_energy";
+}
+
+export interface AlaraFluxRegroupSummary {
+  flux: number[];
+  model: string;
+  source_total: number;
+  target_total: number;
+  split_source_groups: number[];
 }
 
 export interface VoxelTagsSummary {
@@ -1136,6 +1152,7 @@ export interface WasmApi {
   kdeDraw(spec: KdeDrawSpec): number[];
   kdeSampleBandwidths(spec: KdeFitSpec): number[][];
   parseAlaraDeck(text: string): AlaraDeckSummary;
+  regroupAlaraFlux(input: AlaraFluxRegroupInput): AlaraFluxRegroupSummary;
   parseAlaraOutput(text: string, runLbl: string): AlaraOutputSummary;
   parseFispactOutput(text: string, runLbl: string): FispactOutputSummary;
   parseOrigenTape5(text: string): OrigenTape5Summary;

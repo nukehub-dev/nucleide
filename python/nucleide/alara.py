@@ -5,6 +5,16 @@ listings, photon sources, schedule expansion, and clearance / waste-
 classification analytics (clearance index + sum-of-fractions screening).
 The solver itself stays out of scope.
 
+``alara_parse_deck`` exposes ordered ``mat_loading`` and explicit ``volumes``
+(in cm³); absent blocks give empty lists. Mixture names are references, not
+resolved evaluated compositions. Parsing and reference validation are separate.
+
+``regroup_flux(..., model="flat_energy")`` assumes constant differential
+flux per eV within each source interval. It returns ``flux``, ``model``,
+``source_total``, ``target_total`` and zero-based ``split_source_groups``.
+Ascending eV grids must share exact endpoints. Conserving total flux does
+not preserve arbitrary reaction rates; photon centroids are not bin edges.
+
 Schedule-expansion choice: :func:`alara_expand_schedule` takes deck text
 (plus an optional top schedule name) instead of JSON schedule/history blobs,
 so callers reuse the already-parsed deck blocks without a parallel schema.
@@ -77,6 +87,7 @@ from nucleide._internal import (
     alara_parse_flux,
     alara_parse_output,
     alara_photon_total_strength,
+    alara_regroup_flux,
     alara_schedule_total_time,
     alara_sum_of_fractions,
     alara_total_activity,
@@ -84,7 +95,11 @@ from nucleide._internal import (
     alara_validate_deck,
 )
 
+regroup_flux = alara_regroup_flux
+
 __all__ = [
+    "regroup_flux",
+    "alara_regroup_flux",
     "alara_parse_deck",
     "alara_parse_flux",
     "alara_parse_output",

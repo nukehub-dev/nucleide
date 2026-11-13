@@ -251,11 +251,13 @@ The repository contains a runnable cross-code validation harness
   independent-yield sums within $1.2\times10^{-7}$ of 2
   [@brown2018endf; @chadwick2011endf71]; the same library backs the depletion
   chain fallback when a chain omits yields for a fissionable parent.
-- **Performance**: single-step CRAM-48 solves run in $\sim$134 µs from Python
-  ($\sim$85 µs native) versus $\sim$3.0 ms for OpenMC's Python path; the
-  default uranium enrichment solve runs in $\sim$110 µs versus $\sim$5.8 ms
-  for PyNE; MAGIC weight-window generation runs in $\sim$0.6 µs versus
-  $\sim$4.0 µs for an equivalent pure-Python implementation.
+- **Performance**: with the container limited to two CPUs and two numerical-library
+  threads, single-step CRAM-48 solves run in $\sim$152 µs from Python versus
+  $\sim$3.1 ms for OpenMC's Python path; the default uranium enrichment solve
+  runs in $\sim$111 µs versus $\sim$5.9 ms for PyNE; MAGIC weight-window
+  generation runs in $\sim$0.6 µs versus $\sim$4.0 µs for an equivalent
+  pure-Python implementation. A separately recorded native Rust Criterion
+  estimate for the CRAM-48 solve is $\sim$90 µs.
 
 Beyond the measured comparisons above, the harness also covers activation and
 deterministic I/O through `validation/activation_vs_refs.py`, described here

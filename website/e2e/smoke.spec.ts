@@ -393,3 +393,130 @@ test("theory page has no KaTeX errors", async ({ page }) => {
   await page.goto("theory/variance-reduction");
   await assertNoKatexErrors(page);
 });
+
+test("activation regrouping conserves flux and rejects mismatched energy support", async ({
+  page,
+}) => {
+  await page.goto("tutorials/interactive/activation");
+  await waitForWasmReady(page);
+  await page.getByRole("button", { name: "Regroup flux", exact: true }).click();
+  await page.getByRole("button", { name: "Calculate regrouped flux", exact: true }).click();
+  await assertNoWasmError(page);
+
+  const result = page.getByTestId("regroup-result");
+  await expect(result).toContainText("Regrouped flux: 2, 5, 6 n/cm²/s");
+  await expect(result).toContainText("Source total: 13; target total: 13 n/cm²/s.");
+  await expect(result).toContainText("Split source groups (zero-based): 0, 1.");
+  await expect(result.locator("tbody tr")).toHaveCount(3);
+  await expect(result.locator(".js-plotly-plot")).toBeVisible({ timeout: 10_000 });
+
+  // Editing removes the previous answer before either validation or a new solve.
+  await page.getByLabel("Target energy edges (eV)", { exact: true }).fill("0, 1, 3, 6");
+  await expect(result).toHaveCount(0);
+  await page.getByRole("button", { name: "Calculate regrouped flux", exact: true }).click();
+  await expect(page.getByText("Demo error:", { exact: false })).toContainText(
+    "endpoints must match exactly",
+  );
+  await expect(result).toHaveCount(0);
+
+  await page.getByLabel("Target energy edges (eV)", { exact: true }).fill("0, 2, 5");
+  await assertNoWasmError(page);
+  await page.getByRole("button", { name: "Calculate regrouped flux", exact: true }).click();
+  await expect(result).toContainText("Regrouped flux: 4, 9 n/cm²/s");
+  await expect(result).toContainText("Split source groups (zero-based): none.");
+});
+
+test("activation voxel allocation distinguishes copy, equal and volume splitting", async ({
+  page,
+}) => {
+  await page.goto("tutorials/interactive/activation");
+  await waitForWasmReady(page);
+  await page.getByRole("button", { name: "R2S snapshot", exact: true }).click();
+  const result = page.getByTestId("voxel-tags-result");
+  const tag = page.getByRole("button", { name: "Tag voxels", exact: true });
+  const expectStrengths = async (strengths: string[], total: string) => {
+    await assertNoWasmError(page);
+    await expect(result).toContainText(`total ${total} photons/s`);
+    const rows = result.locator("tbody tr");
+    await expect(rows).toHaveCount(strengths.length);
+    for (const [i, strength] of strengths.entries()) {
+      await expect(rows.nth(i).locator("td").nth(2)).toHaveText(strength);
+    }
+  };
+
+  await expect(page.getByRole("button", { name: "Copy totals", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await tag.click();
+  await expectStrengths(["4.0000e+2", "4.0000e+2", "5.0000e+1"], "8.5000e+2");
+
+  await page.getByRole("button", { name: "Split equally", exact: true }).click();
+  await expect(result).toHaveCount(0);
+  await tag.click();
+  await expectStrengths(["2.0000e+2", "2.0000e+2", "5.0000e+1"], "4.5000e+2");
+
+  await page.getByRole("button", { name: "Split by volume", exact: true }).click();
+  await expect(result).toHaveCount(0);
+  const volumes = page.getByLabel("Voxel volumes (cm³)", { exact: true });
+  await expect(volumes).toHaveValue("1, 3, 2");
+  await tag.click();
+  await expectStrengths(["1.0000e+2", "3.0000e+2", "5.0000e+1"], "4.5000e+2");
+
+  await volumes.fill("1, 0, 2");
+  await expect(result).toHaveCount(0);
+  await tag.click();
+  await expect(page.getByText("Demo error:", { exact: false })).toContainText(
+    "volume must be finite and positive",
+  );
+  await expect(result).toHaveCount(0);
+  await volumes.fill("1, 3, 2");
+  await assertNoWasmError(page);
+  await tag.click();
+  await expectStrengths(["1.0000e+2", "3.0000e+2", "5.0000e+1"], "4.5000e+2");
+});
+
+test("activation WASM rejects oversized spectra and voxel maps", async ({ page }) => {
+  await page.goto("tutorials/interactive/activation");
+  await waitForWasmReady(page);
+  const errors = await page.evaluate(async () => {
+    const moduleUrl = new URL("/wasm/nucleide_wasm.js", window.location.origin).href;
+    const wasm = await import(moduleUrl);
+    await wasm.default({
+      module_or_path: new URL("/wasm/nucleide_wasm_bg.wasm", window.location.origin).href,
+    });
+    const message = (call: () => unknown): string => {
+      try {
+        call();
+        return "unexpected success";
+      } catch (error) {
+        return String(error);
+      }
+    };
+    const edges = Array.from({ length: 202 }, (_, i) => i);
+    return {
+      source: message(() =>
+        wasm.regroupAlaraFlux({
+          sourceEdgesEv: edges,
+          sourceFlux: Array(201).fill(1),
+          targetEdgesEv: edges,
+          model: "flat_energy",
+        }),
+      ),
+      target: message(() =>
+        wasm.regroupAlaraFlux({
+          sourceEdgesEv: [0, 201],
+          sourceFlux: [1],
+          targetEdgesEv: edges,
+          model: "flat_energy",
+        }),
+      ),
+      voxels: message(() =>
+        wasm.voxelTagsFromTotals({ totals: [1], zoneOfVoxel: Array(201).fill(0), split: true }),
+      ),
+    };
+  });
+  expect(errors.source).toContain("cap of 200");
+  expect(errors.target).toContain("cap of 200");
+  expect(errors.voxels).toContain("cap of 200");
+});
