@@ -13,6 +13,15 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-14
+
+### Fixed
+
+- Linux Python wheels build in a manylinux2014 container for glibc 2.17 or
+  newer, instead of requiring the release runner's glibc 2.39. Packaging
+  changes also build wheels on pull requests and check installed artifacts,
+  including Python 3.10 on the minimum Linux baseline, before publication.
+
 ## [0.18.0] - 2026-11-14
 
 ### Added
