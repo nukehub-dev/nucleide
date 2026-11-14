@@ -17,7 +17,8 @@ Comparisons run on committed `fixtures/` inputs with in-memory patching only
   tests, and a synthetic dict-in snapshot (`r2s_from_snapshot`) with one
   broadcast flux and one void zone.
 
-Independent oracles exist only where PyNE ships a matching reader (the
+The synthetic regrouping case also compares against PyNE's public phi_g overlap API
+when present. Independent parser oracles exist where PyNE ships a matching reader (the
 `pyne.alara` deck probe below, container-only and API-guarded); everything
 else is synthetic self-consistency, recorded as such. Every skip is printed
 and recorded in the report prose; none is silent.
@@ -26,6 +27,8 @@ and recorded in the report prose; none is silent.
 from __future__ import annotations
 
 import importlib.metadata
+import importlib.util
+import math
 import platform
 import sys
 import textwrap
@@ -1088,6 +1091,104 @@ def pyne_oracle_section(report: Report) -> None:
             )
 
 
+def source_arithmetic_section(report: Report) -> None:
+    """Independent hand vectors plus optional PyNE public overlap API."""
+    report.heading("Explicit spectral regrouping and volume-weighted sources")
+    result = nucleide.alara.regroup_flux(
+        [0.0, 2.0, 5.0], [4.0, 9.0], [0.0, 1.0, 3.0, 5.0], model="flat_energy"
+    )
+    expected = [2.0, 5.0, 6.0]
+    error = max(rel_diff(a, b) for a, b in zip(result["flux"], expected, strict=True))
+    tags = nucleide.r2s.tag_zone_strength(
+        [120.0, 40.0], [0, 0, 1], split=True, voxel_volumes_cm3=[1.0, 3.0, 2.0]
+    )
+    report.table(
+        ["Gate", "Value", "Expected", "Status"],
+        [
+            [
+                "Flat-energy overlap hand vector",
+                str(result["flux"]),
+                "[2, 5, 6]",
+                _check(
+                    all(math.isfinite(value) for value in result["flux"])
+                    and error <= 1e-12
+                    and result["split_source_groups"] == [0, 1]
+                ),
+            ],
+            [
+                "Regrouped total",
+                fmt(result["target_total"]),
+                "13",
+                _check(
+                    _close(result["source_total"], 13.0, 1e-12)
+                    and _close(result["target_total"], 13.0, 1e-12)
+                ),
+            ],
+            [
+                "Volume-weighted hand vector",
+                str(tags["source_strength"]),
+                "[30, 90, 40]",
+                _check(
+                    tags["source_strength"] == [30.0, 90.0, 40.0]
+                    and math.fsum(tags["source_strength"]) == 160.0
+                ),
+            ],
+        ],
+    )
+    report.prose(
+        "Hand vectors test conservative arithmetic with synthetic integrated flux/source "
+        "strengths. Flat-per-eV regrouping does not establish reaction-rate equivalence; "
+        "volume splitting assumes uniform source density within each zone."
+    )
+    if importlib.util.find_spec("pyne") is None:
+        report.prose(
+            _note("SKIPPED: PyNE is absent; its public phi_g overlap comparison did not run.")
+        )
+        return
+    try:
+        import numpy as np
+        from pyne.xs import models
+
+        phi_g = getattr(models, "phi_g", None)
+        if not callable(phi_g):
+            report.prose(_note("SKIPPED: installed PyNE has no public phi_g overlap API."))
+            return
+        # PyNE documents MeV and target-before-source grids; both ascend.
+        oracle = phi_g(
+            np.array([0.0, 1.0, 3.0, 5.0]) * 1e-6,
+            np.array([0.0, 2.0, 5.0]) * 1e-6,
+            np.array([4.0, 9.0]),
+        ).tolist()
+        oracle_error = max(rel_diff(a, b) for a, b in zip(result["flux"], oracle, strict=True))
+        report.table(
+            ["Gate", "Value", "Tol", "Status"],
+            [
+                [
+                    "PyNE phi_g synthetic overlap",
+                    fmt(oracle_error),
+                    "1e-12",
+                    _check(
+                        all(math.isfinite(value) for value in oracle)
+                        and math.isfinite(oracle_error)
+                        and oracle_error <= 1e-12
+                    ),
+                ]
+            ],
+        )
+    except Exception as exc:
+        report.table(
+            ["Gate", "Value", "Expected", "Status"],
+            [
+                [
+                    "Configured PyNE overlap execution",
+                    repr(exc),
+                    "successful calculation",
+                    _check(False),
+                ]
+            ],
+        )
+
+
 def main() -> int:
     report = Report("activation", "Activation I/O (`activation_vs_refs.py`)")
     report.prose(
@@ -1106,6 +1207,7 @@ def main() -> int:
     origen_section(report)
     r2s_section(report)
     pyne_oracle_section(report)
+    source_arithmetic_section(report)
     report.emit()
 
     if FAILURES:

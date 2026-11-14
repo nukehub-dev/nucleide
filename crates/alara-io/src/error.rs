@@ -12,6 +12,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum Error {
+    /// Invalid grids, flux values, or non-finite arithmetic during regrouping.
+    #[error("bad flux regrouping: {0}")]
+    BadFluxRegrouping(String),
     /// Filesystem failure while reading an ALARA input or output file.
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),

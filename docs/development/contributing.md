@@ -230,6 +230,14 @@ Add support for custom mesh tally formats
 - [ ] No secrets, credentials, or personal data committed
 - [ ] Commit messages explain the change
 
+## Preparing a release
+
+For release preparation, run `scripts/bump-version.sh X.Y.Z` from the repository
+root. It synchronizes workspace, website and citation versions and stamps the
+changelog; rerunning the same version repairs stale citation metadata. Complete
+the canonical checks before committing and tagging, as described in the
+[release workflow](../../AGENTS.md#release-workflow).
+
 ## Getting help
 
 - Open a discussion for questions.

@@ -39,6 +39,87 @@ steps = alara_expand_schedule(deck_text)
 print([(s["flux"], s["duration_s"], s["is_cooling"]) for s in steps])
 ```
 
+## Zone mappings, explicit volumes, and regrouping
+
+The deck summary includes ordered `mat_loading` entries (`zone`, `mixture`)
+and explicit `volumes` entries (`zone`, `volume_cm3`). Missing blocks give
+empty lists. Join by zone name, since the blocks may use different orders:
+
+```python
+mapping_text = """geometry rectangular
+mixture Steel
+material external_steel 1 1
+end
+mat_loading
+ZoneA Steel
+Empty void
+end
+volumes
+1 Empty
+2 ZoneA
+end
+"""
+mapping = alara_parse_deck(mapping_text)
+volumes = {entry["zone"]: entry["volume_cm3"] for entry in mapping["volumes"]}
+joined = [(entry["zone"], entry["mixture"], volumes[entry["zone"]])
+          for entry in mapping["mat_loading"]]
+assert joined == [("ZoneA", "Steel", 2.0), ("Empty", "void", 1.0)]
+```
+
+A mixture reference is not an evaluated material composition. Load and resolve
+external compositions yourself. Parsing does not check cross-references;
+`alara_validate_deck` performs that separate check. Volumes are cm³ and are
+never inferred from geometry.
+
+`regroup_flux` moves group-integrated flux between caller-supplied ascending
+eV boundaries with exactly matching endpoints. Its required model assumes
+constant differential flux per eV inside each source group:
+
+```python
+from nucleide.alara import regroup_flux
+
+regrouped = regroup_flux([0, 2, 5], [4, 9], [0, 1, 3, 5], model="flat_energy")
+assert regrouped["flux"] == [2.0, 5.0, 6.0]
+assert regrouped["source_total"] == regrouped["target_total"] == 13.0
+assert regrouped["split_source_groups"] == [0, 1]  # zero-based source indices
+```
+
+The report names the model and identifies every split group, including groups
+with zero flux. Identity grids preserve the input values. Finite nonnegative
+flux and strictly ascending finite nonnegative edges are required. There is
+no clipping or extrapolation. Totals and regrouping contributions use compensated summation to retain
+small contributions beside large ones. Values below the representable
+floating-point range can still round to zero. Total flux is conserved up
+to roundoff;
+arbitrary reaction rates are not. Splitting 175 groups into 709 cannot recover
+unmeasured fine structure, so activation comparisons still require matching
+native grids. Photon centroids cannot supply bin boundaries.
+
+## Split integrated sources over unequal voxel volumes
+
+Multiply a parsed photon density by its activation-zone volume once to get
+photons/s. The volume option then splits that integrated total at uniform
+source density within each zone, preserving caller voxel order:
+
+```python
+from nucleide.r2s import tag_zone_strength
+
+zone_totals = [30.0 * 4.0, 20.0 * 2.0]  # density × zone cm³ -> photons/s
+voxel_volumes = [1.0, 3.0, 2.0]
+tags = tag_zone_strength(zone_totals, [0, 0, 1], split=True,
+                         voxel_volumes_cm3=voxel_volumes)
+assert tags["source_strength"] == [30.0, 90.0, 40.0]
+assert tags["total"] == 160.0
+```
+
+Outputs are integrated strengths, not densities. Zone sums and the returned
+volume-path total use compensated summation; outputs too small to represent
+can round to zero. Volumes must be finite and
+positive; every positive-source zone must have voxels. Supplying volumes
+requires `split=True`. Omitting volumes preserves the existing equal-count
+split; omitting `split` copies the zone total to each voxel. Tag decay-time
+metadata remains shutdown (`0.0`), even for strengths selected at another time.
+
 ## FISPACT output in the same frame shape
 
 FISPACT-II inventory tables parse into the same row shape as ALARA output, so

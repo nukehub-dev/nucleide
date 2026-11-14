@@ -13,6 +13,57 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Added
+
+- Browser activation tutorial controls for flat-energy spectral regrouping
+  and volume-weighted photon-source splitting, using the shared Rust kernels
+  with conservation reports, plots, and explicit model assumptions.
+- Ordered ALARA `mat_loading` and explicit `volumes` (cm³) in Python deck
+  summaries, preserving zone names, `void`, and file order.
+- Conservative spectral regrouping via Rust `regroup_flux_flat_energy` and
+  Python `nucleide.alara.regroup_flux(..., model="flat_energy")`, with explicit
+  ascending eV edges, total/split reporting, and a flat-per-eV assumption.
+  Conserving flux does not imply conserving activation rates.
+- Volume-weighted integrated R2S source splitting through Rust
+  `split_zone_totals_by_volume` and the optional keyword-only Python
+  `tag_zone_strength(..., split=True, voxel_volumes_cm3=...)`; existing
+  equal-count and copy semantics remain available.
+- Optional ACTINV 1.7.2 synthetic export/readback probe with binary/source
+  hashes, bounded execution, and 2 cm³ photon-density conservation checks.
+- Fresh ACTINV activation interoperability comparison using verified evaluated
+  data, native 709-group flux, direct-versus-translated photon/activity checks,
+  and photon-source readback; reproduction and compatibility patch documented.
+- FESTIM F5 recombination-outlet validation driver with molar/atomic unit
+  conversion, independent space/time refinement, scalar steady checks and
+  integrated-inventory diagnostics; physical acceptance thresholds unchanged.
+
+### Fixed
+
+- FESTIM F5 cache reuse requires actual image identity, native solver-library
+  hashes, package versions and solver settings; unverifiable environments
+  calculate fresh results instead of reusing another environment's cache.
+- ACTINV source links and probe provenance identify the release's underlying
+  commit instead of its annotated tag object, fixing pinned GitHub links.
+- Activation regrouping form groups source and target inputs in responsive
+  panels, with shorter labels, separate units and clearer spacing.
+- Citation version metadata matches the workspace; release version bumps also
+  synchronize `CITATION.cff`, including same-version metadata repairs.
+- Spectral regrouping and volume-based source splitting retain small
+  contributions beside large values through compensated accumulation;
+  underflow below the representable floating-point range remains explicit.
+- Native timing reports identify Criterion artifacts by hash and explicitly
+  label historical fallbacks; corrupt benchmark inputs fail instead of
+  silently falling back.
+- FESTIM probe failures are distinguished from missing optional software;
+  missing-oracle reports produce correctly shaped skip rows; malformed report
+  tables raise a clear column-count error during rendering.
+- Canonical cross-code validation supports Docker as well as Podman, with
+  explicit engine selection, bounded compilation/runtime resources, and a
+  build context limited to the validation directory.
+- ACTINV tutorial distinguishes released solver/export support from older
+  source builds, explains exact-grid and schedule boundaries, and demonstrates
+  density-to-integrated-source conservation for a non-unit volume.
+
 ## [0.17.0] - 2026-11-08
 
 ### Added

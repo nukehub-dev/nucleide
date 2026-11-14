@@ -111,7 +111,10 @@ Depends on `nucleide-nuclei`.
 ### `nucleide-alara-io`
 
 ALARA activation-code interop: input-deck, group-flux, material/element/WDR
-library, activation-output, photon-source, and schedule-expansion glue, plus
+library, activation-output, photon-source, and schedule-expansion glue. Also owns
+ordered zone/mixture and explicit-volume summaries and conservative
+flat-per-eV regrouping over caller-supplied matching-support grids (no
+reaction-rate equivalence). Includes
 clearance / waste-classification analytics (clearance index and the
 sum-of-fractions rule over parsed inventories, with the EU 2013/59/Euratom
 Annex VII Table A vendored as the default limit table and the Spanish CSN
@@ -209,6 +212,7 @@ workspace crates; burnup driving stays inside ORIGEN.
 
 Scoped rigorous two-step (R2S) workflow builder: zone-to-flux linking from
 ALARA decks, schedule expansion, uniform-split photon-source assembly,
+count- or volume-weighted splitting of integrated zone strengths into voxel tags,
 WATTS-class sweep expansion (`expand_sweep`), and facility-flow accounting
 (`snapshot_inventory`) for differencing facility snapshots. Also owns the
 versionless ARMI DB-snapshot → deck adapter (`snapshot.rs`):
@@ -371,6 +375,10 @@ capability crates.
 the interactive tutorials on the docs site. It is not published to crates.io
 (the release workflow's publish list excludes it); the site builds it with
 `wasm-pack`.
+The activation tutorial calls `alara-io` for spectral regrouping and `r2s`
+for voxel allocation and photon-group sums; these use the same numerical
+implementations as Python. Keep depletion/linalg Rayon features disabled
+through the WASM dependency graph.
 
 ## Dependency rules
 

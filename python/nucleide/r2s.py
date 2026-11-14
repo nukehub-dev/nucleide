@@ -6,6 +6,12 @@ Transport and activation solving stay inside their respective codes; this
 module only builds decks, links zones to spectra, and assembles photon
 sources.
 
+``tag_zone_strength(..., split=True, voxel_volumes_cm3=[...])`` splits
+integrated zone strengths (photons/s) at uniform within-zone density. Positive
+finite voxel volumes are caller-supplied; every positive zone must be mapped.
+Outputs remain integrated strengths and shutdown time metadata stays 0.0.
+Omitting volumes keeps the existing equal-count split; volumes require split.
+
 Photon-source approximation: :func:`r2s_assemble` sums shutdown
 ``SpecificActivity`` over a zone and splits the total uniformly over the
 requested energy groups. The uniform split preserves only the total shutdown

@@ -55,7 +55,7 @@ pub use dose::{
     ELEMENTARY_CHARGE, MIN_DISTANCE_M, SLAB_BUILDUP_B,
 };
 pub use error::{Error, Result};
-pub use flux::{FluxSpec, FluxSpectra};
+pub use flux::{regroup_flux_flat_energy, FluxRegrouping, FluxSpec, FluxSpectra};
 pub use libs::{
     canonical_element_z, split_enriched, EleLib, ElementEntry, IsotopeAbund, LibEntry, LibSpec,
     MatEntry, MatLib, MaterialEntry, WdrLib, WdrLimit,

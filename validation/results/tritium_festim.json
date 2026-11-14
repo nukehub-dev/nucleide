@@ -3,17 +3,21 @@
   "name": "tritium_festim",
   "title": "Tritium 1D kernel vs FESTIM 2.1 probe (`tritium_vs_festim.py`)",
   "environment": {
-    "date": "2026-11-08",
+    "date": "2026-11-13",
     "python": "3.12.3",
     "platform": "Linux-7.2.15-1-omarchy-x86_64-with-glibc2.39",
-    "nucleide": "not installed",
+    "nucleide": "0.17.0",
     "pyne": "not installed",
     "openmc": "not installed"
   },
   "sections": [
     {
       "kind": "prose",
-      "text": "Black-box parity probe between the `nucleide.tritium` 1D diffusion-trapping kernel and FESTIM 2.1 (Apache-2.0, `festim==2.1`, v2.x API), driven in the probe-only `dolfinx/dolfinx:stable` image (docker; never the main validation container, never the Rust workspace). Progression F1 trap-free Dirichlet-Dirichlet, F2 one McNabb-Foster trap, F3 Sieverts ends, F4 two-layer stack; recombination ends are excluded. Always-run legs VV Val-1da (analytic permeation) and M1 (manufactured-solution order) gate the Nucleide side everywhere; every FESTIM leg SKIPs loudly with its reason outside the probe image."
+      "text": "Black-box parity probe between the `nucleide.tritium` 1D diffusion-trapping kernel and FESTIM 2.1 (Apache-2.0, `festim==2.1`, v2.x API), driven in the probe-only digest-pinned DOLFINx image (docker; never the main validation container, never the Rust workspace). Progression F1 trap-free Dirichlet-Dirichlet, F2 one McNabb-Foster trap, F3 Sieverts ends, F4 two-layer stack; F5 independently refined trap-free recombination outlet. Always-run legs VV Val-1da (analytic permeation) and M1 (manufactured-solution order) gate the Nucleide side everywhere; every FESTIM leg SKIPs loudly with its reason outside the probe image."
+    },
+    {
+      "kind": "prose",
+      "text": "Loaded Nucleide compiled version 0.17.0; extension `/dolfinx-env/lib/python3.12/site-packages/nucleide/_internal.abi3.so`; SHA-256 `6f108cc47492f3eaf89ffa3553f87578647548c4000535f50754cc8370bd7f12`. An installed wheel takes precedence over a checkout extension."
     },
     {
       "kind": "table",
@@ -420,6 +424,217 @@
     {
       "kind": "prose",
       "text": "F4 parity: Nucleide J_ss=2.222222e-07 vs FESTIM J_ss=2.220319e-07; FESTIM t_lag=210.29661041457058 (fit over 4 points)."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Recombination gate",
+        "Value",
+        "Gate",
+        "Status"
+      ],
+      "rows": [
+        [
+          "F5 FESTIM steady scalar flux",
+          "1.201866e-06",
+          "< 0.02",
+          "PASS"
+        ],
+        [
+          "F5 FESTIM steady scalar profile",
+          "4.590718e-07",
+          "< 0.02",
+          "PASS"
+        ],
+        [
+          "F5 FESTIM steady reaction law",
+          "2.687454e-06",
+          "< 0.02",
+          "PASS"
+        ],
+        [
+          "F5 FESTIM steady outward signs",
+          "1.667329e-13",
+          "< 0.02",
+          "PASS"
+        ],
+        [
+          "F5 Nucleide space 50\u2192100 J(t)/profile",
+          "2.054970e-04 / 6.079265e-05",
+          "< 0.01 / 0.006667",
+          "PASS"
+        ],
+        [
+          "F5 Nucleide space 100\u2192200 J(t)/profile",
+          "5.135260e-05 / 1.531420e-05",
+          "< 0.01 / 0.006667",
+          "PASS"
+        ],
+        [
+          "F5 Nucleide time .5\u2192.25 J(t)/profile",
+          "4.524539e-07 / 2.016952e-07",
+          "< 0.01 / 0.006667",
+          "PASS"
+        ],
+        [
+          "F5 Nucleide time .25\u2192.125 J(t)/profile",
+          "1.033705e-07 / 5.171041e-08",
+          "< 0.01 / 0.006667",
+          "PASS"
+        ],
+        [
+          "F5 Nucleide scalar flux",
+          "8.305314e-10",
+          "< 0.02",
+          "PASS"
+        ],
+        [
+          "F5 Nucleide scalar profile",
+          "2.977466e-10",
+          "< 0.02",
+          "PASS"
+        ],
+        [
+          "F5 Nucleide late flux change (0.9 tend\u2192tend)",
+          "6.716298e-09",
+          "< 0.00666667",
+          "PASS"
+        ],
+        [
+          "F5 Nucleide inventory balance",
+          "4.260197e-12",
+          "< 0.001",
+          "PASS"
+        ],
+        [
+          "F5 Nucleide flux quadrature stride 1\u21922",
+          "2.049108e-06",
+          "< 0.000333333",
+          "PASS"
+        ],
+        [
+          "F5 Nucleide flux quadrature stride 2\u21924",
+          "8.196446e-06",
+          "< 0.000333333",
+          "PASS"
+        ],
+        [
+          "F5 FESTIM space 50\u2192100 J(t)/profile",
+          "3.488383e-04 / 2.085833e-05",
+          "< 0.01 / 0.006667",
+          "PASS"
+        ],
+        [
+          "F5 FESTIM space 100\u2192200 J(t)/profile",
+          "8.979231e-05 / 1.617928e-08",
+          "< 0.01 / 0.006667",
+          "PASS"
+        ],
+        [
+          "F5 FESTIM time .5\u2192.25 J(t)/profile",
+          "1.933554e-03 / 2.132923e-04",
+          "< 0.01 / 0.006667",
+          "PASS"
+        ],
+        [
+          "F5 FESTIM time .25\u2192.125 J(t)/profile",
+          "9.496407e-04 / 1.046612e-04",
+          "< 0.01 / 0.006667",
+          "PASS"
+        ],
+        [
+          "F5 FESTIM scalar flux",
+          "1.540908e-07",
+          "< 0.02",
+          "PASS"
+        ],
+        [
+          "F5 FESTIM scalar profile",
+          "5.523674e-08",
+          "< 0.02",
+          "PASS"
+        ],
+        [
+          "F5 FESTIM late flux change (0.9 tend\u2192tend)",
+          "0.000000e+00",
+          "< 0.00666667",
+          "PASS"
+        ],
+        [
+          "F5 FESTIM inventory balance",
+          "6.812662e-05",
+          "< 0.001",
+          "PASS"
+        ],
+        [
+          "F5 FESTIM flux quadrature stride 1\u21922",
+          "2.044506e-06",
+          "< 0.000333333",
+          "PASS"
+        ],
+        [
+          "F5 FESTIM flux quadrature stride 2\u21924",
+          "8.132709e-06",
+          "< 0.000333333",
+          "PASS"
+        ],
+        [
+          "F5 cross-code J(t), cells=50, dt=0.25",
+          "1.137000e-03",
+          "< 0.03",
+          "PASS"
+        ],
+        [
+          "F5 cross-code J(t), cells=100, dt=0.25",
+          "1.690591e-03",
+          "< 0.03",
+          "PASS"
+        ],
+        [
+          "F5 cross-code J(t), cells=200, dt=0.25",
+          "1.831490e-03",
+          "< 0.03",
+          "PASS"
+        ],
+        [
+          "F5 cross-code J(t), cells=200, dt=0.5",
+          "3.757328e-03",
+          "< 0.03",
+          "PASS"
+        ],
+        [
+          "F5 cross-code J(t), cells=200, dt=0.125",
+          "8.836923e-04",
+          "< 0.03",
+          "PASS"
+        ],
+        [
+          "F5 cross-code transient profiles",
+          "1.053200e-04",
+          "< 0.02",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "F5 trap-free recombination: L=1e-3 m, D=1e-9 m\u00b2/s, C0=1 mol/m\u00b3, Kr=1e-6 m\u2074/(mol s), initial concentration zero. Outputs at t/tD={0.2,0.5,1,2,5}; no Dirichlet time-lag oracle. FESTIM atomic units: c_atom=NA*c_mol, J_atom=NA*J_mol, K_atom=Kr/NA; two-reactant reaction coefficient Kr/(2*NA), NA=6.02214076e23 mol\u207b\u00b9. SurfaceFlux is outward-positive, so inlet throughput is minus the left export. Quadratic elements and atol=NA*1e-14, rtol=1e-10; physical gates unchanged."
+    },
+    {
+      "kind": "prose",
+      "text": "F5 startup resolution: each solver starts at dt=1e-6 s, grows by at most 1.02 per step to its specified dt cap, and exports the complete actual history. This resolves the Dirichlet initial layer for the inlet-flux mass balance; temporal refinement varies the subsequent cap independently. Flux quadrature is refined separately by stride 4\u21922\u21921 on each computed history. Successful reduced runs are cached under validation/.cache/f5-runs with source/extension hashes, model inputs and package versions; acceptance verdicts are recomputed from those numbers."
+    },
+    {
+      "kind": "prose",
+      "text": "F5 required image: dolfinx/dolfinx@sha256:2ae4bfbc0d9077268880faf04c72750528bee986c94ab223a2c159969bd56fa8; Python 3.12.3; festim=2.1, fenics-dolfinx=0.11.0.post0, scifem=0.27.0, io4dolfinx=1.5.0, numpy=2.4.6"
+    },
+    {
+      "kind": "prose",
+      "text": "F5 Nucleide balance grid: 40544 exported times, [0, 5000] s, dt range [1e-06, 0.125] s; inventory change 8.090169941615e-04 mol/m\u00b2, net integrated inlet minus outlet 8.090169941798e-04 mol/m\u00b2, absolute throughput 4.287745369204e-03 mol/m\u00b2. Requested end 4999.9999999999991 s; actual end 4999.9999999999991 s; endpoint roundoff allowance 7.275958e-12 s. Balance uses the exported initial inventory (including the FEM boundary trace) and actual exported time grid, not an assumed zero boundary-gradient sample."
+    },
+    {
+      "kind": "prose",
+      "text": "F5 FESTIM balance grid: 40586 exported times, [0, 5000.22] s, dt range [1e-06, 0.125] s; inventory change 8.084269688612e-04 mol/m\u00b2, net integrated inlet minus outlet 8.081349062026e-04 mol/m\u00b2, absolute throughput 4.287056342836e-03 mol/m\u00b2. Requested end 4999.9999999999991 s; actual end 5000.218060054648 s; endpoint roundoff allowance 7.275958e-12 s. Balance uses the exported initial inventory (including the FEM boundary trace) and actual exported time grid, not an assumed zero boundary-gradient sample."
     }
   ]
 }

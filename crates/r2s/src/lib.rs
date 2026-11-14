@@ -22,6 +22,7 @@ pub use snapshot::{
 };
 pub use sweep::{assemble_results, expand_sweep, SweepAxis, SweepCase};
 pub use tags::{
-    photon_groups_at, split_zone_totals, sum_group_strengths, tag_zone_totals, VoxelTags,
+    photon_groups_at, split_zone_totals, split_zone_totals_by_volume, sum_group_strengths,
+    tag_zone_totals, VoxelTags,
 };
 pub use workflow::{R2sStep, R2sWorkflow};

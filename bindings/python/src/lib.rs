@@ -2547,6 +2547,9 @@ fn mesh_to_geom(
 /// (str | None), `mixtures` (list of {name, entries}), `fluxes` (list of
 /// {name, file, scale, skip, format}), `cooling_times_s` (list[float]),
 /// `schedules`, `pulse_histories`, `outputs`, and `truncation`.
+/// `mat_loading` is an ordered list of {zone, mixture}; `volumes` is an
+/// ordered list of {zone, volume_cm3} from explicit declarations only.
+/// Absent blocks give empty lists. Parsing does not validate references.
 #[pyfunction]
 fn alara_parse_deck(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
     let owned = text.to_owned();
@@ -2554,6 +2557,35 @@ fn alara_parse_deck(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
         .detach(move || nucleide_alara_io::AlaraDeck::parse(&owned))
         .map_err(ala_err)?;
     Ok(deck_to_py(py, &deck))
+}
+
+/// Conservatively regroup integrated flux with an explicit flat-per-eV model.
+/// Returns flux, model, source_total, target_total and zero-based split_source_groups.
+/// Both ascending eV grids must have identical endpoints. Conserves flux, not rates.
+#[pyfunction]
+#[pyo3(signature = (source_bounds_ev, flux, target_bounds_ev, *, model))]
+fn alara_regroup_flux(
+    py: Python<'_>,
+    source_bounds_ev: Vec<f64>,
+    flux: Vec<f64>,
+    target_bounds_ev: Vec<f64>,
+    model: &str,
+) -> PyResult<Py<PyAny>> {
+    if model != "flat_energy" {
+        return Err(PyValueError::new_err("model must be flat_energy"));
+    }
+    let result = py
+        .detach(move || {
+            nucleide_alara_io::regroup_flux_flat_energy(&source_bounds_ev, &flux, &target_bounds_ev)
+        })
+        .map_err(ala_err)?;
+    let out = pyo3::types::PyDict::new(py);
+    out.set_item("flux", result.flux)?;
+    out.set_item("model", result.model)?;
+    out.set_item("source_total", result.source_total)?;
+    out.set_item("target_total", result.target_total)?;
+    out.set_item("split_source_groups", result.split_source_groups)?;
+    Ok(out.into_any().unbind())
 }
 
 fn ala_err(e: nucleide_alara_io::Error) -> PyErr {
@@ -2569,6 +2601,30 @@ fn deck_to_py(py: Python<'_>, deck: &nucleide_alara_io::AlaraDeck) -> Py<PyAny> 
         .ok();
     let mixtures: Vec<Py<PyAny>> = deck.mixtures.iter().map(|m| mixture_to_py(py, m)).collect();
     out.set_item("mixtures", mixtures).ok();
+    let loading: Vec<Py<PyAny>> = deck
+        .mat_loading
+        .iter()
+        .flat_map(|b| &b.entries)
+        .map(|e| {
+            let d = PyDict::new(py);
+            d.set_item("zone", &e.zone).ok();
+            d.set_item("mixture", &e.mixture).ok();
+            d.into_any().unbind()
+        })
+        .collect();
+    out.set_item("mat_loading", loading).ok();
+    let volumes: Vec<Py<PyAny>> = deck
+        .volumes
+        .iter()
+        .flat_map(|b| &b.entries)
+        .map(|e| {
+            let d = PyDict::new(py);
+            d.set_item("zone", &e.zone).ok();
+            d.set_item("volume_cm3", e.volume).ok();
+            d.into_any().unbind()
+        })
+        .collect();
+    out.set_item("volumes", volumes).ok();
     let fluxes: Vec<Py<PyAny>> = deck.fluxes.iter().map(|f| fluxdef_to_py(py, f)).collect();
     out.set_item("fluxes", fluxes).ok();
     out.set_item(
@@ -4151,18 +4207,26 @@ fn r2s_assemble(
 ///
 /// `totals` carries one total source strength per zone; with `split=False`
 /// every voxel copies its zone total (tag-as-attribute), with `split=True`
-/// each zone total is divided conservatively over its voxels. Returns a
+/// each zone total is divided conservatively over its voxels. Optional
+/// keyword-only `voxel_volumes_cm3` requires split and assumes uniform
+/// density within each zone; outputs are integrated strengths. Returns a
 /// dict with `n_zones`, `zone_of_voxel`, `source_strength`,
 /// `decay_time_s` (all shutdown `0.0`), and `total`. Thin wrapper over
 /// `nucleide-r2s` `tag_zone_totals` / `split_zone_totals`.
 #[pyfunction]
-#[pyo3(signature = (totals, zone_of_voxel, split=false))]
+#[pyo3(signature = (totals, zone_of_voxel, split=false, *, voxel_volumes_cm3=None))]
 fn r2s_tag_zone_strength(
     py: Python<'_>,
     totals: Vec<f64>,
     zone_of_voxel: Vec<usize>,
     split: bool,
+    voxel_volumes_cm3: Option<Vec<f64>>,
 ) -> PyResult<Py<PyAny>> {
+    if voxel_volumes_cm3.is_some() && !split {
+        return Err(PyValueError::new_err(
+            "voxel_volumes_cm3 requires split=True",
+        ));
+    }
     let zones: Vec<nucleide_r2s::photon::ZonePhotonSource> = totals
         .into_iter()
         .enumerate()
@@ -4178,7 +4242,10 @@ fn r2s_tag_zone_strength(
             }
         })
         .collect();
-    let tags = if split {
+    let volume_weighted = voxel_volumes_cm3.is_some();
+    let tags = if let Some(volumes) = voxel_volumes_cm3 {
+        nucleide_r2s::split_zone_totals_by_volume(&zones, &zone_of_voxel, &volumes)
+    } else if split {
         nucleide_r2s::tags::split_zone_totals(&zones, &zone_of_voxel)
     } else {
         nucleide_r2s::tags::tag_zone_totals(&zones, &zone_of_voxel)
@@ -4186,13 +4253,17 @@ fn r2s_tag_zone_strength(
     .map_err(|e| PyValueError::new_err(e.to_string()))?;
     use pyo3::types::PyDict;
     let out = PyDict::new(py);
-    out.set_item("n_zones", tags.n_zones).ok();
-    out.set_item("zone_of_voxel", tags.zone_of_voxel.clone())
-        .ok();
-    out.set_item("source_strength", tags.source_strength.clone())
-        .ok();
-    out.set_item("decay_time_s", tags.decay_time_s.clone()).ok();
-    out.set_item("total", tags.total_strength()).ok();
+    let total = if volume_weighted {
+        tags.checked_total_strength()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?
+    } else {
+        tags.total_strength()
+    };
+    out.set_item("n_zones", tags.n_zones)?;
+    out.set_item("zone_of_voxel", &tags.zone_of_voxel)?;
+    out.set_item("source_strength", &tags.source_strength)?;
+    out.set_item("decay_time_s", &tags.decay_time_s)?;
+    out.set_item("total", total)?;
     Ok(out.into_any().unbind())
 }
 
@@ -11077,6 +11148,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(activity, m)?)?;
     m.add_function(wrap_pyfunction!(to_xml, m)?)?;
     m.add_function(wrap_pyfunction!(alara_parse_deck, m)?)?;
+    m.add_function(wrap_pyfunction!(alara_regroup_flux, m)?)?;
     m.add_function(wrap_pyfunction!(alara_parse_flux, m)?)?;
     m.add_function(wrap_pyfunction!(alara_parse_output, m)?)?;
     m.add_function(wrap_pyfunction!(alara_expand_schedule, m)?)?;

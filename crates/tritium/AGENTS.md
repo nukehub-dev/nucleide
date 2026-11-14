@@ -149,9 +149,16 @@ facade, the `TritiumBreakthrough` demo, and
   only; bindings depend on it, never the reverse.
 - No FESTIM/FEniCS/dolfinx dependency (kernel stays pure 1D finite
   volume). The black-box parity probe `validation/tritium_vs_festim.py`
-  runs Nucleide vs FESTIM 2.1 in the probe-only `dolfinx/dolfinx:stable`
-  image (docker route; loud SKIP outside); its gates never tune kernel
-  tolerances or scope.
+  runs Nucleide vs FESTIM 2.1 in the digest-pinned probe-only DOLFINx
+  image (Docker route; loud SKIP outside); its gates never tune kernel
+  tolerances or scope. F5 covers the trap-free recombination outlet using
+  the independent scalar steady root, three-level separate space/time
+  refinement, transient flux/profile parity and exported-history mass
+  balance. Its atomic-unit conversion and two-reactant surface convention
+  are probe-only; the Rust kernel retains molar SI inputs. Validation
+  pins, thresholds and reproduction commands live in `validation/README.md`.
+  The probe prefers an installed rebuilt release wheel; a checkout extension
+  is a fallback only when no package is installed.
 
 ## Verification
 

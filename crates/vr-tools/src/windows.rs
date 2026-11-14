@@ -877,8 +877,9 @@ mod tests {
             22 % dims[2],
         );
         let ve_w = (k * dims[1] + j) * dims[0] + i;
-        for g in 0..3 {
-            assert!((w.ww[0][g][ve_w] - 0.5).abs() < 1e-12);
+        assert_eq!(w.ww[0].len(), 3);
+        for group in &w.ww[0] {
+            assert!((group[ve_w] - 0.5).abs() < 1e-12);
         }
 
         let openmc = emit_openmc_weight_windows(&output, t, &OpenMcOptions::default()).unwrap();

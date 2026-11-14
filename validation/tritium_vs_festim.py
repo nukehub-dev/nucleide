@@ -14,23 +14,20 @@ Two parts:
    is computed independently on both sides (Nucleide fine/coarse plus
    FESTIM fine/coarse when the oracle runs) and compared on J_ss,
    J(t), t_lag, and the steady c(x) profile. Recombination ends are
-   excluded by design: the Nucleide exact-face law versus the FESTIM
-   surface-flux formulation is an uncharacterized mismatch zone.
+   covered separately by F5: a trap-free outlet with scalar steady
+   oracle, atomic-unit conversion, independent three-level space/time
+   refinement, transient flux/profile parity and integrated mass balance.
 
 Probe environment (never the main validation container, never the Rust
 workspace): FESTIM 2.1 needs DOLFINx, so the probe runs in the separate
-probe-only image ``dolfinx/dolfinx:stable`` (see ``validation/README.md``,
-section "Tritium/FESTIM parity probe (probe-only image)"). The image has
-no Rust toolchain, so run ``maturin develop`` first to write
-``python/nucleide/_internal.abi3.so`` into the mounted checkout::
+digest-pinned probe-only DOLFINx image (see ``validation/README.md``,
+section "Tritium/FESTIM parity probe (probe-only image)"). Install the freshly
+rebuilt release wheel in that image before running the probe. When no installed
+Nucleide is available, a checkout built with ``maturin develop`` is an explicit
+fallback. An installed wheel must never be shadowed by a stale checkout binary.
 
-    maturin develop
-    docker run --rm -v "$PWD:/work" -w /work dolfinx/dolfinx:stable \\
-        bash -c "pip install festim==2.1 && python validation/tritium_vs_festim.py"
-
-Outside that image ``import festim`` fails (or carries the wrong version)
-and every F leg is reported as SKIP with its reason — never silently,
-never as a pass. FESTIM is used black-box only: this script drives the
+Absent optional FESTIM produces a named SKIP. Installed but broken oracles, wrong versions,
+and failed calculations produce FAIL. FESTIM is used black-box only: this script drives the
 documented v2.1 surface (``HydrogenTransportProblem`` /
 ``HydrogenTransportProblemDiscontinuous``, ``Mesh1D``,
 ``Material(D_0, E_D)``, ``Species`` + ``Reaction`` for McNabb-Foster,
@@ -50,23 +47,29 @@ never PASS.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.metadata
+import importlib.util
 import inspect
+import json
 import math
 import platform
 import sys
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-# Probe-image bootstrap: inside the probe-only dolfinx image the only
-# nucleide on disk is this repo's ``python/`` tree (no maturin-develop
-# editable install), so add it to sys.path (harmless when already present).
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
+# Prefer the installed release wheel in both validation images. A local
+# checkout extension is a fallback only when the package is absent; broken
+# installed packages must fail instead of silently loading another binary.
+if importlib.util.find_spec("nucleide") is None:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 
 import common
 import numpy as np
 from common import Report, fmt, rel_diff
+from festim_cache import cached_run, runtime_identity
 
 import nucleide.tritium as tri
 
@@ -515,14 +518,15 @@ def _nucleide_self_convergence() -> tuple[list[list[str]], list[str], dict[str, 
 
 
 def _require_festim() -> Any:
-    """Import FESTIM 2.1 or raise ProbeSkip with the loud reason."""
-    try:
-        import festim
-    except Exception as exc:  # noqa: BLE001 — absence is a recorded skip, not a crash
-        raise ProbeSkip(f"FESTIM unavailable: {exc}") from exc
+    """Skip only an absent optional oracle; installed/broken inputs fail."""
+    if importlib.util.find_spec("festim") is None:
+        raise ProbeSkip("FESTIM not installed (optional oracle)")
+    festim = importlib.import_module("festim")
     version = getattr(festim, "__version__", None)
-    if version is not None and not str(version).startswith("2.1"):
-        raise ProbeSkip(f"FESTIM version {version} != 2.1 (probe is pinned to 2.1)")
+    if version is None:
+        version = importlib.metadata.version("festim")
+    if str(version).split(".")[:2] != ["2", "1"]:
+        raise ValueError(f"FESTIM version {version} != required 2.1")
     return festim
 
 
@@ -533,7 +537,7 @@ def _festim_run(festim: Any, model: Any, flux_export: Any, profile_exports: list
     model.run()
     n = len(flux_export.data)
     if n < 2:
-        raise ProbeSkip("FESTIM flux export has fewer than 2 timesteps")
+        raise ValueError("FESTIM flux export has fewer than 2 timesteps")
     if len(model.timesteps) >= 2:
         m = min(len(model.timesteps), n)
         times = [float(t) for t in model.timesteps[:m]]
@@ -555,7 +559,7 @@ def _festim_run(festim: Any, model: Any, flux_export: Any, profile_exports: list
     cs: list[float] = []
     for profile in profile_exports:
         if profile.x is None or not profile.data:
-            raise ProbeSkip("FESTIM profile export is empty")
+            raise ValueError("FESTIM profile export is empty")
         for xv, cv in zip(profile.x, profile.data[-1], strict=True):
             xs.append(float(xv))
             cs.append(float(cv))
@@ -826,27 +830,50 @@ def probe_legs(fine_legs: dict[str, dict]) -> tuple[list[list[str]], list[str], 
         note = f"FESTIM probe legs SKIPPED: {exc}"
         print(note)
         for leg in ("F1", "F2", "F3", "F4"):
-            rows.append([f"{leg} probe legs", "FESTIM unavailable", "SKIP"])
+            rows.append([f"{leg} probe legs", "FESTIM unavailable", "available oracle", "SKIP"])
         notes.append(note)
+        return rows, notes, self_rows
+    except Exception as exc:
+        rows.append(
+            [
+                "FESTIM oracle configuration",
+                repr(exc),
+                "working 2.1 oracle",
+                _check(False, "F1–F4 oracle configuration"),
+            ]
+        )
+        notes.append(f"FESTIM configured oracle failed: {exc!r}")
         return rows, notes, self_rows
     version = getattr(festim, "__version__", "unknown")
     notes.append(f"FESTIM probe running: version {version} (pinned 2.1, black-box).")
     for leg in ("F1", "F2", "F3", "F4"):
         dt_fine, dt_coarse = DT_FESTIM_F4 if leg == "F4" else (DT_FESTIM_FINE, DT_FESTIM_COARSE)
         try:
+            print(f"{leg} FESTIM fine: nodes={MESH_FINE}, dt={dt_fine:g}, starting", flush=True)
             fine_festim = _festim_leg(festim, leg, MESH_FINE, dt_fine)
+            print(
+                f"{leg} FESTIM coarse: nodes={MESH_COARSE}, dt={dt_coarse:g}, starting", flush=True
+            )
             coarse_festim = _festim_leg(festim, leg, MESH_COARSE, dt_coarse)
+            print(f"{leg} FESTIM fine/coarse completed", flush=True)
         except ProbeSkip as exc:
             note = f"{leg} probe leg SKIPPED: {exc}"
             print(note)
             notes.append(note)
-            rows.append([f"{leg} probe leg", "SKIP", "SKIP"])
+            rows.append([f"{leg} probe leg", str(exc), "available oracle", "SKIP"])
             continue
         except Exception as exc:  # noqa: BLE001 — probe failure is recorded, never a pass
-            note = f"{leg} probe leg SKIPPED: FESTIM run failed: {exc}"
+            note = f"{leg} probe leg FAILED: FESTIM run failed: {exc}"
             print(note)
             notes.append(note)
-            rows.append([f"{leg} probe leg", "SKIP", "SKIP"])
+            rows.append(
+                [
+                    f"{leg} probe leg",
+                    str(exc),
+                    "successful calculation",
+                    _check(False, f"{leg} execution"),
+                ]
+            )
             continue
         d_jss = rel_diff(fine_festim["jss"], coarse_festim["jss"])
         self_rows.append(
@@ -906,6 +933,436 @@ def probe_legs(fine_legs: dict[str, dict]) -> tuple[list[list[str]], list[str], 
     return rows, notes, self_rows
 
 
+# F5 uses atomic units only in FESTIM; all returned quantities are molar SI.
+AVOGADRO = 6.02214076e23
+F5_KR = 1.0e-6
+F5_TD = L * L / D
+F5_TIMES = [fraction * F5_TD for fraction in (0.2, 0.5, 1.0, 2.0, 5.0)]
+F5_LEVELS = [(50, 0.25), (100, 0.25), (200, 0.25), (200, 0.5), (200, 0.125)]
+F5_IMAGE = "dolfinx/dolfinx@sha256:2ae4bfbc0d9077268880faf04c72750528bee986c94ab223a2c159969bd56fa8"
+F5_INITIAL_DT = 1.0e-6
+F5_GROWTH = 1.02
+
+
+def _f5_oracle() -> tuple[float, float]:
+    a = D / L
+    face = 2.0 * a * C0 / (a + math.sqrt(a * a + 4.0 * F5_KR * a * C0))
+    return face, a * (C0 - face)
+
+
+def _f5_reduce(times, flux_left, flux_right, x, profiles, inventory) -> dict:
+    """Reduce exported histories without substituting a boundary-law flux.
+
+    Integrate outward-positive inlet/outlet exports on the actual output
+    grid. Independently decimate that grid by 2 and 4 to report temporal
+    quadrature sensitivity, with the solver trajectory held fixed.
+    """
+    t = np.asarray(times, dtype=float)
+    jl, jr = np.asarray(flux_left, dtype=float), np.asarray(flux_right, dtype=float)
+    c = np.asarray(profiles, dtype=float)
+    inv = np.asarray(inventory, dtype=float)
+    if len(t) < 5 or t[0] != 0.0 or np.any(np.diff(t) <= 0.0):
+        raise ValueError("F5 requires strictly ascending exported times starting at zero")
+    if not (len(t) == len(jl) == len(jr) == len(c) == len(inv)):
+        raise ValueError("F5 history export lengths differ")
+    if not all(np.all(np.isfinite(v)) for v in (t, jl, jr, c, inv)):
+        raise ValueError("F5 nonfinite history export")
+    # Dimensional arithmetic (5*L*L/D) and exact dyadic output steps can
+    # represent the same endpoint a few ulps apart. Permit eight endpoint
+    # ulps only; do not accept a missing timestep or extend a trajectory.
+    requested_end = F5_TIMES[-1]
+    endpoint_slack = 8.0 * math.ulp(max(abs(float(t[-1])), abs(requested_end)))
+    if requested_end - t[-1] > endpoint_slack:
+        raise ValueError(
+            f"F5 history ends at {t[-1]:.17g} s before requested "
+            f"{requested_end:.17g} s (difference {requested_end - t[-1]:.17g} s, "
+            f"roundoff allowance {endpoint_slack:.17g} s)"
+        )
+
+    # Explicit trapezoidal formula works on NumPy 1.x and 2.x.
+    def integrate(values, indices):
+        return float(np.sum(np.diff(t[indices]) * (values[indices][1:] + values[indices][:-1]) / 2))
+
+    indices = np.arange(len(t))
+    inward = -jl
+    net = inward - jr
+    net_integrals = []
+    for stride in (1, 2, 4):
+        selected = np.unique(np.append(indices[::stride], indices[-1]))
+        net_integrals.append(integrate(net, selected))
+    delta = float(inv[-1] - inv[0])
+    throughput = integrate(np.abs(inward) + np.abs(jr), indices)
+    norm = max(abs(delta), throughput, 1e-30)
+    balance = abs(delta - net_integrals[0]) / norm
+    quadrature = [abs(net_integrals[i] - net_integrals[i + 1]) / norm for i in (0, 1)]
+    _, jss = _f5_oracle()
+    sample_profiles = [
+        [float(np.interp(at, t, c[:, column])) for column in range(c.shape[1])] for at in F5_TIMES
+    ]
+    end_flux = float(np.interp(requested_end, t, jr))
+    late = float(np.interp(0.9 * requested_end, t, jr))
+    return {
+        "flux_t": np.interp(F5_TIMES, t, jr).tolist(),
+        "profiles": sample_profiles,
+        "x": list(x),
+        "c": sample_profiles[-1],
+        "jss": end_flux,
+        "late_change": abs(end_flux - late) / jss,
+        "balance": balance,
+        "quadrature": quadrature,
+        "grid": f"{len(t)} exported times, [{t[0]:g}, {t[-1]:g}] s, "
+        f"dt range [{min(np.diff(t)):g}, {max(np.diff(t)):g}] s",
+        "inventory_change": delta,
+        "net_integral": net_integrals[0],
+        "throughput": throughput,
+        "requested_end": requested_end,
+        "actual_end": float(t[-1]),
+        "endpoint_roundoff_allowance": endpoint_slack,
+    }
+
+
+def _f5_nucleide(cells: int, dt: float) -> dict:
+    # The transient API accepts positive output times only; reconstruct the
+    # known initial state separately, without asking the solver to step to 0.
+    # Resolve the incompatible Dirichlet initial layer before the nominal
+    # refinement step is reached. Fine output spacing forces fine solver
+    # steps too, avoiding unresolved CN modes in the inlet flux integral.
+    times = []
+    at = 0.0
+    step = F5_INITIAL_DT
+    while at < F5_TIMES[-1]:
+        at = min(F5_TIMES[-1], at + step)
+        times.append(at)
+        step = min(dt, step * F5_GROWTH)
+    out = tri.transient(
+        L,
+        cells,
+        D,
+        {"kind": "dirichlet", "value": C0},
+        {"kind": "recombination", "rate": F5_KR},
+        times,
+        dt_max=dt,
+        rtol=1e-10,
+        atol=1e-14,
+    )
+    profiles = np.vstack((np.zeros(cells), np.asarray(out["mobile"])))
+    centres = ((np.arange(cells) + 0.5) * L / cells).tolist()
+    # Cell-centred FV boundary trace at t=0: the zero first-cell value is
+    # half a cell from the imposed C0 face, so the outward left flux is
+    # 2D*(0-C0)/dx. The zero right cell gives a zero recombination face.
+    # This is the same hand-derived startup balance used by crate gate G6c;
+    # setting the initial inlet flux to zero would corrupt the CN integral.
+    initial_left_flux = -2.0 * D * C0 / (L / cells)
+    return _f5_reduce(
+        [0.0, *out["times"]],
+        [initial_left_flux, *out["flux_left"]],
+        [0.0, *out["flux_right"]],
+        centres,
+        profiles,
+        np.sum(profiles, axis=1) * L / cells,
+    )
+
+
+def _f5_festim(festim: Any, cells: int, dt: float, *, steady: bool = False) -> dict:
+    """Public v2.1 reaction API: two identical reactants consume two atoms."""
+    model = festim.HydrogenTransportProblem()
+    model.mesh = festim.Mesh1D(vertices=np.linspace(0.0, L, cells + 1))
+    volume = festim.VolumeSubdomain1D(
+        id=1, borders=[0.0, L], material=festim.Material(D_0=D, E_D=0.0)
+    )
+    left = festim.SurfaceSubdomain1D(id=1, x=0.0)
+    right = festim.SurfaceSubdomain1D(id=2, x=L)
+    species = festim.Species("T")
+    model.subdomains = [volume, left, right]
+    model.species = [species]
+    model.temperature = 500.0
+    model.boundary_conditions = [
+        festim.FixedConcentrationBC(subdomain=left, value=C0 * AVOGADRO, species=species),
+        festim.SurfaceReactionBC(
+            reactant=[species, species],
+            gas_pressure=0.0,
+            k_r0=F5_KR / (2.0 * AVOGADRO),
+            E_kr=0.0,
+            k_d0=0.0,
+            E_kd=0.0,
+            subdomain=right,
+        ),
+    ]
+    settings = {
+        "atol": AVOGADRO * 1e-14,
+        "rtol": 1e-10,
+        "transient": not steady,
+        "element_degree": 2,
+    }
+    if not steady:
+        settings.update(
+            # FESTIM 2.1 treats nearby milestones as reached and may stop
+            # slightly before final_time. Solve a guard interval so exported
+            # times bracket every requested sample; never extrapolate.
+            final_time=F5_TIMES[-1] + 2.0 * dt,
+            stepsize=festim.Stepsize(
+                initial_value=F5_INITIAL_DT,
+                growth_factor=F5_GROWTH,
+                cutback_factor=0.8,
+                target_nb_iterations=100,
+                max_stepsize=dt,
+                milestones=list(F5_TIMES),
+            ),
+        )
+    model.settings = festim.Settings(**settings)
+    inlet = festim.SurfaceFlux(field=species, surface=left)
+    outlet = festim.SurfaceFlux(field=species, surface=right)
+    profile = festim.Profile1DExport(field=species, subdomain=volume)
+    inventory_export = festim.TotalVolume(field=species, volume=volume)
+    model.exports = [inlet, outlet, profile, inventory_export]
+    model.show_progress_bar = False
+    model.initialise()
+    model.run()
+    x = np.asarray(profile.x, dtype=float).reshape(-1)
+    order = np.argsort(x)
+    x = x[order]
+    profiles = np.asarray(profile.data, dtype=float)[:, order] / AVOGADRO
+    jl = np.asarray(inlet.data, dtype=float).reshape(-1) / AVOGADRO
+    jr = np.asarray(outlet.data, dtype=float).reshape(-1) / AVOGADRO
+    if steady:
+        return {
+            "jss": float(jr[-1]),
+            "left_flux": float(jl[-1]),
+            "x": x.tolist(),
+            "c": profiles[-1].tolist(),
+        }
+    # Public integral export preserves quadratic FE integration without
+    # assuming Profile1DExport's sample locations are integration nodes.
+    inventory = np.asarray(inventory_export.data, dtype=float).reshape(-1) / AVOGADRO
+    return _f5_reduce(model.timesteps, jl, jr, x, profiles, inventory)
+
+
+def _f5_flux_error(first: dict, second: dict) -> float:
+    _, jss = _f5_oracle()
+    return max(
+        abs(a - b) / max(abs(b), 1e-3 * jss)
+        for a, b in zip(first["flux_t"], second["flux_t"], strict=True)
+    )
+
+
+def _f5_profile_error(first: dict, second: dict) -> float:
+    # Common physical grid inside both domains; do not clamp cell centres
+    # onto faces. Concentrations are normalized by the prescribed C0.
+    grid = np.linspace(
+        max(first["x"][0], second["x"][0]), min(first["x"][-1], second["x"][-1]), 201
+    )
+    return max(
+        float(np.max(np.abs(np.interp(grid, first["x"], a) - np.interp(grid, second["x"], b)))) / C0
+        for a, b in zip(first["profiles"], second["profiles"], strict=True)
+    )
+
+
+@lru_cache(maxsize=1)
+def _f5_runtime_identity() -> tuple[dict[str, Any] | None, str]:
+    """Snapshot the loaded solver environment once; keep it fixed during a probe."""
+    return runtime_identity()
+
+
+def _f5_cached_run(code: str, cells: int, dt: float, run, *, steady: bool = False) -> dict:
+    """Cache successful reductions, never acceptance verdicts.
+
+    Require actual runner image identity and loaded native-library hashes,
+    plus source, extension, model inputs and package versions. Unverified
+    environments calculate fresh results without persistent cache access.
+    Cached numbers are always passed through the current acceptance gates.
+    """
+    import nucleide._internal as extension
+
+    identity = {
+        "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "facade_sha256": hashlib.sha256(Path(tri.__file__).read_bytes()).hexdigest(),
+        "extension_sha256": hashlib.sha256(Path(extension.__file__).read_bytes()).hexdigest(),
+        "code": code,
+        "cells": cells,
+        "dt": dt,
+        "steady": steady,
+        "parameters": [L, D, C0, F5_KR, AVOGADRO, F5_TIMES, F5_IMAGE, F5_INITIAL_DT, F5_GROWTH],
+        "python": platform.python_version(),
+        "packages": {
+            name: common._dist_version(name)
+            for name in (
+                "festim",
+                "fenics-dolfinx",
+                "scifem",
+                "io4dolfinx",
+                "fenicsx-compat",
+                "numpy",
+            )
+        },
+    }
+    cache = Path(__file__).resolve().parent / ".cache" / "f5-runs"
+    label = f"F5 {code} cells={cells} dt={dt:g} steady={steady}"
+    runtime, reason = _f5_runtime_identity()
+    if runtime is None:
+        print(f"{label}: {reason}", flush=True)
+    return cached_run(cache, identity, runtime, run, label=label)
+
+
+def recombination_probe() -> tuple[list[list[str]], list[str]]:
+    """F5: analytic, three-level independent refinement and balance gates."""
+    rows: list[list[str]] = []
+    notes = [
+        "F5 trap-free recombination: L=1e-3 m, D=1e-9 m²/s, C0=1 mol/m³, "
+        "Kr=1e-6 m⁴/(mol s), initial concentration zero. Outputs at "
+        "t/tD={0.2,0.5,1,2,5}; no Dirichlet time-lag oracle. "
+        "FESTIM atomic units: c_atom=NA*c_mol, J_atom=NA*J_mol, "
+        "K_atom=Kr/NA; two-reactant reaction coefficient Kr/(2*NA), "
+        "NA=6.02214076e23 mol⁻¹. SurfaceFlux is outward-positive, "
+        "so inlet throughput is minus the left export. Quadratic elements "
+        "and atol=NA*1e-14, rtol=1e-10; physical gates unchanged.",
+        "F5 startup resolution: each solver starts at dt=1e-6 s, grows "
+        "by at most 1.02 per step to its specified dt cap, and exports "
+        "the complete actual history. This resolves the Dirichlet initial "
+        "layer for the inlet-flux mass balance; temporal refinement varies "
+        "the subsequent cap independently. Flux quadrature is refined "
+        "separately by stride 4→2→1 on each computed history. Successful "
+        "reduced runs may be cached under validation/.cache/f5-runs only "
+        "with actual runner image identity, native-library hashes, environment "
+        "settings, package versions and source/extension/model fingerprints. "
+        "Unverified environments calculate fresh results; acceptance verdicts "
+        "are always recomputed from the numbers.",
+    ]
+    face, jss = _f5_oracle()
+    try:
+        festim = _require_festim()
+    except ProbeSkip as exc:
+        rows.append(["F5 external recombination probe", str(exc), "available oracle", "SKIP"])
+        notes.append(f"F5 SKIP: {exc}")
+        return rows, notes
+    except Exception as exc:  # noqa: BLE001 — installed oracle errors must fail
+        rows.append(
+            [
+                "F5 oracle configuration",
+                repr(exc),
+                "working FESTIM 2.1",
+                _check(False, "F5 oracle configuration"),
+            ]
+        )
+        notes.append(f"F5 FAIL: installed oracle could not be loaded: {exc!r}")
+        return rows, notes
+    notes.append(
+        f"F5 required image: {F5_IMAGE}; Python {platform.python_version()}; "
+        + ", ".join(
+            f"{name}={common._dist_version(name)}"
+            for name in ("festim", "fenics-dolfinx", "scifem", "io4dolfinx", "numpy")
+        )
+    )
+    runtime, reason = _f5_runtime_identity()
+    if runtime is None:
+        notes.append(f"F5 persistent cache disabled: {reason}; all calculations run fresh.")
+    else:
+        digest = hashlib.sha256(json.dumps(runtime, sort_keys=True).encode()).hexdigest()
+        notes.append(
+            f"F5 actual runner image ID: {runtime['image_id']}; runtime fingerprint "
+            f"SHA-256 {digest}. The environment is held fixed during this probe."
+        )
+
+    def gate(label, error, threshold):
+        rows.append(
+            [
+                f"F5 {label}",
+                fmt(error),
+                f"< {threshold:g}",
+                _check(math.isfinite(error) and error < threshold, f"F5 {label}"),
+            ]
+        )
+
+    try:
+        steady = _f5_cached_run(
+            "FESTIM", 50, 0.25, lambda: _f5_festim(festim, 50, 0.25, steady=True), steady=True
+        )
+        gate("FESTIM steady scalar flux", abs(steady["jss"] - jss) / jss, 0.02)
+        expected = C0 + (face - C0) * np.asarray(steady["x"]) / L
+        gate(
+            "FESTIM steady scalar profile", float(np.max(np.abs(steady["c"] - expected))) / C0, 0.02
+        )
+        gate(
+            "FESTIM steady reaction law",
+            abs(steady["jss"] - F5_KR * steady["c"][-1] ** 2) / jss,
+            0.02,
+        )
+        gate("FESTIM steady outward signs", abs(steady["left_flux"] + steady["jss"]) / jss, 0.02)
+        native = [
+            _f5_cached_run(
+                "Nucleide", cells, dt, lambda cells=cells, dt=dt: _f5_nucleide(cells, dt)
+            )
+            for cells, dt in F5_LEVELS
+        ]
+        external = [
+            _f5_cached_run(
+                "FESTIM", cells, dt, lambda cells=cells, dt=dt: _f5_festim(festim, cells, dt)
+            )
+            for cells, dt in F5_LEVELS
+        ]
+        converged = True
+        # Levels 0,1,2 isolate mesh; levels 3,2,4 isolate timestep.
+        for name, runs in (("Nucleide", native), ("FESTIM", external)):
+            for label, a, b in (
+                ("space 50→100", 0, 1),
+                ("space 100→200", 1, 2),
+                ("time .5→.25", 3, 2),
+                ("time .25→.125", 2, 4),
+            ):
+                flux_error = _f5_flux_error(runs[a], runs[b])
+                profile_error = _f5_profile_error(runs[a], runs[b])
+                ok = flux_error < 0.03 / 3 and profile_error < 0.02 / 3
+                converged = converged and ok
+                rows.append(
+                    [
+                        f"F5 {name} {label} J(t)/profile",
+                        f"{flux_error:.6e} / {profile_error:.6e}",
+                        "< 0.01 / 0.006667",
+                        "PASS" if ok else "INCONCLUSIVE",
+                    ]
+                )
+            final = runs[-1]
+            gate(f"{name} scalar flux", abs(final["jss"] - jss) / jss, 0.02)
+            expected = C0 + (face - C0) * np.asarray(final["x"]) / L
+            gate(f"{name} scalar profile", float(np.max(np.abs(final["c"] - expected))) / C0, 0.02)
+            gate(f"{name} late flux change (0.9 tend→tend)", final["late_change"], 0.02 / 3)
+            gate(f"{name} inventory balance", final["balance"], 1e-3)
+            for index, error in enumerate(final["quadrature"]):
+                gate(
+                    f"{name} flux quadrature stride {2**index}→{2 ** (index + 1)}", error, 1e-3 / 3
+                )
+            notes.append(
+                f"F5 {name} balance grid: {final['grid']}; inventory change "
+                f"{final['inventory_change']:.12e} mol/m², net integrated inlet "
+                f"minus outlet {final['net_integral']:.12e} mol/m², "
+                f"absolute throughput {final['throughput']:.12e} mol/m². "
+                f"Requested end {final['requested_end']:.17g} s; actual end "
+                f"{final['actual_end']:.17g} s; endpoint roundoff allowance "
+                f"{final['endpoint_roundoff_allowance']:.6e} s. "
+                "Balance uses the exported initial inventory (including the "
+                "FEM boundary trace) and actual exported time grid, not an "
+                "assumed zero boundary-gradient sample."
+            )
+        if converged:
+            for index, (cells, dt) in enumerate(F5_LEVELS):
+                gate(
+                    f"cross-code J(t), cells={cells}, dt={dt}",
+                    _f5_flux_error(native[index], external[index]),
+                    0.03,
+                )
+            gate("cross-code transient profiles", _f5_profile_error(native[-1], external[-1]), 0.02)
+        else:
+            rows.append(
+                ["F5 cross-code parity", "refinement not established", "converged", "INCONCLUSIVE"]
+            )
+            _check(False, "F5 self-convergence inconclusive")
+    except Exception as exc:  # noqa: BLE001 — configured solver failure must fail
+        rows.append(
+            ["F5 execution", repr(exc), "successful calculation", _check(False, "F5 execution")]
+        )
+        notes.append(f"F5 FAIL: configured probe calculation failed: {exc!r}")
+    return rows, notes
+
+
 def main() -> int:
     report = Report(
         "tritium_festim", "Tritium 1D kernel vs FESTIM 2.1 probe (`tritium_vs_festim.py`)"
@@ -914,13 +1371,21 @@ def main() -> int:
         "Black-box parity probe between the `nucleide.tritium` 1D "
         "diffusion-trapping kernel and FESTIM 2.1 (Apache-2.0, "
         "`festim==2.1`, v2.x API), driven in the probe-only "
-        "`dolfinx/dolfinx:stable` image (docker; never the main validation "
+        "digest-pinned DOLFINx image (docker; never the main validation "
         "container, never the Rust workspace). Progression F1 trap-free "
         "Dirichlet-Dirichlet, F2 one McNabb-Foster trap, F3 Sieverts ends, "
-        "F4 two-layer stack; recombination ends are excluded. Always-run "
+        "F4 two-layer stack; F5 independently refined trap-free recombination outlet. Always-run "
         "legs VV Val-1da (analytic permeation) and M1 (manufactured-solution "
         "order) gate the Nucleide side everywhere; every FESTIM leg SKIPs "
         "loudly with its reason outside the probe image."
+    )
+    import nucleide._internal as compiled
+
+    extension = Path(compiled.__file__).resolve()
+    report.prose(
+        f"Loaded Nucleide compiled version {compiled.version()}; extension "
+        f"`{extension}`; SHA-256 `{hashlib.sha256(extension.read_bytes()).hexdigest()}`. "
+        "An installed wheel takes precedence over a checkout extension."
     )
     val_rows, val_notes = _val1da_nucleide()
     report.table(["Gate", "Value", "Expected", "Status"], val_rows)
@@ -939,6 +1404,10 @@ def main() -> int:
         report.prose(note)
     report.table(["Cross-code gate", "Value", "Gate", "Status"], probe_rows)
     for note in probe_notes:
+        report.prose(note)
+    f5_rows, f5_notes = recombination_probe()
+    report.table(["Recombination gate", "Value", "Gate", "Status"], f5_rows)
+    for note in f5_notes:
         report.prose(note)
     report.emit()
 

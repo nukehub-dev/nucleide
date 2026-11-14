@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import sys
 import time
 from pathlib import Path
@@ -32,23 +34,42 @@ FALLBACK_DEPLETE_E2E_US = 7.8794e-05
 def _criterion_mean_s(bench_dir: Path) -> float | None:
     """Read the mean wall time (seconds) from a Criterion estimates.json."""
     estimates = bench_dir / "new" / "estimates.json"
-    try:
-        data = json.loads(estimates.read_text())
-        ns = data["mean"]["point_estimate"]
-        return float(ns) * 1.0e-9
-    except Exception:
+    if not estimates.exists():
         return None
+    data = json.loads(estimates.read_text())
+    ns = float(data["mean"]["point_estimate"])
+    if not math.isfinite(ns) or ns <= 0.0:
+        raise ValueError(f"Invalid Criterion mean in {estimates}: {ns}")
+    return ns * 1.0e-9
 
 
-def native_rust_timings() -> dict[str, float]:
-    """Return native Rust Criterion timings for chain_ni.xml CRAM-48."""
+def native_rust_timings() -> tuple[dict[str, float], list[str]]:
+    """Return native timings with explicit artifact/fallback provenance."""
     criterion_root = REPO_ROOT / "target" / "criterion" / "depletion_ni_chain"
-    cram48 = _criterion_mean_s(criterion_root / "cram48_solve")
-    e2e = _criterion_mean_s(criterion_root / "deplete_end_to_end")
-    return {
-        "cram48_s": cram48 if cram48 is not None else FALLBACK_CRAM48_US,
-        "deplete_e2e_s": e2e if e2e is not None else FALLBACK_DEPLETE_E2E_US,
-    }
+    values: dict[str, float] = {}
+    notes: list[str] = []
+    for key, bench, fallback in (
+        ("cram48_s", "cram48_solve", FALLBACK_CRAM48_US),
+        ("deplete_e2e_s", "deplete_end_to_end", FALLBACK_DEPLETE_E2E_US),
+    ):
+        directory = criterion_root / bench
+        value = _criterion_mean_s(directory)
+        if value is None:
+            values[key] = fallback
+            notes.append(
+                f"Native {bench}: historical fallback estimate; no current Criterion "
+                "artifact is available. This value was not measured by this run."
+            )
+        else:
+            values[key] = value
+            artifact = directory / "new" / "estimates.json"
+            digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+            notes.append(
+                f"Native {bench}: read `{artifact.relative_to(REPO_ROOT)}` "
+                f"(SHA-256 `{digest}`). The container reads these host benchmark "
+                "artifacts; it does not execute the Rust benchmark itself."
+            )
+    return values, notes
 
 
 def time_it(fn, repeats: int = 20) -> float:
@@ -149,7 +170,7 @@ def main() -> int:
     dep = depletion_timings()
     enr = enrichment_timings()
     mag = magic_timings()
-    native = native_rust_timings()
+    native, native_notes = native_rust_timings()
 
     report.table(
         ["Operation", "Nucleide", "Reference code"],
@@ -182,10 +203,12 @@ def main() -> int:
         ],
     )
     report.prose(
-        "The native Rust Criterion numbers were obtained with `cargo bench -p depletion`\n"
-        "and represent the same `chain_ni.xml` CRAM-48 solve without any Python/PyO3 "
-        "overhead."
+        "Native estimates represent the same `chain_ni.xml` CRAM-48 solve without "
+        "Python/PyO3 overhead. Generate fresh artifacts with "
+        "`cargo bench -p nucleide-depletion --bench depletion_bench -- depletion_ni_chain`."
     )
+    for note in native_notes:
+        report.prose(note)
 
     report.emit()
     return 0

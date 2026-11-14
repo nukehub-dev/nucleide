@@ -1493,6 +1493,45 @@ pub fn kde_sample_bandwidths(spec: JsValue) -> Result<JsValue, JsValue> {
 // Activation (ALARA deck/output, FISPACT-II output, R2S workflow)
 // ---------------------------------------------------------------------------
 
+/// Browser-demo cap for both input and output spectral groups.
+const MAX_REGROUP_GROUPS: usize = 200;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AlaraRegroupInput {
+    source_edges_ev: Vec<f64>,
+    source_flux: Vec<f64>,
+    target_edges_ev: Vec<f64>,
+    model: String,
+}
+
+/// Regroup integrated flux on explicit ascending eV edges using the core
+/// flat-per-eV model. Requires `{sourceEdgesEv, sourceFlux, targetEdgesEv,
+/// model: "flat_energy"}`. Input and output are capped at 200 groups each;
+/// errors and conservation reporting come from the same Rust kernel as Python.
+#[wasm_bindgen(js_name = regroupAlaraFlux)]
+pub fn regroup_alara_flux(input: JsValue) -> Result<JsValue, JsValue> {
+    let parsed: AlaraRegroupInput = serde_wasm_bindgen::from_value(input).map_err(js_err)?;
+    if parsed.model != "flat_energy" {
+        return Err(js_err("model must be explicitly set to flat_energy"));
+    }
+    if parsed.source_flux.len() > MAX_REGROUP_GROUPS
+        || parsed.source_edges_ev.len() > MAX_REGROUP_GROUPS + 1
+        || parsed.target_edges_ev.len() > MAX_REGROUP_GROUPS + 1
+    {
+        return Err(js_err(format!(
+            "source and target spectra must not exceed the demo cap of {MAX_REGROUP_GROUPS} groups"
+        )));
+    }
+    let result = nucleide_alara_io::regroup_flux_flat_energy(
+        &parsed.source_edges_ev,
+        &parsed.source_flux,
+        &parsed.target_edges_ev,
+    )
+    .map_err(js_err)?;
+    to_js(&result)
+}
+
 #[derive(Serialize)]
 struct AlaraMixtureJson {
     name: String,
@@ -1689,9 +1728,8 @@ struct R2sSummary {
 
 /// Pick the flux block for `zone`: broadcast a lone flux, else match by name.
 ///
-/// Mirrors `nucleide_r2s::R2sWorkflow::from_deck`, which is not depended on here
-/// because the `r2s` crate enables the `depletion`/`rayon` feature that this
-/// `wasm32-unknown-unknown` build keeps disabled.
+/// Mirrors `nucleide_r2s::R2sWorkflow::from_deck` for the existing browser
+/// workflow summary. The voxel bindings below call the shared crate directly.
 fn r2s_resolve_flux(
     fluxes: &[nucleide_alara_io::deck::FluxDef],
     zone: &str,
@@ -3320,16 +3358,12 @@ pub fn dose_per_gram(comp: JsValue, pathway: &str, source: Option<String>) -> Re
 }
 
 // ---------------------------------------------------------------------------
-// R2S snapshot (local port — no `nucleide-r2s` dependency)
+// R2S snapshot (existing browser adapter)
 // ---------------------------------------------------------------------------
 //
-// `nucleide-r2s` depends on `nucleide-depletion` with default features, which
-// would re-enable Rayon through Cargo feature unification and break this
-// `wasm32-unknown-unknown` build (the crate offers no `default-features = false`
-// switch). The thin snapshot→deck adapter from `nucleide_r2s::snapshot` is
-// therefore re-implemented here over `nucleide-alara-io` deck types plus the
-// nuclei ARMI bridge — the same no-`r2s`-dep precedent as `r2s_from_deck`
-// above. Key rules mirror the `nucleide-emit` ARMI-input rule (elemental keys
+// This existing snapshot→deck adapter predates the Rayon-free workspace
+// dependency configuration. It uses `nucleide-alara-io` deck types plus the
+// nuclei ARMI bridge. Key rules mirror the `nucleide-emit` ARMI-input rule (elemental keys
 // rejected with "expand first", bare `AM242` rejected, explicit `AM242G`
 // ground accepted).
 
@@ -4075,217 +4109,18 @@ pub fn r2s_from_snapshot(snapshot: JsValue) -> Result<JsValue, JsValue> {
 }
 
 // ---------------------------------------------------------------------------
-// R2S voxel tags (local port — no `nucleide-r2s` dependency)
+// R2S voxel tags (shared core; Rayon remains disabled)
 // ---------------------------------------------------------------------------
-//
-// `nucleide-r2s` depends on `nucleide-depletion` with default features, which
-// would re-enable Rayon through Cargo feature unification and break this
-// `wasm32-unknown-unknown` build (the same reason the snapshot adapter above
-// is re-implemented here). The per-voxel tag math from `nucleide_r2s::tags`
-// (`VoxelTags` + `tag_zone_totals` + `split_zone_totals` +
-// `photon_groups_at` + `sum_group_strengths`,
-// `crates/r2s/src/tags.rs:25-197`) is therefore copy-ported here over
-// `nucleide-alara-io` photon types only, drifting with the owner crate by
-// design. Only the ALARA photon types cross this boundary
-// (`PhotonSource`/`PhotonGroup` in `photon_groups_at`/`sum_group_strengths`);
-// the zone-source rows are a local stand-in for
-// `nucleide_r2s::photon::ZonePhotonSource` (only `total()` is needed).
-// Errors surface as strings via `js_err`; dict inputs arrive via
-// `serde_wasm_bindgen` like the snapshot adapter above.
 
-/// Browser-demo cap on voxel counts (mirrors the RTFLUX values cap).
+use nucleide_r2s::photon::ZonePhotonSource as VoxelZoneSource;
+use nucleide_r2s::tags::{
+    photon_groups_at as voxel_photon_groups_at, split_zone_totals as voxel_split_zone_totals,
+    split_zone_totals_by_volume, sum_group_strengths as voxel_sum_group_strengths,
+    tag_zone_totals as voxel_tag_zone_totals,
+};
+
+/// Browser-demo cap on voxel and zone counts (mirrors the RTFLUX values cap).
 const MAX_VOXEL_TAGS: usize = 200;
-
-/// Per-voxel photon-source tags over `n_voxels` voxels.
-///
-/// Local port of `nucleide_r2s::tags::VoxelTags`; see the section header.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
-struct VoxelTags {
-    /// Zone count the indices in `zone_of_voxel` refer to.
-    n_zones: usize,
-    /// Zone index per voxel (length `n_voxels`, each `< n_zones`).
-    zone_of_voxel: Vec<usize>,
-    /// Total source strength per voxel (length `n_voxels`).
-    source_strength: Vec<f64>,
-    /// Decay (cooling) time per voxel in seconds (length `n_voxels`).
-    decay_time_s: Vec<f64>,
-}
-
-impl VoxelTags {
-    /// Voxel count.
-    fn n_voxels(&self) -> usize {
-        self.zone_of_voxel.len()
-    }
-
-    /// Build tags from parallel arrays, checking lengths, zone-index
-    /// bounds, and finiteness (non-finite strengths or times are rejected;
-    /// sign conventions stay caller-side).
-    fn new(
-        n_zones: usize,
-        zone_of_voxel: Vec<usize>,
-        source_strength: Vec<f64>,
-        decay_time_s: Vec<f64>,
-    ) -> Result<Self, String> {
-        let n = zone_of_voxel.len();
-        if source_strength.len() != n || decay_time_s.len() != n {
-            return Err(format!(
-                "voxel tag arrays must share one length, found zone_of_voxel={n}, \
-                 source_strength={}, decay_time_s={}",
-                source_strength.len(),
-                decay_time_s.len()
-            ));
-        }
-        if let Some(bad) = zone_of_voxel.iter().position(|z| *z >= n_zones) {
-            return Err(format!(
-                "voxel {bad} names zone {} of only {n_zones}",
-                zone_of_voxel[bad]
-            ));
-        }
-        if source_strength.iter().any(|v| !v.is_finite()) {
-            return Err("voxel source strengths must be finite".to_string());
-        }
-        if decay_time_s.iter().any(|v| !v.is_finite()) {
-            return Err("voxel decay times must be finite".to_string());
-        }
-        Ok(VoxelTags {
-            n_zones,
-            zone_of_voxel,
-            source_strength,
-            decay_time_s,
-        })
-    }
-
-    /// Sum of all voxel strengths.
-    fn total_strength(&self) -> f64 {
-        self.source_strength.iter().sum()
-    }
-
-    /// Sum of strengths over voxels naming `zone`.
-    fn zone_total(&self, zone: usize) -> f64 {
-        self.zone_of_voxel
-            .iter()
-            .zip(&self.source_strength)
-            .filter(|(z, _)| **z == zone)
-            .map(|(_, v)| *v)
-            .sum()
-    }
-}
-
-/// Zone photon-source row (local stand-in for
-/// `nucleide_r2s::photon::ZonePhotonSource`; only `total()` feeds the tag
-/// math below).
-#[derive(Debug, Clone, Deserialize)]
-struct VoxelZoneSource {
-    #[allow(dead_code)] // positional tag math never names zones; kept for the ported shape.
-    zone: String,
-    groups: Vec<f64>,
-}
-
-impl VoxelZoneSource {
-    /// Total photon strength.
-    fn total(&self) -> f64 {
-        self.groups.iter().sum()
-    }
-}
-
-/// Copy each zone total onto every voxel of that zone (tag-as-attribute:
-/// voxel strengths in a zone sum to `count * total`, not `total`).
-/// Decay times are `0.0` (shutdown); voxel count is `zone_of_voxel.len()`.
-fn voxel_tag_zone_totals(
-    zones: &[VoxelZoneSource],
-    zone_of_voxel: &[usize],
-) -> Result<VoxelTags, String> {
-    let totals: Vec<f64> = zones.iter().map(VoxelZoneSource::total).collect();
-    let strengths: Vec<f64> = zone_of_voxel
-        .iter()
-        .map(|z| {
-            totals
-                .get(*z)
-                .copied()
-                .ok_or_else(|| format!("voxel names zone {z} of only {} zones", totals.len()))
-        })
-        .collect::<Result<_, _>>()?;
-    VoxelTags::new(
-        zones.len(),
-        zone_of_voxel.to_vec(),
-        strengths,
-        vec![0.0; zone_of_voxel.len()],
-    )
-}
-
-/// Distribute each zone total conservatively over its voxels (voxel =
-/// `total / voxel count in zone`; zones with no voxels contribute nothing).
-/// The voxel strengths in a zone sum back to the zone total exactly when
-/// the division is exact, and [`VoxelTags::total_strength`] equals the sum
-/// of zone totals over zones owning at least one voxel.
-fn voxel_split_zone_totals(
-    zones: &[VoxelZoneSource],
-    zone_of_voxel: &[usize],
-) -> Result<VoxelTags, String> {
-    let totals: Vec<f64> = zones.iter().map(VoxelZoneSource::total).collect();
-    let mut counts = vec![0usize; zones.len()];
-    for z in zone_of_voxel {
-        counts
-            .get_mut(*z)
-            .ok_or_else(|| format!("voxel names zone {z} of only {} zones", zones.len()))?;
-        counts[*z] += 1;
-    }
-    let strengths: Vec<f64> = zone_of_voxel
-        .iter()
-        .map(|z| totals[*z] / counts[*z] as f64)
-        .collect();
-    VoxelTags::new(
-        zones.len(),
-        zone_of_voxel.to_vec(),
-        strengths,
-        vec![0.0; zone_of_voxel.len()],
-    )
-}
-
-/// Select `.photonSrc` group spectra for caller-named `nuclides` at exactly
-/// `time_s` seconds (exact match, the same convention the R2S shutdown
-/// assembly uses for `0.0`). Unknown nuclides select nothing; `TOTAL`
-/// aggregates are ordinary rows — pass `"TOTAL"` to select them. No
-/// rescaling is applied: strengths keep the file's own normalization and
-/// stay caller-side to interpret.
-fn voxel_photon_groups_at<'a>(
-    photon: &'a nucleide_alara_io::photon::PhotonSource,
-    nuclides: &[&str],
-    time_s: f64,
-) -> Vec<&'a nucleide_alara_io::photon::PhotonGroup> {
-    photon
-        .groups
-        .iter()
-        .filter(|g| g.time_s == time_s && nuclides.contains(&g.nuclide.as_str()))
-        .collect()
-}
-
-/// Add selected group spectra element-wise (ALARA group order preserved).
-/// Empty selection yields an empty spectrum; ragged group counts are an
-/// error. The sums conserve the input total exactly up to float rounding:
-/// `sums.iter().sum()` equals the sum of the inputs' totals.
-fn voxel_sum_group_strengths(
-    groups: &[&nucleide_alara_io::photon::PhotonGroup],
-) -> Result<Vec<f64>, String> {
-    let mut sums: Vec<f64> = Vec::new();
-    for g in groups {
-        if sums.is_empty() {
-            sums.clone_from(&g.strengths);
-        } else {
-            if sums.len() != g.strengths.len() {
-                return Err(format!(
-                    "photon group spectra have ragged group counts ({} vs {})",
-                    sums.len(),
-                    g.strengths.len()
-                ));
-            }
-            for (s, v) in sums.iter_mut().zip(&g.strengths) {
-                *s += *v;
-            }
-        }
-    }
-    Ok(sums)
-}
 
 #[derive(Deserialize)]
 struct VoxelTagsInputJson {
@@ -4294,6 +4129,8 @@ struct VoxelTagsInputJson {
     zone_of_voxel: Vec<usize>,
     #[serde(default)]
     split: bool,
+    #[serde(rename = "voxelVolumesCm3", alias = "voxel_volumes_cm3", default)]
+    voxel_volumes_cm3: Option<Vec<f64>>,
 }
 
 #[derive(Serialize)]
@@ -4309,11 +4146,13 @@ struct VoxelTagsResult {
 
 /// Tag per-voxel source strengths from per-zone totals.
 ///
-/// Dict-in `{totals, zoneOfVoxel, split?}` (snake_case aliases accepted):
+/// Dict-in `{totals, zoneOfVoxel, split?, voxelVolumesCm3?}` (snake_case aliases accepted):
 /// `totals` carries one total source strength per zone; with `split=false`
 /// every voxel copies its zone total (tag-as-attribute), with `split=true`
-/// each zone total is divided conservatively over its voxels (mirrors the
-/// Python `r2s_tag_zone_strength` facade). Voxel counts above
+/// each zone total is divided conservatively over its voxels. Explicit
+/// `voxelVolumesCm3` requires `split=true` and weights the split by positive
+/// volumes, assuming uniform source density within each zone (same core as
+/// Python `r2s_tag_zone_strength`). Voxel and zone counts above
 /// [`MAX_VOXEL_TAGS`] are rejected for the browser demo. Returns
 /// `{n_zones, n_voxels, zone_of_voxel, source_strength, decay_time_s,
 /// zone_totals, total}` with shutdown (`0.0`) decay times.
@@ -4331,6 +4170,14 @@ pub fn voxel_tags_from_totals(input: JsValue) -> Result<JsValue, JsValue> {
             parsed.zone_of_voxel.len()
         )));
     }
+    if parsed.totals.len() > MAX_VOXEL_TAGS {
+        return Err(js_err(format!(
+            "zone count exceeds the demo cap of {MAX_VOXEL_TAGS}"
+        )));
+    }
+    if parsed.voxel_volumes_cm3.is_some() && !parsed.split {
+        return Err(js_err("voxelVolumesCm3 requires split=true"));
+    }
     let zones: Vec<VoxelZoneSource> = parsed
         .totals
         .into_iter()
@@ -4344,13 +4191,19 @@ pub fn voxel_tags_from_totals(input: JsValue) -> Result<JsValue, JsValue> {
             },
         })
         .collect();
-    let tags = if parsed.split {
+    let tags = if let Some(volumes) = &parsed.voxel_volumes_cm3 {
+        split_zone_totals_by_volume(&zones, &parsed.zone_of_voxel, volumes)
+    } else if parsed.split {
         voxel_split_zone_totals(&zones, &parsed.zone_of_voxel)
     } else {
         voxel_tag_zone_totals(&zones, &parsed.zone_of_voxel)
     }
     .map_err(js_err)?;
-    let total = tags.total_strength();
+    let total = if parsed.voxel_volumes_cm3.is_some() {
+        tags.checked_total_strength().map_err(js_err)?
+    } else {
+        tags.total_strength()
+    };
     let n_voxels = tags.n_voxels();
     let zone_totals: Vec<f64> = (0..tags.n_zones).map(|z| tags.zone_total(z)).collect();
     to_js(&VoxelTagsResult {

@@ -3,10 +3,10 @@
   "name": "activation",
   "title": "Activation I/O (`activation_vs_refs.py`)",
   "environment": {
-    "date": "2026-09-18",
-    "python": "3.12.14",
-    "platform": "Linux-7.2.6-arch2-1-x86_64-with-glibc2.39",
-    "nucleide": "0.16.0",
+    "date": "2026-11-13",
+    "python": "3.12.16",
+    "platform": "Linux-7.2.15-1-omarchy-x86_64-with-glibc2.39",
+    "nucleide": "0.17.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
@@ -647,6 +647,61 @@
     {
       "kind": "prose",
       "text": "`pyne.cccc` is unexpectedly importable; no comparison is defined for it yet."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Explicit spectral regrouping and volume-weighted sources"
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Value",
+        "Expected",
+        "Status"
+      ],
+      "rows": [
+        [
+          "Flat-energy overlap hand vector",
+          "[2.0, 5.0, 6.0]",
+          "[2, 5, 6]",
+          "PASS"
+        ],
+        [
+          "Regrouped total",
+          "1.300000e+01",
+          "13",
+          "PASS"
+        ],
+        [
+          "Volume-weighted hand vector",
+          "[30.0, 90.0, 40.0]",
+          "[30, 90, 40]",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "Hand vectors test conservative arithmetic with synthetic integrated flux/source strengths. Flat-per-eV regrouping does not establish reaction-rate equivalence; volume splitting assumes uniform source density within each zone."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Value",
+        "Tol",
+        "Status"
+      ],
+      "rows": [
+        [
+          "PyNE phi_g synthetic overlap",
+          "2.960595e-16",
+          "1e-12",
+          "PASS"
+        ]
+      ]
     }
   ]
 }

@@ -6,7 +6,7 @@ FLUKA, ALARA, and friends), build materials, and run solvers for depletion,
 point kinetics, enrichment cascades, spectroscopy, tritium transport, fusion
 neutron sources, spectrum unfolding, TBR/blanket bookkeeping, equilibrium
 data readers, an OpenMC statepoint tally bridge, and variance
-reduction — plus
+reduction, conservative spectral regrouping and volume-aware source splitting — plus
 damage/gas metrics (dpa, appm), clearance/waste-classification screening,
 and uncertainty-quantification sampling.
 These docs are organized by audience, so you can jump straight to what you
@@ -37,7 +37,7 @@ need.
   <text x="190" y="148" text-anchor="middle" class="cm-i">MCNP &#xb7; Serpent &#xb7; FLUKA</text>
   <text x="190" y="168" text-anchor="middle" class="cm-i">ALARA &#xb7; CCCC &#xb7; MCPL</text>
   <text x="190" y="188" text-anchor="middle" class="cm-i">FISPACT-II &#xb7; ORIGEN &#xb7; Equilibrium I/O</text>
-  <text x="190" y="210" text-anchor="middle" class="cm-s">readers, writers, emitters, translation</text>
+  <text x="190" y="210" text-anchor="middle" class="cm-s">readers, writers, translation, flux regrouping</text>
   <rect x="380" y="96" width="300" height="146" rx="10" class="cm-box"/>
   <text x="530" y="122" text-anchor="middle" class="cm-t">Solvers and analysis</text>
   <text x="530" y="144" text-anchor="middle" class="cm-i">Depletion (CRAM) &#xb7; Point kinetics</text>
@@ -46,7 +46,7 @@ need.
   <text x="530" y="192" text-anchor="middle" class="cm-i">Fusion sources &#xb7; Spectrum unfolding</text>
   <text x="530" y="208" text-anchor="middle" class="cm-i">Damage metrics (dpa/appm) &#xb7; Clearance screening</text>
   <text x="530" y="224" text-anchor="middle" class="cm-i">TBR/blanket bookkeeping</text>
-  <text x="530" y="237" text-anchor="middle" class="cm-s">plus the R2S workflow glue</text>
+  <text x="530" y="237" text-anchor="middle" class="cm-s">R2S workflows and volume-aware source splitting</text>
   <line x1="190" y1="268" x2="190" y2="248" class="cm-edge" marker-end="url(#cm-arrow)"/>
   <line x1="530" y1="268" x2="530" y2="248" class="cm-edge" marker-end="url(#cm-arrow)"/>
   <rect x="110" y="272" width="500" height="40" rx="10" class="cm-bar"/>
@@ -86,7 +86,7 @@ status, and license.
 | [Build materials](tutorials/python/build-materials.md) | Build materials from formulae, mix compositions, export XML, and screen dose per gram |
 | [Run depletion](tutorials/python/run-depletion.md) | Load a depletion chain and run single-step and multi-step CRAM/Bateman solves |
 | [Enrichment cascade](tutorials/python/enrichment-cascade.md) | Set up and solve a multicomponent enrichment cascade, including standalone SWU and mass-ratio helpers |
-| [Activation analysis](tutorials/python/activation-analysis.md) | Read ALARA, FISPACT-II, and ORIGEN files and assemble an R2S workflow, including ARMI snapshots |
+| [Activation analysis](tutorials/python/activation-analysis.md) | Read ALARA, FISPACT-II, and ORIGEN files and assemble an R2S workflow, including zone mappings, spectral regrouping, volume-aware sources, and ARMI snapshots |
 | [Deterministic I/O](tutorials/python/deterministic-io.md) | Read ISOTXS and flux files and write PARTISN decks |
 | [Emit code cards](tutorials/python/emit-cards.md) | Render one material to MCNP, Serpent, FLUKA, ALARA, and PARTISN cards, including ARMI blueprint keys |
 | [Run kinetics](tutorials/python/run-kinetics.md) | Solve prescribed-reactivity point-kinetics transients |
@@ -117,7 +117,7 @@ status, and license.
 | [Interactive — MCPL particle lists](tutorials/interactive/mcpl-io.mdx) | Read and write MCPL particle lists |
 | [Interactive — code-card emission](tutorials/interactive/emitter.mdx) | Five-dialect card emission with a per-dialect mass-drift audit |
 | [Interactive — fusion sources](tutorials/interactive/fusion-sources.mdx) | Sample D-D/D-T ring, lattice, and parametric sources (mixtures, single-fuel species pairs), emit SDEF cards, and check ECRH access |
-| [Interactive — activation](tutorials/interactive/activation.mdx) | ALARA decks/outputs, FISPACT, R2S workflows |
+| [Interactive — activation](tutorials/interactive/activation.mdx) | Activation file readers, spectral regrouping, and R2S source splitting by volume |
 | [Interactive — clearance screening](tutorials/interactive/clearance.mdx) | Sum-of-fractions classification against EU or Spanish limits, plus the S3–S7 radiological totals |
 | [Interactive — damage metrics](tutorials/interactive/damage.mdx) | Fold a multigroup flux into dpa and gas production, propagate He/dpa ratio uncertainty, plus coil fast-flux and lifetime |
 | [Interactive — spectroscopy](tutorials/interactive/spectroscopy.mdx) | Spectrum smoothing and peak counting |

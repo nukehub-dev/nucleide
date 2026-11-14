@@ -17,6 +17,14 @@ Parent-level Rust/Python/verification rules remain in the root `AGENTS.md`.
 
 - **Docs source of truth**: `docs/`. The site syncs content into
   `website/src/content/docs` via `npm run sync-docs`.
+- **Activation arithmetic**: browser regrouping and voxel allocation call
+  the shared `alara-io`/`r2s` Rust kernels through WASM. Keep explicit
+  flat-per-eV and uniform-source-density assumptions visible, cap source/target
+  spectra and voxel/zone counts at 200, and clear computed results when inputs
+  change. Preserve copy and equal-count modes alongside volume weighting.
+- **Tutorial forms**: group related source/target inputs, keep labels short
+  and units separate, and verify desktop/mobile layout visually. Input rows
+  must stay aligned when labels wrap; stack fields on narrow screens.
 - **WASM source of truth**: `bindings/wasm/`. Rebuild with `npm run build:wasm`
   after any Rust change that affects the WASM bindings.
 - **Runtime data**: `fixtures/` is the source of truth for data files the
