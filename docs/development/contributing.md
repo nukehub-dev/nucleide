@@ -181,6 +181,16 @@ generated API docs, or fixture READMEs. Link instead.
 
 ## Testing
 
+### Release wheel checks
+
+Changes to the release workflow or `scripts/smoke-wheel.py` build wheels on
+Linux, macOS, and Windows in pull requests without publishing them. Linux
+builds use a manylinux2014 container, targeting glibc 2.17 or newer. The
+installed wheel is checked outside the source tree on each platform, and
+again on glibc 2.17 with Python 3.10. This checks the actual artifact's
+imports and numerical calls rather than relying on its filename alone.
+Tag builds run the same checks before the single PyPI upload.
+
 ### Rust tests
 
 ```bash

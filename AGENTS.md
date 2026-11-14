@@ -268,7 +268,11 @@ Git tags of the form `vX.Y.Z` trigger `.github/workflows/release.yml`, which:
 
 1. Runs the canonical verify checks.
 2. Builds Python wheels for Linux, macOS, and Windows (one abi3 build per
-   OS), then publishes wheels + sdist to PyPI exactly once via
+   OS). Linux uses a manylinux2014 container (glibc 2.17 baseline); wheels
+   must pass `scripts/smoke-wheel.py` outside the checkout, including Linux
+   on glibc 2.17 with Python 3.10. Packaging-workflow/script PRs run these
+   build/install checks without publishing. Publishes wheels + sdist to PyPI
+   exactly once via
    `maturin upload` using PyPI trusted publishing (OpenID Connect). Configure
    the trusted publisher in PyPI with the repository owner/name, workflow
    `.github/workflows/release.yml`, and GitHub Environment `pypi`; create the

@@ -139,6 +139,7 @@ cargo llvm-cov --workspace       # or --lcov for CI upload
 
 Wheels are built with **maturin** (PyO3 mixed layout). One wheel serves all
 Python >= 3.10 via abi3 — the same stack used by pydantic-core, polars, and ruff.
+Linux x86-64 wheels support glibc 2.17 or newer (manylinux2014).
 
 ## Validation strategy
 
