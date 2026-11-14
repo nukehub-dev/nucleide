@@ -274,15 +274,22 @@ wheel with `run_container.sh` first. The probe image has no Rust toolchain;
 install that wheel so every comparison runs the actual rebuilt artifact:
 
 ```bash
+FESTIM_IMAGE='dolfinx/dolfinx@sha256:2ae4bfbc0d9077268880faf04c72750528bee986c94ab223a2c159969bd56fa8'
+docker pull "$FESTIM_IMAGE"
+FESTIM_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$FESTIM_IMAGE")"
 docker run --rm --memory=6g --memory-swap=6g --pids-limit=128 --cpus=2 \
+    -e NUCLEIDE_FESTIM_IMAGE_ID="$FESTIM_IMAGE_ID" \
     -v "$PWD:/work" -w /work \
-    dolfinx/dolfinx@sha256:2ae4bfbc0d9077268880faf04c72750528bee986c94ab223a2c159969bd56fa8 \
+    "$FESTIM_IMAGE" \
     bash -c 'pip install --no-deps target/container-wheels/nucleide-*-manylinux*x86_64.whl && pip install festim==2.1 scifem==0.27.0 io4dolfinx==1.5.0 fenicsx-compat==0.4.0 numpy==2.4.6 && python validation/tritium_vs_festim.py'
 ```
 
 The probe prefers an installed package. Only when Nucleide is absent does it
 load the mounted checkout's extension, which must first be rebuilt using
 `maturin develop`. A broken installed package is never silently replaced.
+The runner supplies the inspected immutable image ID for cache provenance;
+the expected image name alone cannot establish the running environment.
+For Podman, replace `docker` in the pull, inspect and run commands.
 After the probe, regenerate the combined tables and figures in the main image:
 
 ```bash
@@ -342,13 +349,19 @@ bracket every requested sample. Profile/scalar checks use the requested
 end; inventory balance uses the complete actual trajectory, including this
 guard interval. No missing final value is extrapolated. Profile-export sample positions are not
 assumed to be integration nodes.
-Unconverged refinement is INCONCLUSIVE and exits nonzero. A configured
+Unconverged refinement is INCONCLUSIVE and exits nonzero.
 Calculation/export failures and broken installed environments are FAIL for
 all legs; missing FESTIM is a named SKIP.
-Successful reduced F5 calculations are cached under `.cache/f5-runs`;
-probe/facade/extension hashes, model parameters and actual environment
-versions invalidate stale entries. Acceptance verdicts are recomputed on
-reuse. Adding the probe does not establish a measured F5 pass: regenerate
+Successful reduced F5 calculations can be cached under `.cache/f5-runs`.
+Reuse requires `NUCLEIDE_FESTIM_IMAGE_ID` from the runner's inspect command,
+installed package versions (including PETSc's Python bindings, UFL, Basix
+and FFCx), relevant solver/thread settings and hashes of loaded native
+libraries, including PETSc and DOLFINx. These augment the probe/cache-helper/facade/extension
+hashes and model parameters. Keep the environment fixed during each run.
+Missing or incomplete runtime identity disables both persistent cache reads
+and writes; calculations still run normally. Old cache entries cannot match
+the new identity. Acceptance verdicts are recomputed on reuse.
+Adding the probe does not establish a measured F5 pass: regenerate
 the report in the pinned image before quoting its results.
 
 ## Parser oracle notes

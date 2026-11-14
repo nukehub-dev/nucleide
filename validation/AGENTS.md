@@ -60,7 +60,13 @@ reference tally (`magic_tally.txt`), and the committed results document.
   `validation/README.md`; never claim an unexecuted F5 pass. Resolve startup
   before nominal time-step refinement. Reduced-run caches under `.cache/`
   require source/facade/extension hashes, parameters and environment identity;
-  recompute acceptance gates on reuse. Prefer an installed rebuilt release
+  obtain the actual image ID from the runner's Docker/Podman inspect result,
+  and fingerprint installed packages, solver settings and loaded native
+  libraries (including PETSc/DOLFINx). Never substitute the required image
+  label for actual runtime identity. Unverifiable identity disables persistent
+  cache reads/writes; run calculations fresh instead. Keep the environment
+  fixed throughout a probe invocation. Recompute acceptance gates on reuse.
+  Prefer an installed rebuilt release
   wheel; bootstrap a checkout extension only when the package is absent.
 - `actinv_handoff_probe.py` is an optional synthetic exchange check, separate
   from `*_vs_*.py` physics comparisons. Require an explicit hash-pinned CLI,

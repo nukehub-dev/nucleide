@@ -39,6 +39,9 @@ workspace crates from tags.
 
 ### Fixed
 
+- FESTIM F5 cache reuse requires actual image identity, native solver-library
+  hashes, package versions and solver settings; unverifiable environments
+  calculate fresh results instead of reusing another environment's cache.
 - ACTINV source links and probe provenance identify the release's underlying
   commit instead of its annotated tag object, fixing pinned GitHub links.
 - Activation regrouping form groups source and target inputs in responsive

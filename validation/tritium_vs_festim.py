@@ -56,6 +56,7 @@ import math
 import platform
 import sys
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,7 @@ if importlib.util.find_spec("nucleide") is None:
 import common
 import numpy as np
 from common import Report, fmt, rel_diff
+from festim_cache import cached_run, runtime_identity
 
 import nucleide.tritium as tri
 
@@ -1155,11 +1157,18 @@ def _f5_profile_error(first: dict, second: dict) -> float:
     )
 
 
+@lru_cache(maxsize=1)
+def _f5_runtime_identity() -> tuple[dict[str, Any] | None, str]:
+    """Snapshot the loaded solver environment once; keep it fixed during a probe."""
+    return runtime_identity()
+
+
 def _f5_cached_run(code: str, cells: int, dt: float, run, *, steady: bool = False) -> dict:
     """Cache successful reductions, never acceptance verdicts.
 
-    Source, loaded extension bytes, model parameters and actual package
-    versions participate in every key. A failed calculation is never saved.
+    Require actual runner image identity and loaded native-library hashes,
+    plus source, extension, model inputs and package versions. Unverified
+    environments calculate fresh results without persistent cache access.
     Cached numbers are always passed through the current acceptance gates.
     """
     import nucleide._internal as extension
@@ -1186,24 +1195,12 @@ def _f5_cached_run(code: str, cells: int, dt: float, run, *, steady: bool = Fals
             )
         },
     }
-    key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     cache = Path(__file__).resolve().parent / ".cache" / "f5-runs"
-    path = cache / f"{key}.json"
     label = f"F5 {code} cells={cells} dt={dt:g} steady={steady}"
-    if path.is_file():
-        saved = json.loads(path.read_text())
-        if saved["identity"] != identity:
-            raise ValueError(f"{label}: cache identity mismatch: {path}")
-        print(f"{label}: cached {path.name}", flush=True)
-        return saved["result"]
-    print(f"{label}: starting", flush=True)
-    result = run()
-    cache.mkdir(parents=True, exist_ok=True)
-    pending = path.with_suffix(".pending")
-    pending.write_text(json.dumps({"identity": identity, "result": result}, allow_nan=False) + "\n")
-    pending.replace(path)
-    print(f"{label}: completed, cached {path.name}", flush=True)
-    return result
+    runtime, reason = _f5_runtime_identity()
+    if runtime is None:
+        print(f"{label}: {reason}", flush=True)
+    return cached_run(cache, identity, runtime, run, label=label)
 
 
 def recombination_probe() -> tuple[list[list[str]], list[str]]:
@@ -1224,9 +1221,11 @@ def recombination_probe() -> tuple[list[list[str]], list[str]]:
         "layer for the inlet-flux mass balance; temporal refinement varies "
         "the subsequent cap independently. Flux quadrature is refined "
         "separately by stride 4→2→1 on each computed history. Successful "
-        "reduced runs are cached under validation/.cache/f5-runs with "
-        "source/extension hashes, model inputs and package versions; "
-        "acceptance verdicts are recomputed from those numbers.",
+        "reduced runs may be cached under validation/.cache/f5-runs only "
+        "with actual runner image identity, native-library hashes, environment "
+        "settings, package versions and source/extension/model fingerprints. "
+        "Unverified environments calculate fresh results; acceptance verdicts "
+        "are always recomputed from the numbers.",
     ]
     face, jss = _f5_oracle()
     try:
@@ -1253,6 +1252,15 @@ def recombination_probe() -> tuple[list[list[str]], list[str]]:
             for name in ("festim", "fenics-dolfinx", "scifem", "io4dolfinx", "numpy")
         )
     )
+    runtime, reason = _f5_runtime_identity()
+    if runtime is None:
+        notes.append(f"F5 persistent cache disabled: {reason}; all calculations run fresh.")
+    else:
+        digest = hashlib.sha256(json.dumps(runtime, sort_keys=True).encode()).hexdigest()
+        notes.append(
+            f"F5 actual runner image ID: {runtime['image_id']}; runtime fingerprint "
+            f"SHA-256 {digest}. The environment is held fixed during this probe."
+        )
 
     def gate(label, error, threshold):
         rows.append(
