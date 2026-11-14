@@ -13,6 +13,8 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-14
+
 ### Added
 
 - Browser activation tutorial controls for flat-energy spectral regrouping
