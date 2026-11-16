@@ -184,7 +184,7 @@ end`,
     path: "tutorials/interactive/transport-source",
     button: "Evaluate source",
     output: "text=Joint voxel/group probabilities",
-    extraSteps: [{ button: "Check selection", output: "text=indices: [1]" }],
+    extraSteps: [{ button: "Check selection", output: "text=Exact match" }],
   },
   {
     path: "tutorials/interactive/deterministic",

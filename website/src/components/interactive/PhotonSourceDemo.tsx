@@ -8,6 +8,7 @@ import type {
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
+import { DataTable } from "@nukehub/docs-kit/components/mdx/DataTable";
 
 // Synthetic snapshots: three declared cooling times, two voxels, three
 // groups. The browser never computes decay physics; it selects one declared
@@ -49,6 +50,11 @@ function initialText(): string[][] {
   return TIMES[0].strengths.map((row) => row.map(String));
 }
 
+interface CoolingSelection {
+  requested: number[];
+  indices: number[];
+}
+
 export function PhotonSourceDemo() {
   const { wasm, ready, error } = useWasm();
   const [timeIndex, setTimeIndex] = useState(0);
@@ -56,7 +62,8 @@ export function PhotonSourceDemo() {
   const [result, setResult] = useState<PhotonSourceEvaluateResult | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [requestedText, setRequestedText] = useState("3600");
-  const [selection, setSelection] = useState<number[] | null>(null);
+  const [selection, setSelection] = useState<CoolingSelection | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
 
   function buildInput(text: string[][]): PhotonSourceInputJson {
     const strengths = text.map((row, voxel) =>
@@ -104,6 +111,7 @@ export function PhotonSourceDemo() {
     setTimeIndex(index);
     setStrengthsText(TIMES[index].strengths.map((row) => row.map(String)));
     setSelection(null);
+    setSelectionError(null);
   }
 
   function updateCell(voxel: number, group: number, value: string) {
@@ -122,16 +130,21 @@ export function PhotonSourceDemo() {
         .map((part) => part.trim())
         .filter((part) => part.length > 0)
         .map((part) => Number(part));
-      setSelection(
-        wasm.photonSourceSelectCooling(
-          TIMES.map((entry) => entry.coolingS),
-          requested,
-        ),
+      if (requested.length === 0) {
+        throw new Error("enter at least one cooling offset");
+      }
+      if (requested.some((time) => !Number.isFinite(time) || time < 0)) {
+        throw new Error("cooling offsets must be finite nonnegative seconds");
+      }
+      const indices = wasm.photonSourceSelectCooling(
+        TIMES.map((entry) => entry.coolingS),
+        requested,
       );
-      setLocalError(null);
+      setSelection({ requested, indices });
+      setSelectionError(null);
     } catch (e) {
       setSelection(null);
-      setLocalError(e instanceof Error ? e.message : String(e));
+      setSelectionError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -284,36 +297,31 @@ export function PhotonSourceDemo() {
                 Sampling uses these pairs directly; independent spatial and energy marginals would
                 invent cross-pairs that carry no source.
               </p>
-              <div className="mt-2 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs text-muted-foreground">
-                      <th className="py-1 pr-3">Voxel</th>
-                      {GROUP_LABELS.map((label) => (
-                        <th
-                          key={label}
-                          className="whitespace-nowrap py-1 pr-1 text-center text-[10px]"
-                        >
-                          <span className="block">{label}</span>
-                          <span className="block font-normal text-muted-foreground">MeV</span>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.joint_probabilities.map((row, voxel) => (
-                      <tr key={voxel}>
-                        <td className="py-1 pr-1 font-mono text-xs">{voxel}</td>
-                        {row.map((probability, group) => (
-                          <td key={group} className="py-1 pr-1 font-mono text-xs">
-                            {(probability * 100).toFixed(2)}%
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                className="mt-2"
+                data={result.joint_probabilities.map((row, voxel) => {
+                  const record: Record<string, string> = { voxel: `V${voxel}` };
+                  row.forEach((probability, group) => {
+                    record[`g${group}`] = `${(probability * 100).toFixed(2)}%`;
+                  });
+                  return record;
+                })}
+                columns={[
+                  { key: "voxel", header: "Voxel", align: "left" as const },
+                  ...GROUP_LABELS.map((label, group) => ({
+                    key: `g${group}`,
+                    header: (
+                      <span>
+                        <span className="block">{label}</span>
+                        <span className="block text-[10px] font-normal text-muted-foreground">
+                          MeV
+                        </span>
+                      </span>
+                    ),
+                    align: "right" as const,
+                  })),
+                ]}
+              />
             </div>
           )}
         </div>
@@ -321,29 +329,83 @@ export function PhotonSourceDemo() {
 
       <div className="space-y-2 border-t pt-4">
         <p className="text-sm font-semibold">Exact cooling selection</p>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          <span>Available offsets:</span>
+          {TIMES.map((entry) => (
+            <button
+              key={entry.coolingS}
+              type="button"
+              onClick={() => {
+                setRequestedText(String(entry.coolingS));
+                setSelection(null);
+                setSelectionError(null);
+              }}
+              className="rounded-md border px-2 py-0.5 font-mono text-[11px] transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              {entry.coolingS} s
+            </button>
+          ))}
+        </div>
         <p className="text-xs text-muted-foreground">
-          Available offsets: {TIMES.map((entry) => entry.coolingS).join(", ")} s. Requested offsets
-          must match exactly; duplicates and near matches fail.
+          Requested offsets must match exactly; duplicates and near matches fail.
         </p>
         <div className="flex flex-wrap items-end gap-2">
-          <div className="space-y-1">
+          <div className="min-w-0 flex-1 space-y-1 sm:flex-none">
             <Label htmlFor="cooling-request" className="text-xs">
               Requested seconds (comma separated)
             </Label>
             <Input
               id="cooling-request"
-              className="h-8 w-56 font-mono text-xs"
+              className="h-8 w-full font-mono text-xs sm:w-56"
               value={requestedText}
-              onChange={(event) => setRequestedText(event.target.value)}
+              onChange={(event) => {
+                setRequestedText(event.target.value);
+                setSelection(null);
+                setSelectionError(null);
+              }}
             />
           </div>
           <Button variant="outline" size="sm" onClick={checkSelection} disabled={!wasm}>
             Check selection
           </Button>
-          {selection && (
-            <span className="font-mono text-xs">indices: [{selection.join(", ")}]</span>
-          )}
         </div>
+        {selectionError && (
+          <div
+            role="alert"
+            className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-xs"
+          >
+            <p className="font-medium text-destructive">No exact match</p>
+            <p className="mt-1 text-destructive">{selectionError}</p>
+            <p className="mt-1 text-muted-foreground">
+              Pick one of the available offsets above; near matches are not substituted.
+            </p>
+          </div>
+        )}
+        {selection && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs"
+          >
+            <p className="font-medium text-emerald-700 dark:text-emerald-400">Exact match</p>
+            <ul className="mt-2 space-y-1">
+              {selection.requested.map((time, position) => {
+                const index = selection.indices[position];
+                const matchedTime = TIMES[index]?.coolingS;
+                return (
+                  <li key={`${time}-${position}`} className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-mono">{time} s</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="rounded border bg-background px-1.5 py-0.5 font-mono text-[11px]">
+                      snapshot {index}
+                    </span>
+                    <span className="text-muted-foreground">({matchedTime ?? "?"} s)</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
