@@ -46,8 +46,9 @@ workflow.
 
 The browser snapshots are synthetic because no nuclear data or transport
 engine is shipped to the page. The shared kernel is checked against real
-OpenMC 0.16 transport with a caller-mounted NNDC HDF5 library in
-`validation/openmc_real_data_probe.py`; that check covers normalization,
-source-strength scaling and data loading, not dose or transport accuracy.
+OpenMC 0.16 photon and neutron transport with a caller-mounted NNDC HDF5
+library in `validation/openmc_real_data_probe.py`; that check covers
+normalization, source-strength scaling and data loading, not dose or
+transport accuracy.
 
 <InteractiveDemo kind="transport-source" />

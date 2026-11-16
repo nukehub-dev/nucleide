@@ -203,16 +203,18 @@ It emits one JSON document and exits nonzero if any check fails.
 ## OpenMC real-data normalization probe
 
 `openmc_real_data_probe.py` uses an actual NNDC/OpenMC HDF5 cross-section
-library to run a small fixed-source transport calculation and check the
-handoff against it. It requires `H1.h5`, `O16.h5` and `Fe56.h5` in the supplied
+library to run small fixed-source photon and neutron transport calculations
+and check the handoff against them. It requires `H1.h5`, `O16.h5` and
+`Fe56.h5` plus `photon/H.h5`, `photon/O.h5` and `photon/Fe.h5` in the supplied
 directory; the files are mounted read-only and never copied, vendored or
-downloaded. A centered 14 MeV point source in a 10 cm water sphere is run at
-source strengths 1 and 10 with the same seed and 20 000 particles × 5 batches.
-The probe checks that the tally scales by the strength, that
-`raw × rate / volume` (per-source input) equals `raw / volume` (rate-scaled
-input), and that the iron sphere produces a different flux, proving the real
-cross sections were loaded. When the rebuilt Nucleide package is installed, it
-also checks the same conversion through `nucleide.openmc.normalize_flux`.
+downloaded. Centered photon (2 MeV) and neutron (14 MeV) point sources in a
+10 cm water sphere are run at source strengths 1 and 10 with the same seed and
+20 000 particles × 5 batches. The probe checks that each tally scales by the
+strength, that `raw × rate / volume` (per-source input) equals
+`raw / volume` (rate-scaled input), and that the iron sphere produces a
+different flux, proving the real cross sections were loaded. When the rebuilt
+Nucleide package is installed, it also checks the same conversion through
+`nucleide.openmc.normalize_flux`.
 
 ```bash
 docker run --rm --cpus=2 --memory=6g --memory-swap=6g \

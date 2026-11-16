@@ -1,30 +1,31 @@
 #!/usr/bin/env python3
-"""OpenMC 0.16 real-data normalization probe (no dose or transport claim).
+"""OpenMC 0.16 real-data normalization probe (no dose claim).
 
-Runs a small fixed-source neutron problem with an actual NNDC/OpenMC HDF5
-cross-section library and checks the activation-to-transport normalization
-contract against the transport result:
+Runs small fixed-source neutron and photon problems with an actual
+NNDC/OpenMC HDF5 library and checks the activation-to-transport
+normalization contract against transport:
 
-- A centered 14 MeV point source in a 10 cm radius water sphere.
+- Water and iron spheres (10 cm radius) with a centered point source.
 - Two runs with the same seed and particle count, source strengths 1 and 10.
-- The fixed-source tally must scale exactly by the source strength, so the
-  per-source conversion ``raw * rate / volume`` for the unit-strength run
-  must agree with the rate-scaled conversion ``raw / volume`` for the
-  strength-10 run.
-- A second material (iron) must produce a different tally, confirming that
-  the HDF5 cross sections were actually loaded and used.
+- The fixed-source tally must scale by source strength, so the per-source
+  conversion ``raw * rate / volume`` for the unit-strength run must agree with
+  the rate-scaled conversion ``raw / volume`` for the strength-10 run.
+- The iron sphere must produce a different flux than water, confirming that
+  the real cross sections were loaded and used.
 - When ``nucleide.openmc.normalize_flux`` is importable, the same conversion
   is checked through the package API.
 
-This is a normalization/units and data-loading check. It is not a transport
-benchmark, a shutdown-dose calculation, or an independent physics oracle.
-The real nuclear data are supplied by the caller and never vendored or
-downloaded by this script.
+Both particle types are exercised because the handoff source is photons and
+the normalization convention is shared. This is a normalization/units and
+data-loading check. It is not a transport benchmark, a shutdown-dose
+calculation, or an independent physics oracle. The real nuclear data are
+supplied by the caller and never vendored or downloaded.
+
+The data directory must contain ``H1.h5``, ``O16.h5`` and ``Fe56.h5`` plus
+``photon/H.h5``, ``photon/O.h5`` and ``photon/Fe.h5``.
 
 Usage:
     python validation/openmc_real_data_probe.py --data-dir /path/to/hdf5
-
-The data directory must contain ``H1.h5``, ``O16.h5`` and ``Fe56.h5``.
 """
 
 from __future__ import annotations
@@ -42,12 +43,15 @@ from typing import Any
 
 EXPECTED_OPENMC = "0.16.0"
 RADIUS_CM = 10.0
-SOURCE_ENERGY_EV = 14.0e6
 PARTICLES = 20_000
 BATCHES = 5
 SEED = 20261116
 STRENGTHS = (1.0, 10.0)
-REQUIRED_DATA = ("H1", "O16", "Fe56")
+NEUTRON_DATA = ("H1", "O16", "Fe56")
+PHOTON_DATA = ("H", "O", "Fe")
+NEUTRON_ENERGY_EV = 14.0e6
+PHOTON_ENERGY_EV = 2.0e6
+PARTICLES_TO_RUN = ("photon", "neutron")
 
 
 def sha256_file(path: Path) -> str:
@@ -58,25 +62,37 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def write_library(openmc: Any, data_dir: Path, work: Path) -> Path:
-    """Register the required HDF5 files and write a temporary cross_sections.xml."""
-    missing = [name for name in REQUIRED_DATA if not (data_dir / f"{name}.h5").is_file()]
-    if missing:
-        raise FileNotFoundError(
-            f"data directory {data_dir} is missing required files: "
-            + ", ".join(f"{name}.h5" for name in missing)
-        )
-    library = openmc.data.DataLibrary()
-    for name in REQUIRED_DATA:
-        library.register_file(str(data_dir / f"{name}.h5"))
-    path = work / "cross_sections.xml"
-    library.export_to_xml(str(path))
-    return path
+def write_library(data_dir: Path, work: Path) -> Path:
+    """Write a temporary cross_sections.xml with neutron and photon libraries."""
+    entries: list[str] = []
+    for name in NEUTRON_DATA:
+        path = data_dir / f"{name}.h5"
+        if not path.is_file():
+            raise FileNotFoundError(f"missing neutron data file: {path}")
+        entries.append(f'  <library materials="{name}" path="{path}" type="neutron"/>')
+    for name in PHOTON_DATA:
+        path = data_dir / "photon" / f"{name}.h5"
+        if not path.is_file():
+            raise FileNotFoundError(f"missing photon data file: {path}")
+        entries.append(f'  <library materials="{name}" path="{path}" type="photon"/>')
+    xml = '<?xml version="1.0"?>\n<cross_sections>\n' + "\n".join(entries) + "\n</cross_sections>\n"
+    cross_sections = work / "cross_sections.xml"
+    cross_sections.write_text(xml, encoding="utf-8")
+    return cross_sections
 
 
-def run_case(openmc: Any, work: Path, material_name: str, strength: float) -> dict[str, Any]:
+def run_case(
+    openmc: Any,
+    work: Path,
+    material_name: str,
+    particle: str,
+    strength: float,
+) -> dict[str, Any]:
     """Run one fixed-source sphere case and return the cell flux tally."""
-    case_dir = work / f"{material_name}-s{strength:g}"
+    if particle not in PARTICLES_TO_RUN:
+        raise ValueError(f"unknown particle {particle}")
+    energy = PHOTON_ENERGY_EV if particle == "photon" else NEUTRON_ENERGY_EV
+    case_dir = work / f"{particle}-{material_name}-s{strength:g}"
     case_dir.mkdir()
     sphere = openmc.Sphere(r=RADIUS_CM, boundary_type="vacuum")
     cell = openmc.Cell(region=-sphere)
@@ -96,9 +112,9 @@ def run_case(openmc: Any, work: Path, material_name: str, strength: float) -> di
     materials = openmc.Materials([material])
     source = openmc.IndependentSource(
         space=openmc.stats.Point((0.0, 0.0, 0.0)),
-        energy=openmc.stats.Discrete([SOURCE_ENERGY_EV], [1.0]),
+        energy=openmc.stats.Discrete([energy], [1.0]),
         strength=strength,
-        particle="neutron",
+        particle=particle,
     )
     settings = openmc.Settings(
         particles=PARTICLES,
@@ -108,7 +124,9 @@ def run_case(openmc: Any, work: Path, material_name: str, strength: float) -> di
         output={"summary": False, "tallies": False},
     )
     settings.source = [source]
-    tally = openmc.Tally(name=f"{material_name} flux")
+    if particle == "photon":
+        settings.photon_transport = True
+    tally = openmc.Tally(name=f"{particle}-{material_name} flux")
     tally.filters = [openmc.CellFilter(cell)]
     tally.scores = ["flux"]
     model = openmc.Model(
@@ -130,22 +148,22 @@ def run_case(openmc: Any, work: Path, material_name: str, strength: float) -> di
             close()
     if not math.isfinite(mean) or mean <= 0.0:
         raise RuntimeError(
-            f"{material_name} strength {strength}: nonpositive/nonfinite tally {mean}"
+            f"{particle} {material_name} strength {strength}: nonpositive/nonfinite tally {mean}"
         )
     if not math.isfinite(std_dev):
         std_dev = None
     return {
+        "particle": particle,
         "material": material_name,
         "source_strength": strength,
+        "source_energy_ev": energy,
         "mean_volume_integrated_track_length": mean,
         "std_dev": std_dev,
         "relative_error": (std_dev / mean if std_dev is not None else None),
     }
 
 
-def package_check(
-    water_unit: dict[str, Any], water_ten: dict[str, Any], volume: float
-) -> dict[str, Any]:
+def package_check(unit: dict[str, Any], ten: dict[str, Any], volume: float) -> dict[str, Any]:
     """Check the same conversion through the optional Nucleide package."""
     try:
         from nucleide import openmc as omc
@@ -154,31 +172,31 @@ def package_check(
     if not hasattr(omc, "normalize_flux"):
         return {"status": "SKIP", "reason": "nucleide.openmc.normalize_flux is absent"}
     arrays_unit = {
-        "flux": [[water_unit["mean_volume_integrated_track_length"]]],
+        "flux": [[unit["mean_volume_integrated_track_length"]]],
         "rel_err": [[0.0]],
         "normalization": "unknown",
         "units": "unknown",
     }
     arrays_ten = {
-        "flux": [[water_ten["mean_volume_integrated_track_length"]]],
+        "flux": [[ten["mean_volume_integrated_track_length"]]],
         "rel_err": [[0.0]],
         "normalization": "unknown",
         "units": "unknown",
     }
-    unit = omc.normalize_flux(
+    per_source = omc.normalize_flux(
         arrays_unit,
         10.0,
         [volume],
         input_normalization="per-source-volume-integrated",
     )
-    ten = omc.normalize_flux(
+    rate_scaled = omc.normalize_flux(
         arrays_ten,
         10.0,
         [volume],
         input_normalization="rate-scaled-volume-integrated",
     )
-    unit_flux = float(unit["flux"][0][0])
-    ten_flux = float(ten["flux"][0][0])
+    unit_flux = float(per_source["flux"][0][0])
+    ten_flux = float(rate_scaled["flux"][0][0])
     return {
         "status": "PASS"
         if math.isclose(unit_flux, ten_flux, rel_tol=1e-12, abs_tol=0.0)
@@ -186,7 +204,50 @@ def package_check(
         "per_source_flux": unit_flux,
         "rate_scaled_flux": ten_flux,
         "relative_difference": abs(unit_flux - ten_flux) / ten_flux,
-        "units": unit["units"],
+        "units": per_source["units"],
+    }
+
+
+def conversion_checks(
+    particle: str,
+    unit: dict[str, Any],
+    ten: dict[str, Any],
+    iron: dict[str, Any],
+    volume: float,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Build the scaling, conversion and data-loading checks for one particle."""
+    raw_unit = unit["mean_volume_integrated_track_length"]
+    raw_ten = ten["mean_volume_integrated_track_length"]
+    ratio = raw_ten / raw_unit
+    per_source_flux = raw_unit * 10.0 / volume
+    rate_scaled_flux = raw_ten / volume
+    iron_flux = iron["mean_volume_integrated_track_length"] / volume
+    checks = [
+        {
+            "name": f"{particle}_source_strength_scales_tally",
+            "pass": math.isclose(ratio, 10.0, rel_tol=1e-12, abs_tol=0.0),
+            "ratio": ratio,
+        },
+        {
+            "name": f"{particle}_per_source_and_rate_scaled_flux_agree",
+            "pass": math.isclose(per_source_flux, rate_scaled_flux, rel_tol=1e-12, abs_tol=0.0),
+            "per_source_flux": per_source_flux,
+            "rate_scaled_flux": rate_scaled_flux,
+            "relative_difference": abs(per_source_flux - rate_scaled_flux) / rate_scaled_flux,
+        },
+        {
+            "name": f"{particle}_real_cross_sections_change_transport",
+            "pass": not math.isclose(rate_scaled_flux, iron_flux, rel_tol=1e-3, abs_tol=0.0),
+            "water_flux": rate_scaled_flux,
+            "iron_flux": iron_flux,
+        },
+    ]
+    return checks, {
+        "water_unit": unit,
+        "water_ten": ten,
+        "iron_ten": iron,
+        "per_source_flux": per_source_flux,
+        "rate_scaled_flux": rate_scaled_flux,
     }
 
 
@@ -196,7 +257,7 @@ def main() -> int:
         "--data-dir",
         type=Path,
         required=True,
-        help="directory containing H1.h5, O16.h5 and Fe56.h5",
+        help="directory containing H1.h5, O16.h5, Fe56.h5 and photon/{H,O,Fe}.h5",
     )
     args = parser.parse_args()
 
@@ -223,13 +284,27 @@ def main() -> int:
     volume = 4.0 / 3.0 * math.pi * RADIUS_CM**3
     with tempfile.TemporaryDirectory(prefix="openmc-real-data-") as tmp:
         work = Path(tmp)
-        cross_sections = write_library(openmc, data_dir, work)
+        try:
+            cross_sections = write_library(data_dir, work)
+        except Exception as error:
+            print(
+                json.dumps(
+                    {
+                        "status": "SKIP",
+                        "reason": f"{type(error).__name__}: {error}",
+                    }
+                )
+            )
+            return 2
         previous = os.environ.get("OPENMC_CROSS_SECTIONS")
         os.environ["OPENMC_CROSS_SECTIONS"] = str(cross_sections)
         try:
-            water_unit = run_case(openmc, work, "water", STRENGTHS[0])
-            water_ten = run_case(openmc, work, "water", STRENGTHS[1])
-            iron_ten = run_case(openmc, work, "iron", STRENGTHS[1])
+            results: dict[str, dict[str, Any]] = {}
+            for particle in PARTICLES_TO_RUN:
+                unit = run_case(openmc, work, "water", particle, STRENGTHS[0])
+                ten = run_case(openmc, work, "water", particle, STRENGTHS[1])
+                iron = run_case(openmc, work, "iron", particle, STRENGTHS[1])
+                results[particle] = {"unit": unit, "ten": ten, "iron": iron}
         except Exception as error:
             print(
                 json.dumps(
@@ -248,40 +323,25 @@ def main() -> int:
             else:
                 os.environ["OPENMC_CROSS_SECTIONS"] = previous
 
-    raw_unit = water_unit["mean_volume_integrated_track_length"]
-    raw_ten = water_ten["mean_volume_integrated_track_length"]
-    ratio = raw_ten / raw_unit
-    per_source_flux = raw_unit * 10.0 / volume
-    rate_scaled_flux = raw_ten / volume
-    iron_flux = iron_ten["mean_volume_integrated_track_length"] / volume
-    water_flux = rate_scaled_flux
-    ratio_ok = math.isclose(ratio, 10.0, rel_tol=1e-12, abs_tol=0.0)
-    conversion_ok = math.isclose(per_source_flux, rate_scaled_flux, rel_tol=1e-12, abs_tol=0.0)
-    data_applied = not math.isclose(water_flux, iron_flux, rel_tol=1e-3, abs_tol=0.0)
-    api = package_check(water_unit, water_ten, volume)
+    checks: list[dict[str, Any]] = []
+    particle_blocks: dict[str, Any] = {}
+    for particle in PARTICLES_TO_RUN:
+        block = results[particle]
+        particle_checks, summary = conversion_checks(
+            particle, block["unit"], block["ten"], block["iron"], volume
+        )
+        checks.extend(particle_checks)
+        particle_blocks[particle] = summary
+    api = package_check(results["photon"]["unit"], results["photon"]["ten"], volume)
     api_ok = api.get("status") in ("PASS", "SKIP")
-    checks = [
-        {"name": "source_strength_scales_tally", "pass": ratio_ok, "ratio": ratio},
-        {
-            "name": "per_source_and_rate_scaled_flux_agree",
-            "pass": conversion_ok,
-            "per_source_flux": per_source_flux,
-            "rate_scaled_flux": rate_scaled_flux,
-            "relative_difference": abs(per_source_flux - rate_scaled_flux) / rate_scaled_flux,
-        },
-        {
-            "name": "real_cross_sections_change_transport",
-            "pass": data_applied,
-            "water_flux": water_flux,
-            "iron_flux": iron_flux,
-        },
+    checks.append(
         {
             "name": "nucleide_package_normalize_flux",
             "pass": api_ok,
             "status": api.get("status"),
             "detail": api,
-        },
-    ]
+        }
+    )
     passed = all(check["pass"] for check in checks)
     summary = {
         "probe": "openmc_real_data_probe",
@@ -289,31 +349,42 @@ def main() -> int:
         "openmc_version": openmc.__version__,
         "data_dir": str(data_dir),
         "required_data": {
-            name: {
-                "path": str(data_dir / f"{name}.h5"),
-                "sha256": sha256_file(data_dir / f"{name}.h5"),
-                "size_bytes": (data_dir / f"{name}.h5").stat().st_size,
-            }
-            for name in REQUIRED_DATA
+            "neutron": {
+                name: {
+                    "path": str(data_dir / f"{name}.h5"),
+                    "sha256": sha256_file(data_dir / f"{name}.h5"),
+                    "size_bytes": (data_dir / f"{name}.h5").stat().st_size,
+                }
+                for name in NEUTRON_DATA
+            },
+            "photon": {
+                name: {
+                    "path": str(data_dir / "photon" / f"{name}.h5"),
+                    "sha256": sha256_file(data_dir / "photon" / f"{name}.h5"),
+                    "size_bytes": (data_dir / "photon" / f"{name}.h5").stat().st_size,
+                }
+                for name in PHOTON_DATA
+            },
         },
         "case": {
             "geometry": f"vacuum sphere r={RADIUS_CM} cm",
-            "materials": ["water (H1/O16, 1.0 g/cm3)", "iron (Fe56, 7.874 g/cm3)"],
-            "source": (
-                f"centered 14 MeV point source, {PARTICLES} particles x "
-                f"{BATCHES} batches, seed {SEED}"
-            ),
+            "materials": [
+                "water (H1/O16, 1.0 g/cm3)",
+                "iron (Fe56, 7.874 g/cm3)",
+            ],
+            "sources": [
+                f"photon {PHOTON_ENERGY_EV / 1e6:g} MeV point, centered",
+                f"neutron {NEUTRON_ENERGY_EV / 1e6:g} MeV point, centered",
+            ],
+            "histories": f"{PARTICLES} particles x {BATCHES} batches, seed {SEED}",
             "volume_cm3": volume,
         },
-        "water_unit": water_unit,
-        "water_ten": water_ten,
-        "iron_ten": iron_ten,
+        "particles": particle_blocks,
         "checks": checks,
         "limitations": [
-            "This is a normalization/units and data-loading check, not an independent "
-            "transport or shutdown-dose validation.",
-            "The sphere and source are synthetic; no evaluated activation or photon "
-            "source data are used.",
+            "This is a normalization/units and data-loading check, not an "
+            "independent transport or shutdown-dose validation.",
+            "The sphere and source are synthetic; no evaluated activation data are used.",
             "The real HDF5 files are caller-supplied and never vendored or downloaded.",
         ],
     }

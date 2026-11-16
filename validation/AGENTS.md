@@ -92,12 +92,14 @@ reference tally (`magic_tally.txt`), and the committed results document.
   transport. Record the probe's JSON output and never turn source sampling or
   the void tally into a physics, transport or dose claim.
 - `openmc_real_data_probe.py` is the optional real-data companion: it requires
-  caller-mounted `H1.h5`, `O16.h5` and `Fe56.h5`, writes only a temporary
-  `cross_sections.xml`, and runs a bounded fixed-source water/iron sphere. Its
-  claims are limited to source-strength scaling, the per-source vs rate-scaled
-  flux conversion, data loading and the package `normalize_flux` path. Never
-  describe it as a transport benchmark, shutdown-dose validation or
-  independent physics oracle; never vendor or download the caller's data.
+  caller-mounted neutron (`H1.h5`, `O16.h5`, `Fe56.h5`) and photon
+  (`photon/H.h5`, `photon/O.h5`, `photon/Fe.h5`) files, writes only a temporary
+  `cross_sections.xml`, and runs bounded fixed-source photon and neutron
+  water/iron spheres. Its claims are limited to source-strength scaling, the
+  per-source vs rate-scaled flux conversion, data loading and the package
+  `normalize_flux` path. Never describe it as a transport benchmark,
+  shutdown-dose validation or independent physics oracle; never vendor or
+  download the caller's data.
 - Fresh ACTINV activation comparisons execute the source-pinned external
   example separately from the synthetic probe. Retain original/compatible
   script hashes and diff, verified data hashes, compiled-extension identity,
