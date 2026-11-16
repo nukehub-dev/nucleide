@@ -17,6 +17,13 @@ Two parts:
    covered separately by F5: a trap-free outlet with scalar steady
    oracle, atomic-unit conversion, independent three-level space/time
    refinement, transient flux/profile parity and integrated mass balance.
+   F6 combines one McNabb-Foster trap with that recombination outlet:
+   the same single-layer scalar-temperature slab, explicit molar/atomic
+   conversion for concentrations, fluxes, inventories and the trap rate,
+   a checked factor of two for the two identical surface reactants,
+   mobile/trapped inventory histories, outlet parity, and a mobile-plus-
+   trapped mass balance, with independent space and time refinement on
+   both sides.
 
 Probe environment (never the main validation container, never the Rust
 workspace): FESTIM 2.1 needs DOLFINx, so the probe runs in the separate
@@ -943,6 +950,39 @@ F5_IMAGE = "dolfinx/dolfinx@sha256:2ae4bfbc0d9077268880faf04c72750528bee986c94ab
 F5_INITIAL_DT = 1.0e-6
 F5_GROWTH = 1.02
 
+# F6: one McNabb-Foster trap plus the F5 recombination outlet. Same slab,
+# trap and outlet as F2/F5 (hand-picked synthetic SI values), scalar 500 K,
+# zero Arrhenius energies. The Oriani effective diffusivity
+# D_eff = D/(1 + K N) = D/3 gives t_lag_eff = L^2/(6 D_eff) = 500 s; the
+# trajectory ends at 10 t_lag_eff (5000 s) so the late-flux gate matches the
+# F5 2%/3 rule. Three mesh levels isolate space at dt=0.25 s and three time
+# caps isolate time at 200 cells, independently in each code. The levels and
+# gates are the F5 evidence pattern (2% steady/profile/inventory, 3% J(t),
+# <1/3 self-convergence); exploratory F6 runs at 50/100/200 cells and
+# 0.5/0.25/0.125 s showed the finest-level reaction law and inventories
+# converged well below these gates.
+F6_KR = F5_KR
+F6_K0 = TRAP_K0
+F6_P0 = TRAP_P0
+F6_TRAP_N = TRAP_N
+F6_TEMPERATURE = 500.0
+F6_D_EFF = D / (1.0 + (F6_K0 / F6_P0) * F6_TRAP_N)
+F6_TLAG = L * L / (6.0 * F6_D_EFF)
+F6_T_END = 10.0 * F6_TLAG
+F6_TIMES = [fraction * F6_TLAG for fraction in (0.2, 0.5, 1.0, 2.0, 5.0, 10.0)]
+F6_LEVELS = [(50, 0.25), (100, 0.25), (200, 0.25), (200, 0.5), (200, 0.125)]
+F6_IMAGE = F5_IMAGE
+F6_INITIAL_DT = 1.0e-6
+F6_GROWTH = 1.02
+F6_FLUX_GATE = 0.03
+F6_INVENTORY_GATE = 0.02
+F6_PROFILE_GATE = 0.02
+F6_REACTION_GATE = 0.02
+F6_TRAP_EQ_GATE = 0.02
+F6_BALANCE_GATE = 1.0e-3
+F6_QUADRATURE_GATE = 1.0e-3 / 3.0
+F6_LATE_GATE = 0.02 / 3.0
+
 
 def _f5_oracle() -> tuple[float, float]:
     a = D / L
@@ -1363,6 +1403,641 @@ def recombination_probe() -> tuple[list[list[str]], list[str]]:
     return rows, notes
 
 
+def _f6_bracket(times: np.ndarray, requested: float, label: str) -> tuple[int, float]:
+    """Return the lower exported-time bracket and interpolation weight.
+
+    Every requested sample must sit inside the exported range. A missing
+    bracket raises instead of extending or extrapolating the history; the
+    only roundoff allowance is the final endpoint, matching the F5 rule.
+    """
+    if times.size < 2 or times[0] != 0.0 or np.any(np.diff(times) <= 0.0):
+        raise ValueError("F6 requires strictly ascending exported times starting at zero")
+    if requested > times[-1]:
+        slack = 8.0 * math.ulp(max(abs(float(times[-1])), abs(requested)))
+        if requested - times[-1] <= slack:
+            requested = float(times[-1])
+    if requested < times[0] or requested > times[-1]:
+        raise ValueError(
+            f"F6 {label} requested time {requested:.17g} s is outside exported "
+            f"range [{times[0]:.17g}, {times[-1]:.17g}] s"
+        )
+    lower = int(np.searchsorted(times, requested, side="right")) - 1
+    if lower < 0:
+        lower = 0
+    if times[lower] == requested:
+        return lower, 0.0
+    if lower + 1 >= times.size:
+        raise ValueError(
+            f"F6 {label} requested time {requested:.17g} s has no upper export bracket"
+        )
+    weight = (requested - times[lower]) / (times[lower + 1] - times[lower])
+    return lower, float(weight)
+
+
+def _f6_sample(times: np.ndarray, values: np.ndarray, requested: float, label: str) -> np.ndarray:
+    """Bracketed linear sample of one history column; never extrapolate."""
+    lower, weight = _f6_bracket(times, requested, label)
+    if weight == 0.0:
+        return np.array(values[lower], copy=True)
+    return values[lower] + weight * (values[lower + 1] - values[lower])
+
+
+def _f6_reduce(
+    times: list[float],
+    flux_left: list[float],
+    flux_right: list[float],
+    x: list[float],
+    mobile: np.ndarray,
+    trapped: np.ndarray,
+    mobile_inventory: list[float],
+    trapped_inventory: list[float],
+) -> dict[str, Any]:
+    """Reduce exported F6 histories without substituting a boundary flux."""
+    t = np.asarray(times, dtype=float)
+    jl = np.asarray(flux_left, dtype=float).reshape(-1)
+    jr = np.asarray(flux_right, dtype=float).reshape(-1)
+    m = np.asarray(mobile, dtype=float)
+    tr = np.asarray(trapped, dtype=float)
+    im = np.asarray(mobile_inventory, dtype=float).reshape(-1)
+    it = np.asarray(trapped_inventory, dtype=float).reshape(-1)
+    if not (len(t) == len(jl) == len(jr) == len(im) == len(it) == m.shape[0] == tr.shape[0]):
+        raise ValueError(
+            f"F6 history lengths differ: t={len(t)} jl={len(jl)} jr={len(jr)} "
+            f"im={len(im)} it={len(it)} mobile={m.shape} trapped={tr.shape}"
+        )
+    if m.shape[1] != tr.shape[1] or m.shape[1] != len(x):
+        raise ValueError("F6 mobile, trapped and profile grids differ")
+    if not all(np.all(np.isfinite(v)) for v in (t, jl, jr, im, it, m, tr)):
+        raise ValueError("F6 nonfinite history export")
+    requested_end = F6_TIMES[-1]
+    slack = 8.0 * math.ulp(max(abs(float(t[-1])), abs(requested_end)))
+    if requested_end - t[-1] > slack:
+        raise ValueError(
+            f"F6 history ends at {t[-1]:.17g} s before requested "
+            f"{requested_end:.17g} s (difference {requested_end - t[-1]:.17g} s, "
+            f"roundoff allowance {slack:.17g} s)"
+        )
+    flux_t = np.asarray([_f6_sample(t, jr, at, "outlet flux") for at in F6_TIMES])
+    mobile_inventory_t = np.asarray([_f6_sample(t, im, at, "mobile inventory") for at in F6_TIMES])
+    trapped_inventory_t = np.asarray(
+        [_f6_sample(t, it, at, "trapped inventory") for at in F6_TIMES]
+    )
+    mobile_t = np.asarray([_f6_sample(t, m, at, "mobile profile") for at in F6_TIMES])
+    trapped_t = np.asarray([_f6_sample(t, tr, at, "trapped profile") for at in F6_TIMES])
+
+    # Explicit trapezoidal formula works on NumPy 1.x and 2.x.
+    def integrate(values, indices):
+        return float(np.sum(np.diff(t[indices]) * (values[indices][1:] + values[indices][:-1]) / 2))
+
+    indices = np.arange(len(t))
+    inward = -jl
+    net = inward - jr
+    net_integrals = []
+    for stride in (1, 2, 4):
+        selected = np.unique(np.append(indices[::stride], indices[-1]))
+        net_integrals.append(integrate(net, selected))
+    delta = float((im[-1] + it[-1]) - (im[0] + it[0]))
+    throughput = integrate(np.abs(inward) + np.abs(jr), indices)
+    norm = max(abs(delta), throughput, 1e-30)
+    balance = abs(delta - net_integrals[0]) / norm
+    quadrature = [abs(net_integrals[i] - net_integrals[i + 1]) / norm for i in (0, 1)]
+    jss = float(jr[-1])
+    late = float(_f6_sample(t, jr, 0.9 * requested_end, "late flux"))
+    return {
+        "times": list(F6_TIMES),
+        "flux_t": flux_t.tolist(),
+        "mobile_inventory_t": mobile_inventory_t.tolist(),
+        "trapped_inventory_t": trapped_inventory_t.tolist(),
+        "profiles": mobile_t.tolist(),
+        "trapped_profiles": trapped_t.tolist(),
+        "x": [float(v) for v in x],
+        "c": mobile_t[-1].tolist(),
+        "ct": trapped_t[-1].tolist(),
+        "jss": jss,
+        "late_change": abs(jss - late) / jss,
+        "balance": balance,
+        "quadrature": quadrature,
+        "grid": f"{len(t)} exported times, [{t[0]:g}, {t[-1]:g}] s, "
+        f"dt range [{min(np.diff(t)):g}, {max(np.diff(t)):g}] s",
+        "inventory_change": delta,
+        "net_integral": net_integrals[0],
+        "throughput": throughput,
+        "requested_end": requested_end,
+        "actual_end": float(t[-1]),
+        "endpoint_roundoff_allowance": slack,
+    }
+
+
+def _f6_nucleide(cells: int, dt: float) -> dict[str, Any]:
+    """F6 Nucleide run: one trap plus the recombination outlet."""
+    times = []
+    at = 0.0
+    step = F6_INITIAL_DT
+    while at < F6_T_END:
+        at = min(F6_T_END, at + step)
+        times.append(at)
+        step = min(dt, step * F6_GROWTH)
+    out = tri.transient(
+        L,
+        cells,
+        D,
+        {"kind": "dirichlet", "value": C0},
+        {"kind": "recombination", "rate": F6_KR},
+        times,
+        traps=[
+            {
+                "k0": F6_K0,
+                "p0": F6_P0,
+                "site_density": F6_TRAP_N,
+                "e_k": 0.0,
+                "e_p": 0.0,
+            }
+        ],
+        temperature=[F6_TEMPERATURE],
+        dt_max=dt,
+        rtol=1e-10,
+        atol=1e-14,
+    )
+    dx = L / cells
+    mobile = np.vstack((np.zeros(cells), np.asarray(out["mobile"], dtype=float)))
+    trapped = np.vstack((np.zeros((1, cells)), np.asarray(out["trapped"], dtype=float)[:, :, 0]))
+    centres = ((np.arange(cells) + 0.5) * dx).tolist()
+    # Initial state: zero mobile/trapped load and the hand-derived left
+    # Dirichlet-layer flux (the first cell is half a cell from the C0 face).
+    # This is the same startup balance as F5/G6c; a zero inlet flux would
+    # corrupt the cumulative balance.
+    initial_left_flux = -2.0 * D * C0 / dx
+    return _f6_reduce(
+        [0.0, *out["times"]],
+        [initial_left_flux, *out["flux_left"]],
+        [0.0, *out["flux_right"]],
+        centres,
+        mobile,
+        trapped,
+        np.sum(mobile, axis=1) * dx,
+        np.sum(trapped, axis=1) * dx,
+    )
+
+
+def _f6_festim(festim: Any, cells: int, dt: float) -> dict[str, Any]:
+    """F6 FESTIM run in atomic units; all returned quantities are molar SI."""
+    model = festim.HydrogenTransportProblem()
+    model.mesh = festim.Mesh1D(vertices=np.linspace(0.0, L, cells + 1))
+    volume = festim.VolumeSubdomain1D(
+        id=1, borders=[0.0, L], material=festim.Material(D_0=D, E_D=0.0)
+    )
+    left = festim.SurfaceSubdomain1D(id=1, x=0.0)
+    right = festim.SurfaceSubdomain1D(id=2, x=L)
+    mobile = festim.Species("T")
+    empty = festim.Species("empty_traps", mobile=False)
+    trapped = festim.Species("trapped_T", mobile=False)
+    model.subdomains = [volume, left, right]
+    model.species = [mobile, empty, trapped]
+    model.temperature = F6_TEMPERATURE
+    model.boundary_conditions = [
+        festim.FixedConcentrationBC(subdomain=left, value=C0 * AVOGADRO, species=mobile),
+        # reactant=[T, T] is the A=A surface reaction: FESTIM applies two
+        # partial fluxes for the identical reactants, so the atomic particle
+        # flux is 2*k_r0*c_atom^2. With k_r0=Kr/(2 NA) this is
+        # (Kr/NA)*c_atom^2, and the molar flux is Kr*c_mol^2. The written
+        # coefficient checks that factor of two against the exported face
+        # concentration below.
+        festim.SurfaceReactionBC(
+            reactant=[mobile, mobile],
+            gas_pressure=0.0,
+            k_r0=F6_KR / (2.0 * AVOGADRO),
+            E_kr=0.0,
+            k_d0=0.0,
+            E_kd=0.0,
+            subdomain=right,
+        ),
+    ]
+    model.reactions = [
+        # c_atom = NA*c_mol and N_atom = NA*N_mol. Dividing the second-order
+        # trapping constant by NA keeps k0*c_mol invariant; p0 is first order
+        # and unchanged. The equilibrium K=k0/p0 is therefore divided by NA,
+        # and N_atom*K_atom = N_mol*K_mol.
+        festim.Reaction(
+            reactant=[mobile, empty],
+            product=[trapped],
+            k_0=F6_K0 / AVOGADRO,
+            E_k=0.0,
+            p_0=F6_P0,
+            E_p=0.0,
+            volume=volume,
+        )
+    ]
+    model.initial_conditions = [
+        festim.InitialConcentration(value=F6_TRAP_N * AVOGADRO, species=empty, volume=volume)
+    ]
+    model.settings = festim.Settings(
+        atol=AVOGADRO * 1e-14,
+        rtol=1e-10,
+        transient=True,
+        element_degree=2,
+        final_time=F6_T_END + 2.0 * dt,
+        stepsize=festim.Stepsize(
+            initial_value=F6_INITIAL_DT,
+            growth_factor=F6_GROWTH,
+            cutback_factor=0.8,
+            target_nb_iterations=100,
+            max_stepsize=dt,
+            milestones=list(F6_TIMES),
+        ),
+    )
+    inlet = festim.SurfaceFlux(field=mobile, surface=left)
+    outlet = festim.SurfaceFlux(field=mobile, surface=right)
+    profile = festim.Profile1DExport(field=mobile, subdomain=volume)
+    trapped_profile = festim.Profile1DExport(field=trapped, subdomain=volume)
+    mobile_inventory = festim.TotalVolume(field=mobile, volume=volume)
+    trapped_inventory = festim.TotalVolume(field=trapped, volume=volume)
+    model.exports = [
+        inlet,
+        outlet,
+        profile,
+        trapped_profile,
+        mobile_inventory,
+        trapped_inventory,
+    ]
+    model.show_progress_bar = False
+    model.initialise()
+    model.run()
+    n = len(outlet.data)
+    if n < 2:
+        raise ValueError("F6 FESTIM outlet export has fewer than 2 timesteps")
+    if len(model.timesteps) != n:
+        raise ValueError(f"F6 FESTIM timesteps ({len(model.timesteps)}) and exports ({n}) differ")
+    times = [float(v) for v in model.timesteps]
+    x = np.asarray(profile.x, dtype=float).reshape(-1)
+    order = np.argsort(x)
+    x = x[order]
+    mobile_profiles = np.asarray(profile.data, dtype=float)[:, order] / AVOGADRO
+    trapped_profiles = np.asarray(trapped_profile.data, dtype=float)[:, order] / AVOGADRO
+    jl = np.asarray(inlet.data, dtype=float).reshape(-1) / AVOGADRO
+    jr = np.asarray(outlet.data, dtype=float).reshape(-1) / AVOGADRO
+    im = np.asarray(mobile_inventory.data, dtype=float).reshape(-1) / AVOGADRO
+    it = np.asarray(trapped_inventory.data, dtype=float).reshape(-1) / AVOGADRO
+    return _f6_reduce(times, jl, jr, x, mobile_profiles, trapped_profiles, im, it)
+
+
+def _f6_flux_error(first: dict[str, Any], second: dict[str, Any]) -> float:
+    jss = max(abs(first["jss"]), abs(second["jss"]))
+    floor = 1.0e-3 * jss
+    return max(
+        abs(a - b) / max(abs(b), floor)
+        for a, b in zip(first["flux_t"], second["flux_t"], strict=True)
+    )
+
+
+def _f6_inventory_error(
+    first: dict[str, Any], second: dict[str, Any], key: str, scale: float
+) -> float:
+    floor = 1.0e-3 * scale
+    return max(
+        abs(a - b) / max(abs(a), abs(b), floor)
+        for a, b in zip(first[key], second[key], strict=True)
+    )
+
+
+def _f6_profile_error(
+    first: dict[str, Any], second: dict[str, Any], key: str, norm: float
+) -> float:
+    grid = np.linspace(
+        max(first["x"][0], second["x"][0]), min(first["x"][-1], second["x"][-1]), 201
+    )
+    worst = 0.0
+    for a, b in zip(first[key], second[key], strict=True):
+        ia = np.interp(grid, first["x"], a)
+        ib = np.interp(grid, second["x"], b)
+        worst = max(worst, float(np.max(np.abs(ia - ib))) / norm)
+    return worst
+
+
+def _f6_reaction_law_error(result: dict[str, Any]) -> float:
+    """FESTIM factor-of-two check: J_out = Kr c_face^2 (molar units)."""
+    if abs(result["x"][-1] - L) > 1e-12 * L:
+        raise ValueError("F6 FESTIM profile does not end at the outlet face")
+    return abs(result["jss"] - F6_KR * result["c"][-1] ** 2) / result["jss"]
+
+
+def _f6_trap_equilibrium_error(result: dict[str, Any]) -> float:
+    """FESTIM trap reaction check: c_t = N K c/(1+K c), K=k0/p0."""
+    k = F6_K0 / F6_P0
+    c = np.asarray(result["c"], dtype=float)
+    expected = F6_TRAP_N * k * c / (1.0 + k * c)
+    return float(np.max(np.abs(np.asarray(result["ct"], dtype=float) - expected))) / F6_TRAP_N
+
+
+def _f6_scalar_oracle() -> tuple[float, float]:
+    """Steady recombination face and flux with traps (linear c(x) still)."""
+    a = D / L
+    face = 2.0 * a * C0 / (a + math.sqrt(a * a + 4.0 * F6_KR * a * C0))
+    return face, a * (C0 - face)
+
+
+def _f6_cached_run(code: str, cells: int, dt: float, run: Any) -> dict[str, Any]:
+    """Cache F6 reductions only with verified runtime and model identity."""
+    import nucleide._internal as extension
+
+    identity = {
+        "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "facade_sha256": hashlib.sha256(Path(tri.__file__).read_bytes()).hexdigest(),
+        "extension_sha256": hashlib.sha256(Path(extension.__file__).read_bytes()).hexdigest(),
+        "case": "F6",
+        "code": code,
+        "cells": cells,
+        "dt": dt,
+        "parameters": [
+            L,
+            D,
+            C0,
+            F6_KR,
+            F6_K0,
+            F6_P0,
+            F6_TRAP_N,
+            F6_TEMPERATURE,
+            AVOGADRO,
+            F6_TIMES,
+            F6_T_END,
+            F6_IMAGE,
+            F6_INITIAL_DT,
+            F6_GROWTH,
+        ],
+        "python": platform.python_version(),
+        "packages": {
+            name: common._dist_version(name)
+            for name in (
+                "festim",
+                "fenics-dolfinx",
+                "scifem",
+                "io4dolfinx",
+                "fenicsx-compat",
+                "numpy",
+            )
+        },
+    }
+    cache = Path(__file__).resolve().parent / ".cache" / "f6-runs"
+    label = f"F6 {code} cells={cells} dt={dt:g}"
+    runtime, reason = _f5_runtime_identity()
+    if runtime is None:
+        print(f"{label}: {reason}", flush=True)
+    return cached_run(cache, identity, runtime, run, label=label)
+
+
+def trapped_recombination_probe() -> tuple[list[list[str]], list[str]]:
+    """F6: one McNabb-Foster trap plus a recombining outlet, both codes."""
+    rows: list[list[str]] = []
+    notes = [
+        "F6 single-layer trapped recombination: L=1e-3 m, D=1e-9 m²/s, "
+        "C0=1 mol/m³, Kr=1e-6 m⁴/(mol s), one trap k0=0.5 m³/(mol s), "
+        "p0=0.5 s⁻¹, N=2 mol/m³, scalar 500 K, zero Arrhenius energies. "
+        "Mobile and trapped initial loads are zero; outlet law J=Kr c². "
+        "The Oriani effective lag L²/(6D_eff)=500 s sets the output fractions "
+        "{0.2,0.5,1,2,5,10} (100–5000 s); no closed-form time-lag gate exists "
+        "for traps plus recombination. Independent space levels 50/100/200 "
+        "cells at dt=0.25 s and time caps 0.5/0.25/0.125 s at 200 cells; "
+        "each side self-converges to <1/3 of its parity gate first.",
+        "F6 unit conversion: FESTIM receives atomic concentrations/fluxes/"
+        "inventories (multiply molar values by exact SI NA=6.02214076e23 "
+        "mol⁻¹). The second-order trap constant is divided by NA "
+        "(k0_atom=k0_mol/NA), p0 is unchanged and N_atom=NA*N_mol, so "
+        "N*K and the Langmuir load are invariant. The surface reaction uses "
+        "two identical reactants: FESTIM applies two partial fluxes, so "
+        "k_r0=Kr/(2 NA) gives the molar flux Kr*c_mol². The exported FESTIM "
+        "face concentration checks that factor of two; the exported trapped "
+        "profile checks the distinct-reactant Langmuir equilibrium. FESTIM "
+        "uses quadratic elements, atol=NA*1e-14 and rtol=1e-10; Nucleide uses "
+        "the landed CN kernel with rtol=1e-10/atol=1e-14 and the same "
+        "hand-derived initial Dirichlet-layer flux as F5.",
+        "F6 gates (predeclared from the refinement evidence, not tuned to a "
+        "desired parity): J(t) 3% with a 1e-3*J_ss denominator floor, mobile "
+        "and trapped inventory histories 2%, mobile and trapped profile "
+        "histories 2% (normalized by C0 and N), FESTIM reaction-law and "
+        "Langmuir checks 2%, late-flux change 2%/3, mobile-plus-trapped "
+        "inventory balance 1e-3 relative with independent stride-2/4 flux "
+        "quadrature below 1e-3/3. All refinement changes must be below one "
+        "third of the corresponding gate; otherwise F6 is INCONCLUSIVE and "
+        "the script exits nonzero. Requested output times are sampled only "
+        "between exported FESTIM brackets; a missing bracket or a short "
+        "history fails instead of extrapolating.",
+    ]
+    try:
+        festim = _require_festim()
+    except ProbeSkip as exc:
+        rows.append(
+            ["F6 external trapped-recombination probe", str(exc), "available oracle", "SKIP"]
+        )
+        notes.append(f"F6 SKIP: {exc}")
+        return rows, notes
+    except Exception as exc:  # noqa: BLE001 — installed oracle errors must fail
+        rows.append(
+            [
+                "F6 oracle configuration",
+                repr(exc),
+                "working FESTIM 2.1",
+                _check(False, "F6 oracle configuration"),
+            ]
+        )
+        notes.append(f"F6 FAIL: installed oracle could not be loaded: {exc!r}")
+        return rows, notes
+    notes.append(
+        f"F6 required image: {F6_IMAGE}; Python {platform.python_version()}; "
+        + ", ".join(
+            f"{name}={common._dist_version(name)}"
+            for name in ("festim", "fenics-dolfinx", "scifem", "io4dolfinx", "numpy")
+        )
+    )
+    runtime, reason = _f5_runtime_identity()
+    if runtime is None:
+        notes.append(f"F6 persistent cache disabled: {reason}; all calculations run fresh.")
+    else:
+        digest = hashlib.sha256(json.dumps(runtime, sort_keys=True).encode()).hexdigest()
+        notes.append(
+            f"F6 actual runner image ID: {runtime['image_id']}; runtime fingerprint "
+            f"SHA-256 {digest}. The environment is held fixed during this probe."
+        )
+
+    def gate(label: str, error: float, threshold: float) -> None:
+        rows.append(
+            [
+                f"F6 {label}",
+                fmt(error),
+                f"< {threshold:g}",
+                _check(math.isfinite(error) and error < threshold, f"F6 {label}"),
+            ]
+        )
+
+    native_scale_m = C0 * L
+    native_scale_t = F6_TRAP_N * L
+    try:
+        native = [
+            _f6_cached_run(
+                "Nucleide", cells, dt, lambda cells=cells, dt=dt: _f6_nucleide(cells, dt)
+            )
+            for cells, dt in F6_LEVELS
+        ]
+        external = [
+            _f6_cached_run(
+                "FESTIM",
+                cells,
+                dt,
+                lambda cells=cells, dt=dt: _f6_festim(festim, cells, dt),
+            )
+            for cells, dt in F6_LEVELS
+        ]
+        converged = True
+        for name, runs in (("Nucleide", native), ("FESTIM", external)):
+            for label, a, b in (
+                ("space 50→100", 0, 1),
+                ("space 100→200", 1, 2),
+                ("time .5→.25", 3, 2),
+                ("time .25→.125", 2, 4),
+            ):
+                flux_error = _f6_flux_error(runs[a], runs[b])
+                mobile_error = _f6_inventory_error(
+                    runs[a], runs[b], "mobile_inventory_t", native_scale_m
+                )
+                trapped_error = _f6_inventory_error(
+                    runs[a], runs[b], "trapped_inventory_t", native_scale_t
+                )
+                mobile_profile_error = _f6_profile_error(runs[a], runs[b], "profiles", C0)
+                trapped_profile_error = _f6_profile_error(
+                    runs[a], runs[b], "trapped_profiles", F6_TRAP_N
+                )
+                ok = (
+                    flux_error < F6_FLUX_GATE / 3.0
+                    and mobile_error < F6_INVENTORY_GATE / 3.0
+                    and trapped_error < F6_INVENTORY_GATE / 3.0
+                    and mobile_profile_error < F6_PROFILE_GATE / 3.0
+                    and trapped_profile_error < F6_PROFILE_GATE / 3.0
+                )
+                converged = converged and ok
+                rows.append(
+                    [
+                        f"F6 {name} {label} J(t)/mobile inventory",
+                        f"{flux_error:.6e} / {mobile_error:.6e}",
+                        f"< {F6_FLUX_GATE / 3.0:.3e} / {F6_INVENTORY_GATE / 3.0:.3e}",
+                        "PASS" if ok else "INCONCLUSIVE",
+                    ]
+                )
+                rows.append(
+                    [
+                        f"F6 {name} {label} trapped inventory/profiles",
+                        f"{trapped_error:.6e} / {mobile_profile_error:.6e} / "
+                        f"{trapped_profile_error:.6e}",
+                        f"< {F6_INVENTORY_GATE / 3.0:.3e} / "
+                        f"{F6_PROFILE_GATE / 3.0:.3e} / {F6_PROFILE_GATE / 3.0:.3e}",
+                        "PASS" if ok else "INCONCLUSIVE",
+                    ]
+                )
+            final = runs[-1]
+            gate(f"{name} late flux change (0.9 tend→tend)", final["late_change"], F6_LATE_GATE)
+            gate(f"{name} mobile+trapped inventory balance", final["balance"], F6_BALANCE_GATE)
+            for index, error in enumerate(final["quadrature"]):
+                gate(
+                    f"{name} flux quadrature stride {2**index}→{2 ** (index + 1)}",
+                    error,
+                    F6_QUADRATURE_GATE,
+                )
+            notes.append(
+                f"F6 {name} balance grid: {final['grid']}; mobile+trapped inventory "
+                f"change {final['inventory_change']:.12e} mol/m², net integrated "
+                f"inlet minus outlet {final['net_integral']:.12e} mol/m², absolute "
+                f"throughput {final['throughput']:.12e} mol/m². Requested end "
+                f"{final['requested_end']:.17g} s; actual end "
+                f"{final['actual_end']:.17g} s; endpoint roundoff allowance "
+                f"{final['endpoint_roundoff_allowance']:.6e} s. Balance uses the "
+                "actual exported initial inventories and time grid."
+            )
+        if converged:
+            for index, (cells, dt) in enumerate(F6_LEVELS):
+                gate(
+                    f"cross-code J(t), cells={cells}, dt={dt}",
+                    _f6_flux_error(native[index], external[index]),
+                    F6_FLUX_GATE,
+                )
+            gate(
+                "cross-code mobile inventory history",
+                _f6_inventory_error(native[-1], external[-1], "mobile_inventory_t", native_scale_m),
+                F6_INVENTORY_GATE,
+            )
+            gate(
+                "cross-code trapped inventory history",
+                _f6_inventory_error(
+                    native[-1], external[-1], "trapped_inventory_t", native_scale_t
+                ),
+                F6_INVENTORY_GATE,
+            )
+            gate(
+                "cross-code mobile profile history",
+                _f6_profile_error(native[-1], external[-1], "profiles", C0),
+                F6_PROFILE_GATE,
+            )
+            gate(
+                "cross-code trapped profile history",
+                _f6_profile_error(native[-1], external[-1], "trapped_profiles", F6_TRAP_N),
+                F6_PROFILE_GATE,
+            )
+            gate(
+                "FESTIM two-reactant reaction law J=Kr c_face²",
+                _f6_reaction_law_error(external[-1]),
+                F6_REACTION_GATE,
+            )
+            gate(
+                "FESTIM trap Langmuir equilibrium",
+                _f6_trap_equilibrium_error(external[-1]),
+                F6_TRAP_EQ_GATE,
+            )
+            face, jss = _f6_scalar_oracle()
+            steady = tri.steady(
+                L,
+                F6_LEVELS[-1][0],
+                D,
+                {"kind": "dirichlet", "value": C0},
+                {"kind": "recombination", "rate": F6_KR},
+                traps=[
+                    {
+                        "k0": F6_K0,
+                        "p0": F6_P0,
+                        "site_density": F6_TRAP_N,
+                        "e_k": 0.0,
+                        "e_p": 0.0,
+                    }
+                ],
+                temperature=[F6_TEMPERATURE],
+            )
+            gate("Nucleide steady scalar flux", abs(steady["flux_right"] - jss) / jss, 0.02)
+            expected = C0 + (face - C0) * np.asarray(steady["centres"]) / L
+            gate(
+                "Nucleide steady mobile profile",
+                float(np.max(np.abs(np.asarray(steady["mobile"]) - expected))) / C0,
+                0.02,
+            )
+            gate(
+                "Nucleide final vs steady mobile profile",
+                float(np.max(np.abs(np.asarray(native[-1]["c"]) - np.asarray(steady["mobile"]))))
+                / C0,
+                0.02,
+            )
+            steady_trapped = np.asarray(steady["trapped"], dtype=float)[:, 0]
+            gate(
+                "Nucleide final vs steady trapped profile",
+                float(np.max(np.abs(np.asarray(native[-1]["ct"]) - steady_trapped))) / F6_TRAP_N,
+                0.02,
+            )
+        else:
+            rows.append(
+                ["F6 cross-code parity", "refinement not established", "converged", "INCONCLUSIVE"]
+            )
+            _check(False, "F6 self-convergence inconclusive")
+    except Exception as exc:  # noqa: BLE001 — configured solver failure must fail
+        rows.append(
+            ["F6 execution", repr(exc), "successful calculation", _check(False, "F6 execution")]
+        )
+        notes.append(f"F6 FAIL: configured probe calculation failed: {exc!r}")
+    return rows, notes
+
+
 def main() -> int:
     report = Report(
         "tritium_festim", "Tritium 1D kernel vs FESTIM 2.1 probe (`tritium_vs_festim.py`)"
@@ -1374,10 +2049,13 @@ def main() -> int:
         "digest-pinned DOLFINx image (docker; never the main validation "
         "container, never the Rust workspace). Progression F1 trap-free "
         "Dirichlet-Dirichlet, F2 one McNabb-Foster trap, F3 Sieverts ends, "
-        "F4 two-layer stack; F5 independently refined trap-free recombination outlet. Always-run "
-        "legs VV Val-1da (analytic permeation) and M1 (manufactured-solution "
-        "order) gate the Nucleide side everywhere; every FESTIM leg SKIPs "
-        "loudly with its reason outside the probe image."
+        "F4 two-layer stack; F5 independently refined trap-free recombination "
+        "outlet; F6 one McNabb-Foster trap combined with the same "
+        "recombination outlet, with mobile/trapped inventories and a "
+        "mobile-plus-trapped mass balance. Always-run legs VV Val-1da "
+        "(analytic permeation) and M1 (manufactured-solution order) gate the "
+        "Nucleide side everywhere; every FESTIM leg SKIPs loudly with its "
+        "reason outside the probe image."
     )
     import nucleide._internal as compiled
 
@@ -1409,6 +2087,19 @@ def main() -> int:
     report.table(["Recombination gate", "Value", "Gate", "Status"], f5_rows)
     for note in f5_notes:
         report.prose(note)
+    f6_rows, f6_notes = trapped_recombination_probe()
+    report.table(["Trapped-recombination gate", "Value", "Gate", "Status"], f6_rows)
+    for note in f6_notes:
+        report.prose(note)
+    if importlib.util.find_spec("festim") is None:
+        # A no-oracle run must not replace the committed probe results with a
+        # page of SKIP rows. The always-run VV/M1 tables above still execute.
+        print(
+            "SKIP: FESTIM not installed; committed tritium/FESTIM probe results "
+            "were not overwritten.",
+            file=sys.stderr,
+        )
+        return 0
     report.emit()
 
     if FAILURES:

@@ -14,6 +14,11 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 
 ## Recently landed
 
+- Activation-to-transport handoff: explicit OpenMC tally normalization with
+  declaration-checked raw states and v2 CSV metadata, a regular-mesh photon
+  source contract with joint voxel/group probabilities, sparse group
+  restoration, structured validation reports, exact cooling-time batches,
+  reproducibility manifests and an optional OpenMC `MeshSource` adapter.
 - Canonical `nucid` representation and cross-code naming dialects (`nuclei`).
 - Material compositions, compendium loading, and XML export (`material`).
 - MCNP-family readers for xsdir, meshtal, SSW, PTRAC, WWINP, and MCTAL

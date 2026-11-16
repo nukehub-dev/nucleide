@@ -4,15 +4,16 @@
 # Usage:
 #   ./validation/run_all.sh [PYTHON]
 #
-# The optional PYTHON argument defaults to the conda env used for JOSS
-# validation. Every validation/*_vs_*.py comparison script is auto-discovered
-# and run in sorted order, followed by timings.py, render_results.py, and
-# make_figures.py. All scripts are run with -e so the first failure stops the
-# suite.
+# The optional PYTHON argument defaults to the PYTHON environment variable,
+# then to `python3` on PATH. Pass a prepared validation environment explicitly
+# when the default interpreter does not carry the oracle dependencies. Every
+# validation/*_vs_*.py comparison script is auto-discovered and run in sorted
+# order, followed by timings.py, render_results.py, and make_figures.py. All
+# scripts are run with -e so the first failure stops the suite.
 
 set -euo pipefail
 
-PYTHON="${1:-/home/tahmid/.conda/envs/nuke-validation/bin/python}"
+PYTHON="${1:-${PYTHON:-python3}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "Using Python: $PYTHON"

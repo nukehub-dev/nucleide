@@ -4,8 +4,9 @@ Nucleide is a modern Rust toolkit for nuclear-engineering data, measurement, and
  workflow glue: legacy transport-code I/O, nuclide identification, materials,
  CRAM depletion, enrichment analytics, point kinetics, gamma-ray spectroscopy,
  tritium transport, TBR/blanket bookkeeping, equilibrium data readers,
- an OpenMC statepoint tally bridge, fusion neutron sources, spectrum
- unfolding, conservative spectral regrouping, volume-aware source splitting, variance
+ an OpenMC statepoint tally bridge with explicit physical-flux normalization
+ and photon-source export, fusion neutron sources, spectrum unfolding,
+ conservative spectral regrouping, volume-aware source splitting, variance
  reduction, UQ sampling, CSG translation, and code-card emission — exposed
  through a typed Python API.
 
@@ -54,13 +55,13 @@ rebuilds the high-value subset in memory-safe Rust with one-command
 | Spectroscopy (`nucleide-spectroscopy`) | Spectrum smoothing, gross/net counting, energy/efficiency calibration, X-ray lines, SPE parsing, decay-line SDEF source cards (E9) fed from caller lists or the runtime decay-lines TSV interchange |
 | Spectrum unfolding (`nucleide-unfold`) | SAND-II, STAYSL-class least-squares, GRAVEL chi-square-weighted, and MAXED maximum-entropy adjustment of a guess neutron spectrum against measured activation rates (caller-supplied response matrix, or the IRDFF-II runtime pack), with convergence diagnostics; non-convergence is a hard error |
 | Equilibrium data (`nucleide-equilib-io`) | Classic-netCDF VMEC `wout` reader (CDF-1/CDF-2 only; netCDF-4/CDF-5 convert facade-side) plus the `&INDATA` input-text grammar, with flux-surface Jacobian helpers for volume weighting and wall-load mapping in flux coordinates (reads data, never solves equilibria) |
-| OpenMC tally bridge (`nucleide.openmc`, pure Python) | Statepoint mesh/cell tally extraction through the caller-side OpenMC API into plain arrays the damage folds accept, plus a CSV interchange for the same dict |
+| OpenMC tally bridge (`nucleide.openmc`, pure Python) | Statepoint mesh/cell tally extraction through the caller-side OpenMC API into plain arrays the damage folds accept, v1/v2 CSV interchange, explicit raw-to-physical flux normalization, optional `MeshSource` export, exact cooling-time batches and reproducibility manifests |
 | Variance reduction (`nucleide-vr-tools`) | MAGIC weight-window generation, OpenMC/Serpent weight-window emission, mesh source sampling with alias tables, Gaussian KDE source resampling (Silverman, fixed, and adaptive kNN bandwidths) |
 | UQ sampling (`nucleide-linalg`) | Seeded MVN + log-normal + LHS draws over caller-supplied covariance blocks, SANDY-compatible estimators, decay-data and fission-yield perturbation consumers |
 | CCCC I/O (`nucleide-cccc-io`) | ISOTXS/RTFLUX text-subset parsers + PARTISN deck writer (no solver) |
 | FISPACT I/O (`nucleide-fispact-io`) | FISPACT-II inventory output parser reusing the ALARA response frame, plus the clearance-bearing wide inventory table printed with the `HAZARDS` + `CLEAR` keywords (output-only) |
 | ORIGEN I/O (`nucleide-origen-io`) | Scoped ORIGEN 2.2 TAPE5 input-echo, TAPE6 inventory, and TAPE9 decay readers |
-| R2S (`nucleide-r2s`) | Scoped R2S workflow builder: zone-to-flux linking, schedule expansion, photon assembly (uniform-split placeholder plus per-voxel source tags with count- or volume-weighted integrated splitting and `.photonSrc` group spectra), ARMI database-snapshot adapter |
+| R2S (`nucleide-r2s`) | Scoped R2S workflow builder: zone-to-flux linking, schedule expansion, photon assembly (uniform-split placeholder plus per-voxel source tags with count- or volume-weighted integrated splitting and `.photonSrc` group spectra), an explicit regular-mesh photon-source contract with joint voxel/group probabilities, sparse-grid restoration and structured validation reports, ARMI database-snapshot adapter |
 | Emit (`nucleide-emit`) | Single-material emission to MCNP/Serpent/FLUKA/ALARA/PARTISN cards with mass-drift report, plus an ARMI blueprint-key bridge |
 | Python bindings | PyO3 extension module behind a typed pure-Python facade (`nucleide._internal`, `.pyi` stubs, `py.typed`) |
 
@@ -85,7 +86,7 @@ nucleide/
 │   ├── cccc-io/       # ISOTXS/RTFLUX text-subset parsers + PARTISN writer (no solver)
 │   ├── fispact-io/    # FISPACT-II inventory output + CLEAR-keyword clearance table (output-only)
 │   ├── origen-io/     # scoped ORIGEN TAPE5/6/9 readers
-│   ├── r2s/           # scoped R2S workflows (volume-aware photon tags + spectra)
+│   ├── r2s/           # scoped R2S workflows, photon-source contract, flux handoff
 │   ├── vr-tools/      # MAGIC weight windows + OpenMC/Serpent emission, source sampling, KDE
 │   ├── enrichment/    # cascades, SWU
 │   ├── depletion/     # CRAM + chain files

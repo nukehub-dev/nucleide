@@ -208,9 +208,9 @@ Backing crate: [`nucleide-nuclei`](../architecture/crate-responsibilities.md#nuc
   - `geant4() -> str | None`
 
 - [`from_zaid(zaid: int) -> Nuclide`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L437)
-- [`armi_to_nucid(name: str) -> Nuclide`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1072)
-- [`nucid_to_armi(nuclide: Nuclide) -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1073)
-- [`mcc3_to_nucid(name: str) -> Nuclide`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1074)
+- [`armi_to_nucid(name: str) -> Nuclide`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1134)
+- [`nucid_to_armi(nuclide: Nuclide) -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1135)
+- [`mcc3_to_nucid(name: str) -> Nuclide`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1136)
 - [`normalize_nuclide(name: str) -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L496)
 - [`atomic_mass(key: int | str) -> float | None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L438)
 - [`natural_abundance(key: int | str) -> float | None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L439)
@@ -277,7 +277,7 @@ Backing crate: pure Python · [source file](https://github.com/nukehub-dev/nucle
   - `names() -> list[str]`
   - `get(name: str, as_material: bool = False) -> dict[str, Any] | None`
 
-- [`Cusum`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1098)
+- [`Cusum`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1160)
   — One-sided upper Page CUSUM change detector with Welford statistics.
   - `__init__(ref_shift_k: float = 0.5, alarm_h: float = 4.0, startup: int = 10) -> None`
   - `update(x: float) -> bool`
@@ -294,10 +294,10 @@ Backing crate: pure Python · [source file](https://github.com/nukehub-dev/nucle
 - [`decay_heat(comp: dict[str, float]) -> float`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L497)
 - [`dose_per_g(comp: dict[str, float], pathway: str, source: str = 'EPA') -> float`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L499)
 - [`to_xml(comp: dict[str, float], name: str, density: float, units: str = 'g/cm3') -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L514)
-- [`check_labels(comp: dict[str, float], widths: list[int] | None = None) -> list[dict[str, Any]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1075)
-- [`audit_material(comp: dict[str, float]) -> list[dict[str, str]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1078)
-- [`separate_material(comp: dict[str, float], effs: dict[str, float]) -> tuple[dict[str, float], dict[str, float]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1079)
-- [`blend_material(parts: list[tuple[dict[str, float], float]]) -> dict[str, float]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1082)
+- [`check_labels(comp: dict[str, float], widths: list[int] | None = None) -> list[dict[str, Any]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1137)
+- [`audit_material(comp: dict[str, float]) -> list[dict[str, str]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1140)
+- [`separate_material(comp: dict[str, float], effs: dict[str, float]) -> tuple[dict[str, float], dict[str, float]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1141)
+- [`blend_material(parts: list[tuple[dict[str, float], float]]) -> dict[str, float]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1144)
 - [`mix_by_mass(parts: list[tuple[dict[str, float], float]]) -> dict[str, float]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L503)
 - [`mix_by_volume(parts: list[tuple[dict[str, float], float, float]]) -> dict[str, float]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L504)
 - [`specific_activity(comp: dict[str, float]) -> float`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L505)
@@ -443,7 +443,7 @@ Backing crate: [`nucleide-mcnp-io`](../architecture/crate-responsibilities.md#nu
     get_rx(nuc: int | str, p_in: int, rdesc: int, rprop: int, x1: int | None = None, p_out: int | None = None) -> list[list[float]]
     ```
 
-- [`DeckProblem`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L661)
+- [`DeckProblem`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L723)
   — Parsed MCNP input deck with format-preserving write-back.
   - `loads(text: str) -> DeckProblem`
   - `message: str` (property)
@@ -483,17 +483,17 @@ Backing crate: [`nucleide-mcnp-io`](../architecture/crate-responsibilities.md#nu
 - [`combine_ssw_files(output: str, inputs: list[str]) -> None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L436)
 - [`ssw_combine_main(argv: Sequence[str] | None = None) -> None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/mcnp.py#L225)
 - [`read_inp(path: str) -> list[dict[str, Any]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L511)
-- [`parse_deck(text: str) -> DeckProblem`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L733)
-- [`read_deck(path: str) -> DeckProblem`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L734)
-- [`parse_sdef(text: str) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L735)
-- [`parse_csg_to_openmc(text: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L736)
-- [`read_csg_to_openmc(path: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L737)
-- [`parse_csg_to_serpent(text: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L738)
-- [`read_csg_to_serpent(path: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L739)
-- [`parse_csg_to_phits(text: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L740)
-- [`read_csg_to_phits(path: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L741)
-- [`parse_csg_to_gdml(text: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L742)
-- [`read_csg_to_gdml(path: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L743)
+- [`parse_deck(text: str) -> DeckProblem`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L795)
+- [`read_deck(path: str) -> DeckProblem`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L796)
+- [`parse_sdef(text: str) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L797)
+- [`parse_csg_to_openmc(text: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L798)
+- [`read_csg_to_openmc(path: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L799)
+- [`parse_csg_to_serpent(text: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L800)
+- [`read_csg_to_serpent(path: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L801)
+- [`parse_csg_to_phits(text: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L802)
+- [`read_csg_to_phits(path: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L803)
+- [`parse_csg_to_gdml(text: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L804)
+- [`read_csg_to_gdml(path: str) -> tuple[str, list[dict[str, str]]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L805)
 
 - [`mesh_to_geom`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L544):
 
@@ -554,8 +554,8 @@ Backing crate: [`nucleide-mcpl-io`](../architecture/crate-responsibilities.md#nu
   mcpl2ssw(mcpl_path: str, reference_ssw_path: str, ssw_out_path: str, surface: int | None = None, force_cs_to_one: bool = False, niss: int | None = None, allow_polarisation: bool = False) -> int
   ```
 
-- [`mcpl_statsum_validate(comment: str) -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1094)
-- [`mcpl_statsum_comment(key: str, value: float) -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1095)
+- [`mcpl_statsum_validate(comment: str) -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1156)
+- [`mcpl_statsum_comment(key: str, value: float) -> str`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1157)
 
 {/*GEN:module-mcpl:END*/}
 
@@ -731,7 +731,7 @@ Backing crate: [`nucleide-depletion`](../architecture/crate-responsibilities.md#
   - `solve(n0: dict[str, float], dt: float, order: int = 48, method: str = 'cram48') -> dict[str, float]`
   - `solve_vec(n0: list[float], dt: float, order: int = 48, method: str = 'cram48') -> list[float]`
 
-- [`Inventory`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L706)
+- [`Inventory`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L768)
   — Unit-aware decay inventory over a depletion chain.
   - `__init__(chain: Chain, comp: dict[str, float], units: str = 'atoms') -> None`
   - `numbers() -> dict[str, float]`
@@ -771,16 +771,16 @@ Backing crate: [`nucleide-depletion`](../architecture/crate-responsibilities.md#
   deplete_series(chain: Chain, n0: dict[str, float], dts: list[float], rates: dict[str, float] | None = None, rates_list: list[dict[str, float] | None] | None = None, integrator: str = 'predictor', order: int = 48, method: str = 'cram48') -> dict[str, Any]
   ```
 
-- [`cumulative_decays`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L744):
+- [`cumulative_decays`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L806):
 
   ```python
   cumulative_decays(chain: Chain, n0: dict[str, float], dt: float, rates: dict[str, float] | None = None) -> dict[str, float]
   ```
 
-- [`progeny(chain: Chain, name: str) -> list[tuple[str, float, str]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1068)
-- [`branching_fraction(chain: Chain, parent: str, child: str) -> float | None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1069)
-- [`decay_mode(chain: Chain, parent: str, child: str) -> str | None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1070)
-- [`chain_edges(chain: Chain) -> list[tuple[str, str, float, str]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1071)
+- [`progeny(chain: Chain, name: str) -> list[tuple[str, float, str]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1130)
+- [`branching_fraction(chain: Chain, parent: str, child: str) -> float | None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1131)
+- [`decay_mode(chain: Chain, parent: str, child: str) -> str | None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1132)
+- [`chain_edges(chain: Chain) -> list[tuple[str, str, float, str]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1133)
 
 {/*GEN:module-depletion:END*/}
 
@@ -1200,18 +1200,18 @@ Backing crate: [`nucleide-r2s`](../architecture/crate-responsibilities.md#nuclei
 - [`r2s_photon_group_sums(photon_text: str, nuclides: list[str], time_s: float) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L654)
 - [`r2s_snapshot_inventory(snapshot: dict[str, Any]) -> dict[str, float]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L657)
 - [`r2s_expand_sweep(axes: list[dict[str, Any]]) -> list[dict[str, str]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L658)
-- [`from_deck(deck_text: str) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L35)
+- [`from_deck(deck_text: str) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L59)
   (alias of `r2s_from_deck`)
-- [`from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L36)
+- [`from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L60)
   (alias of `r2s_from_snapshot`)
-- [`validate(workflow: dict[str, Any], deck_text: str) -> None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L37)
+- [`validate(workflow: dict[str, Any], deck_text: str) -> None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L61)
   (alias of `r2s_validate`)
-- [`expand(deck_text: str, top: str | None = None) -> list[dict[str, Any]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L38)
+- [`expand(deck_text: str, top: str | None = None) -> list[dict[str, Any]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L62)
   (alias of `r2s_expand`)
-- [`assemble(output_text: str, run_lbl: str, zone: str, groups: int) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L39)
+- [`assemble(output_text: str, run_lbl: str, zone: str, groups: int) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L63)
   (alias of `r2s_assemble`)
 
-- [`tag_zone_strength`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L40):
+- [`tag_zone_strength`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L64):
 
   ```python
   tag_zone_strength(totals: list[float], zone_of_voxel: list[int], split: bool = False, &#42;, voxel_volumes_cm3: list[float] | None = None) -> dict[str, Any]
@@ -1219,7 +1219,7 @@ Backing crate: [`nucleide-r2s`](../architecture/crate-responsibilities.md#nuclei
 
   (alias of `r2s_tag_zone_strength`)
 
-- [`photon_group_sums`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L41):
+- [`photon_group_sums`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L65):
 
   ```python
   photon_group_sums(photon_text: str, nuclides: list[str], time_s: float) -> dict[str, Any]
@@ -1227,10 +1227,28 @@ Backing crate: [`nucleide-r2s`](../architecture/crate-responsibilities.md#nuclei
 
   (alias of `r2s_photon_group_sums`)
 
-- [`snapshot_inventory(snapshot: dict[str, Any]) -> dict[str, float]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L42)
+- [`snapshot_inventory(snapshot: dict[str, Any]) -> dict[str, float]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L66)
   (alias of `r2s_snapshot_inventory`)
-- [`expand_sweep(axes: list[dict[str, Any]]) -> list[dict[str, str]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L43)
+- [`expand_sweep(axes: list[dict[str, Any]]) -> list[dict[str, str]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L67)
   (alias of `r2s_expand_sweep`)
+
+- [`photon_source`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L70):
+
+  ```python
+  photon_source(mesh_shape: Sequence[int], lower_left_cm: Sequence[float], upper_right_cm: Sequence[float], voxel_volumes_cm3: Sequence[float], edges_ev: Sequence[float], cooling_s: float, strengths_photons_per_s: Sequence[Sequence[float]]) -> dict[str, Any]
+  ```
+
+- [`photon_source_exported`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L102):
+
+  ```python
+  photon_source_exported(mesh_shape: Sequence[int], lower_left_cm: Sequence[float], upper_right_cm: Sequence[float], voxel_volumes_cm3: Sequence[float], full_edges_ev: Sequence[float], cooling_s: float, exported_group_indices: Sequence[int], exported_strengths_photons_per_s: Sequence[Sequence[float]]) -> dict[str, Any]
+  ```
+
+- [`source_report(source: dict[str, Any]) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L131)
+- [`source_probabilities(source: dict[str, Any]) -> list[list[float]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L142)
+- [`source_energy_probabilities(source: dict[str, Any]) -> list[list[float]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L147)
+- [`source_density(source: dict[str, Any]) -> list[list[float]]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L152)
+- [`select_cooling(available_s: Sequence[float], requested_s: Sequence[float]) -> list[int]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/r2s.py#L157)
 
 {/*GEN:module-r2s:END*/}
 
@@ -1240,25 +1258,25 @@ Backing crate: [`nucleide-r2s`](../architecture/crate-responsibilities.md#nuclei
 
 Backing crate: [`nucleide-emit`](../architecture/crate-responsibilities.md#nucleide-emit) · [source dir](https://github.com/nukehub-dev/nucleide/tree/main/crates/emit)
 
-- [`emit_armi_cards`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1132):
+- [`emit_armi_cards`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1194):
 
   ```python
   emit_armi_cards(comp: dict[str, float], name: str, density: float | None = None, mcnp_number: int = 1, xs_suffix: str = '80c', serpent_lib: str = '03c', fluka_fid: int = 1, partisn_zone: int = 1) -> dict[str, str]
   ```
 
-- [`emit_armi_drift_table`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1142):
+- [`emit_armi_drift_table`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1204):
 
   ```python
   emit_armi_drift_table(comp: dict[str, float], name: str, density: float | None = None, mcnp_number: int = 1, xs_suffix: str = '80c', serpent_lib: str = '03c', fluka_fid: int = 1, partisn_zone: int = 1) -> list[dict[str, Any]]
   ```
 
-- [`emit_cards`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1112):
+- [`emit_cards`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1174):
 
   ```python
   emit_cards(comp: dict[str, float], name: str, density: float | None = None, mcnp_number: int = 1, xs_suffix: str = '80c', serpent_lib: str = '03c', fluka_fid: int = 1, partisn_zone: int = 1) -> dict[str, str]
   ```
 
-- [`emit_drift_table`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1122):
+- [`emit_drift_table`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/_internal.pyi#L1184):
 
   ```python
   emit_drift_table(comp: dict[str, float], name: str, density: float | None = None, mcnp_number: int = 1, xs_suffix: str = '80c', serpent_lib: str = '03c', fluka_fid: int = 1, partisn_zone: int = 1) -> list[dict[str, Any]]
@@ -1325,13 +1343,43 @@ OpenMC reads the statepoint, Nucleide takes plain arrays.
 
 Backing crate: pure Python · [source file](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/data.py)
 
-- [`openmc_version() -> str | None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L80)
-- [`tally_arrays(statepoint: Any, tally_id: int, score: str = 'flux') -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L106)
-- [`read_statepoint(path: str | Path, tally_id: int, score: str = 'flux') -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L181)
-- [`cell_flux(arrays: dict[str, Any]) -> list[float]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L205)
-- [`voxel_flux(arrays: dict[str, Any], voxel: int) -> list[float]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L222)
-- [`tally_to_csv(arrays: dict[str, Any], path: str | Path) -> None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L232)
-- [`tally_from_csv(path: str | Path) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L316)
+- [`openmc_version() -> str | None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L143)
+- [`tally_arrays(statepoint: Any, tally_id: int, score: str = 'flux') -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L169)
+- [`read_statepoint(path: str | Path, tally_id: int, score: str = 'flux') -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L250)
+- [`cell_flux(arrays: dict[str, Any]) -> list[float]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L274)
+- [`voxel_flux(arrays: dict[str, Any], voxel: int) -> list[float]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L291)
+- [`tally_to_csv(arrays: dict[str, Any], path: str | Path) -> None`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L301)
+- [`tally_from_csv(path: str | Path) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L396)
+
+- [`normalize_flux`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L532):
+
+  ```python
+  normalize_flux(arrays: dict[str, Any], source_rate_s: float, volumes_cm3: Sequence[float], &#42;, input_normalization: str | None = None) -> dict[str, Any]
+  ```
+
+- [`source_manifest`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L755):
+
+  ```python
+  source_manifest(&#42;, source: dict[str, Any], input_files: Iterable[str | Path] = (), output_files: Iterable[str | Path] = (), external_solver: str | None = None, external_version: str | None = None, adapter: str = 'openmc-mesh-source', adapter_version: str = '1', evaluated_library: str | None = None, validation: dict[str, Any] | None = None) -> dict[str, Any]
+  ```
+
+- [`write_manifest(manifest: dict[str, Any], path: str | Path) -> Path`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L825)
+- [`read_manifest(path: str | Path) -> dict[str, Any]`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L844)
+
+- [`verify_manifest`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L864):
+
+  ```python
+  verify_manifest(manifest_or_path: dict[str, Any] | str | Path, &#42;, base_dir: str | Path | None = None) -> dict[str, Any]
+  ```
+
+- [`export_cooling_batch`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L937):
+
+  ```python
+  export_cooling_batch(sources: Sequence[dict[str, Any]], requested_times_s: Sequence[float], out_dir: str | Path, &#42;, writer: Callable[[dict[str, Any], Path], None] | None = None, overwrite: bool = False, skip_zero: bool = False) -> dict[str, Any]
+  ```
+
+- [`mesh_source(source: dict[str, Any]) -> Any`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L639)
+- [`write_mesh_source_xml(source: dict[str, Any], path: str | Path) -> Path`](https://github.com/nukehub-dev/nucleide/blob/main/python/nucleide/openmc.py#L736)
 
 {/*GEN:module-openmc:END*/}
 

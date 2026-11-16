@@ -567,8 +567,11 @@ flux is still `≈2.3e-3 J_ss` at `t = 31.6 s` and reaches `0.9999 J_ss` by
   `fixtures/tritium/`), following the kinetics oracle pattern.
 - **Probe-only external oracle**: `validation/tritium_vs_festim.py` compares
   the kernel against FESTIM 2.1 (Apache-2.0, black-box v2.x API) on
-  trap-free, one-trap, Sieverts, and two-layer legs, with the always-run
-  V1/M1 analytic legs gating the Nucleide side. The probe needs DOLFINx, so
+  trap-free, one-trap, Sieverts, two-layer, trap-free recombination (F5) and
+  one-trap-plus-recombination (F6) legs, with the always-run V1/M1 analytic
+  legs gating the Nucleide side. F5/F6 add explicit molar/atomic conversion,
+  independent space/time refinement, mobile and trapped inventories and an
+  exported-history mobile-plus-trapped mass balance. The probe needs DOLFINx, so
   it runs only in the separate `dolfinx/dolfinx:stable` image; outside that
   image the cross-code legs SKIP loudly with their reason. FESTIM/FEniCS
   never enter the main validation container or the Rust workspace, and

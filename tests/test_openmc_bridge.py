@@ -298,8 +298,8 @@ def test_csv_malformed_is_loud(tmp_path: Path) -> None:
     omc.tally_to_csv(arrays, good)
     text = good.read_text(encoding="utf-8")
     bad_format = tmp_path / "bad-format.csv"
-    bad_format.write_text(text.replace("nucleide-openmc-tally-v1", "other"), encoding="utf-8")
-    with pytest.raises(ValueError, match="not a nucleide-openmc-tally-v1"):
+    bad_format.write_text(text.replace("nucleide-openmc-tally-v2", "other"), encoding="utf-8")
+    with pytest.raises(ValueError, match="not a nucleide-openmc-tally-v2"):
         omc.tally_from_csv(bad_format)
     bad_header = tmp_path / "bad-header.csv"
     bad_header.write_text(text.replace("voxel,group,lower_mev", "voxel,group,X"), encoding="utf-8")

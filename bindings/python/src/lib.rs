@@ -4267,6 +4267,337 @@ fn r2s_tag_zone_strength(
     Ok(out.into_any().unbind())
 }
 
+fn r2s_fixed3_usize(values: Vec<usize>, name: &str) -> PyResult<[usize; 3]> {
+    let len = values.len();
+    values.try_into().map_err(|_| {
+        PyValueError::new_err(format!("{name} must have exactly 3 entries, got {len}"))
+    })
+}
+
+fn r2s_fixed3_f64(values: Vec<f64>, name: &str) -> PyResult<[f64; 3]> {
+    let len = values.len();
+    values.try_into().map_err(|_| {
+        PyValueError::new_err(format!("{name} must have exactly 3 entries, got {len}"))
+    })
+}
+
+fn r2s_source_report_to_py(
+    py: Python<'_>,
+    report: &nucleide_r2s::SourceReport,
+) -> PyResult<Py<PyAny>> {
+    use pyo3::types::{PyDict, PyList};
+    let issues = PyList::empty(py);
+    for issue in &report.issues {
+        let item = PyDict::new(py);
+        item.set_item("code", issue.code)?;
+        item.set_item(
+            "severity",
+            match issue.severity {
+                nucleide_r2s::IssueSeverity::Error => "error",
+                nucleide_r2s::IssueSeverity::Warning => "warning",
+                nucleide_r2s::IssueSeverity::Assumption => "assumption",
+            },
+        )?;
+        item.set_item("location", &issue.location)?;
+        item.set_item("message", &issue.message)?;
+        item.set_item("remedy", &issue.remedy)?;
+        issues.append(item)?;
+    }
+    let out = PyDict::new(py);
+    out.set_item("issues", issues)?;
+    out.set_item("issue_count", report.issue_count)?;
+    out.set_item("truncated", report.truncated)?;
+    out.set_item("valid", report.is_valid())?;
+    if let Some(totals) = &report.totals {
+        let totals_dict = PyDict::new(py);
+        totals_dict.set_item("total_photons_per_s", totals.total_photons_per_s)?;
+        totals_dict.set_item(
+            "voxel_totals_photons_per_s",
+            &totals.voxel_totals_photons_per_s,
+        )?;
+        totals_dict.set_item(
+            "group_totals_photons_per_s",
+            &totals.group_totals_photons_per_s,
+        )?;
+        out.set_item("totals", totals_dict)?;
+    } else {
+        out.set_item("totals", py.None())?;
+    }
+    Ok(out.into_any().unbind())
+}
+
+fn r2s_photon_source_to_py(
+    py: Python<'_>,
+    source: &nucleide_r2s::PhotonSource,
+) -> PyResult<Py<PyAny>> {
+    use pyo3::types::PyDict;
+    let draft = nucleide_r2s::PhotonSourceDraft::new(
+        source.mesh_shape,
+        source.lower_left_cm,
+        source.upper_right_cm,
+        source.voxel_volumes_cm3.clone(),
+        source.edges_ev.clone(),
+        source.cooling_s,
+        source.strengths_photons_per_s.clone(),
+    );
+    let report = nucleide_r2s::SourceReport::from_draft(&draft);
+    let out = PyDict::new(py);
+    out.set_item("mesh_shape", source.mesh_shape.to_vec())?;
+    out.set_item("lower_left_cm", source.lower_left_cm.to_vec())?;
+    out.set_item("upper_right_cm", source.upper_right_cm.to_vec())?;
+    out.set_item("voxel_volumes_cm3", &source.voxel_volumes_cm3)?;
+    out.set_item("edges_ev", &source.edges_ev)?;
+    out.set_item("cooling_s", source.cooling_s)?;
+    out.set_item("strengths_photons_per_s", &source.strengths_photons_per_s)?;
+    out.set_item("n_voxels", source.n_voxels())?;
+    out.set_item("n_groups", source.n_groups())?;
+    out.set_item(
+        "total_photons_per_s",
+        source
+            .checked_total_photons_per_s()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?,
+    )?;
+    out.set_item(
+        "voxel_totals_photons_per_s",
+        source
+            .voxel_totals()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?,
+    )?;
+    out.set_item(
+        "group_totals_photons_per_s",
+        source
+            .group_totals()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?,
+    )?;
+    out.set_item("validation", r2s_source_report_to_py(py, &report)?)?;
+    Ok(out.into_any().unbind())
+}
+
+/// Convert a raw tally into physical group flux (shared Rust kernel).
+///
+/// `normalization` is `"volume-integrated"` for OpenMC's default
+/// track-length flux tally or `"volume-averaged"` for random-ray output with
+/// volume-normalized tallies. The `-rate-scaled` variants skip the source-rate
+/// multiplication because OpenMC already applied the configured total source
+/// strength; using the per-source spelling there would double-count the rate.
+/// Already-physical input is rejected rather than scaled twice. Thin wrapper
+/// over `nucleide-r2s` `normalize_flux`.
+#[pyfunction]
+fn r2s_normalize_flux(
+    tally: Vec<Vec<f64>>,
+    source_rate_s: f64,
+    volumes_cm3: Vec<f64>,
+    normalization: &str,
+) -> PyResult<Vec<Vec<f64>>> {
+    let mode = match normalization {
+        "volume-integrated" => nucleide_r2s::TallyNormalization::VolumeIntegratedPerSource,
+        "volume-integrated-rate-scaled" => {
+            nucleide_r2s::TallyNormalization::VolumeIntegratedRateScaled
+        }
+        "volume-averaged" => nucleide_r2s::TallyNormalization::VolumeAveragedPerSource,
+        "volume-averaged-rate-scaled" => nucleide_r2s::TallyNormalization::VolumeAveragedRateScaled,
+        "physical" => nucleide_r2s::TallyNormalization::Physical,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown tally normalization {other:?}; want 'volume-integrated', \
+                 'volume-integrated-rate-scaled', 'volume-averaged', \
+                 'volume-averaged-rate-scaled', or 'physical'"
+            )))
+        }
+    };
+    nucleide_r2s::normalize_flux(&tally, source_rate_s, &volumes_cm3, mode)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Build and validate an integrated photon source at one cooling time.
+///
+/// Returns the validated fields, checked totals and the structured source
+/// report. Thin wrapper over `nucleide-r2s` `PhotonSource::new`.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn r2s_photon_source(
+    py: Python<'_>,
+    mesh_shape: Vec<usize>,
+    lower_left_cm: Vec<f64>,
+    upper_right_cm: Vec<f64>,
+    voxel_volumes_cm3: Vec<f64>,
+    edges_ev: Vec<f64>,
+    cooling_s: f64,
+    strengths_photons_per_s: Vec<Vec<f64>>,
+) -> PyResult<Py<PyAny>> {
+    let source = nucleide_r2s::PhotonSource::new(
+        r2s_fixed3_usize(mesh_shape, "mesh_shape")?,
+        r2s_fixed3_f64(lower_left_cm, "lower_left_cm")?,
+        r2s_fixed3_f64(upper_right_cm, "upper_right_cm")?,
+        voxel_volumes_cm3,
+        edges_ev,
+        cooling_s,
+        strengths_photons_per_s,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    r2s_photon_source_to_py(py, &source)
+}
+
+/// Rebuild a dense source from exported groups plus explicit dense indices.
+///
+/// Omitted groups become exactly zero; duplicate, unsorted or out-of-range
+/// indices are rejected. Thin wrapper over
+/// `nucleide-r2s` `PhotonSource::from_exported_groups`.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn r2s_photon_source_exported(
+    py: Python<'_>,
+    mesh_shape: Vec<usize>,
+    lower_left_cm: Vec<f64>,
+    upper_right_cm: Vec<f64>,
+    voxel_volumes_cm3: Vec<f64>,
+    full_edges_ev: Vec<f64>,
+    cooling_s: f64,
+    exported_group_indices: Vec<usize>,
+    exported_strengths_photons_per_s: Vec<Vec<f64>>,
+) -> PyResult<Py<PyAny>> {
+    let source = nucleide_r2s::PhotonSource::from_exported_groups(
+        &full_edges_ev,
+        r2s_fixed3_usize(mesh_shape, "mesh_shape")?,
+        r2s_fixed3_f64(lower_left_cm, "lower_left_cm")?,
+        r2s_fixed3_f64(upper_right_cm, "upper_right_cm")?,
+        voxel_volumes_cm3,
+        cooling_s,
+        &exported_group_indices,
+        &exported_strengths_photons_per_s,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    r2s_photon_source_to_py(py, &source)
+}
+
+/// Return the structured, bounded validation report for a source draft.
+///
+/// Never repairs the input; ordinary constructors and exporters still raise.
+/// Thin wrapper over `nucleide-r2s` `SourceReport::from_draft`.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn r2s_source_report(
+    py: Python<'_>,
+    mesh_shape: Vec<usize>,
+    lower_left_cm: Vec<f64>,
+    upper_right_cm: Vec<f64>,
+    voxel_volumes_cm3: Vec<f64>,
+    edges_ev: Vec<f64>,
+    cooling_s: f64,
+    strengths_photons_per_s: Vec<Vec<f64>>,
+) -> PyResult<Py<PyAny>> {
+    let draft = nucleide_r2s::PhotonSourceDraft::new(
+        r2s_fixed3_usize(mesh_shape, "mesh_shape")?,
+        r2s_fixed3_f64(lower_left_cm, "lower_left_cm")?,
+        r2s_fixed3_f64(upper_right_cm, "upper_right_cm")?,
+        voxel_volumes_cm3,
+        edges_ev,
+        cooling_s,
+        strengths_photons_per_s,
+    );
+    let report = nucleide_r2s::SourceReport::from_draft(&draft);
+    r2s_source_report_to_py(py, &report)
+}
+
+/// Joint voxel/group sampling probabilities (zero total is a loud error).
+///
+/// Thin wrapper over `nucleide-r2s` `PhotonSource::joint_probabilities`.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn r2s_source_probabilities(
+    mesh_shape: Vec<usize>,
+    lower_left_cm: Vec<f64>,
+    upper_right_cm: Vec<f64>,
+    voxel_volumes_cm3: Vec<f64>,
+    edges_ev: Vec<f64>,
+    cooling_s: f64,
+    strengths_photons_per_s: Vec<Vec<f64>>,
+) -> PyResult<Vec<Vec<f64>>> {
+    let source = nucleide_r2s::PhotonSource::new(
+        r2s_fixed3_usize(mesh_shape, "mesh_shape")?,
+        r2s_fixed3_f64(lower_left_cm, "lower_left_cm")?,
+        r2s_fixed3_f64(upper_right_cm, "upper_right_cm")?,
+        voxel_volumes_cm3,
+        edges_ev,
+        cooling_s,
+        strengths_photons_per_s,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    source
+        .joint_probabilities()
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Per-voxel energy probabilities (`strength / voxel total`).
+///
+/// Zero-source voxels yield all-zero rows; the joint distribution lives in
+/// `r2s_source_probabilities`. Thin wrapper over
+/// `nucleide-r2s` `PhotonSource::energy_probabilities`.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn r2s_source_energy_probabilities(
+    mesh_shape: Vec<usize>,
+    lower_left_cm: Vec<f64>,
+    upper_right_cm: Vec<f64>,
+    voxel_volumes_cm3: Vec<f64>,
+    edges_ev: Vec<f64>,
+    cooling_s: f64,
+    strengths_photons_per_s: Vec<Vec<f64>>,
+) -> PyResult<Vec<Vec<f64>>> {
+    let source = nucleide_r2s::PhotonSource::new(
+        r2s_fixed3_usize(mesh_shape, "mesh_shape")?,
+        r2s_fixed3_f64(lower_left_cm, "lower_left_cm")?,
+        r2s_fixed3_f64(upper_right_cm, "upper_right_cm")?,
+        voxel_volumes_cm3,
+        edges_ev,
+        cooling_s,
+        strengths_photons_per_s,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    source
+        .energy_probabilities()
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Integrated photons/(s cm3), applying each voxel volume exactly once.
+///
+/// Thin wrapper over `nucleide-r2s` `PhotonSource::density_photons_per_s_cm3`.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn r2s_source_density(
+    mesh_shape: Vec<usize>,
+    lower_left_cm: Vec<f64>,
+    upper_right_cm: Vec<f64>,
+    voxel_volumes_cm3: Vec<f64>,
+    edges_ev: Vec<f64>,
+    cooling_s: f64,
+    strengths_photons_per_s: Vec<Vec<f64>>,
+) -> PyResult<Vec<Vec<f64>>> {
+    let source = nucleide_r2s::PhotonSource::new(
+        r2s_fixed3_usize(mesh_shape, "mesh_shape")?,
+        r2s_fixed3_f64(lower_left_cm, "lower_left_cm")?,
+        r2s_fixed3_f64(upper_right_cm, "upper_right_cm")?,
+        voxel_volumes_cm3,
+        edges_ev,
+        cooling_s,
+        strengths_photons_per_s,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    source
+        .density_photons_per_s_cm3()
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Exact cooling-offset selection (no interpolation or nearest matching).
+///
+/// Returns indices into `available_s` in requested order. Thin wrapper over
+/// `nucleide-r2s` `select_cooling_indices`.
+#[pyfunction]
+fn r2s_select_cooling(available_s: Vec<f64>, requested_s: Vec<f64>) -> PyResult<Vec<usize>> {
+    nucleide_r2s::select_cooling_indices(&available_s, &requested_s)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
 /// Select and sum `.photonSrc` group spectra for `nuclides` at `time_s`.
 ///
 /// Parses ALARA photon-source text, keeps rows matching the named nuclides
@@ -11197,6 +11528,14 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(r2s_expand, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_assemble, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_tag_zone_strength, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_normalize_flux, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_photon_source, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_photon_source_exported, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_source_report, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_source_probabilities, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_source_energy_probabilities, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_source_density, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_select_cooling, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_photon_group_sums, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_snapshot_inventory, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_expand_sweep, m)?)?;

@@ -158,7 +158,11 @@ facade, the `TritiumBreakthrough` demo, and
   are probe-only; the Rust kernel retains molar SI inputs. Validation
   pins, thresholds and reproduction commands live in `validation/README.md`.
   The probe prefers an installed rebuilt release wheel; a checkout extension
-  is a fallback only when no package is installed.
+  is a fallback only when no package is installed. F6 adds the single-layer
+  McNabb-Foster trap plus that recombination outlet: explicit atomic/molar
+  conversion, a two-identical-reactant surface check, mobile/trapped
+  inventories, bracketed sampling and independent space/time refinement with
+  a mobile-plus-trapped mass balance.
 
 ## Verification
 

@@ -1,0 +1,66 @@
+---
+title: Photon source handoff
+description: Validate an integrated photon source, inspect joint voxel/group probabilities, and select exact cooling offsets.
+sidebar:
+  order: 15
+---
+
+The activation-to-transport handoff keeps three things separate: the raw
+Monte Carlo tally, the physical group flux, and the integrated photon source a
+transport code samples. This demo exercises the shared Rust source contract —
+the same validator, density conversion and joint-probability kernel the Python
+package uses.
+
+## Voxel spectra and units
+
+The mesh is a regular `(2, 2, 1)` grid with four 1 cm³ voxels and four photon
+groups spanning 0–0.1, 0.1–0.5, 0.5–2 and 2–10 MeV. The table shows
+**integrated photons/s** per group, not a density and not a probability.
+Change a value and select **Evaluate source**; the shared validator reports
+stable issue codes and keeps modelling assumptions separate from errors.
+
+Negative values, non-finite cells, a zero total, irregular edges and
+mismatched dimensions raise clear errors. A zero-source voxel inside a nonzero source is
+valid data and remains unsampleable; an all-zero source is valid data but has
+no sampling distribution.
+
+## Joint voxel/group sampling
+
+The probability table is the joint distribution over voxel/group pairs. It is
+not the product of a spatial marginal and an energy marginal: independent
+sampling would invent cross-pairs that carry no source. The declared
+assumptions are uniform photon density per eV inside each group and uniform
+position inside each voxel.
+
+## Cooling times
+
+The three buttons are **declared snapshots** at 0 s, 3600 s and 7200 s; the
+browser does not compute decay physics. The cooling-selection check calls the
+shared exact-match kernel. Requested offsets must match an available offset
+exactly, duplicates are rejected, and a near match is not substituted.
+
+Python adds the transport-facing pieces: OpenMC `MeshSource` export, batch
+files, and reproducibility manifests. See
+[Activation to transport](../python/activation-to-transport.md) for the full
+workflow.
+
+The browser snapshots are synthetic because no nuclear data or transport
+engine is shipped to the page. The shared kernel is checked against real
+OpenMC 0.16 photon and neutron transport with a caller-mounted NNDC HDF5
+library in `validation/openmc_transport_probe.py`; that check covers
+normalization, source-strength scaling and data loading, not dose or
+transport accuracy.
+
+| External check (OpenMC 0.16 + NNDC HDF5) | Photon | Neutron |
+| --- | --- | --- |
+| strength-10 / strength-1 tally ratio | 9.999999999999988 | 10.000000000000014 |
+| per-source vs rate-scaled flux difference | 1.26e-15 | 1.33e-15 |
+| water flux, 1/(cm²·s) | 0.027611 | 0.031235 |
+| iron flux, 1/(cm²·s) | 0.019920 | 0.041691 |
+
+The runs use 10 cm water/iron spheres, a centered 2 MeV photon or 14 MeV
+neutron point source, and 20 000 particles × 5 batches with a fixed seed. The
+water and iron fluxes differ because the real cross sections are loaded; the
+checks do not establish a dose or transport-accuracy claim.
+
+<InteractiveDemo kind="transport-source" />

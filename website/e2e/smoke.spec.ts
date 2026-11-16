@@ -181,6 +181,12 @@ end`,
     ],
   },
   {
+    path: "tutorials/interactive/transport-source",
+    button: "Evaluate source",
+    output: "text=Joint voxel/group probabilities",
+    extraSteps: [{ button: "Check selection", output: "text=Exact match" }],
+  },
+  {
     path: "tutorials/interactive/deterministic",
     button: "Parse",
     output: "text=U235",
@@ -326,6 +332,28 @@ NUCLIDE PU239 94239 2
     ],
   },
 ];
+
+test("transport source demo handles narrow layout and invalid input", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("tutorials/interactive/transport-source");
+  await waitForWasmReady(page);
+  await expect(page.getByText("photons/s", { exact: false }).first()).toBeVisible();
+
+  const firstCell = page.getByLabel("voxel 1 group 1 photons per second");
+  await firstCell.fill("-5");
+  await page.getByRole("button", { name: "Evaluate source", exact: true }).click();
+  await expect(page.getByText("invalid source", { exact: false })).toBeVisible();
+  await expect(page.getByText("source-strength-negative", { exact: false })).toBeVisible();
+
+  await page.locator("#cooling-request").fill("1");
+  await page.getByRole("button", { name: "Check selection", exact: true }).click();
+  await expect(page.getByText("not among available times", { exact: false })).toBeVisible();
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+  );
+  expect(overflow).toBe(false);
+});
 
 for (const { path, button, output, cell, chart, paste, extraSteps } of INTERACTIVE_PAGES) {
   test(`interactive demo: ${path}`, async ({ page }) => {
