@@ -51,4 +51,16 @@ library in `validation/openmc_real_data_probe.py`; that check covers
 normalization, source-strength scaling and data loading, not dose or
 transport accuracy.
 
+| External check (OpenMC 0.16 + NNDC HDF5) | Photon | Neutron |
+| --- | --- | --- |
+| strength-10 / strength-1 tally ratio | 9.999999999999988 | 10.000000000000014 |
+| per-source vs rate-scaled flux difference | 1.26e-15 | 1.33e-15 |
+| water flux, 1/(cm²·s) | 0.027611 | 0.031235 |
+| iron flux, 1/(cm²·s) | 0.019920 | 0.041691 |
+
+The runs use 10 cm water/iron spheres, a centered 2 MeV photon or 14 MeV
+neutron point source, and 20 000 particles × 5 batches with a fixed seed. The
+water and iron fluxes differ because the real cross sections are loaded; the
+checks do not establish a dose or transport-accuracy claim.
+
 <InteractiveDemo kind="transport-source" />
