@@ -270,7 +270,7 @@ a dose response and an independent reference.
 
 The validation harness carries the external checks separately:
 `validation/openmc_handoff_probe.py` pins the OpenMC 0.16 source/tally/XML
-semantics, and `validation/openmc_real_data_probe.py` runs bounded
+semantics, and `validation/openmc_transport_probe.py` runs bounded
 fixed-source photon and neutron water/iron spheres with a caller-mounted NNDC
 HDF5 library and checks the same per-source and rate-scaled conversions
 through `normalize_flux`. The latter is a normalization and data-loading

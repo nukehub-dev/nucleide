@@ -91,7 +91,7 @@ reference tally (`magic_tally.txt`), and the committed results document.
   initialize OpenMC; it must not read evaluated data or run interacting
   transport. Record the probe's JSON output and never turn source sampling or
   the void tally into a physics, transport or dose claim.
-- `openmc_real_data_probe.py` is the optional real-data companion: it requires
+- `openmc_transport_probe.py` is the optional caller-data companion: it requires
   caller-mounted neutron (`H1.h5`, `O16.h5`, `Fe56.h5`) and photon
   (`photon/H.h5`, `photon/O.h5`, `photon/Fe.h5`) files, writes only a temporary
   `cross_sections.xml`, and runs bounded fixed-source photon and neutron

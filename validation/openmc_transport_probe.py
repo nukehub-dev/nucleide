@@ -68,12 +68,12 @@ def write_library(data_dir: Path, work: Path) -> Path:
     for name in NEUTRON_DATA:
         path = data_dir / f"{name}.h5"
         if not path.is_file():
-            raise FileNotFoundError(f"missing neutron data file: {path}")
+            raise FileNotFoundError(f"missing neutron data file: {name}.h5")
         entries.append(f'  <library materials="{name}" path="{path}" type="neutron"/>')
     for name in PHOTON_DATA:
         path = data_dir / "photon" / f"{name}.h5"
         if not path.is_file():
-            raise FileNotFoundError(f"missing photon data file: {path}")
+            raise FileNotFoundError(f"missing photon data file: photon/{name}.h5")
         entries.append(f'  <library materials="{name}" path="{path}" type="photon"/>')
     xml = '<?xml version="1.0"?>\n<cross_sections>\n' + "\n".join(entries) + "\n</cross_sections>\n"
     cross_sections = work / "cross_sections.xml"
@@ -278,7 +278,8 @@ def main() -> int:
         return 2
     data_dir = args.data_dir.expanduser().resolve()
     if not data_dir.is_dir():
-        print(json.dumps({"status": "SKIP", "reason": f"data directory not found: {data_dir}"}))
+        print(f"data directory not found: {data_dir}", file=sys.stderr)
+        print(json.dumps({"status": "SKIP", "reason": "data directory not found"}))
         return 2
 
     volume = 4.0 / 3.0 * math.pi * RADIUS_CM**3
@@ -347,11 +348,11 @@ def main() -> int:
         "probe": "openmc_real_data_probe",
         "status": "PASS" if passed else "FAIL",
         "openmc_version": openmc.__version__,
-        "data_dir": str(data_dir),
+        "data_dir": "<caller-supplied>",
         "required_data": {
             "neutron": {
                 name: {
-                    "path": str(data_dir / f"{name}.h5"),
+                    "relative_path": f"{name}.h5",
                     "sha256": sha256_file(data_dir / f"{name}.h5"),
                     "size_bytes": (data_dir / f"{name}.h5").stat().st_size,
                 }
@@ -359,7 +360,7 @@ def main() -> int:
             },
             "photon": {
                 name: {
-                    "path": str(data_dir / "photon" / f"{name}.h5"),
+                    "relative_path": f"photon/{name}.h5",
                     "sha256": sha256_file(data_dir / "photon" / f"{name}.h5"),
                     "size_bytes": (data_dir / "photon" / f"{name}.h5").stat().st_size,
                 }

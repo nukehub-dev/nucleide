@@ -22,7 +22,7 @@ committed `results.md` holds the measured numbers that the paper quotes.
 | `equilib_vs_desc.py` | Equilibrium data readers: synthetic classic-`wout` magic/format/Jacobian gates + `&INDATA` grammar gates (always run) with DESC/simsopt container probes (loud SKIP outside) |
 | `actinv_handoff_probe.py` | Optional pinned ACTINV CLI synthetic export/readback, with binary/source hashes and conservation receipts; no activation solve |
 | `openmc_handoff_probe.py` | Pinned OpenMC 0.16.0 source/tally normalization, C-to-F mesh ordering, histogram-density, XML roundtrip and seeded joint-source sampling probe; no interacting transport |
-| `openmc_real_data_probe.py` | Optional real NNDC/OpenMC HDF5 transport check: source-strength scaling, per-source vs rate-scaled flux agreement, data loading, and package `normalize_flux` |
+| `openmc_transport_probe.py` | Optional caller-data NNDC/OpenMC HDF5 transport check: source-strength scaling, per-source vs rate-scaled flux agreement, data loading, and package `normalize_flux` |
 | `tritium_vs_festim.py` | 1D tritium kernel parity probe vs FESTIM 2.1 (black-box; probe-only image; see probe section below) |
 | `timings.py` | Coarse wall-time comparisons (Python overhead included) |
 | `make_figures.py` | Generates the paper figures in `figures/` from the JSON reports |
@@ -200,9 +200,9 @@ docker run --rm --cpus=2 --memory=6g --memory-swap=6g \
 
 It emits one JSON document and exits nonzero if any check fails.
 
-## OpenMC real-data normalization probe
+## OpenMC transport normalization probe
 
-`openmc_real_data_probe.py` uses an actual NNDC/OpenMC HDF5 cross-section
+`openmc_transport_probe.py` uses an actual NNDC/OpenMC HDF5 cross-section
 library to run small fixed-source photon and neutron transport calculations
 and check the handoff against them. It requires `H1.h5`, `O16.h5` and
 `Fe56.h5` plus `photon/H.h5`, `photon/O.h5` and `photon/Fe.h5` in the supplied
@@ -221,7 +221,7 @@ docker run --rm --cpus=2 --memory=6g --memory-swap=6g \
     -v /path/to/nndc_hdf5:/data:ro \
     -v "$PWD/validation:/work:ro" -w /work \
     localhost/nucleide-validation:latest \
-    python openmc_real_data_probe.py --data-dir /data
+    python openmc_transport_probe.py --data-dir /data
 ```
 
 This is a normalization/units and data-loading check, not a transport

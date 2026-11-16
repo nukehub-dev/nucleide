@@ -52,7 +52,7 @@ workspace crates from tags.
   mapping, differential histogram density, XML roundtrip, seeded joint-source
   sampling and a vacuum track-length tally at two source strengths that pins
   the integrated/rate-scaled convention; no interacting transport. An optional
-  real-data companion (`validation/openmc_real_data_probe.py`) runs bounded
+  caller-data companion (`validation/openmc_transport_probe.py`) runs bounded
   OpenMC 0.16 photon and neutron transport checks with caller-mounted NNDC
   HDF5 files and verifies source-strength scaling, per-source vs rate-scaled
   flux agreement and the package `normalize_flux` path.
