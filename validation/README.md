@@ -21,6 +21,7 @@ committed `results.md` holds the measured numbers that the paper quotes.
 | `unfold_vs_analytic.py` | SAND-II neutron spectrum unfolding: synthetic forward-fold round-trips + IRDFF-II analytical benchmark shapes (published facts, cited; no external unfolding oracle exists) |
 | `equilib_vs_desc.py` | Equilibrium data readers: synthetic classic-`wout` magic/format/Jacobian gates + `&INDATA` grammar gates (always run) with DESC/simsopt container probes (loud SKIP outside) |
 | `actinv_handoff_probe.py` | Optional pinned ACTINV CLI synthetic export/readback, with binary/source hashes and conservation receipts; no activation solve |
+| `openmc_handoff_probe.py` | Pinned OpenMC 0.16.0 source/tally normalization, C-to-F mesh ordering, histogram-density, XML roundtrip and seeded joint-source sampling probe; no transport run |
 | `tritium_vs_festim.py` | 1D tritium kernel parity probe vs FESTIM 2.1 (black-box; probe-only image; see probe section below) |
 | `timings.py` | Coarse wall-time comparisons (Python overhead included) |
 | `make_figures.py` | Generates the paper figures in `figures/` from the JSON reports |
@@ -173,6 +174,31 @@ against hardcoded NIST NCNR anchors, and checks decay energies against
 hardcoded chain/ENDF-derived spot values; `depletion_vs_openmc.py` builds its
 synthetic A→B→C chain inline in a temp file (no new fixtures).
 
+## OpenMC activation-to-transport probe
+
+`openmc_handoff_probe.py` runs in the canonical validation image and records
+the OpenMC 0.16.0 conventions behind the source handoff: regular fixed-source
+tallies divide by `settings::n_particles` and multiply by the sum of the
+configured source strengths; `MeshSource` ravels multidimensional arrays in
+Fortran order (`openmc_sources[i + nx*j + nx*ny*k]` for the bridge's
+`(i*ny + j)*nz + k` C-order); `openmc.stats.Tabular(..., interpolation=
+"histogram")` takes differential density per eV; and `Settings.export_to_xml`
+/ `from_xml` round-trip the mesh and source strengths. A child process samples the joint
+source distribution with a fixed seed and a predeclared tolerance. A second
+child runs a vacuum sphere with a centered point source at strengths 1 and 10
+to confirm that the track-length flux tally is volume-integrated and scaled by
+the total source strength, not volume-averaged. The probe writes a placeholder
+`cross_sections.xml` only to let OpenMC initialize; it reads no evaluated data
+and runs no interacting transport.
+
+```bash
+docker run --rm --cpus=2 --memory=6g --memory-swap=6g \
+    -v "$PWD/validation:/work:ro" -w /work \
+    localhost/nucleide-validation:latest python openmc_handoff_probe.py
+```
+
+It emits one JSON document and exits nonzero if any check fails.
+
 ## Optional ACTINV synthetic exchange probe
 
 `actinv_handoff_probe.py` checks the released ACTINV 1.7.2 Linux exporter
@@ -300,7 +326,8 @@ docker run --rm --memory=6g --memory-swap=6g --pids-limit=128 --cpus=2 \
 ```
 
 Progression: F1 trap-free Dirichlet-Dirichlet → F2 one McNabb-Foster trap
-→ F3 Sieverts ends → F4 two-layer stack → F5 trap-free recombination outlet.
+→ F3 Sieverts ends → F4 two-layer stack → F5 trap-free recombination outlet
+→ F6 one McNabb-Foster trap plus that recombination outlet.
 F1–F4 gates: J_ss 2%, J(t) 3% above a `1e-3·J_ss` floor excluding
 t < 0.2·t_lag, t_lag 5%, steady c(x) 2% max-norm; each side self-converges
 to < 1/3 of its gate first, otherwise the leg is inconclusive, never a
@@ -363,6 +390,36 @@ and writes; calculations still run normally. Old cache entries cannot match
 the new identity. Acceptance verdicts are recomputed on reuse.
 Adding the probe does not establish a measured F5 pass: regenerate
 the report in the pinned image before quoting its results.
+
+F6 combines one McNabb-Foster trap with the F5 recombination outlet on the
+same single-layer, scalar-500 K slab. It uses the F2 trap
+(`k0=0.5 m³/(mol s)`, `p0=0.5 s⁻¹`, `N=2 mol/m³`), the F5 outlet
+(`Kr=1e-6 m⁴/(mol s)`) and zero initial mobile/trapped loads. The Oriani
+effective lag `L²/(6D_eff)=500 s` sets samples at `t/t_lag_eff =
+{0.2,0.5,1,2,5,10}` (100–5000 s); no closed-form time-lag gate is used.
+FESTIM receives atomic units: multiply concentrations, fluxes and
+inventories by exact SI `NA`; divide the second-order trap constant by `NA`
+(`p0` unchanged) and use `N_atom=NA*N_mol`, so `N*K` and the Langmuir load
+are invariant. The outlet uses two identical reactants, so FESTIM applies
+two partial fluxes; `k_r0=Kr/(2 NA)` gives the molar flux `Kr*c_mol²`.
+The exported FESTIM face concentration checks that factor of two and its
+trapped profile checks the distinct-reactant Langmuir equilibrium. Space
+refinement is 50/100/200 cells at `dt=0.25 s`; time refinement is
+`dt=0.5/0.25/0.125 s` at 200 cells, separately in each code. Every F6
+refinement change must be below one third of its gate (J(t) 3% above a
+`1e-3 J_ss` floor, mobile/trapped inventory and profile histories 2%,
+FESTIM reaction/Langmuir checks 2%), otherwise F6 is INCONCLUSIVE and the
+script exits nonzero. The mass balance compares the mobile-plus-trapped
+inventory change with integrated inlet minus outlet flux on the actual
+exported grid (relative residual at most `1e-3`, stride-2/4 quadrature
+changes below `1e-3/3`). Requested FESTIM times are sampled only between
+exported brackets; a missing bracket or short history fails instead of
+extrapolating. F6 reuses the pinned image and package set above; its cache
+entries under `.cache/f6-runs` include the actual image ID, native-library
+hashes, package versions, source/extension hashes and all F6 parameters.
+A full F6 report is valid only after the five-level probe runs in that
+pinned image. Running the probe without FESTIM prints a named SKIP and leaves
+the committed `validation/results/tritium_festim.json` untouched.
 
 ## Parser oracle notes
 

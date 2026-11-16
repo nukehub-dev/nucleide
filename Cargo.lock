@@ -966,6 +966,7 @@ dependencies = [
 name = "nucleide-r2s"
 version = "0.18.1"
 dependencies = [
+ "criterion",
  "nucleide-alara-io",
  "nucleide-depletion",
  "nucleide-material",

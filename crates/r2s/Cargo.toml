@@ -16,3 +16,10 @@ nucleide-nuclei.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 nucleide-vr-tools.workspace = true
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "source_bench"
+harness = false

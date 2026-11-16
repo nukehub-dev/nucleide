@@ -46,7 +46,7 @@ need.
   <text x="530" y="192" text-anchor="middle" class="cm-i">Fusion sources &#xb7; Spectrum unfolding</text>
   <text x="530" y="208" text-anchor="middle" class="cm-i">Damage metrics (dpa/appm) &#xb7; Clearance screening</text>
   <text x="530" y="224" text-anchor="middle" class="cm-i">TBR/blanket bookkeeping</text>
-  <text x="530" y="237" text-anchor="middle" class="cm-s">R2S workflows and volume-aware source splitting</text>
+  <text x="530" y="237" text-anchor="middle" class="cm-s">R2S, flux normalization, and photon-source export</text>
   <line x1="190" y1="268" x2="190" y2="248" class="cm-edge" marker-end="url(#cm-arrow)"/>
   <line x1="530" y1="268" x2="530" y2="248" class="cm-edge" marker-end="url(#cm-arrow)"/>
   <rect x="110" y="272" width="500" height="40" rx="10" class="cm-bar"/>
@@ -103,6 +103,7 @@ status, and license.
 | [Clearance screening](tutorials/python/clearance-screening.md) | Classify parsed activation inventories against EU or Spanish clearance tables |
 | [Fusion first wall](tutorials/python/fusion-first-wall.md) | Run the end-to-end first-wall workflow from tokamak source to a foil check |
 | [Solve activation with ACTINV](tutorials/python/solve-with-actinv.md) | Map one material, spectrum, and schedule to an `actinv-spec-1` problem, solve with the optional ACTINV solver, and read the photon source back with Nucleide |
+| [Activation to transport](tutorials/python/activation-to-transport.md) | Normalize OpenMC tallies into physical flux, build/validate an explicit photon source, export cooling-time batches, and verify a manifest |
 | [Interactive tutorials](tutorials/interactive/index.mdx) | Run Nucleide in the browser through the WASM build |
 | [Interactive — nuclides](tutorials/interactive/nuclides.mdx) | Nuclide identifiers and nuclear data |
 | [Interactive — materials](tutorials/interactive/materials.mdx) | Formulas, fractions, mixing, and XML export |
@@ -118,6 +119,7 @@ status, and license.
 | [Interactive — code-card emission](tutorials/interactive/emitter.mdx) | Five-dialect card emission with a per-dialect mass-drift audit |
 | [Interactive — fusion sources](tutorials/interactive/fusion-sources.mdx) | Sample D-D/D-T ring, lattice, and parametric sources (mixtures, single-fuel species pairs), emit SDEF cards, and check ECRH access |
 | [Interactive — activation](tutorials/interactive/activation.mdx) | Activation file readers, spectral regrouping, and R2S source splitting by volume |
+| [Interactive — photon source handoff](tutorials/interactive/transport-source.mdx) | Validate integrated voxel spectra, inspect joint sampling probabilities, and select exact cooling offsets |
 | [Interactive — clearance screening](tutorials/interactive/clearance.mdx) | Sum-of-fractions classification against EU or Spanish limits, plus the S3–S7 radiological totals |
 | [Interactive — damage metrics](tutorials/interactive/damage.mdx) | Fold a multigroup flux into dpa and gas production, propagate He/dpa ratio uncertainty, plus coil fast-flux and lifetime |
 | [Interactive — spectroscopy](tutorials/interactive/spectroscopy.mdx) | Spectrum smoothing and peak counting |

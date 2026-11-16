@@ -4280,6 +4280,178 @@ pub fn voxel_photon_sums(input: JsValue) -> Result<JsValue, JsValue> {
 }
 
 // ---------------------------------------------------------------------------
+// Activation-to-transport photon source (shared source contract)
+// ---------------------------------------------------------------------------
+
+/// Browser-demo cap on photon-source voxels and groups.
+const MAX_PHOTON_SOURCE_CELLS: usize = 200;
+
+#[derive(Deserialize)]
+struct PhotonSourceInputJson {
+    #[serde(rename = "meshShape", alias = "mesh_shape")]
+    mesh_shape: Vec<usize>,
+    #[serde(rename = "lowerLeftCm", alias = "lower_left_cm")]
+    lower_left_cm: Vec<f64>,
+    #[serde(rename = "upperRightCm", alias = "upper_right_cm")]
+    upper_right_cm: Vec<f64>,
+    #[serde(rename = "voxelVolumesCm3", alias = "voxel_volumes_cm3")]
+    voxel_volumes_cm3: Vec<f64>,
+    #[serde(rename = "edgesEv", alias = "edges_ev")]
+    edges_ev: Vec<f64>,
+    #[serde(rename = "coolingS", alias = "cooling_s", default)]
+    cooling_s: f64,
+    #[serde(rename = "strengthsPhotonsPerS", alias = "strengths_photons_per_s")]
+    strengths_photons_per_s: Vec<Vec<f64>>,
+}
+
+#[derive(Serialize)]
+struct PhotonSourceIssueJson {
+    code: String,
+    severity: String,
+    location: String,
+    message: String,
+    remedy: String,
+}
+
+#[derive(Serialize)]
+struct PhotonSourceEvaluateResult {
+    valid: bool,
+    issues: Vec<PhotonSourceIssueJson>,
+    issue_count: usize,
+    truncated: bool,
+    total_photons_per_s: Option<f64>,
+    voxel_totals_photons_per_s: Vec<f64>,
+    group_totals_photons_per_s: Vec<f64>,
+    density_photons_per_s_cm3: Option<Vec<Vec<f64>>>,
+    energy_probabilities: Option<Vec<Vec<f64>>>,
+    joint_probabilities: Option<Vec<Vec<f64>>>,
+    sampling_error: Option<String>,
+}
+
+fn photon_source_draft(
+    input: PhotonSourceInputJson,
+) -> Result<nucleide_r2s::PhotonSourceDraft, JsValue> {
+    let mesh_shape: [usize; 3] = input.mesh_shape.as_slice().try_into().map_err(|_| {
+        js_err(format!(
+            "meshShape must have exactly 3 entries, got {}",
+            input.mesh_shape.len()
+        ))
+    })?;
+    let lower_left: [f64; 3] = input.lower_left_cm.as_slice().try_into().map_err(|_| {
+        js_err(format!(
+            "lowerLeftCm must have exactly 3 entries, got {}",
+            input.lower_left_cm.len()
+        ))
+    })?;
+    let upper_right: [f64; 3] = input.upper_right_cm.as_slice().try_into().map_err(|_| {
+        js_err(format!(
+            "upperRightCm must have exactly 3 entries, got {}",
+            input.upper_right_cm.len()
+        ))
+    })?;
+    let voxels = mesh_shape
+        .iter()
+        .try_fold(1usize, |acc, dim| acc.checked_mul(*dim))
+        .ok_or_else(|| js_err("mesh dimensions overflow the browser demo limit"))?;
+    if voxels > MAX_PHOTON_SOURCE_CELLS {
+        return Err(js_err(format!(
+            "voxel count {voxels} exceeds the demo cap of {MAX_PHOTON_SOURCE_CELLS}"
+        )));
+    }
+    let groups = input.edges_ev.len().saturating_sub(1);
+    if groups > MAX_PHOTON_SOURCE_CELLS {
+        return Err(js_err(format!(
+            "group count {groups} exceeds the demo cap of {MAX_PHOTON_SOURCE_CELLS}"
+        )));
+    }
+    Ok(nucleide_r2s::PhotonSourceDraft::new(
+        mesh_shape,
+        lower_left,
+        upper_right,
+        input.voxel_volumes_cm3,
+        input.edges_ev,
+        input.cooling_s,
+        input.strengths_photons_per_s,
+    ))
+}
+
+/// Validate a photon source and return totals, assumptions and distributions.
+///
+/// Dict-in with camelCase keys (snake_case aliases accepted): `meshShape`,
+/// `lowerLeftCm`, `upperRightCm`, `voxelVolumesCm3`, `edgesEv`, `coolingS`,
+/// `strengthsPhotonsPerS`. Calls the shared `r2s` source contract, returns the
+/// bounded report plus checked totals, density, per-voxel energy
+/// probabilities and the joint voxel/group distribution. An all-zero source
+/// stays valid data but reports a `samplingError` instead of probabilities.
+#[wasm_bindgen(js_name = photonSourceEvaluate)]
+pub fn photon_source_evaluate(input: JsValue) -> Result<JsValue, JsValue> {
+    let parsed: PhotonSourceInputJson = serde_wasm_bindgen::from_value(input).map_err(js_err)?;
+    let draft = photon_source_draft(parsed)?;
+    let report = nucleide_r2s::SourceReport::from_draft(&draft);
+    let issues: Vec<PhotonSourceIssueJson> = report
+        .issues
+        .iter()
+        .map(|issue| PhotonSourceIssueJson {
+            code: issue.code.to_string(),
+            severity: match issue.severity {
+                nucleide_r2s::IssueSeverity::Error => "error",
+                nucleide_r2s::IssueSeverity::Warning => "warning",
+                nucleide_r2s::IssueSeverity::Assumption => "assumption",
+            }
+            .to_string(),
+            location: issue.location.clone(),
+            message: issue.message.clone(),
+            remedy: issue.remedy.clone(),
+        })
+        .collect();
+    let mut result = PhotonSourceEvaluateResult {
+        valid: report.is_valid(),
+        issues,
+        issue_count: report.issue_count,
+        truncated: report.truncated,
+        total_photons_per_s: report.totals.as_ref().map(|t| t.total_photons_per_s),
+        voxel_totals_photons_per_s: report
+            .totals
+            .as_ref()
+            .map(|t| t.voxel_totals_photons_per_s.clone())
+            .unwrap_or_default(),
+        group_totals_photons_per_s: report
+            .totals
+            .as_ref()
+            .map(|t| t.group_totals_photons_per_s.clone())
+            .unwrap_or_default(),
+        density_photons_per_s_cm3: None,
+        energy_probabilities: None,
+        joint_probabilities: None,
+        sampling_error: None,
+    };
+    if let Ok(source) = nucleide_r2s::PhotonSource::from_draft(&draft) {
+        result.density_photons_per_s_cm3 = source.density_photons_per_s_cm3().ok();
+        result.energy_probabilities = source.energy_probabilities().ok();
+        match source.joint_probabilities() {
+            Ok(probabilities) => result.joint_probabilities = Some(probabilities),
+            Err(error) => result.sampling_error = Some(error.to_string()),
+        }
+    }
+    to_js(&result)
+}
+
+/// Exact cooling-offset selection over available and requested times.
+///
+/// Returns the selected indices in requested order; duplicates, missing
+/// offsets and non-finite values are loud errors (no interpolation or
+/// nearest-time substitution).
+#[wasm_bindgen(js_name = photonSourceSelectCooling)]
+pub fn photon_source_select_cooling(
+    available_s: Vec<f64>,
+    requested_s: Vec<f64>,
+) -> Result<JsValue, JsValue> {
+    let indices =
+        nucleide_r2s::select_cooling_indices(&available_s, &requested_s).map_err(js_err)?;
+    to_js(&indices)
+}
+
+// ---------------------------------------------------------------------------
 // Point kinetics (step-reactivity transient + prompt jump)
 // ---------------------------------------------------------------------------
 

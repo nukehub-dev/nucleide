@@ -213,8 +213,13 @@ workspace crates; burnup driving stays inside ORIGEN.
 Scoped rigorous two-step (R2S) workflow builder: zone-to-flux linking from
 ALARA decks, schedule expansion, uniform-split photon-source assembly,
 count- or volume-weighted splitting of integrated zone strengths into voxel tags,
-WATTS-class sweep expansion (`expand_sweep`), and facility-flow accounting
-(`snapshot_inventory`) for differencing facility snapshots. Also owns the
+an explicit regular-mesh photon-source contract (`source.rs`: integrated
+photons/s per voxel and group, ascending eV edges, explicit sparse-group
+mapping, density conversion, joint voxel/group probabilities, bounded
+structured reports and exact cooling-offset selection), raw Monte Carlo flux
+normalization with declared input states, WATTS-class sweep expansion
+(`expand_sweep`), and facility-flow accounting (`snapshot_inventory`) for
+differencing facility snapshots. Also owns the
 versionless ARMI DB-snapshot → deck adapter (`snapshot.rs`):
 dict-in only, no HDF5, no ARMI layout versioning, opaque zone ids,
 volumes-method decks with per-zone mixtures carrying atoms/barn-cm number

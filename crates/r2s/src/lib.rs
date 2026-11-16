@@ -10,6 +10,7 @@
 pub mod error;
 pub mod photon;
 pub mod snapshot;
+pub mod source;
 pub mod sweep;
 pub mod tags;
 pub mod workflow;
@@ -19,6 +20,10 @@ pub use photon::ZonePhotonSource;
 pub use snapshot::{
     deck_from_snapshot, snapshot_inventory, snapshot_workflow, SnapshotFluxDef, SnapshotInput,
     SnapshotZone,
+};
+pub use source::{
+    normalize_flux, select_cooling_indices, IssueSeverity, PhotonSource, PhotonSourceDraft,
+    SourceIssue, SourceReport, SourceTotals, TallyNormalization, SOURCE_ISSUE_LIMIT,
 };
 pub use sweep::{assemble_results, expand_sweep, SweepAxis, SweepCase};
 pub use tags::{

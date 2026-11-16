@@ -656,6 +656,68 @@ def r2s_photon_group_sums(
 ) -> dict[str, Any]: ...
 def r2s_snapshot_inventory(snapshot: dict[str, Any]) -> dict[str, float]: ...
 def r2s_expand_sweep(axes: list[dict[str, Any]]) -> list[dict[str, str]]: ...
+def r2s_normalize_flux(
+    tally: list[list[float]],
+    source_rate_s: float,
+    volumes_cm3: list[float],
+    normalization: str,
+) -> list[list[float]]: ...
+def r2s_photon_source(
+    mesh_shape: list[int],
+    lower_left_cm: list[float],
+    upper_right_cm: list[float],
+    voxel_volumes_cm3: list[float],
+    edges_ev: list[float],
+    cooling_s: float,
+    strengths_photons_per_s: list[list[float]],
+) -> dict[str, Any]: ...
+def r2s_photon_source_exported(
+    mesh_shape: list[int],
+    lower_left_cm: list[float],
+    upper_right_cm: list[float],
+    voxel_volumes_cm3: list[float],
+    full_edges_ev: list[float],
+    cooling_s: float,
+    exported_group_indices: list[int],
+    exported_strengths_photons_per_s: list[list[float]],
+) -> dict[str, Any]: ...
+def r2s_source_report(
+    mesh_shape: list[int],
+    lower_left_cm: list[float],
+    upper_right_cm: list[float],
+    voxel_volumes_cm3: list[float],
+    edges_ev: list[float],
+    cooling_s: float,
+    strengths_photons_per_s: list[list[float]],
+) -> dict[str, Any]: ...
+def r2s_source_probabilities(
+    mesh_shape: list[int],
+    lower_left_cm: list[float],
+    upper_right_cm: list[float],
+    voxel_volumes_cm3: list[float],
+    edges_ev: list[float],
+    cooling_s: float,
+    strengths_photons_per_s: list[list[float]],
+) -> list[list[float]]: ...
+def r2s_source_energy_probabilities(
+    mesh_shape: list[int],
+    lower_left_cm: list[float],
+    upper_right_cm: list[float],
+    voxel_volumes_cm3: list[float],
+    edges_ev: list[float],
+    cooling_s: float,
+    strengths_photons_per_s: list[list[float]],
+) -> list[list[float]]: ...
+def r2s_source_density(
+    mesh_shape: list[int],
+    lower_left_cm: list[float],
+    upper_right_cm: list[float],
+    voxel_volumes_cm3: list[float],
+    edges_ev: list[float],
+    cooling_s: float,
+    strengths_photons_per_s: list[list[float]],
+) -> list[list[float]]: ...
+def r2s_select_cooling(available_s: list[float], requested_s: list[float]) -> list[int]: ...
 
 @final
 class DeckProblem:

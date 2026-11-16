@@ -631,6 +631,38 @@ export interface VoxelPhotonSummary {
   total: number;
 }
 
+export interface PhotonSourceInputJson {
+  meshShape: number[];
+  lowerLeftCm: number[];
+  upperRightCm: number[];
+  voxelVolumesCm3: number[];
+  edgesEv: number[];
+  coolingS: number;
+  strengthsPhotonsPerS: number[][];
+}
+
+export interface PhotonSourceIssueJson {
+  code: string;
+  severity: "error" | "warning" | "assumption";
+  location: string;
+  message: string;
+  remedy: string;
+}
+
+export interface PhotonSourceEvaluateResult {
+  valid: boolean;
+  issues: PhotonSourceIssueJson[];
+  issue_count: number;
+  truncated: boolean;
+  total_photons_per_s: number | null;
+  voxel_totals_photons_per_s: number[];
+  group_totals_photons_per_s: number[];
+  density_photons_per_s_cm3: number[][] | null;
+  energy_probabilities: number[][] | null;
+  joint_probabilities: number[][] | null;
+  sampling_error: string | null;
+}
+
 export interface CompendiumEntryInfo {
   name: string;
   acronym: string[];
@@ -1162,6 +1194,8 @@ export interface WasmApi {
   r2sFromSnapshot(snapshot: SnapshotInputJson): SnapshotBundleJson;
   voxelTagsFromTotals(input: VoxelTagsInputJson): VoxelTagsSummary;
   voxelPhotonSums(input: VoxelPhotonInputJson): VoxelPhotonSummary;
+  photonSourceEvaluate(input: PhotonSourceInputJson): PhotonSourceEvaluateResult;
+  photonSourceSelectCooling(availableS: number[], requestedS: number[]): number[];
   parseIsotxs(text: string): IsotxsSummary;
   partisnRender(deck: PartisnDeck): string;
   partisnValidate(deck: PartisnDeck, isotxsText: string): void;

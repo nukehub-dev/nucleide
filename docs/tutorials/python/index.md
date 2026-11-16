@@ -60,6 +60,9 @@ and assumes you have already installed the project (see
 23. [Solve activation with ACTINV](solve-with-actinv.md) — map one material,
     spectrum, and schedule to an `actinv-spec-1` problem, solve with the
     optional ACTINV solver, and read the photon source back with Nucleide.
+24. [Activation to transport](activation-to-transport.md) — normalize OpenMC
+    tallies into physical flux, build and validate an explicit photon source,
+    export cooling-time batches, and verify a reproducibility manifest.
 
 ## End-to-end notebooks
 

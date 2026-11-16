@@ -1,0 +1,47 @@
+---
+title: Photon source handoff
+description: Validate an integrated photon source, inspect joint voxel/group probabilities, and select exact cooling offsets.
+sidebar:
+  order: 15
+---
+
+The activation-to-transport handoff keeps three things separate: the raw
+Monte Carlo tally, the physical group flux, and the integrated photon source a
+transport code samples. This demo exercises the shared Rust source contract —
+the same validator, density conversion and joint-probability kernel the Python
+package uses.
+
+## Voxel spectra and units
+
+The mesh is a regular `(2, 1, 1)` grid with caller voxel volumes `1` and `1` cm³.
+The table shows **integrated photons/s** per group, not a density and not a
+probability. Change a value and select **Evaluate source**; the shared
+validator reports stable issue codes and keeps modelling assumptions separate
+from errors.
+
+Negative values, non-finite cells, a zero total, irregular edges and
+mismatched dimensions raise clear errors. A zero-source voxel inside a nonzero source is
+valid data and remains unsampleable; an all-zero source is valid data but has
+no sampling distribution.
+
+## Joint voxel/group sampling
+
+The probability table is the joint distribution over voxel/group pairs. It is
+not the product of a spatial marginal and an energy marginal: independent
+sampling would invent cross-pairs that carry no source. The declared
+assumptions are uniform photon density per eV inside each group and uniform
+position inside each voxel.
+
+## Cooling times
+
+The three buttons are **declared snapshots** at 0 s, 3600 s and 7200 s; the
+browser does not compute decay physics. The cooling-selection check calls the
+shared exact-match kernel. Requested offsets must match an available offset
+exactly, duplicates are rejected, and a near match is not substituted.
+
+Python adds the transport-facing pieces: OpenMC `MeshSource` export, batch
+files, and reproducibility manifests. See
+[Activation to transport](../python/activation-to-transport.md) for the full
+workflow.
+
+<InteractiveDemo kind="transport-source" />

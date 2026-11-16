@@ -13,6 +13,53 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Added
+
+- Activation-to-transport handoff. `nucleide.openmc.normalize_flux` converts
+  raw OpenMC tally arrays into physical group flux only after an explicit
+  normalization declaration. It distinguishes volume-integrated from
+  volume-averaged data and per-source-particle from source-rate-scaled data
+  (OpenMC 0.16 scales fixed-source tallies by the configured total source
+  strength), rejects double scaling, preserves relative errors and records
+  units, source rate and the input state. The CSV interchange moves to v2 with
+  normalization/units metadata while v1 files still read as `unknown`.
+- Regular-mesh photon-source contract in `nucleide-r2s`: ascending eV edges,
+  integrated photons/s per voxel and group, C-order voxel identity, density
+  conversion applying volume once, joint voxel/group probabilities, sparse
+  exported-group restoration with explicit dense indices, checked totals,
+  exact cooling-offset selection and a bounded structured validation report
+  with stable issue codes and explicit uniform-bin/uniform-voxel assumptions.
+- Optional OpenMC 0.16 `MeshSource` adapter (`nucleide.openmc.mesh_source`)
+  with explicit structured-mesh index mapping, per-element histogram energy
+  densities, absolute photons/s strengths, self-contained `settings.xml`
+  export and a real pinned-OpenMC validation probe.
+- Exact cooling-time batch export with deterministic collision-free names,
+  all-or-nothing prevalidation, atomic per-file replacement, zero-source skip
+  policy, partial-failure reporting and a batch manifest; compact
+  reproducibility manifests record measured input/output SHA-256 hashes, the
+  energy-grid identity, voxel order and validation summary. Verification is
+  offline and detects tampered or missing outputs.
+- Executable activation-to-transport tutorial covering normalization,
+  source validation, sparse grids, cooling batches, manifests and the
+  optional OpenMC export path.
+- FESTIM F6 trapped-plus-recombination validation leg with explicit
+  molar/atomic conversion, a checked two-identical-reactant surface factor,
+  mobile and trapped inventory histories, bracketed output sampling and
+  independent space/time refinement with a mobile-plus-trapped mass
+  balance; F1–F5 checks and pins are unchanged.
+- Pinned OpenMC 0.16.0 handoff probe (`validation/openmc_handoff_probe.py`)
+  recording the observed tally normalization, C-order/Fortran-order mesh
+  mapping, differential histogram density, XML roundtrip, seeded joint-source
+  sampling and a vacuum track-length tally at two source strengths that pins
+  the integrated/rate-scaled convention; no interacting transport.
+
+### Fixed
+
+- The OpenMC tally bridge documents and tests the observed 0.16 normalization
+  convention (per-source-particle denominator, source-strength tally scale,
+  volume-integrated track-length flux by default) instead of implying that a
+  field named `flux` is already physical.
+
 ## [0.18.1] - 2026-11-14
 
 ### Fixed

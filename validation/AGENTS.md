@@ -54,8 +54,9 @@ reference tally (`magic_tally.txt`), and the committed results document.
 - F5 recombination uses atomic-unit conversion with exact SI Avogadro
   constant, the two-reactant coefficient `Kr/(2 NA)`, quadratic elements,
   independent three-level mesh/time refinement and exported-history mass
-  balance. Preserve F1–F4 gates. Missing FESTIM is SKIP; installed/broken oracle environments and
-  configured solver/export errors fail for every leg. Unconverged F5 refinement is INCONCLUSIVE
+  balance. Preserve F1–F4 gates. Missing FESTIM is SKIP and a skip run must
+  not overwrite the committed probe results; installed/broken oracle
+  environments and configured solver/export errors fail for every leg. Unconverged F5 refinement is INCONCLUSIVE
   and exits nonzero. Image/package pins and execution limits live in
   `validation/README.md`; never claim an unexecuted F5 pass. Resolve startup
   before nominal time-step refinement. Reduced-run caches under `.cache/`
@@ -68,10 +69,28 @@ reference tally (`magic_tally.txt`), and the committed results document.
   fixed throughout a probe invocation. Recompute acceptance gates on reuse.
   Prefer an installed rebuilt release
   wheel; bootstrap a checkout extension only when the package is absent.
+  F6 adds the single-layer McNabb-Foster trap plus recombination outlet:
+  identical scalar-temperature parameters on both sides, explicit
+  molar/atomic conversion for concentrations, fluxes, inventories and the
+  second-order trap constant (`p0` unchanged), a factor-of-two check for
+  the two identical surface reactants, mobile and trapped inventory
+  histories, bracketed FESTIM sampling (never extrapolation), and
+  independent space/time refinement plus a mobile-plus-trapped balance.
+  Preserve F1-F5 gates; F6 cache entries under `.cache/f6-runs` include
+  all F6 parameters and the same runtime identity.
 - `actinv_handoff_probe.py` is an optional synthetic exchange check, separate
   from `*_vs_*.py` physics comparisons. Require an explicit hash-pinned CLI,
   bound the leaf export process wait, retain JSON receipts under `.cache/`,
   and never download evaluated data or claim an activation solve from it.
+- `openmc_handoff_probe.py` is a probe-only check of the pinned OpenMC 0.16.0
+  handoff contract: exact-version gate, source-inspected tally normalization,
+  C-order/Fortran-order mesh mapping, histogram density semantics, XML
+  roundtrip, seeded joint-source sampling, and a vacuum track-length tally at
+  two source strengths that pins the integrated/rate-scaled convention. It may
+  create a placeholder `cross_sections.xml` under its temp directory solely to
+  initialize OpenMC; it must not read evaluated data or run interacting
+  transport. Record the probe's JSON output and never turn source sampling or
+  the void tally into a physics, transport or dose claim.
 - Fresh ACTINV activation comparisons execute the source-pinned external
   example separately from the synthetic probe. Retain original/compatible
   script hashes and diff, verified data hashes, compiled-extension identity,

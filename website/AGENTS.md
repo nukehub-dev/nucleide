@@ -22,6 +22,13 @@ Parent-level Rust/Python/verification rules remain in the root `AGENTS.md`.
   flat-per-eV and uniform-source-density assumptions visible, cap source/target
   spectra and voxel/zone counts at 200, and clear computed results when inputs
   change. Preserve copy and equal-count modes alongside volume weighting.
+- **Photon source handoff**: the `transport-source` demo calls the shared
+  `r2s` source contract for validation, totals, density and joint
+  voxel/group probabilities; it never re-implements the arithmetic in
+  TypeScript. Cooling buttons select declared snapshots (no browser decay
+  physics); exact selection goes through the shared kernel. Keep units next
+  to values, label assumptions separately from errors, cap cells/groups at
+  200, and reject all-zero sampling without treating zero voxels as invalid.
 - **Tutorial forms**: group related source/target inputs, keep labels short
   and units separate, and verify desktop/mobile layout visually. Input rows
   must stay aligned when labels wrap; stack fields on narrow screens.
