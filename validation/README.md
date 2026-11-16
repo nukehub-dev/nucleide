@@ -21,7 +21,8 @@ committed `results.md` holds the measured numbers that the paper quotes.
 | `unfold_vs_analytic.py` | SAND-II neutron spectrum unfolding: synthetic forward-fold round-trips + IRDFF-II analytical benchmark shapes (published facts, cited; no external unfolding oracle exists) |
 | `equilib_vs_desc.py` | Equilibrium data readers: synthetic classic-`wout` magic/format/Jacobian gates + `&INDATA` grammar gates (always run) with DESC/simsopt container probes (loud SKIP outside) |
 | `actinv_handoff_probe.py` | Optional pinned ACTINV CLI synthetic export/readback, with binary/source hashes and conservation receipts; no activation solve |
-| `openmc_handoff_probe.py` | Pinned OpenMC 0.16.0 source/tally normalization, C-to-F mesh ordering, histogram-density, XML roundtrip and seeded joint-source sampling probe; no transport run |
+| `openmc_handoff_probe.py` | Pinned OpenMC 0.16.0 source/tally normalization, C-to-F mesh ordering, histogram-density, XML roundtrip and seeded joint-source sampling probe; no interacting transport |
+| `openmc_real_data_probe.py` | Optional real NNDC/OpenMC HDF5 transport check: source-strength scaling, per-source vs rate-scaled flux agreement, data loading, and package `normalize_flux` |
 | `tritium_vs_festim.py` | 1D tritium kernel parity probe vs FESTIM 2.1 (black-box; probe-only image; see probe section below) |
 | `timings.py` | Coarse wall-time comparisons (Python overhead included) |
 | `make_figures.py` | Generates the paper figures in `figures/` from the JSON reports |
@@ -198,6 +199,31 @@ docker run --rm --cpus=2 --memory=6g --memory-swap=6g \
 ```
 
 It emits one JSON document and exits nonzero if any check fails.
+
+## OpenMC real-data normalization probe
+
+`openmc_real_data_probe.py` uses an actual NNDC/OpenMC HDF5 cross-section
+library to run a small fixed-source transport calculation and check the
+handoff against it. It requires `H1.h5`, `O16.h5` and `Fe56.h5` in the supplied
+directory; the files are mounted read-only and never copied, vendored or
+downloaded. A centered 14 MeV point source in a 10 cm water sphere is run at
+source strengths 1 and 10 with the same seed and 20 000 particles × 5 batches.
+The probe checks that the tally scales by the strength, that
+`raw × rate / volume` (per-source input) equals `raw / volume` (rate-scaled
+input), and that the iron sphere produces a different flux, proving the real
+cross sections were loaded. When the rebuilt Nucleide package is installed, it
+also checks the same conversion through `nucleide.openmc.normalize_flux`.
+
+```bash
+docker run --rm --cpus=2 --memory=6g --memory-swap=6g \
+    -v /path/to/nndc_hdf5:/data:ro \
+    -v "$PWD/validation:/work:ro" -w /work \
+    localhost/nucleide-validation:latest \
+    python openmc_real_data_probe.py --data-dir /data
+```
+
+This is a normalization/units and data-loading check, not a transport
+benchmark, shutdown-dose calculation or independent physics oracle.
 
 ## Optional ACTINV synthetic exchange probe
 

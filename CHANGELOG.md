@@ -51,7 +51,11 @@ workspace crates from tags.
   recording the observed tally normalization, C-order/Fortran-order mesh
   mapping, differential histogram density, XML roundtrip, seeded joint-source
   sampling and a vacuum track-length tally at two source strengths that pins
-  the integrated/rate-scaled convention; no interacting transport.
+  the integrated/rate-scaled convention; no interacting transport. An optional
+  real-data companion (`validation/openmc_real_data_probe.py`) runs a bounded
+  OpenMC 0.16 transport check with caller-mounted NNDC HDF5 files and verifies
+  source-strength scaling, per-source vs rate-scaled flux agreement and the
+  package `normalize_flux` path.
 
 ### Fixed
 

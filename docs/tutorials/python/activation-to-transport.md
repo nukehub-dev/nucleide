@@ -267,3 +267,11 @@ without it. Exporting a source is not transport validation: source
 conservation, XML/API compatibility and spatial-energy sampling are separate
 claims from shutdown dose rate, which needs geometry, evaluated photon data,
 a dose response and an independent reference.
+
+The validation harness carries the external checks separately:
+`validation/openmc_handoff_probe.py` pins the OpenMC 0.16 source/tally/XML
+semantics, and `validation/openmc_real_data_probe.py` runs a bounded
+fixed-source water/iron sphere with a caller-mounted NNDC HDF5 library and
+checks the same per-source and rate-scaled conversions through
+`normalize_flux`. The latter is a normalization and data-loading check, not a
+dose or transport benchmark.
