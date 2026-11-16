@@ -99,7 +99,9 @@ reference tally (`magic_tally.txt`), and the committed results document.
   per-source vs rate-scaled flux conversion, data loading and the package
   `normalize_flux` path. Never describe it as a transport benchmark,
   shutdown-dose validation or independent physics oracle; never vendor or
-  download the caller's data.
+  download the caller's data. Probe JSON records relative data names, sizes
+  and SHA-256 hashes; never write host absolute paths, user home directories
+  or usernames into reports or committed docs.
 - Fresh ACTINV activation comparisons execute the source-pinned external
   example separately from the synthetic probe. Retain original/compatible
   script hashes and diff, verified data hashes, compiled-extension identity,
@@ -126,7 +128,7 @@ reference tally (`magic_tally.txt`), and the committed results document.
   and harness. Limit runtime jobs to 6 GiB RAM/no swap, 128 tasks and 2 CPUs;
   OpenMC and Rust builds use two compilation jobs. Build context is validation/.
 - A conda env fallback also works:
-  (`mamba create -p ~/.conda/envs/nuke-validation -c conda-forge pyne openmc`)
+  (`mamba create -p /path/to/validation-env -c conda-forge pyne openmc`)
   with the Nucleide release wheel installed into that env
   (`maturin build --release`, then `pip install --force-reinstall target/wheels/nucleide-*.whl`).
 - Run: `./validation/run_container.sh`, or `./validation/run_all.sh [python-binary]`

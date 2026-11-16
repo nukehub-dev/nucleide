@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OpenMC 0.16 real-data normalization probe (no dose claim).
+"""OpenMC 0.16 caller-data transport normalization probe (no dose claim).
 
 Runs small fixed-source neutron and photon problems with an actual
 NNDC/OpenMC HDF5 library and checks the activation-to-transport
@@ -11,21 +11,21 @@ normalization contract against transport:
   conversion ``raw * rate / volume`` for the unit-strength run must agree with
   the rate-scaled conversion ``raw / volume`` for the strength-10 run.
 - The iron sphere must produce a different flux than water, confirming that
-  the real cross sections were loaded and used.
+  the loaded cross sections affect transport.
 - When ``nucleide.openmc.normalize_flux`` is importable, the same conversion
   is checked through the package API.
 
 Both particle types are exercised because the handoff source is photons and
 the normalization convention is shared. This is a normalization/units and
 data-loading check. It is not a transport benchmark, a shutdown-dose
-calculation, or an independent physics oracle. The real nuclear data are
+calculation, or an independent physics oracle. The nuclear data are
 supplied by the caller and never vendored or downloaded.
 
 The data directory must contain ``H1.h5``, ``O16.h5`` and ``Fe56.h5`` plus
 ``photon/H.h5``, ``photon/O.h5`` and ``photon/Fe.h5``.
 
 Usage:
-    python validation/openmc_real_data_probe.py --data-dir /path/to/hdf5
+    python validation/openmc_transport_probe.py --data-dir /path/to/hdf5
 """
 
 from __future__ import annotations
@@ -236,7 +236,7 @@ def conversion_checks(
             "relative_difference": abs(per_source_flux - rate_scaled_flux) / rate_scaled_flux,
         },
         {
-            "name": f"{particle}_real_cross_sections_change_transport",
+            "name": f"{particle}_cross_sections_change_transport",
             "pass": not math.isclose(rate_scaled_flux, iron_flux, rel_tol=1e-3, abs_tol=0.0),
             "water_flux": rate_scaled_flux,
             "iron_flux": iron_flux,
@@ -283,7 +283,7 @@ def main() -> int:
         return 2
 
     volume = 4.0 / 3.0 * math.pi * RADIUS_CM**3
-    with tempfile.TemporaryDirectory(prefix="openmc-real-data-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="openmc-transport-") as tmp:
         work = Path(tmp)
         try:
             cross_sections = write_library(data_dir, work)
@@ -345,7 +345,7 @@ def main() -> int:
     )
     passed = all(check["pass"] for check in checks)
     summary = {
-        "probe": "openmc_real_data_probe",
+        "probe": "openmc_transport_probe",
         "status": "PASS" if passed else "FAIL",
         "openmc_version": openmc.__version__,
         "data_dir": "<caller-supplied>",
@@ -386,7 +386,7 @@ def main() -> int:
             "This is a normalization/units and data-loading check, not an "
             "independent transport or shutdown-dose validation.",
             "The sphere and source are synthetic; no evaluated activation data are used.",
-            "The real HDF5 files are caller-supplied and never vendored or downloaded.",
+            "The HDF5 files are caller-supplied and never vendored or downloaded.",
         ],
     }
     print(json.dumps(summary, indent=2, sort_keys=True))

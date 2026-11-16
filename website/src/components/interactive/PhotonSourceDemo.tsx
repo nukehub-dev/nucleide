@@ -13,7 +13,7 @@ import { Label } from "@nukehub/docs-kit/components/ui/Label";
 // groups. The browser never computes decay physics; it selects one declared
 // snapshot and lets the shared Rust source contract validate and normalize it.
 const EDGES_EV = [0, 1e5, 5e5, 2e6, 1e7];
-const GROUP_LABELS = ["0–0.1 MeV", "0.1–0.5 MeV", "0.5–2 MeV", "2–10 MeV"];
+const GROUP_LABELS = ["0–0.1", "0.1–0.5", "0.5–2", "2–10"];
 const VOLUMES_CM3 = [1, 1, 1, 1];
 const TIMES = [
   {
@@ -159,7 +159,7 @@ export function PhotonSourceDemo() {
 
       <div
         className="grid gap-6"
-        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}
+        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))" }}
       >
         <div className="min-w-0 space-y-3">
           <div>
@@ -175,8 +175,9 @@ export function PhotonSourceDemo() {
                 <tr className="text-left text-xs text-muted-foreground">
                   <th className="py-1 pr-3">Voxel</th>
                   {GROUP_LABELS.map((label) => (
-                    <th key={label} className="whitespace-nowrap py-1 pr-3">
-                      {label}
+                    <th key={label} className="whitespace-nowrap py-1 pr-1 text-center text-[10px]">
+                      <span className="block">{label}</span>
+                      <span className="block font-normal text-muted-foreground">MeV</span>
                     </th>
                   ))}
                 </tr>
@@ -184,14 +185,12 @@ export function PhotonSourceDemo() {
               <tbody>
                 {strengthsText.map((row, voxel) => (
                   <tr key={voxel}>
-                    <td className="whitespace-nowrap py-1 pr-3 font-mono text-xs">
-                      V{voxel} · {VOLUMES_CM3[voxel]} cm³
-                    </td>
+                    <td className="whitespace-nowrap py-1 pr-2 font-mono text-xs">V{voxel}</td>
                     {row.map((cell, group) => (
-                      <td key={group} className="py-1 pr-3">
+                      <td key={group} className="py-1 pr-2">
                         <Input
                           aria-label={`voxel ${voxel + 1} group ${group + 1} photons per second`}
-                          className="h-8 w-20 font-mono text-xs"
+                          className="h-8 w-14 px-1 text-center font-mono text-xs"
                           inputMode="decimal"
                           value={cell}
                           onChange={(event) => updateCell(voxel, group, event.target.value)}
@@ -291,8 +290,12 @@ export function PhotonSourceDemo() {
                     <tr className="text-left text-xs text-muted-foreground">
                       <th className="py-1 pr-3">Voxel</th>
                       {GROUP_LABELS.map((label) => (
-                        <th key={label} className="whitespace-nowrap py-1 pr-3">
-                          {label}
+                        <th
+                          key={label}
+                          className="whitespace-nowrap py-1 pr-1 text-center text-[10px]"
+                        >
+                          <span className="block">{label}</span>
+                          <span className="block font-normal text-muted-foreground">MeV</span>
                         </th>
                       ))}
                     </tr>
@@ -300,9 +303,9 @@ export function PhotonSourceDemo() {
                   <tbody>
                     {result.joint_probabilities.map((row, voxel) => (
                       <tr key={voxel}>
-                        <td className="py-1 pr-3 font-mono text-xs">{voxel}</td>
+                        <td className="py-1 pr-1 font-mono text-xs">{voxel}</td>
                         {row.map((probability, group) => (
-                          <td key={group} className="py-1 pr-3 font-mono text-xs">
+                          <td key={group} className="py-1 pr-1 font-mono text-xs">
                             {(probability * 100).toFixed(2)}%
                           </td>
                         ))}
