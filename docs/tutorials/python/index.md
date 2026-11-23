@@ -29,7 +29,7 @@ and assumes you have already installed the project (see
 10. [Run kinetics](run-kinetics.md) — solve prescribed-reactivity
     point-kinetics transients.
 11. [Run spectroscopy](run-spectroscopy.md) — smooth spectra, count peaks,
-    calibrate energy/efficiency, evaluate X-ray lines, and read `.spe` files.
+    calibrate efficiency, estimate gamma-line activity, and read `.spe` files.
 12. [MCPL particle interchange](mcpl-interchange.md) — read and write MCPL
     particle lists; merge, subset, and summarize them; repair interrupted
     writes.
@@ -50,8 +50,8 @@ and assumes you have already installed the project (see
 19. [Fusion sources](fusion-sources.md) — build ring, point, and parametric
     tokamak neutron sources and emit MCNP/Serpent source cards.
 20. [Unfold a spectrum](unfold-spectrum.md) — recover a neutron spectrum from
-    activation detector measurements with SAND-II, least-squares, or GRAVEL
-    adjustment, including the IRDFF response pack.
+    activation detector measurements, including least-squares adjustment
+    with measurement covariance and the IRDFF response pack.
 21. [Clearance screening](clearance-screening.md) — classify parsed activation
     inventories against the EU or Spanish clearance tables.
 22. [Fusion first wall](fusion-first-wall.md) — run the end-to-end
@@ -61,7 +61,7 @@ and assumes you have already installed the project (see
     spectrum, and schedule to an `actinv-spec-1` problem, solve with the
     optional ACTINV solver, and read the photon source back with Nucleide.
 24. [Activation to transport](activation-to-transport.md) — normalize OpenMC
-    tallies into physical flux, build and validate an explicit photon source,
+    tallies into physical flux, assemble photon spectra for mixed voxels,
     export cooling-time batches, and verify a reproducibility manifest.
 
 ## End-to-end notebooks

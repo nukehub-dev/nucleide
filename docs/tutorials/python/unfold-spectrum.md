@@ -4,24 +4,49 @@ sidebar:
   order: 20
 ---
 
-Nucleide unfolds neutron spectra from activation-detector measurements with
-three adjustment methods sharing one convergence contract: the SAND-II
-iterative adjustment (McElroy et al., AFWL-TR-67-41, 1967), a damped
-least-squares adjustment, and the GRAVEL chi-square-weighted iteration. A
-caller-supplied guess spectrum is adjusted until folding it through the
-detector response matrix reproduces the measured rates. This tutorial covers
-the SAND-II Python API; `staysl` and `gravel` take the same response/rates/
-guess inputs (plus caller measurement sigmas) and are documented in the
-[Python API reference](../../reference/python-api.mdx#nucleideunfold). The
-implementation lives in `crates/unfold`. For the
-fold/update equations (S1–S3) and the pinned correctness checks (U1–U18), see
-the [Neutron spectrum unfolding theory](../../theory/unfolding.mdx) page.
+Nucleide adjusts a guess neutron spectrum using measured activation-detector
+rates and a detector response matrix. This tutorial shows SAND-II and a
+least-squares fit for measurements with shared errors. The four adjustment
+methods and their Python inputs are documented in the
+[Python API reference](../../reference/python-api.mdx#nucleideunfold).
+For the equations and validation cases, see
+[Neutron spectrum unfolding theory](../../theory/unfolding.mdx).
 
 Every input is caller data — the response matrix, the measured rates, the
 guess, and the energy-group bounds. Response rows can be hand-built as below
 or produced at runtime from the IRDFF-II response pack
 (`nucleide.data.fetch_irdff` + `parse_irdff_g725`); no detector-response
 library is vendored.
+
+## Fit measurements with shared errors
+
+Use `staysl_correlated` when you have a covariance matrix for your rates,
+for example after propagating a calibration shared by two detectors. The
+rows and columns of the matrix follow the rate order. This synthetic
+example has two unit variances and a covariance of `0.5` in both off-diagonal
+positions. The measurement covariance weights the fit, and damping controls
+how closely the nonnegative solution stays to your guess.
+
+```python
+from nucleide.unfold import staysl_correlated
+
+fit = staysl_correlated(
+    response=[[1.0, 0.0], [0.0, 1.0]],
+    rates=[3.0, 2.0],
+    covariance=[[1.0, 0.5], [0.5, 1.0]],
+    guess=[1.0, 1.0],
+    damping=1.0,
+)
+assert abs(fit["spectrum"][0] - 29 / 15) < 1e-12
+assert abs(fit["spectrum"][1] - 19 / 15) < 1e-12
+assert fit["optimality"] <= fit["tolerance"]
+```
+
+The result gives the fitted spectrum, the rates predicted from that spectrum,
+and the measurement and damping terms of the fit. Each covariance entry
+has units equal to the product of the corresponding rate units. Supply
+`staysl` with one standard deviation per detector when your data have
+independent errors.
 
 ## The forward problem
 

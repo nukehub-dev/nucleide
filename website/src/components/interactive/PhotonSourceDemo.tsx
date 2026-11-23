@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { useWasm } from "../../lib/wasm";
 import type {
   PhotonSourceEvaluateResult,
@@ -10,9 +10,8 @@ import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
 import { DataTable } from "@nukehub/docs-kit/components/mdx/DataTable";
 
-// Synthetic snapshots: three declared cooling times, two voxels, three
-// groups. The browser never computes decay physics; it selects one declared
-// snapshot and lets the shared Rust source contract validate and normalize it.
+// Synthetic snapshots: three declared cooling times, four voxels, four
+// groups. The shared Rust source contract validates each selected snapshot.
 const EDGES_EV = [0, 1e5, 5e5, 2e6, 1e7];
 const GROUP_LABELS = ["0–0.1", "0.1–0.5", "0.5–2", "2–10"];
 const VOLUMES_CM3 = [1, 1, 1, 1];
@@ -53,6 +52,227 @@ function initialText(): string[][] {
 interface CoolingSelection {
   requested: number[];
   indices: number[];
+}
+
+const MIXED_EDGES_EV = [0, 1e6, 3e6];
+const MIXED_COOLING_S = 3600;
+const ZONE_NAMES = ["A", "B"];
+const ZONE_FIELDS = [
+  { label: "Declared cm³", ariaLabel: "declared volume" },
+  { label: "0–1 MeV", ariaLabel: "group 1 photons per second" },
+  { label: "1–3 MeV", ariaLabel: "group 2 photons per second" },
+];
+
+function parseMixedNumber(text: string, label: string): number {
+  const number = Number(text);
+  if (!text.trim() || !Number.isFinite(number)) {
+    throw new Error(`${label} needs a finite number.`);
+  }
+  return number;
+}
+
+function formatMixedValue(value: number): string {
+  return String(Number(value.toPrecision(6)));
+}
+
+function MixedVoxelAllocationDemo({ wasm }: { wasm: WasmApi | null }) {
+  const [zoneText, setZoneText] = useState([
+    ["2", "40", "0"],
+    ["1", "0", "60"],
+  ]);
+  const [overlapText, setOverlapText] = useState([
+    ["0.5", "1"],
+    ["1.5", "0"],
+  ]);
+  const [result, setResult] = useState<ReturnType<WasmApi["mixedVoxelPhotonSource"]> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function update(
+    setText: Dispatch<SetStateAction<string[][]>>,
+    rowIndex: number,
+    columnIndex: number,
+    value: string,
+  ) {
+    setText((current) =>
+      current.map((row, i) =>
+        i === rowIndex ? row.map((cell, j) => (j === columnIndex ? value : cell)) : row,
+      ),
+    );
+    setResult(null);
+    setError(null);
+  }
+
+  function allocate() {
+    if (!wasm) return;
+    try {
+      const zones = zoneText.map((row, zone) => {
+        const values = row.map((cell, column) =>
+          parseMixedNumber(cell, `Zone ${ZONE_NAMES[zone]} ${ZONE_FIELDS[column].ariaLabel}`),
+        );
+        return {
+          volumeCm3: values[0],
+          edgesEv: MIXED_EDGES_EV,
+          coolingS: MIXED_COOLING_S,
+          strengthsPhotonsPerS: values.slice(1),
+        };
+      });
+      const overlaps = overlapText.flatMap((row, voxel) =>
+        row
+          .map((cell, zone): [number, number, number] => [
+            voxel,
+            zone,
+            parseMixedNumber(cell, `Voxel ${voxel} overlap with zone ${ZONE_NAMES[zone]}`),
+          ])
+          .filter(([, , volume]) => volume !== 0),
+      );
+      setResult(
+        wasm.mixedVoxelPhotonSource({
+          meshShape: [2, 1, 1],
+          lowerLeftCm: [0, 0, 0],
+          upperRightCm: [4, 1, 1],
+          voxelVolumesCm3: [2, 2],
+          edgesEv: MIXED_EDGES_EV,
+          coolingS: MIXED_COOLING_S,
+          zones,
+          overlaps,
+        }),
+      );
+      setError(null);
+    } catch (e) {
+      setResult(null);
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  return (
+    <section aria-labelledby="mixed-voxel-heading" className="space-y-3 border-t pt-4">
+      <div>
+        <h3 id="mixed-voxel-heading" className="text-sm font-semibold">
+          Mixed-voxel allocation
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Two 2 cm³ voxels at 3600 s. Use 0 for a zone absent from a voxel.
+        </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="min-w-0 rounded-lg border p-3">
+          <table className="w-full table-fixed text-xs">
+            <caption className="pb-2 text-left text-xs font-medium">
+              Zone strengths (photons/s)
+            </caption>
+            <thead className="text-muted-foreground">
+              <tr>
+                <th className="w-10 text-left font-normal">Zone</th>
+                {ZONE_FIELDS.map(({ label }) => (
+                  <th key={label} className="pb-1 font-normal">
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {zoneText.map((row, zone) => (
+                <tr key={zone}>
+                  <th scope="row" className="text-left font-mono font-normal">
+                    {ZONE_NAMES[zone]}
+                  </th>
+                  {row.map((cell, field) => (
+                    <td key={field} className="p-0.5">
+                      <Input
+                        aria-label={`Zone ${ZONE_NAMES[zone]} ${ZONE_FIELDS[field].ariaLabel}`}
+                        className="h-8 w-full min-w-0 px-1 text-center font-mono text-xs"
+                        inputMode="decimal"
+                        value={cell}
+                        onChange={(event) => update(setZoneText, zone, field, event.target.value)}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="min-w-0 rounded-lg border p-3">
+          <table className="w-full table-fixed text-xs">
+            <caption className="pb-2 text-left text-xs font-medium">
+              Intersection volumes (cm³)
+            </caption>
+            <thead className="text-muted-foreground">
+              <tr>
+                <th className="w-10 text-left font-normal">Voxel</th>
+                {ZONE_NAMES.map((zone) => (
+                  <th key={zone} className="pb-1 font-normal">
+                    Zone {zone}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {overlapText.map((row, voxel) => (
+                <tr key={voxel}>
+                  <th scope="row" className="text-left font-mono font-normal">
+                    V{voxel}
+                  </th>
+                  {row.map((cell, zone) => (
+                    <td key={zone} className="p-0.5">
+                      <Input
+                        aria-label={`Voxel ${voxel} overlap with zone ${ZONE_NAMES[zone]}`}
+                        className="h-8 w-full min-w-0 px-1 text-center font-mono text-xs"
+                        inputMode="decimal"
+                        value={cell}
+                        onChange={(event) =>
+                          update(setOverlapText, voxel, zone, event.target.value)
+                        }
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <Button onClick={allocate} disabled={!wasm}>
+        Allocate mixed source
+      </Button>
+      {error && (
+        <p
+          role="alert"
+          className="rounded-lg border border-destructive/40 p-3 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      )}
+      {result && (
+        <div className="min-w-0 space-y-2">
+          <p role="status" className="text-sm">
+            Group totals: {result.groupTotalsPhotonsPerS.map(formatMixedValue).join(", ")} photons/s
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Mapped volume:{" "}
+            {result.zoneMappedVolumesCm3
+              .map((volume, zone) => `zone ${ZONE_NAMES[zone]} ${formatMixedValue(volume)} cm³`)
+              .join(" · ")}
+          </p>
+          <DataTable
+            caption="Allocated voxel strengths (photons/s)"
+            data={result.strengthsPhotonsPerS.map(([low, high], voxel) => ({
+              voxel: `V${voxel}`,
+              low: formatMixedValue(low),
+              high: formatMixedValue(high),
+              unassigned: formatMixedValue(result.unassignedVolumesCm3[voxel]),
+            }))}
+            columns={[
+              { key: "voxel", header: "Voxel" },
+              { key: "low", header: "0–1 MeV", align: "right" },
+              { key: "high", header: "1–3 MeV", align: "right" },
+              { key: "unassigned", header: "Unassigned cm³", align: "right" },
+            ]}
+          />
+        </div>
+      )}
+    </section>
+  );
 }
 
 export function PhotonSourceDemo() {
@@ -326,6 +546,8 @@ export function PhotonSourceDemo() {
           )}
         </div>
       </div>
+
+      <MixedVoxelAllocationDemo wasm={wasm} />
 
       <div className="space-y-2 border-t pt-4">
         <p className="text-sm font-semibold">Exact cooling selection</p>

@@ -3,17 +3,17 @@
   "name": "unfold",
   "title": "Neutron spectrum unfolding (`unfold_vs_analytic.py`)",
   "environment": {
-    "date": "2026-11-13",
+    "date": "2026-11-23",
     "python": "3.12.16",
     "platform": "Linux-7.2.15-1-omarchy-x86_64-with-glibc2.39",
-    "nucleide": "0.17.0",
+    "nucleide": "0.19.0",
     "pyne": "0.7.5",
     "openmc": "0.16.0"
   },
   "sections": [
     {
       "kind": "prose",
-      "text": "Five-part oracle for `nucleide.unfold`, all parts always run: analytic gates U1-U4 on synthetic forward folds (fold identity, exact fixed point, determined and underdetermined round-trips at pinned tolerances), IRDFF-II analytical benchmark-shape probes U5 (Trkov et al. 2020, published facts with citation), STAYSL-class least-squares gates U9-U13, GRAVEL chi-square-weighted gates U14-U18, and MAXED maximum-entropy gates U19-U23. No external unfolding oracle exists, so no container dependency is added and no check can SKIP."
+      "text": "Validation for `nucleide.unfold`: analytic gates U1-U4 on synthetic forward folds (fold identity, exact fixed point, determined and underdetermined round-trips at pinned tolerances), IRDFF-II analytical benchmark-shape probes U5 (Trkov et al. 2020, published facts with citation), STAYSL-class least-squares gates U9-U13, GRAVEL chi-square-weighted gates U14-U18, MAXED maximum-entropy gates U19-U23, and correlated STAYSL-class gates U24-U26. The U27 numerical comparison runs when SciPy is installed."
     },
     {
       "kind": "prose",
@@ -421,6 +421,72 @@
           "U23 named contract errors",
           "-",
           "7 cases",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "U24 compares the interior solution and both objective terms to closed forms. U25 verifies a bounded optimum under detector permutation and changes of rate units."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Value",
+        "Tol",
+        "Status"
+      ],
+      "rows": [
+        [
+          "U24 interior fit and diagonal equivalence",
+          "8.881784e-16",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "U25 bounded optimum and rescaling",
+          "6.661338e-16",
+          "< 1e-12",
+          "PASS"
+        ],
+        [
+          "U26 covariance and iteration errors",
+          "-",
+          "5 cases",
+          "PASS"
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "text": "U27 uses SciPy 1.18.1 BVLS with its own Cholesky factorization on 40 seeded synthetic cases."
+    },
+    {
+      "kind": "table",
+      "headers": [
+        "Gate",
+        "Value",
+        "Tol",
+        "Status"
+      ],
+      "rows": [
+        [
+          "U27 SciPy spectrum max abs error",
+          "4.124479e-14",
+          "< 1e-8",
+          "PASS"
+        ],
+        [
+          "U27 SciPy objective scaled abs error",
+          "2.925456e-15",
+          "< 1e-10",
+          "PASS"
+        ],
+        [
+          "U27 converged references and active-set coverage",
+          "9 interior, 31 on a bound",
+          "both kinds",
           "PASS"
         ]
       ]

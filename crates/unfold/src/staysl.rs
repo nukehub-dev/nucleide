@@ -58,7 +58,8 @@
 //! positive sigma per detector and the weight is `w_i = 1/σ_i²`, the
 //! classical measurement-uncertainty weight. These are the same sigmas the
 //! landed UQ-lite conventions attach to the rates; this method consumes
-//! them deterministically as weights only — no covariance propagation.
+//! them deterministically as weights only. [`unfold_correlated`] accepts
+//! measurement covariance as an alternative weighting model.
 //!
 //! Damping stance (v1, pinned): `λ` is absolute Tikhonov damping on the
 //! distance to the guess — the fixed point of the unconstrained problem is
@@ -107,6 +108,9 @@
 
 use crate::error::{Error, Result};
 use nucleide_linalg::lstsq;
+
+mod correlated;
+pub use correlated::{unfold_correlated, CorrelatedSolution, DEFAULT_CORRELATED_TOLERANCE};
 
 /// Default per-group relative-change convergence tolerance.
 ///

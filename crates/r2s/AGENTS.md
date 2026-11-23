@@ -12,7 +12,7 @@ solving stay inside their respective codes.
 ## Ownership
 
 Owns `crates/r2s/src/` (`workflow.rs`, `tags.rs`, `photon.rs`, `source.rs`,
-`snapshot.rs`, `sweep.rs`), the Python surface (`nucleide.r2s`), and
+`mixed_source.rs`, `snapshot.rs`, `sweep.rs`), the Python surface (`nucleide.r2s`), and
 `tests/test_r2s.py` + `tests/test_r2s_tags.py`.
 
 ## Local Contracts
@@ -31,6 +31,17 @@ Owns `crates/r2s/src/` (`workflow.rs`, `tags.rs`, `photon.rs`, `source.rs`,
   total getters; `checked_total_strength` provides an additive finite aggregate.
   Underflowing strengths can round to zero, so relative
   conservation cannot be promised below the representable range.
+- `mixed_source`: allocate integrated zone group strengths over unique,
+  positive caller overlap volumes for disjoint zones. All zone grids and
+  cooling offsets must match the requested source exactly. Compare declared
+  zone coverage and full geometric voxel volumes with a scale-aware
+  relative tolerance of 1e-12. Require full coverage for emitting zones and
+  reject voxel overfill beyond the same tolerance. Clamp negative residual
+  volume within tolerance to zero. Report mapped/declared zone volumes, unassigned
+  voxel volumes and conservation by zone and group with compensated sums.
+  Allocate by observed mapped fractions and return the existing homogeneous
+  regular-mesh source. Geometry intersections and any sub-voxel sampling
+  remain caller responsibilities.
 - `source`: activation-to-transport handoff. `normalize_flux` takes an
   explicit `TallyNormalization`; per-source volume-integrated tallies
   multiply by the source rate and divide by caller voxel volumes,
@@ -55,6 +66,9 @@ Owns `crates/r2s/src/` (`workflow.rs`, `tags.rs`, `photon.rs`, `source.rs`,
   and `PhotonSource::from_draft` share one check order (mesh, bounds,
   volumes, edges, cooling, strengths, totals, warnings, assumptions), never
   repair, and use stable kebab-case codes documented in `source.rs`.
+  `PhotonSource::validation_report` reads the same fields without cloning
+  their arrays. The Python source constructor uses that report's totals
+  for its returned dictionary.
   `SOURCE_ISSUE_LIMIT` caps stored examples while `issue_count` and
   `truncated` keep the true count. Assumptions (`source-assumption-*`) and
   `source-all-zero` do not invalidate a source; any `Error` severity does.

@@ -11,8 +11,8 @@
 //! AFWL-TR-67-41, 1967 — US government work, public domain, clean-room
 //! from the report), STAYSL-class damped least-squares ([`staysl`],
 //! Perey, ORNL/TM-6062, 1977 — US government work, clean-room) with
-//! caller-supplied per-detector sigmas as weights, every solve routed
-//! through the shared [`nucleide_linalg::lstsq`] kernel, and GRAVEL
+//! caller-supplied per-detector sigmas or measurement covariance, every solve
+//! routed through the shared [`nucleide_linalg::lstsq`] kernel, and GRAVEL
 //! ([`gravel`], Matzke, PTB-N-19, 1994 — the SAND-II update with
 //! measurement-error weights), and MAXED ([`maxed`], Reginatto &
 //! Goldhagen, Health Phys. 77 (1999) 579 — maximum entropy over the
@@ -27,10 +27,9 @@
 //! (Trkov et al., Nucl. Data Sheets 163 (2020) 1), which are plain
 //! published facts used with citation.
 //!
-//! Convergence contract (all methods): a per-group relative-change
-//! tolerance with an explicit iteration cap; exhausting the cap is a hard
-//! [`Error::NotConverged`], never a silent partial spectrum (the `tritium`
-//! face-Newton precedent).
+//! The iterators use a per-group relative-change tolerance. The correlated
+//! STAYSL-class fit checks first-order optimality under nonnegativity.
+//! Exhausting an iteration cap returns [`Error::NotConverged`].
 //!
 //! Modules: [`error`] (named error set), [`sandii`] (SAND-II adjustment
 //! iterator + driver), [`staysl`] (STAYSL-class damped least-squares

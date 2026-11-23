@@ -4349,21 +4349,7 @@ fn photon_source_draft(
             input.upper_right_cm.len()
         ))
     })?;
-    let voxels = mesh_shape
-        .iter()
-        .try_fold(1usize, |acc, dim| acc.checked_mul(*dim))
-        .ok_or_else(|| js_err("mesh dimensions overflow the browser demo limit"))?;
-    if voxels > MAX_PHOTON_SOURCE_CELLS {
-        return Err(js_err(format!(
-            "voxel count {voxels} exceeds the demo cap of {MAX_PHOTON_SOURCE_CELLS}"
-        )));
-    }
-    let groups = input.edges_ev.len().saturating_sub(1);
-    if groups > MAX_PHOTON_SOURCE_CELLS {
-        return Err(js_err(format!(
-            "group count {groups} exceeds the demo cap of {MAX_PHOTON_SOURCE_CELLS}"
-        )));
-    }
+    check_photon_source_browser_size(mesh_shape, &input.edges_ev)?;
     Ok(nucleide_r2s::PhotonSourceDraft::new(
         mesh_shape,
         lower_left,
@@ -4373,6 +4359,100 @@ fn photon_source_draft(
         input.cooling_s,
         input.strengths_photons_per_s,
     ))
+}
+
+fn check_photon_source_browser_size(
+    mesh_shape: [usize; 3],
+    edges_ev: &[f64],
+) -> Result<(), JsValue> {
+    let voxels = mesh_shape
+        .iter()
+        .try_fold(1usize, |acc, dim| acc.checked_mul(*dim))
+        .ok_or_else(|| js_err("mesh dimensions overflow the browser demo limit"))?;
+    if voxels > MAX_PHOTON_SOURCE_CELLS {
+        return Err(js_err(format!(
+            "voxel count {voxels} exceeds the demo cap of {MAX_PHOTON_SOURCE_CELLS}"
+        )));
+    }
+    let groups = edges_ev.len().saturating_sub(1);
+    if groups > MAX_PHOTON_SOURCE_CELLS {
+        return Err(js_err(format!(
+            "group count {groups} exceeds the demo cap of {MAX_PHOTON_SOURCE_CELLS}"
+        )));
+    }
+    Ok(())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MixedVoxelZoneInput {
+    volume_cm3: f64,
+    edges_ev: Vec<f64>,
+    cooling_s: f64,
+    strengths_photons_per_s: Vec<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MixedVoxelSourceInput {
+    mesh_shape: [usize; 3],
+    lower_left_cm: [f64; 3],
+    upper_right_cm: [f64; 3],
+    voxel_volumes_cm3: Vec<f64>,
+    edges_ev: Vec<f64>,
+    cooling_s: f64,
+    zones: Vec<MixedVoxelZoneInput>,
+    overlaps: Vec<(usize, usize, f64)>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MixedVoxelSourceResult {
+    strengths_photons_per_s: Vec<Vec<f64>>,
+    unassigned_volumes_cm3: Vec<f64>,
+    zone_mapped_volumes_cm3: Vec<f64>,
+    group_totals_photons_per_s: Vec<f64>,
+}
+
+/// Assemble per-voxel photon spectra from caller zone and overlap data.
+#[wasm_bindgen(js_name = mixedVoxelPhotonSource)]
+pub fn mixed_voxel_photon_source(input: JsValue) -> Result<JsValue, JsValue> {
+    let input: MixedVoxelSourceInput = serde_wasm_bindgen::from_value(input).map_err(js_err)?;
+    check_photon_source_browser_size(input.mesh_shape, &input.edges_ev)?;
+    if input.zones.len() > MAX_PHOTON_SOURCE_CELLS
+        || input.overlaps.len() > MAX_PHOTON_SOURCE_CELLS * MAX_PHOTON_SOURCE_CELLS
+    {
+        return Err(js_err(
+            "zone or overlap count exceeds the browser demo limit",
+        ));
+    }
+    let zones: Vec<_> = input
+        .zones
+        .iter()
+        .map(|zone| nucleide_r2s::MixedVoxelZoneSpectrum {
+            volume_cm3: zone.volume_cm3,
+            edges_ev: &zone.edges_ev,
+            cooling_s: zone.cooling_s,
+            strengths_photons_per_s: &zone.strengths_photons_per_s,
+        })
+        .collect();
+    let result = nucleide_r2s::mixed_voxel_photon_source(
+        input.mesh_shape,
+        input.lower_left_cm,
+        input.upper_right_cm,
+        input.voxel_volumes_cm3,
+        input.edges_ev,
+        input.cooling_s,
+        &zones,
+        &input.overlaps,
+    )
+    .map_err(js_err)?;
+    to_js(&MixedVoxelSourceResult {
+        strengths_photons_per_s: result.source.strengths_photons_per_s,
+        unassigned_volumes_cm3: result.allocation.voxel_unassigned_volumes_cm3,
+        zone_mapped_volumes_cm3: result.allocation.zone_mapped_volumes_cm3,
+        group_totals_photons_per_s: result.allocation.allocated_group_totals_photons_per_s,
+    })
 }
 
 /// Validate a photon source and return totals, assumptions and distributions.
@@ -4660,6 +4740,35 @@ pub fn spectroscopy_smooth(
         gross,
         background,
         net: gross - background,
+    })
+}
+
+/// Estimate signed activity and counting standard uncertainty for a known gamma peak.
+#[wasm_bindgen(js_name = spectroscopyGammaLineActivity)]
+pub fn spectroscopy_gamma_line_activity(
+    net_counts: f64,
+    net_counts_uncertainty: f64,
+    live_time_s: f64,
+    peak_efficiency: f64,
+    emission_probability: f64,
+) -> Result<JsValue, JsValue> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ActivityEstimate {
+        activity_bq: f64,
+        counting_uncertainty_bq: f64,
+    }
+    let result = nucleide_spectroscopy::gamma_line_activity(
+        net_counts,
+        net_counts_uncertainty,
+        live_time_s,
+        peak_efficiency,
+        emission_probability,
+    )
+    .map_err(js_err)?;
+    to_js(&ActivityEstimate {
+        activity_bq: result.activity_bq,
+        counting_uncertainty_bq: result.counting_uncertainty_bq,
     })
 }
 
@@ -6080,7 +6189,7 @@ pub fn emit_fusion_source_cards(spec: JsValue) -> Result<JsValue, JsValue> {
 }
 
 // ---------------------------------------------------------------------------
-// Spectrum unfolding (forward fold + SAND-II solve)
+// Spectrum unfolding (forward fold, SAND-II and correlated adjustment)
 // ---------------------------------------------------------------------------
 
 /// Forward operator: fold `spectrum` (one value per energy group) through the
@@ -6136,6 +6245,49 @@ pub fn sandii_solve(
         iterations: solution.iterations,
         tolerance: solution.tolerance,
         max_rel_change: solution.max_rel_change,
+    })
+}
+
+/// Fit a nonnegative spectrum using caller-supplied measurement covariance.
+#[wasm_bindgen(js_name = unfoldStayslCorrelated)]
+pub fn unfold_staysl_correlated(
+    response: JsValue,
+    rates: Vec<f64>,
+    covariance: JsValue,
+    guess: Vec<f64>,
+    damping: f64,
+) -> Result<JsValue, JsValue> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct CorrelatedSolutionJson {
+        spectrum: Vec<f64>,
+        rates: Vec<f64>,
+        measurement_chi2: f64,
+        damping_penalty: f64,
+        iterations: usize,
+        tolerance: f64,
+        optimality: f64,
+    }
+    let response: Vec<Vec<f64>> = serde_wasm_bindgen::from_value(response).map_err(js_err)?;
+    let covariance: Vec<Vec<f64>> = serde_wasm_bindgen::from_value(covariance).map_err(js_err)?;
+    let result = nucleide_unfold::staysl::unfold_correlated(
+        &response,
+        &rates,
+        &covariance,
+        &guess,
+        nucleide_unfold::staysl::DEFAULT_CORRELATED_TOLERANCE,
+        nucleide_unfold::DEFAULT_MAX_ITERATIONS,
+        damping,
+    )
+    .map_err(js_err)?;
+    to_js(&CorrelatedSolutionJson {
+        spectrum: result.spectrum,
+        rates: result.rates,
+        measurement_chi2: result.measurement_chi2,
+        damping_penalty: result.damping_penalty,
+        iterations: result.iterations,
+        tolerance: result.tolerance,
+        optimality: result.optimality,
     })
 }
 

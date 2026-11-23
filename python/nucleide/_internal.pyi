@@ -681,6 +681,16 @@ def r2s_photon_source_exported(
     exported_group_indices: list[int],
     exported_strengths_photons_per_s: list[list[float]],
 ) -> dict[str, Any]: ...
+def r2s_mixed_voxel_photon_source(
+    mesh_shape: list[int],
+    lower_left_cm: list[float],
+    upper_right_cm: list[float],
+    voxel_volumes_cm3: list[float],
+    edges_ev: list[float],
+    cooling_s: float,
+    zones: list[tuple[float, list[float], float, list[float]]],
+    overlaps: list[tuple[int, int, float]],
+) -> dict[str, Any]: ...
 def r2s_source_report(
     mesh_shape: list[int],
     lower_left_cm: list[float],
@@ -860,6 +870,15 @@ def unfold_staysl(
     sigmas: list[float],
     guess: list[float],
     tolerance: float = 1e-3,
+    max_iterations: int = 200,
+    damping: float = 1e-3,
+) -> dict[str, Any]: ...
+def unfold_staysl_correlated(
+    response: list[list[float]],
+    rates: list[float],
+    covariance: list[list[float]],
+    guess: list[float],
+    tolerance: float = 1e-10,
     max_iterations: int = 200,
     damping: float = 1e-3,
 ) -> dict[str, Any]: ...
@@ -1080,6 +1099,13 @@ def spectroscopy_fit_efficiency(
     order: int,
     eff_fit: int = 1,
 ) -> list[float]: ...
+def spectroscopy_gamma_line_activity(
+    net_counts: float,
+    net_counts_uncertainty: float,
+    live_time_s: float,
+    peak_efficiency: float,
+    emission_probability: float,
+) -> tuple[float, float]: ...
 def spectroscopy_xray_lines(
     atomic: dict[str, float],
     k_conv: float | None = None,

@@ -1,6 +1,6 @@
 """Neutron spectrum unfolding (backed by the `nucleide-unfold` crate)."""
 
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from nucleide._internal import (
     unfold_forward_fold,
@@ -8,9 +8,30 @@ from nucleide._internal import (
     unfold_maxed,
     unfold_sandii,
     unfold_staysl,
+    unfold_staysl_correlated,
 )
 
-__all__ = ["sandii", "staysl", "gravel", "maxed", "forward_fold"]
+__all__ = [
+    "CorrelatedSolution",
+    "sandii",
+    "staysl",
+    "staysl_correlated",
+    "gravel",
+    "maxed",
+    "forward_fold",
+]
+
+
+class CorrelatedSolution(TypedDict):
+    """Spectrum and diagnostics from a correlated measurement fit."""
+
+    spectrum: list[float]
+    rates: list[float]
+    measurement_chi2: float
+    damping_penalty: float
+    iterations: int
+    tolerance: float
+    optimality: float
 
 
 def sandii(
@@ -68,6 +89,36 @@ def staysl(
     ``max_rel_change``.
     """
     return unfold_staysl(response, rates, sigmas, guess, tolerance, max_iterations, damping)
+
+
+def staysl_correlated(
+    response: list[list[float]],
+    rates: list[float],
+    covariance: list[list[float]],
+    guess: list[float],
+    *,
+    tolerance: float = 1e-10,
+    max_iterations: int = 200,
+    damping: float = 1e-3,
+) -> CorrelatedSolution:
+    """Fit a nonnegative spectrum using caller-supplied detector covariance.
+
+    The covariance rows and columns follow the order of ``rates`` and the
+    rows of ``response``. Each entry has units equal to the product of the
+    two rates' units. Supply a finite, symmetric, positive-definite matrix.
+    Damping penalizes distance from the strictly positive ``guess``.
+
+    The result includes the spectrum, folded rates, measurement chi-square,
+    damping penalty, and the scaled gradient violation ``optimality``.
+    The fit succeeds when this violation is at most ``tolerance``.
+    Ill-conditioned covariance and iteration exhaustion raise ``ValueError``.
+    """
+    return cast(
+        CorrelatedSolution,
+        unfold_staysl_correlated(
+            response, rates, covariance, guess, tolerance, max_iterations, damping
+        ),
+    )
 
 
 def gravel(

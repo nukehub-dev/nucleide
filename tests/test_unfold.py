@@ -145,6 +145,79 @@ def test_staysl_exact_guess_is_a_fixed_point() -> None:
     assert out["rate_factors"] == pytest.approx([1.0] * len(rates), rel=1e-12)
 
 
+def test_staysl_correlated_recovers_damped_fit_and_diagonal_equivalence() -> None:
+    response = [[1.0, 0.0], [0.0, 1.0]]
+    rates = [3.0, 2.0]
+    guess = [1.0, 1.0]
+    legacy = unfold.staysl(response, rates, [1.0, 1.0], guess, damping=1.0)
+    diagonal = unfold.staysl_correlated(response, rates, response, guess, damping=1.0)
+    assert diagonal["spectrum"] == pytest.approx(legacy["spectrum"], abs=1e-12)
+    covariance = [[1.0, 0.5], [0.5, 1.0]]
+    correlated = unfold.staysl_correlated(response, rates, covariance, guess, damping=1.0)
+    assert correlated["spectrum"] == pytest.approx([29 / 15, 19 / 15], abs=1e-12)
+    assert correlated["rates"] == correlated["spectrum"]
+    assert correlated["measurement_chi2"] == pytest.approx(268 / 225, abs=1e-12)
+    assert correlated["damping_penalty"] == pytest.approx(212 / 225, abs=1e-12)
+    assert correlated["optimality"] <= correlated["tolerance"]
+
+
+def test_staysl_correlated_respects_bounds_and_detector_order() -> None:
+    response = [[0.0, 3.0, 3.0], [0.0, 1.0, 0.0], [3.0, 2.0, 0.0]]
+    rates = [6.0, 4.0, 1.0]
+    covariance = [[1.0, 0.75, 0.0], [0.75, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    guess = [1.0, 1.0, 1.0]
+    fit = unfold.staysl_correlated(response, rates, covariance, guess, damping=1.0)
+    assert fit["spectrum"] == pytest.approx([0, 151 / 141, 11 / 47], abs=1e-12)
+    assert fit["spectrum"][0] == 0.0
+    assert fit["rates"] == [
+        sum(r * s for r, s in zip(row, fit["spectrum"], strict=True)) for row in response
+    ]
+    assert fit["iterations"] > 1
+
+    permutation = [2, 0, 1]
+    units = [1e-60, 1e60, 3.0]
+    permuted = unfold.staysl_correlated(
+        [[units[i] * val for val in response[i]] for i in permutation],
+        [units[i] * rates[i] for i in permutation],
+        [[units[i] * covariance[i][j] * units[j] for j in permutation] for i in permutation],
+        guess,
+        damping=1.0,
+    )
+    assert permuted["spectrum"] == pytest.approx(fit["spectrum"], abs=1e-12)
+    assert permuted["measurement_chi2"] == pytest.approx(fit["measurement_chi2"], abs=1e-12)
+    with pytest.raises(ValueError, match="did not converge"):
+        unfold.staysl_correlated(response, rates, covariance, guess, damping=1.0, max_iterations=1)
+
+
+@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
+    ("covariance", "match"),
+    [
+        ([[1.0, 0.0], [0.0]], "square matrix"),
+        ([[1.0, 0.0], [0.0, math.inf]], "non-finite"),
+        ([[1.0, 0.0], [0.0, 0.0]], "variances must be positive"),
+        ([[1.0, 0.1], [0.9, 1.0]], "symmetric"),
+        ([[1.0, 1.0], [1.0, 1.0]], "positive definite"),
+        ([[1.0, 2.0], [2.0, 1.0]], "positive definite"),
+        ([[1.0, 1 - 1e-13], [1 - 1e-13, 1.0]], "ill-conditioned"),
+    ],
+)
+def test_staysl_correlated_rejects_invalid_covariance(
+    covariance: list[list[float]], match: str
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        unfold.staysl_correlated([[1.0, 0.0], [0.0, 1.0]], [3.0, 2.0], covariance, [1.0, 1.0])
+
+
+def test_staysl_correlated_keeps_unobserved_group_with_zero_rate() -> None:
+    fit = unfold.staysl_correlated(
+        [[1.0, 0.0], [0.0, 0.0]], [0.0, 2.0], [[1.0, 0.0], [0.0, 1.0]], [1.0, 7.2], damping=1.0
+    )
+    assert fit["spectrum"][0] == pytest.approx(0.5, abs=1e-12)
+    assert fit["spectrum"][1] == 7.2
+    assert fit["rates"][1] == 0.0
+    assert fit["measurement_chi2"] == pytest.approx(4.25, abs=1e-12)
+
+
 def test_staysl_recovers_determined_system_from_biased_guess() -> None:
     response = _synthetic_response(N_GROUPS, N_GROUPS, 0.9)
     midpoints = _log_midpoints(N_GROUPS, 1e-6, 10.0)

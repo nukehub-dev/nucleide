@@ -360,9 +360,17 @@ def parse_facade(mod: str) -> dict[str, object]:
     aliases: dict[str, str] = {}
     alias_lines: dict[str, int] = {}
     defs: dict[str, tuple[str, int]] = {}
+    classes: dict[str, tuple[int, list[str]]] = {}
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             defs[node.name] = (_func_sig(node.name, node, strip_self=False), node.lineno)
+        elif isinstance(node, ast.ClassDef):
+            fields = [
+                f"{field.target.id}: {ast.unparse(field.annotation)}"
+                for field in node.body
+                if isinstance(field, ast.AnnAssign) and isinstance(field.target, ast.Name)
+            ]
+            classes[node.name] = (node.lineno, fields)
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
             target = node.targets[0]
             if (
@@ -391,6 +399,7 @@ def parse_facade(mod: str) -> dict[str, object]:
         "aliases": aliases,
         "alias_lines": alias_lines,
         "defs": defs,
+        "classes": classes,
     }
 
 
@@ -594,6 +603,7 @@ def render_module(
     aliases = dict(facade["aliases"])  # type: ignore[arg-type]
     alias_lines = dict(facade["alias_lines"])  # type: ignore[arg-type]
     facade_defs = dict(facade["defs"])  # type: ignore[arg-type]
+    facade_classes = dict(facade["classes"])  # type: ignore[arg-type]
     lines: list[str] = []
     missing: list[str] = []
     for name in all_names:
@@ -645,6 +655,11 @@ def render_module(
             # spelling): signature comes from the facade itself.
             sig, lineno = facade_defs[name]
             lines.extend(_sig_bullet(name, sig, None, _facade_url(mod, lineno)))
+        elif name in facade_classes:
+            lineno, fields = facade_classes[name]
+            lines.append(f"- [`{name}`]({_facade_url(mod, lineno)})")
+            lines.extend(f"  - `{field}`" for field in fields)
+            lines.append("")
         else:
             missing.append(name)
     if missing:

@@ -1,6 +1,6 @@
 ---
 title: Gamma-ray spectroscopy
-description: Smooth a spectrum and count gross, background, and net peak counts.
+description: Smooth a spectrum, count peaks, and estimate activity from a known gamma line.
 sidebar:
   order: 18
 ---
@@ -41,6 +41,20 @@ Channels are labelled positionally (`0..N-1`); counts must be finite and
 non-negative.
 
 <InteractiveDemo kind="spectroscopy" />
+
+## Gamma-line activity
+
+Enter the signed net counts for a known full-energy peak, the standard
+uncertainty in those counts, and the acquisition live time. The absolute
+peak efficiency corresponds to your measurement geometry. Enter both the
+efficiency and emission probability as fractions.
+
+Press **Estimate activity** to run the Rust calculation in the browser.
+The defaults use 120 net counts with a standard uncertainty of 12 counts,
+a live time of 60 s, an efficiency of 0.10, and an emission probability of
+0.50. The estimate is **40 ± 4 Bq**. A negative net count gives a signed
+estimate with the same nonnegative uncertainty. The displayed uncertainty
+comes from the supplied counts uncertainty alone.
 
 ## TSV, calibration, and SPE readers
 

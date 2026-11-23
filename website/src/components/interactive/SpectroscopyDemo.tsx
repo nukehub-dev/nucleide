@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useWasm } from "../../lib/wasm";
-import type { SpeSummary, SpectroscopySmoothResult } from "../../types/nucleide-wasm";
+import type { SpeSummary, SpectroscopySmoothResult, WasmApi } from "../../types/nucleide-wasm";
 import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
@@ -25,6 +25,116 @@ const METHOD_OPTIONS = [
 ];
 
 type Method = "rect3" | "rect5" | "rect7" | "five-point";
+
+const ACTIVITY_FIELDS = [
+  { name: "netCounts", label: "Net peak counts", unit: "counts" },
+  { name: "countingUncertainty", label: "Counting uncertainty", unit: "counts" },
+  { name: "liveTime", label: "Live time", unit: "s" },
+  { name: "peakEfficiency", label: "Peak efficiency", unit: "fraction" },
+  { name: "emissionProbability", label: "Emission probability", unit: "fraction" },
+] as const;
+
+type ActivityField = (typeof ACTIVITY_FIELDS)[number]["name"];
+type EstimateActivity = WasmApi["spectroscopyGammaLineActivity"];
+
+function GammaLineActivityForm({ estimate }: { estimate: EstimateActivity }) {
+  const id = useId();
+  const [values, setValues] = useState<Record<ActivityField, string>>({
+    netCounts: "120",
+    countingUncertainty: "12",
+    liveTime: "60",
+    peakEfficiency: "0.1",
+    emissionProbability: "0.5",
+  });
+  const [result, setResult] = useState<ReturnType<EstimateActivity> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function run() {
+    setResult(null);
+    setError(null);
+    try {
+      setResult(
+        estimate(
+          Number(values.netCounts),
+          Number(values.countingUncertainty),
+          Number(values.liveTime),
+          Number(values.peakEfficiency),
+          Number(values.emissionProbability),
+        ),
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }
+
+  return (
+    <form
+      aria-labelledby={`${id}-heading`}
+      className="space-y-4 border-t border-border/50 pt-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        run();
+      }}
+    >
+      <div className="space-y-1">
+        <h3 id={`${id}-heading`} className="text-sm font-medium">
+          Gamma-line activity
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Use a background-subtracted peak area and its standard uncertainty. Enter the full-energy
+          peak efficiency and emission probability as fractions greater than 0 and at most 1.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {ACTIVITY_FIELDS.map(({ name, label, unit }) => (
+          <div key={name} className="grid content-end gap-1">
+            <Label htmlFor={`${id}-${name}`}>{label}</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id={`${id}-${name}`}
+                type="number"
+                step="any"
+                required
+                value={values[name]}
+                onChange={(event) => {
+                  setValues({ ...values, [name]: event.target.value });
+                  setResult(null);
+                  setError(null);
+                }}
+                aria-describedby={`${id}-${name}-unit`}
+                className="min-w-0"
+              />
+              <span
+                id={`${id}-${name}-unit`}
+                className="w-14 shrink-0 text-xs text-muted-foreground"
+              >
+                {unit}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <Button type="submit">Estimate activity</Button>
+      {error && (
+        <p
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+        >
+          {error}
+        </p>
+      )}
+      {result && (
+        <output className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg bg-muted p-3">
+          <span className="text-sm text-muted-foreground">Estimated activity</span>
+          <span className="break-all font-mono text-lg">
+            {Number(result.activityBq.toPrecision(8))} ±{" "}
+            {Number(result.countingUncertaintyBq.toPrecision(8))} Bq
+          </span>
+        </output>
+      )}
+    </form>
+  );
+}
 
 export function SpectroscopyDemo() {
   const { wasm, ready, error } = useWasm();
@@ -314,6 +424,7 @@ export function SpectroscopyDemo() {
               />
             </div>
           )}
+          {wasm && <GammaLineActivityForm estimate={wasm.spectroscopyGammaLineActivity} />}
         </>
       )}
     </div>

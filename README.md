@@ -1,11 +1,26 @@
-# Nucleide
+# <img src="https://nucleide.nukehub.org/favicon.svg" alt="" width="36" height="36"> Nucleide
+
+[![CI status][ci-badge]][ci]
+[![PyPI version][pypi-badge]][pypi]
+[![Documentation][docs-badge]][docs-site]
+[![BSD 2-Clause license][license-badge]][license]
+
+[ci-badge]: https://github.com/nukehub-dev/nucleide/actions/workflows/ci.yml/badge.svg?branch=main
+[ci]: https://github.com/nukehub-dev/nucleide/actions/workflows/ci.yml?query=branch%3Amain
+[pypi-badge]: https://img.shields.io/pypi/v/nucleide
+[pypi]: https://pypi.org/project/nucleide/
+[docs-badge]: https://img.shields.io/badge/docs-nucleide.nukehub.org-blue
+[docs-site]: https://nucleide.nukehub.org/
+[license-badge]: https://img.shields.io/badge/license-BSD--2--Clause-blue
+[license]: https://github.com/nukehub-dev/nucleide/blob/main/LICENSE
 
 Nucleide is a modern Rust toolkit for nuclear-engineering data, measurement, and
  workflow glue: legacy transport-code I/O, nuclide identification, materials,
  CRAM depletion, enrichment analytics, point kinetics, gamma-ray spectroscopy,
  tritium transport, TBR/blanket bookkeeping, equilibrium data readers,
- an OpenMC statepoint tally bridge with explicit physical-flux normalization
- and photon-source export, fusion neutron sources, spectrum unfolding,
+ a regular and rectilinear OpenMC tally bridge with explicit physical-flux
+ normalization and mixed-voxel photon-source export, fusion neutron sources,
+ spectrum unfolding with optional measurement covariance,
  conservative spectral regrouping, volume-aware source splitting, variance
  reduction, UQ sampling, CSG translation, and code-card emission — exposed
  through a typed Python API.
@@ -52,16 +67,16 @@ rebuilds the high-value subset in memory-safe Rust with one-command
 | TBR/blanket books (`nucleide-blanket`) | Raw TBR from caller tallies, multiplicative per-port coverage haircuts, blanket energy multiplication, tritium burn rate, and breeding-margin / net-surplus fuel-cycle metrics (pure arithmetic — no transport, no geometry optimization, no coupling into `tritium`) |
 | Fusion sources (`nucleide-plasma-source`) | Tokamak neutron sources — ring/point (D-D 2.45 MeV, D-T 14.1 MeV) and a parametric Miller-geometry plasma with caller-supplied L/H/A-mode profiles (Fausser 2012), reactivity-weighted emission (Bosch–Hale 1992) over equimolar D-T, pure D-D, or D/T fuel mixtures at a shared ion temperature (Eriksson 2016), per-species ion temperatures, one pinned deuterium hot-tail shape (parametric and lattice, one global tail applied per node), toroidal sectors, D(d,p)T proton transport for deuterium-bearing ring/point and parametric sources (Brysk 3.02 MeV line, pinned 50/50 or opt-in Bosch–Hale D(d,p) rate, MCNP6-only `PAR=h` cards), an arbitrary-3D birth-rate lattice with field-period symmetry, and closed-form ECRH accessibility (cold resonance, relativistic shift, O1/X1 cut-offs, beamline crossings), ion-temperature-broadened Gaussian spectra (Brysk/Ballabio), seeded sampling to particle vectors, MCNP SDEF + Serpent source-card emission with drift report |
 | Damage metrics (`nucleide-damage`) | NRT-dpa and arc-dpa displacement functions (NRT 1975; Nordlund 2018), He/H appm production and He/dpa ratios by spectral folding of caller flux with caller response functions, UQ on the folds over caller MVN blocks (SPECTER is the validation oracle behind an opt-in vendored Table VII fallback), plus coil fast-fluence / lifetime bookkeeping (fast-flux sums, history accumulation, weakest-link life over caller limit tables) |
-| Spectroscopy (`nucleide-spectroscopy`) | Spectrum smoothing, gross/net counting, energy/efficiency calibration, X-ray lines, SPE parsing, decay-line SDEF source cards (E9) fed from caller lists or the runtime decay-lines TSV interchange |
-| Spectrum unfolding (`nucleide-unfold`) | SAND-II, STAYSL-class least-squares, GRAVEL chi-square-weighted, and MAXED maximum-entropy adjustment of a guess neutron spectrum against measured activation rates (caller-supplied response matrix, or the IRDFF-II runtime pack), with convergence diagnostics; non-convergence is a hard error |
+| Spectroscopy (`nucleide-spectroscopy`) | Spectrum smoothing, gross/net counting, energy/efficiency calibration, gamma-line activity with counting uncertainty, X-ray lines, SPE parsing, decay-line SDEF source cards (E9) fed from caller lists or the runtime decay-lines TSV interchange |
+| Spectrum unfolding (`nucleide-unfold`) | SAND-II, STAYSL-class least-squares with optional measurement covariance, GRAVEL chi-square-weighted, and MAXED maximum-entropy adjustment of a guess neutron spectrum against measured activation rates (caller-supplied response matrix, or the IRDFF-II runtime pack), with convergence diagnostics; non-convergence is a hard error |
 | Equilibrium data (`nucleide-equilib-io`) | Classic-netCDF VMEC `wout` reader (CDF-1/CDF-2 only; netCDF-4/CDF-5 convert facade-side) plus the `&INDATA` input-text grammar, with flux-surface Jacobian helpers for volume weighting and wall-load mapping in flux coordinates (reads data, never solves equilibria) |
-| OpenMC tally bridge (`nucleide.openmc`, pure Python) | Statepoint mesh/cell tally extraction through the caller-side OpenMC API into plain arrays the damage folds accept, v1/v2 CSV interchange, explicit raw-to-physical flux normalization, optional `MeshSource` export, exact cooling-time batches and reproducibility manifests |
+| OpenMC tally bridge (`nucleide.openmc`, pure Python) | Regular-mesh, rectilinear-mesh, and cell tally extraction through the caller-side OpenMC API into plain arrays the damage folds accept, v1/v2 CSV interchange, explicit raw-to-physical flux normalization, optional `MeshSource` export, exact cooling-time batches and reproducibility manifests |
 | Variance reduction (`nucleide-vr-tools`) | MAGIC weight-window generation, OpenMC/Serpent weight-window emission, mesh source sampling with alias tables, Gaussian KDE source resampling (Silverman, fixed, and adaptive kNN bandwidths) |
 | UQ sampling (`nucleide-linalg`) | Seeded MVN + log-normal + LHS draws over caller-supplied covariance blocks, SANDY-compatible estimators, decay-data and fission-yield perturbation consumers |
 | CCCC I/O (`nucleide-cccc-io`) | ISOTXS/RTFLUX text-subset parsers + PARTISN deck writer (no solver) |
 | FISPACT I/O (`nucleide-fispact-io`) | FISPACT-II inventory output parser reusing the ALARA response frame, plus the clearance-bearing wide inventory table printed with the `HAZARDS` + `CLEAR` keywords (output-only) |
 | ORIGEN I/O (`nucleide-origen-io`) | Scoped ORIGEN 2.2 TAPE5 input-echo, TAPE6 inventory, and TAPE9 decay readers |
-| R2S (`nucleide-r2s`) | Scoped R2S workflow builder: zone-to-flux linking, schedule expansion, photon assembly (uniform-split placeholder plus per-voxel source tags with count- or volume-weighted integrated splitting and `.photonSrc` group spectra), an explicit regular-mesh photon-source contract with joint voxel/group probabilities, sparse-grid restoration and structured validation reports, ARMI database-snapshot adapter |
+| R2S (`nucleide-r2s`) | Scoped R2S workflow builder: zone-to-flux linking, schedule expansion, photon assembly (uniform-split placeholder plus per-voxel source tags with count- or volume-weighted integrated splitting and `.photonSrc` group spectra), mixed-voxel photon spectra from zone intersections, an explicit regular-mesh photon-source contract with joint voxel/group probabilities, sparse-grid restoration and structured validation reports, ARMI database-snapshot adapter |
 | Emit (`nucleide-emit`) | Single-material emission to MCNP/Serpent/FLUKA/ALARA/PARTISN cards with mass-drift report, plus an ARMI blueprint-key bridge |
 | Python bindings | PyO3 extension module behind a typed pure-Python facade (`nucleide._internal`, `.pyi` stubs, `py.typed`) |
 
@@ -86,7 +101,7 @@ nucleide/
 │   ├── cccc-io/       # ISOTXS/RTFLUX text-subset parsers + PARTISN writer (no solver)
 │   ├── fispact-io/    # FISPACT-II inventory output + CLEAR-keyword clearance table (output-only)
 │   ├── origen-io/     # scoped ORIGEN TAPE5/6/9 readers
-│   ├── r2s/           # scoped R2S workflows, photon-source contract, flux handoff
+│   ├── r2s/           # scoped R2S workflows, mixed-voxel photon sources, flux handoff
 │   ├── vr-tools/      # MAGIC weight windows + OpenMC/Serpent emission, source sampling, KDE
 │   ├── enrichment/    # cascades, SWU
 │   ├── depletion/     # CRAM + chain files
@@ -95,9 +110,9 @@ nucleide/
 │   ├── blanket/       # TBR + port penalties + power multiplication + burn/fuel-cycle margin
 │   ├── plasma-source/ # tokamak ring/point/parametric-plasma fusion sources + SDEF/Serpent cards
 │   ├── damage/        # NRT/arc-dpa + He/H appm + He/dpa spectral folds + UQ
-│   ├── unfold/        # neutron spectrum unfolding: SAND-II, STAYSL-class, GRAVEL, MAXED
+│   ├── unfold/        # spectrum unfolding, including STAYSL-class measurement covariance
 │   ├── equilib-io/    # classic-netCDF wout reader + INDATA grammar + Jacobian helpers (no solver)
-│   ├── spectroscopy/  # smoothing, counting, calibration, X-ray, SPE
+│   ├── spectroscopy/  # smoothing, counting, calibration, gamma-line activity, X-ray, SPE
 │   ├── emit/          # five-dialect card emission + mass-drift reports
 │   └── linalg/        # isolation facade over the linear-algebra backend
 ├── bindings/python/   # PyO3 crate -> nucleide._internal

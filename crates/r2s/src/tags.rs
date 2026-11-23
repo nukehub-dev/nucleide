@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::photon::ZonePhotonSource;
+use crate::source::CompensatedSum;
 
 /// Per-voxel photon-source tags over `n_voxels` voxels.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -99,7 +100,7 @@ impl VoxelTags {
     /// large ones, but cannot recover strengths already rounded to zero
     /// by an earlier split below the representable subnormal range.
     pub fn checked_total_strength(&self) -> Result<f64> {
-        let mut sum = CheckedTagSum::default();
+        let mut sum = CompensatedSum::default();
         for &value in &self.source_strength {
             if !value.is_finite() {
                 return Err(Error::Invalid(
@@ -211,7 +212,7 @@ pub fn split_zone_totals_by_volume(
     let totals: Vec<f64> = zones
         .iter()
         .map(|zone| {
-            let mut sum = CheckedTagSum::default();
+            let mut sum = CompensatedSum::default();
             for &group in &zone.groups {
                 sum.add(group);
             }
@@ -225,7 +226,7 @@ pub fn split_zone_totals_by_volume(
             )));
         }
     }
-    let mut zone_volume_sums = vec![CheckedTagSum::default(); zones.len()];
+    let mut zone_volume_sums = vec![CompensatedSum::default(); zones.len()];
     for (voxel, (&zone, &volume)) in zone_of_voxel.iter().zip(voxel_volumes_cm3).enumerate() {
         let sum = zone_volume_sums.get_mut(zone).ok_or_else(|| {
             Error::CrossRef(format!(
@@ -245,7 +246,7 @@ pub fn split_zone_totals_by_volume(
             )));
         }
     }
-    let zone_volumes: Vec<f64> = zone_volume_sums.iter().map(CheckedTagSum::total).collect();
+    let zone_volumes: Vec<f64> = zone_volume_sums.iter().map(CompensatedSum::total).collect();
     for (zone, (&total, &volume)) in totals.iter().zip(&zone_volumes).enumerate() {
         if total > 0.0 && volume == 0.0 {
             return Err(Error::Invalid(format!(
@@ -256,25 +257,7 @@ pub fn split_zone_totals_by_volume(
     let strengths = zone_of_voxel
         .iter()
         .zip(voxel_volumes_cm3)
-        .map(|(&zone, &volume)| {
-            // Form the bounded volume fraction first to avoid overflow in
-            // total * volume for otherwise representable source strengths.
-            let fraction = volume / zone_volumes[zone];
-            if fraction < f64::MIN_POSITIVE {
-                // Subnormal fractions lose relative precision before
-                // reaching zero. Avoid rounding them before multiplication.
-                let density = totals[zone] / zone_volumes[zone];
-                if density.is_normal() {
-                    density * volume
-                } else {
-                    // Under this small-fraction condition, product-first
-                    // arithmetic is safe when density over/underflows.
-                    (totals[zone] * volume) / zone_volumes[zone]
-                }
-            } else {
-                totals[zone] * fraction
-            }
-        })
+        .map(|(&zone, &volume)| share_by_volume(totals[zone], volume, zone_volumes[zone]))
         .collect();
     VoxelTags::new(
         zones.len(),
@@ -284,27 +267,21 @@ pub fn split_zone_totals_by_volume(
     )
 }
 
-// Used only by the additive checked aggregate and volume path; legacy
-// tagging and ordinary summation semantics remain unchanged.
-#[derive(Clone, Copy, Default)]
-struct CheckedTagSum {
-    sum: f64,
-    correction: f64,
-}
-
-impl CheckedTagSum {
-    fn add(&mut self, value: f64) {
-        let next = self.sum + value;
-        self.correction += if self.sum.abs() >= value.abs() {
-            (self.sum - next) + value
+// Form the bounded fraction first. For a subnormal fraction, avoid
+// rounding it before multiplication.
+pub(crate) fn share_by_volume(total: f64, volume: f64, zone_volume: f64) -> f64 {
+    let fraction = volume / zone_volume;
+    if fraction < f64::MIN_POSITIVE {
+        let density = total / zone_volume;
+        if density.is_normal() {
+            density * volume
         } else {
-            (value - next) + self.sum
-        };
-        self.sum = next;
-    }
-
-    fn total(&self) -> f64 {
-        self.sum + self.correction
+            // For a subnormal fraction the product-first route is safe
+            // when density overflows or underflows.
+            (total * volume) / zone_volume
+        }
+    } else {
+        total * fraction
     }
 }
 

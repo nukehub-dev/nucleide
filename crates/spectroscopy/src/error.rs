@@ -11,6 +11,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Clone, PartialEq, Error)]
 #[non_exhaustive]
 pub enum Error {
+    /// A caller input violates the single-line activity contract (E10).
+    #[error("spectroscopy: {0}")]
+    BadActivityInput(&'static str),
+    /// The activity or counting uncertainty is outside the representable range (E10).
+    #[error("spectroscopy: activity or counting uncertainty is outside the representable range")]
+    ActivityOutOfRange,
     /// Rectangular smoothing width is below 3 (got `{0}`).
     #[error("spectroscopy: smoothing width {0} is less than 3")]
     SmoothWidthTooSmall(usize),

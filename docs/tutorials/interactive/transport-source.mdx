@@ -1,8 +1,14 @@
 ---
 title: Photon source handoff
-description: Validate an integrated photon source, inspect joint voxel/group probabilities, and select exact cooling offsets.
+description: Validate a photon source, allocate spectra across mixed voxels, and select exact cooling offsets.
 sidebar:
   order: 15
+references:
+  - id: openmc-mesh-material-volumes
+    title: MeshMaterialVolumes
+    url: https://docs.openmc.org/en/v0.16.0/pythonapi/generated/openmc.MeshMaterialVolumes.html
+    source: OpenMC 0.16.0 Python API
+    type: misc
 ---
 
 The activation-to-transport handoff keeps three things separate: the raw
@@ -19,10 +25,9 @@ groups spanning 0–0.1, 0.1–0.5, 0.5–2 and 2–10 MeV. The table shows
 Change a value and select **Evaluate source**; the shared validator reports
 stable issue codes and keeps modelling assumptions separate from errors.
 
-Negative values, non-finite cells, a zero total, irregular edges and
-mismatched dimensions raise clear errors. A zero-source voxel inside a nonzero source is
-valid data and remains unsampleable; an all-zero source is valid data but has
-no sampling distribution.
+Negative values, non-finite cells, nonascending edges and mismatched
+dimensions raise clear errors. A zero-source voxel contributes no samples.
+An all-zero source remains valid data and has no sampling distribution.
 
 ## Joint voxel/group sampling
 
@@ -31,6 +36,25 @@ not the product of a spatial marginal and an energy marginal: independent
 sampling would invent cross-pairs that carry no source. The declared
 assumptions are uniform photon density per eV inside each group and uniform
 position inside each voxel.
+
+## Allocate spectra in mixed voxels
+
+In **Mixed-voxel allocation**, zone A spans two 2 cm³ voxels. Zone B also
+occupies part of the first voxel. Select **Allocate mixed source** to see
+how the supplied intersection volumes distribute each zone's group
+strengths. The default overlap volumes send 10 and 30 photons/s from zone A
+to the two voxels. Zone B contributes 60 photons/s to the first voxel in a
+different energy group.
+
+Edit the declared zone volumes, group strengths or intersection volumes
+to try another allocation. The shared kernel checks the mapped volume
+of each emitting zone and the total occupancy of each voxel. The result
+treats unassigned volume as source-free before distributing the assigned
+source uniformly throughout the voxel.
+
+For a transport model, one possible input is OpenMC's material volume per
+mesh cell<Citation id="openmc-mesh-material-volumes" />. Supply the mapping
+from those material IDs to your activation zones.
 
 ## Cooling times
 

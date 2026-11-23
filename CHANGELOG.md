@@ -13,6 +13,34 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+### Added
+
+- Assemble regular-mesh R2S photon sources from caller-supplied zone spectra
+  and voxel–zone intersection volumes. Allocation reports include coverage,
+  unassigned volume and conservation by zone and energy group.
+- Opt-in `nucleide.unfold.staysl_correlated` uses caller-supplied measurement
+  covariance in a bounded nonnegative fit and reports measurement chi-square
+  and convergence diagnostics.
+- `nucleide.spectroscopy.gamma_line_activity` estimates signed activity and
+  counting standard uncertainty in Bq from a known gamma peak.
+- `nucleide.openmc` reads three-dimensional rectilinear tally meshes and
+  calculates C-order geometric voxel volumes from their exact faces.
+- Browser demos for mixed-voxel photon sources, gamma-line activity and
+  correlated spectrum unfolding call the shared Rust kernels through WASM.
+- Full five-level FESTIM 2.1 validation for combined trapping and outlet
+  recombination, with measured refinement, parity and mass-balance results.
+
+### Fixed
+
+- OpenMC statepoint extraction recognizes paired energy bounds and indexes
+  expanded tally data using the filter order in OpenMC 0.16.
+
+### Changed
+
+- Photon-source constructors avoid copying dense Rust source tables for
+  validation and reuse one report for Python totals. OpenMC extraction
+  selects the requested score before creating plain Python lists.
+
 ## [0.19.0] - 2026-11-16
 
 ### Added

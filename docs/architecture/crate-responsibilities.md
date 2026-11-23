@@ -154,8 +154,9 @@ gross/background/net peak counting, quadratic energy bins, log-polynomial
 energy/efficiency calibration (including a weighted least-squares
 coefficient fit through the shared `linalg::lstsq` kernel), X-ray line
 algebra over caller-supplied constants, caller-line SDEF decay-source cards,
-and the dollar/plain `.spe` text readers with upstream quirks pinned. Peak
-search/fit, activities, and plotting stay out. Depends on
+single-line activity and counting uncertainty, and the dollar/plain `.spe`
+text readers with upstream quirks pinned. Peak search, peak fitting and
+plotting stay outside the crate. Depends on
 `nucleide-linalg` and `nucleide-nuclei`.
 
 ### `nucleide-unfold`
@@ -172,7 +173,9 @@ an iterator over the caller-supplied response matrix, measured rates, and
 guess spectrum, with per-group relative-change convergence diagnostics and
 a hard `NotConverged` past the explicit iteration cap (never a silent
 partial spectrum; MAXED additionally accepts at or below a caller
-chi-square target, defaulting to the detector count). Every response value
+chi-square target, defaulting to the detector count). An additive STAYSL
+entry point fits caller measurement covariance through shared Cholesky
+whitening and checks nonnegative optimality. Every response value
 and group bound is caller-supplied: IRDFF and other IAEA-copyright
 libraries are never vendored (the IRDFF-II pack ships as a runtime
 hash-pinned download, parsed into caller-ready rows). Depends on
@@ -213,6 +216,7 @@ workspace crates; burnup driving stays inside ORIGEN.
 Scoped rigorous two-step (R2S) workflow builder: zone-to-flux linking from
 ALARA decks, schedule expansion, uniform-split photon-source assembly,
 count- or volume-weighted splitting of integrated zone strengths into voxel tags,
+groupwise assembly across caller-supplied voxel–zone intersections,
 an explicit regular-mesh photon-source contract (`source.rs`: integrated
 photons/s per voxel and group, ascending eV edges, explicit sparse-group
 mapping, density conversion, joint voxel/group probabilities, bounded
@@ -226,7 +230,9 @@ volumes-method decks with per-zone mixtures carrying atoms/barn-cm number
 densities. Depends on `nucleide-alara-io`, `nucleide-mcnp-io`,
 `nucleide-vr-tools`, `nucleide-material`, `nucleide-depletion`, and
 `nucleide-nuclei`; transport and activation solving stay inside their respective
-codes. The uniform split preserves only the total shutdown strength until
+codes. The optional Python OpenMC facade extracts three-dimensional regular
+and rectilinear mesh tallies and reuses the shared flux normalization
+kernel. The uniform split preserves only the total shutdown strength until
 group-wise emission data is wired through per nuclide.
 
 ### `nucleide-tritium`

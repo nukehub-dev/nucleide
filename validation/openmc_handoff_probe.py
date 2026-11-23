@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OpenMC 0.16.0 activation-to-transport handoff probe (no transport run).
+"""OpenMC 0.16.0 activation-to-transport handoff probe.
 
 This probe answers seven questions with the OpenMC package installed in the
 validation image:
@@ -17,16 +17,19 @@ validation image:
    survive ``Settings.export_to_xml`` / ``Settings.from_xml``?
 6. Does real OpenMC source sampling reproduce the exact joint voxel/group
    probabilities, using a fixed seed and a predeclared tolerance?
+7. Do statepoint extraction, CSV and physical flux normalization preserve
+   a nonuniform Cartesian mesh with energy and singleton filters?
 
 The script runs no interacting transport calculation. Source sampling is
 isolated in a child process and uses ``openmc.Model.sample_external_source``,
 which starts OpenMC in volume-calculation mode. A second child runs a vacuum
 sphere with a centered point source and a cell flux tally at two source
-strengths; this checks the volume-integrated, source-rate-scaled normalization
-without cross sections or material interactions. OpenMC still requires a
+strengths and runs a rectilinear mesh tally in a vacuum box. The track-length
+tallies exercise normalization and statepoint indexing without material
+interactions. OpenMC still requires a
 cross-sections XML file to initialize; the children write a placeholder
 containing one nonexistent library entry. No evaluated data are read or
-downloaded, and only the vacuum track-length tally is produced. The
+downloaded, and only vacuum track-length tallies are produced. The
 placeholder is an initialization shim, not physics input.
 
 Output is a single JSON document on stdout.  Human-readable failures and
@@ -38,6 +41,7 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import inspect
+import itertools
 import json
 import math
 import os
@@ -941,6 +945,141 @@ def sample_zero_voxel(openmc: Any) -> dict[str, Any]:
     }
 
 
+def read_rectilinear_tallies(openmc: Any, directory: Path) -> dict[str, Any]:
+    """Compare bridge output with OpenMC bin queries from a real void statepoint."""
+    from nucleide import openmc as bridge
+
+    directory.mkdir()
+    faces = {"x": [0.0, 1.0, 3.0], "y": [0.0, 2.0, 5.0, 9.0], "z": [0.0, 1.0, 4.0]}
+    energy_edges_ev = [0.0, 1.0e6, 3.0e6]
+    mesh = openmc.RectilinearMesh()
+    mesh.x_grid, mesh.y_grid, mesh.z_grid = faces.values()
+    box = openmc.model.RectangularParallelepiped(
+        0.0, 3.0, 0.0, 9.0, 0.0, 4.0, boundary_type="vacuum"
+    )
+    cell = openmc.Cell(region=-box)
+    settings = openmc.Settings(
+        particles=VOID_PARTICLES,
+        batches=4,
+        run_mode="fixed source",
+        output={"summary": False, "tallies": False},
+    )
+    settings.seed = VOID_SEED
+    energy_sites = [0.5e6, 2.0e6]
+    positions = mesh.centroids.reshape((-1, 3)).tolist()
+    settings.source = [
+        openmc.IndependentSource(
+            space=openmc.stats.Point(position),
+            angle=openmc.stats.Monodirectional((0.0, 0.0, 1.0)),
+            energy=openmc.stats.Discrete([energy_ev], [1.0]),
+            strength=float(2 * voxel + group + 1),
+        )
+        for voxel, position in enumerate(positions)
+        for group, energy_ev in enumerate(energy_sites)
+    ]
+    source_rate = math.fsum(source.strength for source in settings.source)
+    mesh_filter = openmc.MeshFilter(mesh)
+    energy_filter = openmc.EnergyFilter(energy_edges_ev)
+    cell_filter = openmc.CellFilter(cell)
+    tallies = []
+    for filters in ([mesh_filter, energy_filter], [energy_filter, cell_filter, mesh_filter]):
+        tally = openmc.Tally()
+        tally.filters = filters
+        tally.scores = ["flux"]
+        tallies.append(tally)
+    model = openmc.Model(
+        geometry=openmc.Geometry([cell]),
+        materials=openmc.Materials([]),
+        settings=settings,
+        tallies=openmc.Tallies(tallies),
+    )
+    model.export_to_xml(directory)
+    saved = redirect_c_stdout_to_stderr()
+    try:
+        openmc.run(output=False, cwd=str(directory), threads=2)
+    finally:
+        restore_c_stdout(saved)
+
+    statepoint_path = directory / "statepoint.4.h5"
+    reference_volumes = mesh.volumes.ravel(order="C").tolist()
+    reference = openmc.StatePoint(str(statepoint_path), autolink=False)
+    cases = []
+    try:
+        for tally in tallies:
+            raw = bridge.read_statepoint(statepoint_path, tally.id)
+            selected = reference.tallies[tally.id]
+            means: list[float] = []
+            expected_rel_errors: list[float] = []
+            shape = (2, 3, 2)
+            bins = list(zip(energy_edges_ev, energy_edges_ev[1:], strict=False))
+            voxel_indices = itertools.product(*(range(1, size + 1) for size in shape))
+            for indices, energy_pair in itertools.product(voxel_indices, bins):
+                selection = {
+                    "filters": [openmc.MeshFilter, openmc.EnergyFilter],
+                    "filter_bins": [(indices,), (energy_pair,)],
+                    "scores": ["flux"],
+                }
+                mean = float(selected.get_values(**selection, value="mean").item())
+                sd = float(selected.get_values(**selection, value="std_dev").item())
+                means.append(mean)
+                expected_rel_errors.append(sd / mean if mean else 0.0)
+            means_match = [value for row in raw["flux"] for value in row] == means
+            errors_match = [value for row in raw["rel_err"] for value in row] == expected_rel_errors
+            volumes = bridge.mesh_voxel_volumes_cm3(raw)
+            csv_path = directory / f"tally-{tally.id}.csv"
+            bridge.tally_to_csv(raw, csv_path)
+            restored = bridge.tally_from_csv(csv_path)
+            physical = bridge.normalize_flux(
+                restored,
+                source_rate,
+                volumes,
+                input_normalization=bridge.NORMALIZATION_VOLUME_INTEGRATED_RATE_SCALED,
+            )
+            normalized = [
+                mean / reference_volumes[index // len(bins)] for index, mean in enumerate(means)
+            ]
+            normalized_errors = [
+                abs(actual - expected)
+                for actual, expected in zip(
+                    (value for row in physical["flux"] for value in row),
+                    normalized,
+                    strict=True,
+                )
+            ]
+            max_normalized_error = max(normalized_errors)
+            csv_exact = restored == raw
+            volumes_exact = volumes == reference_volumes
+            cases.append(
+                {
+                    "filter_order": [type(item).__name__ for item in tally.filters],
+                    "shape": raw["mesh_shape"],
+                    "energy_edges_mev": raw["energy_bounds_mev"],
+                    "distinct_means": len(set(means)),
+                    "means_match": means_match,
+                    "relative_errors_match": errors_match,
+                    "max_physical_flux_error": max_normalized_error,
+                    "csv_exact": csv_exact,
+                    "volumes_cm3": volumes,
+                    "pass": (
+                        raw["mesh_shape"] == list(shape)
+                        and raw["mesh_bounds"] == faces
+                        and raw["energy_bounds_mev"] == [0.0, 1.0, 3.0]
+                        and all(value > 0.0 for value in means)
+                        and len(set(means)) == len(means)
+                        and means_match
+                        and errors_match
+                        and max_normalized_error <= 1e-12
+                        and physical["rel_err"] == raw["rel_err"]
+                        and volumes_exact
+                        and csv_exact
+                    ),
+                }
+            )
+    finally:
+        reference.close()
+    return {"source_rate_s": source_rate, "cases": cases, "pass": all(c["pass"] for c in cases)}
+
+
 def run_void_tally_worker() -> int:
     """Child-process entry point: run a void fixed-source tally normalization check.
 
@@ -1041,6 +1180,7 @@ def run_void_tally_worker() -> int:
                         ),
                     }
                 )
+            result["rectilinear_statepoint"] = read_rectilinear_tallies(openmc, directory / "mesh")
         finally:
             if previous is None:
                 os.environ.pop("OPENMC_CROSS_SECTIONS", None)
@@ -1583,6 +1723,16 @@ def build_summary(openmc: Any) -> dict[str, Any]:
             "track of length R per particle. The tally mean is R * strength, not "
             "R * strength / volume, and the 10x strength run is 10x the unit run."
         ),
+    )
+    rectilinear = void_worker.get("rectilinear_statepoint", {})
+    record_check(
+        checks,
+        "rectilinear_statepoint_matches_openmc_bin_queries",
+        void_error is None and bool(rectilinear.get("pass")),
+        expected=True,
+        observed=bool(rectilinear.get("pass")),
+        cases=rectilinear.get("cases", []),
+        error=void_error,
     )
 
     summary["api_mismatches"] = [
