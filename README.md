@@ -1,4 +1,4 @@
-# <img src="website/public/favicon.svg" alt="" width="36" height="36"> Nucleide
+# ![Nucleide logo](website/public/favicon.svg) Nucleide
 
 [![CI status][ci-badge]][ci]
 [![PyPI version][pypi-badge]][pypi]

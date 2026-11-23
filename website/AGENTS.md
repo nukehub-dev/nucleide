@@ -61,6 +61,8 @@ Parent-level Rust/Python/verification rules remain in the root `AGENTS.md`.
 - **Shared UI**: `@nukehub/docs-kit` provides layout, navigation, and
   markdown-negotiation integration. The dynamic favicon is customized through
   the kit's `SiteConfig.faviconPaths` field in `src/data/site.ts`.
+  The root README embeds `public/favicon.svg` through Markdown and relies on
+  the SVG's intrinsic size to place it beside the title.
 - **Custom domain**: The site is deployed to GitHub Pages at
   `https://nucleide.nukehub.org` with `base: "/"`. Preview and tests run at the
   site root.
