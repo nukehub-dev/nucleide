@@ -260,10 +260,10 @@ NUCLIDE PU239 94239 2
     extraSteps: [
       { button: "Synthetic peak" },
       { button: "Smooth spectrum", output: "text=Net counts" },
-      { button: "Parse TSV", output: "text=TSV rows:" },
-      { button: "Calibrate", output: "text=eff(1 MeV)" },
-      { button: "Parse dollar SPE", output: "text=SYNTH" },
-      { button: "Parse plain SPE", output: "text=SYNTH-PLAIN" },
+      { button: "Parse TSV", output: "text=0.662" },
+      { button: "Calibrate", output: "text=5.969%" },
+      { button: "Parse dollar SPE", output: "text=Dollar SPE summary" },
+      { button: "Parse plain SPE", output: "text=90.25 s" },
     ],
   },
   {

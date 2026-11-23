@@ -34,12 +34,15 @@ workspace crates from tags.
 
 - OpenMC statepoint extraction recognizes paired energy bounds and indexes
   expanded tally data using the filter order in OpenMC 0.16.
+- Interactive tutorial plots load on the Astro development server.
 
 ### Changed
 
 - Photon-source constructors avoid copying dense Rust source tables for
   validation and reuse one report for Python totals. OpenMC extraction
   selects the requested score before creating plain Python lists.
+- The spectroscopy tutorial shows decay lines and calibration results in
+  labeled tables and highlights the selected SPE file's metadata.
 
 ## [0.19.0] - 2026-11-16
 

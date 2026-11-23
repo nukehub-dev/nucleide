@@ -35,6 +35,8 @@ Parent-level Rust/Python/verification rules remain in the root `AGENTS.md`.
   estimator for signed estimates and counting uncertainty. The unfolding
   demo compares independent and correlated STAYSL-class fits through WASM
   with synthetic rates. Clear both panels' results when their inputs change.
+  The spectroscopy sample tools present decay-line and calibration tables
+  and show the SPE metadata for the selected format.
 - **Tutorial forms**: group related source/target inputs, keep labels short
   and units separate, and verify desktop/mobile layout visually. Input rows
   must stay aligned when labels wrap; stack fields on narrow screens.
@@ -61,6 +63,8 @@ Parent-level Rust/Python/verification rules remain in the root `AGENTS.md`.
 - **Shared UI**: `@nukehub/docs-kit` provides layout, navigation, and
   markdown-negotiation integration. The dynamic favicon is customized through
   the kit's `SiteConfig.faviconPaths` field in `src/data/site.ts`.
+  Keep Vite's development pre-bundle entries in sync with the kit's lazy
+  Plotly imports so the charts work in both the dev server and static build.
   The root README embeds `public/favicon.svg` through Markdown and relies on
   the SVG's intrinsic size to place it beside the title.
 - **Custom domain**: The site is deployed to GitHub Pages at

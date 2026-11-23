@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { useWasm } from "../../lib/wasm";
 import type { SpeSummary, SpectroscopySmoothResult, WasmApi } from "../../types/nucleide-wasm";
+import { DataTable } from "@nukehub/docs-kit/components/mdx/DataTable";
 import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
@@ -16,6 +17,48 @@ import { Textarea } from "@nukehub/docs-kit/components/ui/Textarea";
 //   Gaussian-style bump peaking at channel 6).
 const ORACLE_COUNTS = "2, 5, 1, 6, 3, 8, 4";
 const PEAK_COUNTS = "12, 11, 13, 12, 30, 80, 150, 80, 30, 12, 11, 13, 12";
+const EXAMPLE_TSV = "# synthetic pair\n0.662 2.0\n1.170 1.0\n";
+const EXAMPLE_DOLLAR_SPE = `$SPEC_ID:
+SYNTH
+$SPEC_REM:
+DET# 7
+DETDESC# SYNDET
+$DATE_MEA:
+02/03/2026 09:15:00
+$MEAS_TIM:
+90 100
+$DATA:
+0 3
+1
+2
+4
+8
+$MCA_CAL:
+3
+1.5 2.0 0.5 keV
+$SHAPE_CAL:
+3
+0.7 0.0005 0.0000002
+`;
+const EXAMPLE_PLAIN_SPE = `Spectrum name:  SYNTH-PLAIN
+Detector ID:  7
+Detector description: SYNDET
+Real Time:  100.5
+Live Time:  90.25
+Acquisition start date:  03-Feb-2026
+Acquisition start time:  09:15:00
+Starting channel number:  0
+Number of channels:  4
+Energy Fit:  1.5  2.0  0.5
+FWHM Fit:  0.7  0.0005  0.0000002
+SPECTRUM
+
+     0:    1.0
+     1:    2.0
+     2:    4.0
+     3:    8.0
+`;
+const CALIBRATION_CHANNELS = [0, 1, 2];
 
 const METHOD_OPTIONS = [
   { value: "rect3", label: "Rectangular m=3 (E1)" },
@@ -136,6 +179,144 @@ function GammaLineActivityForm({ estimate }: { estimate: EstimateActivity }) {
   );
 }
 
+function SpectroscopyExamples({ wasm }: { wasm: WasmApi }) {
+  const [lines, setLines] = useState<ReturnType<WasmApi["parseLinesTsv"]> | null>(null);
+  const [calibration, setCalibration] = useState<{ energies: number[]; efficiency: number } | null>(
+    null,
+  );
+  const [spe, setSpe] = useState<{
+    format: "Dollar SPE" | "Plain SPE";
+    summary: SpeSummary;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function run(action: () => void) {
+    setError(null);
+    try {
+      action();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }
+
+  return (
+    <section className="space-y-4 border-t border-border/50 pt-4">
+      <div className="space-y-1">
+        <h3 className="text-sm font-medium">Decay-line TSV, calibration, and SPE readers</h3>
+        <p className="text-sm text-muted-foreground">
+          Run the parsers or calibration on built-in sample data.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          onClick={() => run(() => setLines(wasm.parseLinesTsv(EXAMPLE_TSV)))}
+        >
+          Parse TSV
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() =>
+            run(() =>
+              setCalibration({
+                energies: wasm.energyBins(CALIBRATION_CHANNELS, [1.5, 2.0, 0.5]),
+                efficiency: wasm.detectorEfficiency(1, [-2.81861504261204, -0.727352820018942], 1),
+              }),
+            )
+          }
+        >
+          Calibrate
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() =>
+            run(() =>
+              setSpe({ format: "Dollar SPE", summary: wasm.parseDollarSpe(EXAMPLE_DOLLAR_SPE) }),
+            )
+          }
+        >
+          Parse dollar SPE
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() =>
+            run(() =>
+              setSpe({ format: "Plain SPE", summary: wasm.parsePlainSpe(EXAMPLE_PLAIN_SPE) }),
+            )
+          }
+        >
+          Parse plain SPE
+        </Button>
+      </div>
+      {error && (
+        <p role="alert" className="text-sm text-red-700 dark:text-red-300">
+          {error}
+        </p>
+      )}
+      <div aria-live="polite" className="grid gap-4 empty:sr-only lg:grid-cols-2">
+        {lines && (
+          <div className="min-w-0 space-y-2">
+            <h4 className="text-sm font-medium">Decay lines</h4>
+            <DataTable
+              columns={[
+                { key: "energy", header: "Energy (MeV)", align: "right" },
+                { key: "intensity", header: "Relative intensity", align: "right" },
+              ]}
+              data={lines.map(([energy, intensity]) => ({ energy: energy.toFixed(3), intensity }))}
+              className="tabular-nums"
+            />
+          </div>
+        )}
+        {calibration && (
+          <div className="min-w-0 space-y-2">
+            <h4 className="text-sm font-medium">Energy calibration</h4>
+            <DataTable
+              columns={[
+                { key: "channel", header: "Channel" },
+                { key: "energy", header: "Calibrated energy (keV)", align: "right" },
+              ]}
+              data={calibration.energies.map((energy, i) => ({
+                channel: CALIBRATION_CHANNELS[i],
+                energy: energy.toFixed(1),
+              }))}
+              className="tabular-nums"
+              caption={
+                <>
+                  Detector efficiency at 1 MeV{" "}
+                  <strong className="text-foreground">
+                    {(calibration.efficiency * 100).toFixed(3)}%
+                  </strong>
+                </>
+              }
+            />
+          </div>
+        )}
+        {spe && (
+          <div className="space-y-2 rounded-xl border border-border/50 bg-card p-4 lg:col-span-2">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <h4 className="text-sm font-medium">{spe.format} summary</h4>
+              <span className="break-all font-mono text-sm">{spe.summary.spec_name}</span>
+            </div>
+            <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              {[
+                ["Detector ID", spe.summary.detId],
+                ["Channels", spe.summary.channels],
+                ["Live time", `${spe.summary.liveTime} s`],
+                ["Real time", `${spe.summary.realTime} s`],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-xs text-muted-foreground">{label}</dt>
+                  <dd className="font-mono tabular-nums">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function SpectroscopyDemo() {
   const { wasm, ready, error } = useWasm();
   const [countsText, setCountsText] = useState(ORACLE_COUNTS);
@@ -144,9 +325,6 @@ export function SpectroscopyDemo() {
   const [c2Text, setC2Text] = useState("5");
   const [counts, setCounts] = useState<number[] | null>(null);
   const [result, setResult] = useState<SpectroscopySmoothResult | null>(null);
-  const [tsvOut, setTsvOut] = useState<string | null>(null);
-  const [calibOut, setCalibOut] = useState<string | null>(null);
-  const [spe, setSpe] = useState<SpeSummary | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function clearError() {
@@ -288,91 +466,6 @@ export function SpectroscopyDemo() {
             <Button onClick={run}>Smooth spectrum</Button>
           </div>
 
-          <div className="space-y-2 border-t border-border/50 pt-4">
-            <p className="text-sm font-medium">Decay-line TSV, calibration, and SPE readers</p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={() => {
-                  if (!wasm) return;
-                  try {
-                    const rows = wasm.parseLinesTsv("# synthetic pair\n0.662 2.0\n1.170 1.0\n");
-                    setTsvOut(
-                      `TSV rows: ${rows.length}, first energy ${(rows[0][0] as number).toFixed(3)} MeV`,
-                    );
-                    clearError();
-                  } catch (e) {
-                    setLocalError(e instanceof Error ? e.message : String(e));
-                  }
-                }}
-              >
-                Parse TSV
-              </Button>
-              <Button
-                onClick={() => {
-                  if (!wasm) return;
-                  try {
-                    const ebins = wasm.energyBins([0, 1, 2], [1.5, 2.0, 0.5]) as number[];
-                    const eff = wasm.detectorEfficiency(
-                      1.0,
-                      [-2.81861504261204, -0.727352820018942],
-                      1,
-                    );
-                    setCalibOut(
-                      `ebins: ${ebins.map((v) => v.toFixed(1)).join(", ")}, eff(1 MeV) = ${eff.toExponential(3)}`,
-                    );
-                    clearError();
-                  } catch (e) {
-                    setLocalError(e instanceof Error ? e.message : String(e));
-                  }
-                }}
-              >
-                Calibrate
-              </Button>
-              <Button
-                onClick={() => {
-                  if (!wasm) return;
-                  try {
-                    setSpe(
-                      wasm.parseDollarSpe(
-                        "$SPEC_ID:\nSYNTH\n$SPEC_REM:\nDET# 7\nDETDESC# SYNDET\n$DATE_MEA:\n02/03/2026 09:15:00\n$MEAS_TIM:\n90 100\n$DATA:\n0 3\n1\n2\n4\n8\n$MCA_CAL:\n3\n1.5 2.0 0.5 keV\n$SHAPE_CAL:\n3\n0.7 0.0005 0.0000002\n",
-                      ),
-                    );
-                    clearError();
-                  } catch (e) {
-                    setLocalError(e instanceof Error ? e.message : String(e));
-                  }
-                }}
-              >
-                Parse dollar SPE
-              </Button>
-              <Button
-                onClick={() => {
-                  if (!wasm) return;
-                  try {
-                    setSpe(
-                      wasm.parsePlainSpe(
-                        "Spectrum name:  SYNTH-PLAIN\nDetector ID:  7\nDetector description: SYNDET\nReal Time:  100.5\nLive Time:  90.25\nAcquisition start date:  03-Feb-2026\nAcquisition start time:  09:15:00\nStarting channel number:  0\nNumber of channels:  4\nEnergy Fit:  1.5  2.0  0.5\nFWHM Fit:  0.7  0.0005  0.0000002\nSPECTRUM\n\n     0:    1.0\n     1:    2.0\n     2:    4.0\n     3:    8.0\n",
-                      ),
-                    );
-                    clearError();
-                  } catch (e) {
-                    setLocalError(e instanceof Error ? e.message : String(e));
-                  }
-                }}
-              >
-                Parse plain SPE
-              </Button>
-            </div>
-            {tsvOut && <p className="text-sm">{tsvOut}</p>}
-            {calibOut && <p className="text-sm">{calibOut}</p>}
-            {spe && (
-              <p className="text-sm">
-                SPE {spe.spec_name}: channels {spe.channels}, live {spe.liveTime} s, real{" "}
-                {spe.realTime} s
-              </p>
-            )}
-          </div>
-
           {result && (
             <div className="space-y-2">
               <table className="w-full text-sm">
@@ -424,7 +517,12 @@ export function SpectroscopyDemo() {
               />
             </div>
           )}
-          {wasm && <GammaLineActivityForm estimate={wasm.spectroscopyGammaLineActivity} />}
+          {wasm && (
+            <>
+              <GammaLineActivityForm estimate={wasm.spectroscopyGammaLineActivity} />
+              <SpectroscopyExamples wasm={wasm} />
+            </>
+          )}
         </>
       )}
     </div>
