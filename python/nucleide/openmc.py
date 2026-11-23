@@ -10,14 +10,14 @@ caller-supplied group structure), with ``energy_bounds_mev`` as the ``bounds``
 argument. Clearance screening consumes derived inventories, not flux, so the
 bridge stops at the spectral arrays by design.
 
-Export route (primary): ``openmc.StatePoint(path, autolink=False)`` (explicit
-``close()`` in a ``finally`` — 0.16.0 documents no context manager), then
-``statepoint.tallies[tally_id]``, then ``tally.get_reshaped_data(value=...,
+Statepoint extraction uses ``openmc.StatePoint(path, autolink=False)`` with
+explicit cleanup, then ``statepoint.tallies[tally_id]`` and
+``tally.get_reshaped_data(value=...,
 expand_dims=True)`` for ``"mean"`` and ``"std_dev"``. Energy edges come from
 the tally's ``EnergyFilter.bins`` (eV, divided by 1e6 to MeV); mesh geometry
-from ``MeshFilter.mesh`` (``RegularMesh`` only: ``dimension`` + ``lower_left``
-+ ``upper_right``, centimetres). ``autolink=False`` because tally results live
-in the statepoint itself — no ``summary.h5`` hunt, no surprise link failure.
+from ``MeshFilter.mesh`` (three-dimensional ``RegularMesh`` or
+``RectilinearMesh``, centimetres). ``autolink=False`` because tally results live
+in the statepoint itself.
 
 Array contract: ``flux`` is always ``[voxel][group]`` (mesh voxels flattened
 in C-order over the expanded ``(nx, ny, nz)`` axes; a cell tally is one
@@ -25,7 +25,8 @@ voxel), ``rel_err`` the matching ``std_dev / mean`` table (0.0 where the mean
 is 0), ``energy_bounds_mev`` the ``G+1`` MeV edges (``[]`` when the tally has
 no energy filter — a single total group), ``mesh_shape`` / ``mesh_bounds``
 only for ``kind="mesh"``. ``cell_flux`` unwraps the single voxel for the
-damage folds; ``voxel_flux`` selects one mesh voxel.
+damage folds, and ``voxel_flux`` selects one mesh voxel. Use
+``mesh_voxel_volumes_cm3`` to compute full voxel volumes from the axis faces.
 
 Export route (fallback): :func:`tally_to_csv` / :func:`tally_from_csv` move
 the same dict through a commented CSV with stock :mod:`csv` only, so a
@@ -43,22 +44,23 @@ integrated photon-source dict, with explicit C-order/Fortran-order mapping
 and per-element histogram densities; :func:`export_cooling_batch` and the
 manifest helpers add deterministic files and offline hash verification.
 
-Failure stance: a missing file, a missing OpenMC, a missing tally/score, a
-multi-nuclide tally, a multi-bin non-energy filter (caller slices with
-``get_slice`` first), a second mesh/energy filter, or a non-regular mesh are
-all loud errors naming the remedy — never silent empties. OpenMC stays a
-caller-side import (lazy, inside the functions that need it): the base
-package never depends on it.
+Missing files, tallies, or scores raise clear errors. Use ``get_slice``
+for tallies spanning multiple nuclides or bins of an additional filter.
+The bridge accepts at most one mesh filter and one energy filter, and
+reports unsupported mesh types. Mesh filters must have identity geometry
+transforms and precede any filters that expand to multiple axes. OpenMC
+loads lazily on the caller side.
 
 Synthetic-statepoint protocol (what the unit tests build in-test): a
 statepoint exposes ``.tallies`` (dict id -> tally); a tally exposes
 ``.scores`` / ``.nuclides`` / ``.filters`` plus ``.get_reshaped_data(value=,
 expand_dims=)`` returning an object with ``.shape`` / ``.tolist()``; an
-energy filter is exactly ``type(f).__name__ == "EnergyFilter"`` with float
-``.bins`` (eV); a mesh filter exposes ``.mesh`` whose type name is
-``"RegularMesh"`` with ``.dimension`` / ``.lower_left`` / ``.upper_right``;
-every other filter must report a single bin via ``.num_bins`` (or a
-single-entry ``.bins``).
+energy filter is exactly ``type(f).__name__ == "EnergyFilter"`` with
+``.bins`` as eV intervals (or the original flat edge sequence). A mesh
+filter exposes ``.mesh`` with ``.dimension`` and either ``.lower_left`` /
+``.upper_right`` for ``RegularMesh`` or ``.x_grid`` / ``.y_grid`` /
+``.z_grid`` for ``RectilinearMesh``. Every other filter must report a single
+bin via ``.num_bins`` (or a single-entry ``.bins``). Data axes follow filter order.
 """
 
 from __future__ import annotations
@@ -68,10 +70,13 @@ import hashlib
 import itertools
 import json
 import math
+import operator
 import os
 import struct
+import sys
 import tempfile
 from collections.abc import Callable, Iterable, Sequence
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -83,6 +88,7 @@ __all__ = [
     "read_statepoint",
     "cell_flux",
     "voxel_flux",
+    "mesh_voxel_volumes_cm3",
     "tally_to_csv",
     "tally_from_csv",
     "normalize_flux",
@@ -135,6 +141,7 @@ _NORMALIZATION_STATES = {
 }
 
 _EV_PER_MEV = 1.0e6
+_CARTESIAN_AXES = ("x", "y", "z")
 _CSV_FORMAT = "nucleide-openmc-tally-v2"
 _CSV_FORMATS = {_CSV_FORMAT, "nucleide-openmc-tally-v1"}
 _CSV_HEADER = ["voxel", "group", "lower_mev", "upper_mev", "flux", "rel_err"]
@@ -177,6 +184,9 @@ def tally_arrays(statepoint: Any, tally_id: int, score: str = "flux") -> dict[st
     ``flux`` / ``rel_err`` (``[V][G]``), ``mesh_shape`` / ``mesh_bounds``
     (mesh only), and ``openmc_version`` (``None`` when OpenMC is not
     importable, e.g. synthetic objects in a bare environment).
+
+    For mesh tallies, leave the mesh untransformed and place the mesh filter
+    before any other filter that expands to multiple axes.
     """
     try:
         tallies = statepoint.tallies
@@ -204,7 +214,7 @@ def tally_arrays(statepoint: Any, tally_id: int, score: str = "flux") -> dict[st
         )
     if not nuclides:
         raise ValueError(f"tally {tally_id} carries no nuclide bins; nothing to extract")
-    mesh_f, energy_f = _classify_filters(tally.filters, tally_id)
+    mesh_f, energy_f, filter_layout = _classify_filters(tally.filters, tally_id)
     if energy_f is None:
         energy_bounds: list[float] = []
         n_groups = 1
@@ -220,17 +230,14 @@ def tally_arrays(statepoint: Any, tally_id: int, score: str = "flux") -> dict[st
         kind = "mesh"
         mesh_shape, mesh_bounds = _mesh_geometry(mesh_f, tally_id)
         space_dims = list(mesh_shape)
-    n_voxels = 1
-    for dim in space_dims:
-        n_voxels *= dim
     flux, rel_err = _extract_values(
-        tally, tally_id, score_idx, space_dims, n_groups, _singleton_count(tally.filters)
+        tally, tally_id, score_idx, len(scores), space_dims, n_groups, filter_layout
     )
     return {
         "tally_id": tally_id,
         "score": score,
         "kind": kind,
-        "n_voxels": n_voxels,
+        "n_voxels": len(flux),
         "n_groups": n_groups,
         "energy_bounds_mev": energy_bounds,
         "flux": flux,
@@ -238,10 +245,7 @@ def tally_arrays(statepoint: Any, tally_id: int, score: str = "flux") -> dict[st
         "mesh_shape": mesh_shape,
         "mesh_bounds": mesh_bounds,
         "openmc_version": openmc_version(),
-        # Raw extraction is per source particle, but whether a flux tally is
-        # volume-integrated (default track-length) or already volume-averaged
-        # (random ray) is caller-configured. Never guess: normalize_flux
-        # requires an explicit declaration.
+        # The source-rate scale and volume state are caller-configured.
         "normalization": NORMALIZATION_UNKNOWN,
         "units": "unknown",
     }
@@ -298,6 +302,35 @@ def voxel_flux(arrays: dict[str, Any], voxel: int) -> list[float]:
     return [float(v) for v in flux[voxel]]
 
 
+def mesh_voxel_volumes_cm3(arrays: dict[str, Any]) -> list[float]:
+    """Compute full Cartesian voxel volumes in C order from a mesh tally.
+
+    Use the result as ``volumes_cm3`` in :func:`normalize_flux` when the score
+    covers each entire voxel. For partial-cell, material-specific or cell
+    scores, supply the appropriate volumes directly to the normalization
+    function. Accepts mesh arrays from statepoint extraction or tally CSV.
+    """
+    if arrays.get("kind") != "mesh":
+        raise ValueError("mesh_voxel_volumes_cm3 needs a Cartesian mesh tally")
+    shape, bounds = _cartesian_geometry(
+        arrays.get("mesh_shape"), arrays.get("mesh_bounds"), "mesh tally"
+    )
+    _check_voxel_count(shape, len(_flux_table(arrays)), "mesh tally")
+    widths = [
+        [high - low for low, high in zip(faces, faces[1:], strict=False)]
+        for faces in bounds.values()
+    ]
+    volumes = []
+    for voxel, (dx, dy, dz) in enumerate(itertools.product(*widths)):
+        volume = dx * dy * dz
+        if not math.isfinite(volume) or volume <= 0.0:
+            raise ValueError(
+                f"mesh tally: geometric volume at voxel {voxel} must be positive and finite"
+            )
+        volumes.append(volume)
+    return volumes
+
+
 def tally_to_csv(arrays: dict[str, Any], path: str | Path) -> None:
     """Write tally arrays to the commented CSV interchange (stock stdlib).
 
@@ -319,10 +352,7 @@ def tally_to_csv(arrays: dict[str, Any], path: str | Path) -> None:
     energy_bounds = arrays.get("energy_bounds_mev")
     if not isinstance(energy_bounds, list):
         raise ValueError("tally_to_csv needs the dict from tally_arrays/tally_from_csv")
-    if energy_bounds and len(energy_bounds) != n_groups + 1:
-        raise ValueError(
-            f"energy bounds length {len(energy_bounds)} != groups + 1 ({n_groups + 1})"
-        )
+    _check_csv_energy_bounds(energy_bounds, n_groups, "tally_to_csv")
     kind = arrays.get("kind")
     mesh_shape = arrays.get("mesh_shape")
     mesh_bounds = arrays.get("mesh_bounds")
@@ -330,13 +360,8 @@ def tally_to_csv(arrays: dict[str, Any], path: str | Path) -> None:
         if n_voxels != 1:
             raise ValueError(f"a cell tally holds one voxel, got {n_voxels}")
     elif kind == "mesh":
-        if not isinstance(mesh_shape, list) or not isinstance(mesh_bounds, dict):
-            raise ValueError("a mesh tally needs mesh_shape and mesh_bounds")
-        expect = 1
-        for dim in mesh_shape:
-            expect *= int(dim)
-        if expect != n_voxels:
-            raise ValueError(f"mesh_shape {mesh_shape} holds {expect} voxels, flux has {n_voxels}")
+        mesh_shape, mesh_bounds = _cartesian_geometry(mesh_shape, mesh_bounds, "tally_to_csv")
+        _check_voxel_count(mesh_shape, n_voxels, "tally_to_csv")
     else:
         raise ValueError(f"unknown tally kind {kind!r}; want 'mesh' or 'cell'")
     version = arrays.get("openmc_version")
@@ -363,11 +388,11 @@ def tally_to_csv(arrays: dict[str, Any], path: str | Path) -> None:
     if rate is not None:
         lines["source_rate_s"] = repr(rate)
     if isinstance(mesh_bounds, dict):
-        for axis in ("x", "y", "z"):
+        for axis in _CARTESIAN_AXES:
             bounds = mesh_bounds.get(axis)
             lines[f"mesh_{axis}_bounds"] = "-" if not bounds else ",".join(repr(b) for b in bounds)
     else:
-        for axis in ("x", "y", "z"):
+        for axis in _CARTESIAN_AXES:
             lines[f"mesh_{axis}_bounds"] = "-"
     with open(Path(path), "w", newline="", encoding="utf-8") as handle:
         for key, value in lines.items():
@@ -438,8 +463,7 @@ def tally_from_csv(path: str | Path) -> dict[str, Any]:
             f"want {n_voxels * n_groups} ({n_voxels} voxels x {n_groups} groups)"
         )
     energy_bounds = _parse_float_list(meta.get("energy_bounds", "-"), state_path, "energy_bounds")
-    if energy_bounds and len(energy_bounds) != n_groups + 1:
-        raise ValueError(f"{state_path}: energy bounds length != groups + 1")
+    _check_csv_energy_bounds(energy_bounds, n_groups, str(state_path))
     flux: list[list[float]] = [[0.0] * n_groups for _ in range(n_voxels)]
     rel_err: list[list[float]] = [[0.0] * n_groups for _ in range(n_voxels)]
     for position, row in enumerate(rows):
@@ -469,17 +493,15 @@ def tally_from_csv(path: str | Path) -> dict[str, Any]:
         rel_err[voxel][group] = rel_value
     kind = meta["kind"]
     if kind == "mesh":
-        mesh_shape = [
-            int(d) for d in _parse_float_list(meta.get("mesh_shape", "-"), state_path, "mesh_shape")
-        ]
-        mesh_bounds = {
+        dimensions = _csv_mesh_dimensions(meta.get("mesh_shape", ""), n_voxels, state_path)
+        faces = {
             axis: _parse_float_list(
                 meta.get(f"mesh_{axis}_bounds", "-"), state_path, f"mesh_{axis}_bounds"
             )
-            for axis in ("x", "y", "z")
+            for axis in _CARTESIAN_AXES
         }
-        if not mesh_shape or any(not b for b in mesh_bounds.values()):
-            raise ValueError(f"{state_path}: mesh tally CSV is missing mesh metadata")
+        mesh_shape, mesh_bounds = _cartesian_geometry(dimensions, faces, str(state_path))
+        _check_voxel_count(mesh_shape, n_voxels, str(state_path))
     elif kind == "cell":
         mesh_shape = None
         mesh_bounds = None
@@ -1075,24 +1097,31 @@ def export_cooling_batch(
     }
 
 
-def _classify_filters(filters: Any, tally_id: int) -> tuple[Any | None, Any | None]:
-    """Split tally filters into (mesh filter|None, energy filter|None).
-
-    Every other filter must select a single bin; anything wider (or
-    unparsable) is a loud error telling the caller to slice first.
-    """
+def _classify_filters(filters: Any, tally_id: int) -> tuple[Any | None, Any | None, list[str]]:
+    """Find mesh and energy filters and retain the expanded filter axis order."""
     mesh_f: Any | None = None
     energy_f: Any | None = None
-    for entry in filters:
+    layout: list[str] = []
+    for filter_index, entry in enumerate(filters):
         name = type(entry).__name__
         mesh = getattr(entry, "mesh", None)
-        if mesh is not None and hasattr(mesh, "dimension"):
+        if mesh is not None:
+            if name in {"MeshMaterialFilter", "MeshSurfaceFilter"}:
+                raise ValueError(f"tally {tally_id}: {name} is not a Cartesian mesh tally")
+            if filter_index != len(layout):
+                # OpenMC uses filter positions for the mesh transpose, even
+                # when a preceding filter expands to several axes.
+                raise ValueError(
+                    f"tally {tally_id}: move the mesh filter before any filter with "
+                    "multiple axes in the OpenMC tally definition"
+                )
             if mesh_f is not None:
                 raise ValueError(
                     f"tally {tally_id} has two mesh filters; slice to one mesh "
                     "caller-side (openmc get_slice) first"
                 )
             mesh_f = entry
+            layout.append("mesh")
             continue
         if name == "EnergyFilter":
             if energy_f is not None:
@@ -1101,15 +1130,20 @@ def _classify_filters(filters: Any, tally_id: int) -> tuple[Any | None, Any | No
                     "caller-side (openmc get_slice) first"
                 )
             energy_f = entry
+            layout.append("energy")
             continue
         if _bin_count(entry, name, tally_id) == 1:
+            single_shape = tuple(getattr(entry, "shape", (1,)))
+            if not single_shape or any(size != 1 for size in single_shape):
+                raise ValueError(f"tally {tally_id}: {name} has an invalid singleton shape")
+            layout.extend(["single"] * len(single_shape))
             continue
         raise ValueError(
             f"tally {tally_id} has a multi-bin {name} filter; slice to one bin "
             "caller-side (openmc get_slice) first — the bridge maps one spatial "
             "selector and one energy axis onto the fold inputs"
         )
-    return mesh_f, energy_f
+    return mesh_f, energy_f, layout
 
 
 def _bin_count(entry: Any, name: str, tally_id: int) -> int:
@@ -1126,68 +1160,155 @@ def _bin_count(entry: Any, name: str, tally_id: int) -> int:
     )
 
 
-def _singleton_count(filters: Any) -> int:
-    """Number of single-bin (non-mesh, non-energy) filters on the tally."""
-    count = 0
-    for entry in filters:
-        mesh = getattr(entry, "mesh", None)
-        if mesh is not None and hasattr(mesh, "dimension"):
-            continue
-        if type(entry).__name__ == "EnergyFilter":
-            continue
-        count += 1
-    return count
-
-
 def _energy_bounds_mev(entry: Any, tally_id: int) -> list[float]:
-    """EnergyFilter bins (eV) converted to strictly increasing MeV edges."""
+    """Read OpenMC energy intervals or the flat-edge synthetic protocol."""
+    context = f"tally {tally_id}: energy filter bins"
     try:
-        raw = [float(b) for b in entry.bins]
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"tally {tally_id}: energy filter bins are not numeric") from exc
-    bounds = [b / _EV_PER_MEV for b in raw]
-    if len(bounds) < 2 or any(high <= low for low, high in zip(bounds, bounds[1:], strict=False)):
-        raise ValueError(
-            f"tally {tally_id}: energy filter bins must be strictly increasing "
-            f"(got {len(bounds)} edges)"
-        )
+        if isinstance(entry.bins, (str, bytes)):
+            raise TypeError("energy bins must be an array")
+        raw = list(entry.bins)
+        if raw and isinstance(raw[0], Iterable) and not isinstance(raw[0], (str, bytes)):
+            intervals = [list(row) for row in raw]
+            if any(len(row) != 2 for row in intervals):
+                raise ValueError(f"{context} must contain pairs of edges")
+            lower = [float(row[0]) for row in intervals]
+            upper = [float(row[1]) for row in intervals]
+            if upper[:-1] != lower[1:]:
+                raise ValueError(f"{context} must be contiguous")
+            edges = [lower[0], *upper]
+        else:
+            edges = [float(value) for value in raw]
+    except (TypeError, AttributeError, OverflowError) as exc:
+        raise ValueError(f"{context} must contain numeric edges or edge pairs") from exc
+    bounds = [value / _EV_PER_MEV for value in edges]
+    if len(bounds) < 2 or edges[0] < 0 or not _finite_increasing(bounds):
+        raise ValueError(f"{context} must have finite, nonnegative, strictly increasing edges")
     return bounds
 
 
 def _mesh_geometry(entry: Any, tally_id: int) -> tuple[list[int], dict[str, list[float]]]:
-    """RegularMesh shape and per-axis centimetre bounds (loud otherwise)."""
+    """Read the per-axis centimetre faces of a structured Cartesian mesh."""
     mesh = entry.mesh
-    if type(mesh).__name__ != "RegularMesh":
+    name = type(mesh).__name__
+    context = f"tally {tally_id}: {name}"
+    if name not in {"RegularMesh", "RectilinearMesh"}:
         raise ValueError(
-            f"tally {tally_id}: only RegularMesh tallies are bridged "
-            f"(got {type(mesh).__name__}); use a regular mesh or a cell tally"
+            f"tally {tally_id}: only RegularMesh and RectilinearMesh tallies are bridged "
+            f"(got {name}); use a Cartesian mesh or a cell tally"
         )
+    _check_mesh_transform(entry, context)
+    shape = _positive_mesh_shape(getattr(mesh, "dimension", None), context)
+    if name == "RectilinearMesh":
+        faces = {axis: getattr(mesh, f"{axis}_grid", None) for axis in _CARTESIAN_AXES}
+    else:
+        try:
+            lower = [float(value) for value in mesh.lower_left]
+            upper = [float(value) for value in mesh.upper_right]
+        except (TypeError, ValueError, AttributeError, OverflowError) as exc:
+            raise ValueError(f"{context} lower_left and upper_right must be numeric") from exc
+        if len(lower) != 3 or len(upper) != 3:
+            raise ValueError(f"{context} geometry must be 3D")
+        faces = {
+            axis: [low, *(low + i * (high - low) / n for i in range(1, n)), high]
+            for axis, low, high, n in zip(_CARTESIAN_AXES, lower, upper, shape, strict=True)
+        }
+    return _cartesian_geometry(shape, faces, context)
+
+
+def _check_mesh_transform(entry: Any, context: str) -> None:
+    translation = getattr(entry, "translation", None)
+    if translation is not None and tuple(translation) != (0.0, 0.0, 0.0):
+        raise ValueError(f"{context} mesh filter has a translation; use an untransformed mesh")
+    rotation = getattr(entry, "rotation", None)
+    if rotation is not None:
+        components = tuple(rotation)
+        if components and all(isinstance(row, Iterable) for row in components):
+            components = tuple(value for row in components for value in row)
+        if components not in ((0.0, 0.0, 0.0), (1, 0, 0, 0, 1, 0, 0, 0, 1)):
+            raise ValueError(f"{context} mesh filter has a rotation; use an untransformed mesh")
+
+
+def _csv_mesh_dimensions(text: str, n_voxels: int, path: Path) -> list[int]:
+    """Read legacy integral decimal spellings without floating-point rounding."""
     try:
-        shape = [int(d) for d in mesh.dimension]
-        lower = [float(v) for v in mesh.lower_left]
-        upper = [float(v) for v in mesh.upper_right]
-    except (TypeError, ValueError, AttributeError) as exc:
-        raise ValueError(f"tally {tally_id}: cannot read RegularMesh dimension/bounds") from exc
-    if len(shape) != 3 or len(lower) != 3 or len(upper) != 3:
-        raise ValueError(f"tally {tally_id}: RegularMesh geometry must be 3D")
-    if any(d < 1 for d in shape) or any(
-        high <= low for low, high in zip(lower, upper, strict=True)
+        dimensions = [Decimal(value) for value in text.split(",")]
+    except InvalidOperation as exc:
+        raise ValueError(f"{path}: mesh dimensions must be integers") from exc
+    if any(
+        not value.is_finite() or not 1 <= value <= n_voxels or value != value.to_integral_value()
+        for value in dimensions
     ):
-        raise ValueError(f"tally {tally_id}: RegularMesh has a degenerate dimension")
-    bounds = {
-        axis: [low + i * (high - low) / n for i in range(n + 1)]
-        for axis, low, high, n in zip(("x", "y", "z"), lower, upper, shape, strict=True)
-    }
+        raise ValueError(
+            f"{path}: mesh dimensions must be positive integers within the voxel count"
+        )
+    return [int(value) for value in dimensions]
+
+
+def _positive_mesh_shape(value: Any, context: str) -> list[int]:
+    try:
+        dims = list(value)
+        if any(isinstance(dim, bool) for dim in dims):
+            raise TypeError("boolean dimension")
+        shape = [operator.index(dim) for dim in dims]
+    except TypeError as exc:
+        raise ValueError(f"{context}: mesh dimensions must be integers") from exc
+    if len(shape) != 3 or any(dim < 1 for dim in shape):
+        raise ValueError(f"{context}: mesh shape must have three positive dimensions")
+    return shape
+
+
+def _cartesian_geometry(
+    dimensions: Any, faces_by_axis: Any, context: str
+) -> tuple[list[int], dict[str, list[float]]]:
+    shape = _positive_mesh_shape(dimensions, context)
+    if not isinstance(faces_by_axis, dict):
+        raise ValueError(f"{context}: mesh tally needs Cartesian axis faces")
+    bounds: dict[str, list[float]] = {}
+    for axis, dim in zip(_CARTESIAN_AXES, shape, strict=True):
+        try:
+            values = faces_by_axis[axis]
+            if isinstance(values, (str, bytes)):
+                raise TypeError("axis faces must be an array")
+            faces = [float(value) for value in values]
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"{context}: mesh {axis} faces must be numeric") from exc
+        if len(faces) != dim + 1 or not _finite_increasing(faces):
+            raise ValueError(
+                f"{context}: mesh {axis} axis needs {dim + 1} finite, increasing faces"
+            )
+        bounds[axis] = faces
     return shape, bounds
+
+
+def _check_voxel_count(shape: list[int], n_voxels: int, context: str) -> None:
+    expected = math.prod(shape)
+    if expected != n_voxels:
+        raise ValueError(f"{context}: mesh_shape {shape} holds {expected} voxels, got {n_voxels}")
+
+
+def _finite_increasing(edges: list[float]) -> bool:
+    return all(math.isfinite(value) for value in edges) and all(
+        high > low for low, high in zip(edges, edges[1:], strict=False)
+    )
+
+
+def _check_csv_energy_bounds(edges: list[float], n_groups: int, context: str) -> None:
+    if edges and len(edges) != n_groups + 1:
+        raise ValueError(
+            f"{context}: energy bounds length {len(edges)} != groups + 1 ({n_groups + 1})"
+        )
+    if edges and (edges[0] < 0 or not _finite_increasing(edges)):
+        raise ValueError(f"{context}: energy bounds must be finite, nonnegative and increasing")
 
 
 def _extract_values(
     tally: Any,
     tally_id: int,
     score_idx: int,
+    n_scores: int,
     space_dims: list[int],
     n_groups: int,
-    n_singletons: int,
+    filter_layout: list[str],
 ) -> tuple[list[list[float]], list[list[float]]]:
     """Index the reshaped mean/std_dev tables into ``[V][G]`` plain lists."""
     try:
@@ -1203,25 +1324,45 @@ def _extract_values(
         std_shape = tuple(int(d) for d in stds.shape)
     except (AttributeError, TypeError, ValueError) as exc:
         raise TypeError(f"tally {tally_id}: reshaped data has no readable .shape") from exc
-    roles = ["space"] * len(space_dims)
-    sizes = list(space_dims)
-    if n_groups > 1 or _has_energy_axis(tally):
-        roles.append("energy")
-        sizes.append(n_groups)
-    roles.extend(["single"] * n_singletons)
-    sizes.extend([1] * n_singletons)
+    roles: list[str] = []
+    sizes: list[int] = []
+    for role in filter_layout:
+        if role == "mesh":
+            roles.extend(["space"] * len(space_dims))
+            sizes.extend(space_dims)
+        else:
+            roles.append(role)
+            sizes.append(n_groups if role == "energy" else 1)
     roles.extend(["nuclide", "score"])
-    sizes.extend([1, _score_total(tally)])
+    sizes.extend([1, n_scores])
     if mean_shape != tuple(sizes) or std_shape != tuple(sizes):
         raise RuntimeError(
-            f"tally {tally_id}: reshaped data shape {mean_shape} disagrees with the "
-            f"filter layout {tuple(sizes)} (OpenMC contract {VERSION_CONTRACT})"
+            f"tally {tally_id}: mean/std_dev shapes {mean_shape}/{std_shape} disagree with "
+            f"reshaped filter layout {tuple(sizes)} (OpenMC contract {VERSION_CONTRACT})"
         )
+    np = sys.modules.get("numpy")
+    if np is not None and isinstance(means, np.ndarray) and isinstance(stds, np.ndarray):
+        # Select one score before materializing Python objects. Move the
+        # energy axis behind the spatial axes to match the public C-order.
+        selection = tuple(
+            slice(None) if role in {"space", "energy"} else score_idx if role == "score" else 0
+            for role in roles
+        )
+        data_axes = [role for role in roles if role in {"space", "energy"}]
+        order = tuple(i for i, role in enumerate(data_axes) if role == "space") + tuple(
+            i for i, role in enumerate(data_axes) if role == "energy"
+        )
+        mean_table = np.asarray(means[selection], dtype=float).transpose(order)
+        std_table = np.asarray(stds[selection], dtype=float).transpose(order)
+        rel_table = np.zeros_like(mean_table)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            np.divide(std_table, mean_table, out=rel_table, where=mean_table != 0.0)
+        flux_rows: list[list[float]] = mean_table.reshape(-1, n_groups).tolist()
+        rel_rows: list[list[float]] = rel_table.reshape(-1, n_groups).tolist()
+        return flux_rows, rel_rows
+
     mean_rows = means.tolist()
     std_rows = stds.tolist()
-    n_voxels = 1
-    for dim in space_dims:
-        n_voxels *= dim
     flux: list[list[float]] = []
     rel_err: list[list[float]] = []
     for spatial in itertools.product(*(range(dim) for dim in space_dims)):
@@ -1236,19 +1377,6 @@ def _extract_values(
         flux.append(flux_row)
         rel_err.append(rel_row)
     return flux, rel_err
-
-
-def _has_energy_axis(tally: Any) -> bool:
-    """Whether the tally carries an EnergyFilter (single-group axis kept)."""
-    return any(type(entry).__name__ == "EnergyFilter" for entry in tally.filters)
-
-
-def _score_total(tally: Any) -> int:
-    """Number of score bins on the tally (loud when unreadable)."""
-    try:
-        return len(list(tally.scores))
-    except TypeError as exc:
-        raise ValueError("tally scores are not readable") from exc
 
 
 def _locate(

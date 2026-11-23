@@ -1,12 +1,16 @@
-import { useState } from "react";
+import { useState, type SubmitEvent } from "react";
 import { useWasm } from "../../lib/wasm";
-import type { SandiiSolutionJson } from "../../types/nucleide-wasm";
+import type {
+  CorrelatedSolutionJson,
+  SandiiSolutionJson,
+  WasmApi,
+} from "../../types/nucleide-wasm";
 import { Button } from "@nukehub/docs-kit/components/ui/Button";
 import { Input } from "@nukehub/docs-kit/components/ui/Input";
 import { Label } from "@nukehub/docs-kit/components/ui/Label";
 import { Plotly } from "@nukehub/docs-kit/components/mdx/PlotlyClient";
 
-// Determined synthetic unfolding problem (no evaluated data): 4 detectors x
+// Synthetic unfolding problem: 4 detectors x
 // 6 energy groups. Each detector row is a Gaussian bump centered on a
 // different group (plus a small floor so every group carries some weight);
 // the bump matrix is the crate-test construction. Default measured rates are
@@ -22,8 +26,180 @@ const GUESS = [1, 1, 1, 1, 1, 1];
 const DEFAULT_RATES = ["6.5640", "7.1361", "2.0392", "0.3142"];
 const DEFAULT_TOLERANCE = "1e-3";
 
+const CORRELATED_RESPONSE = [
+  [1, 0],
+  [0, 1],
+];
+const CORRELATED_GUESS = [1, 1];
+const CORRELATED_DAMPING = 1;
+
 function groupLabel(mid: number): string {
   return mid.toPrecision(2);
+}
+
+function inputNumber(text: string, label: string): number {
+  const value = Number(text);
+  if (!text.trim() || !Number.isFinite(value)) throw new Error(`Enter a number for ${label}.`);
+  return value;
+}
+
+function CorrelatedUnfoldPanel({ wasm }: { wasm: WasmApi }) {
+  const [ratesText, setRatesText] = useState(["3", "2"]);
+  const [correlationText, setCorrelationText] = useState("0.5");
+  const [fit, setFit] = useState<{
+    independent: CorrelatedSolutionJson;
+    correlated: CorrelatedSolutionJson;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function clearFit() {
+    setFit(null);
+    setError(null);
+  }
+
+  function run(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      const rates = ratesText.map((text, i) =>
+        inputNumber(text, `detector ${i + 1}'s measured rate`),
+      );
+      const correlation = inputNumber(correlationText, "the correlation coefficient");
+      const correlated = wasm.unfoldStayslCorrelated(
+        CORRELATED_RESPONSE,
+        rates,
+        [
+          [1, correlation],
+          [correlation, 1],
+        ],
+        CORRELATED_GUESS,
+        CORRELATED_DAMPING,
+      );
+      const independent = wasm.unfoldStayslCorrelated(
+        CORRELATED_RESPONSE,
+        rates,
+        [
+          [1, 0],
+          [0, 1],
+        ],
+        CORRELATED_GUESS,
+        CORRELATED_DAMPING,
+      );
+      setFit({ independent, correlated });
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setFit(null);
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby="correlated-unfold-title"
+      className="space-y-3 border-t border-border/50 pt-4"
+    >
+      <h3 id="correlated-unfold-title" className="text-base font-semibold">
+        Fit correlated measurements
+      </h3>
+      <p className="text-sm text-muted-foreground">
+        Each of the two synthetic detectors responds only to its matching group. The guess is 1 per
+        group, both rates have unit variance, and damping is 1.
+      </p>
+      <form onSubmit={run} className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-3">
+          {ratesText.map((text, i) => (
+            <div key={i} className="flex flex-col justify-end gap-1">
+              <Label htmlFor={`correlated-rate-${i}`}>Detector {i + 1} measured rate</Label>
+              <Input
+                id={`correlated-rate-${i}`}
+                inputMode="decimal"
+                value={text}
+                onChange={(event) => {
+                  setRatesText(ratesText.map((rate, j) => (j === i ? event.target.value : rate)));
+                  clearFit();
+                }}
+                className="font-mono"
+              />
+            </div>
+          ))}
+          <div className="flex flex-col justify-end gap-1">
+            <Label htmlFor="unfold-correlation">Correlation coefficient</Label>
+            <Input
+              id="unfold-correlation"
+              inputMode="decimal"
+              value={correlationText}
+              onChange={(event) => {
+                setCorrelationText(event.target.value);
+                clearFit();
+              }}
+              aria-describedby="unfold-correlation-range"
+              className="font-mono"
+            />
+          </div>
+        </div>
+        <p id="unfold-correlation-range" className="text-xs text-muted-foreground">
+          Rates use arbitrary units. A coefficient of 0 gives independent errors, and the allowed
+          range is strictly between −1 and 1.
+        </p>
+        <Button type="submit">Fit spectrum</Button>
+      </form>
+
+      {error && (
+        <p
+          role="alert"
+          className="break-words rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+        >
+          Fit error: {error}
+        </p>
+      )}
+      <div aria-live="polite">
+        {fit && (
+          <div className="space-y-3">
+            <table className="w-full text-left text-sm sm:w-auto">
+              <caption className="pb-1 text-left font-medium">Adjusted spectrum</caption>
+              <thead className="text-muted-foreground">
+                <tr>
+                  <th scope="col" className="pr-3 font-medium">
+                    Group
+                  </th>
+                  <th scope="col" className="pr-3 font-medium">
+                    Independent errors
+                  </th>
+                  <th scope="col" className="font-medium">
+                    Correlated errors
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {fit.correlated.spectrum.map((value, i) => (
+                  <tr key={i} className="font-mono tabular-nums">
+                    <th scope="row" className="pr-3 font-normal">
+                      {i + 1}
+                    </th>
+                    <td className="pr-3">{fit.independent.spectrum[i].toFixed(4)}</td>
+                    <td>{value.toFixed(4)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <dl className="grid gap-2 rounded-lg bg-muted/30 p-3 text-sm sm:grid-cols-3">
+              <div>
+                <dt className="text-muted-foreground">Measurement χ²</dt>
+                <dd className="font-mono">{fit.correlated.measurementChi2.toPrecision(4)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Damping penalty</dt>
+                <dd className="font-mono">{fit.correlated.dampingPenalty.toPrecision(4)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Optimality error</dt>
+                <dd className="font-mono">{fit.correlated.optimality.toExponential(2)}</dd>
+              </div>
+            </dl>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
 
 export function UnfoldDemo() {
@@ -202,6 +378,7 @@ export function UnfoldDemo() {
           )}
         </>
       )}
+      {wasm && <CorrelatedUnfoldPanel wasm={wasm} />}
     </div>
   );
 }

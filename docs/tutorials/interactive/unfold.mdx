@@ -1,6 +1,6 @@
 ---
 title: Spectrum unfolding
-description: Adjust a guess neutron spectrum against measured foil-activation rates with the SAND-II iteration and compare guess vs unfolded.
+description: Unfold a neutron spectrum with SAND-II and compare damped fits with independent and correlated measurement errors.
 sidebar:
   order: 19
 ---
@@ -14,12 +14,18 @@ multiplies each energy group by a weighted geometric mean of the correction
 factors, so the spectrum stays positive and a guess that already fits is left
 unchanged.
 
-The demo below ships a small determined synthetic problem — four detectors,
+The demo below starts with a small synthetic problem — four detectors,
 six energy groups, Gaussian response bumps — with editable measured rates.
 Press **Unfold spectrum** to watch the adjusted spectrum against the flat
 guess, the iteration count, and how well the final fold reproduces the rates
 you entered. The response values are synthetic round numbers, not evaluated
 detector data.
+
+In **Fit correlated measurements**, change the correlation coefficient to see
+how shared measurement errors change the fitted spectrum. Both fits use
+the same two detector rates, guess and damping. Try 0 for independent
+errors, then 0.5 or −0.5 to change how the fit weighs the two rates together.
+The fit also reports its measurement chi-square and damping penalty.
 
 <InteractiveDemo kind="unfold" />
 

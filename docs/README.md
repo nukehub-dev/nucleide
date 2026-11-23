@@ -3,11 +3,12 @@
 Welcome! Nucleide is a Rust toolkit for nuclear-engineering workflow glue,
 exposed through a typed Python API: parse legacy code output (MCNP, Serpent,
 FLUKA, ALARA, and friends), build materials, and run solvers for depletion,
-point kinetics, enrichment cascades, spectroscopy, tritium transport, fusion
-neutron sources, spectrum unfolding, TBR/blanket bookkeeping, equilibrium
-data readers, an OpenMC statepoint tally bridge, and variance
-reduction, conservative spectral regrouping and volume-aware source splitting — plus
-damage/gas metrics (dpa, appm), clearance/waste-classification screening,
+point kinetics, enrichment cascades, spectroscopy and gamma-line activity,
+tritium transport, fusion neutron sources, spectrum unfolding with measurement
+covariance, TBR/blanket bookkeeping, equilibrium data readers, OpenMC regular
+and rectilinear tally ingestion, variance reduction, flux regrouping and
+mixed-voxel photon sources, damage/gas metrics (dpa, appm),
+clearance/waste-classification screening,
 and uncertainty-quantification sampling.
 These docs are organized by audience, so you can jump straight to what you
 need.
@@ -37,16 +38,17 @@ need.
   <text x="190" y="148" text-anchor="middle" class="cm-i">MCNP &#xb7; Serpent &#xb7; FLUKA</text>
   <text x="190" y="168" text-anchor="middle" class="cm-i">ALARA &#xb7; CCCC &#xb7; MCPL</text>
   <text x="190" y="188" text-anchor="middle" class="cm-i">FISPACT-II &#xb7; ORIGEN &#xb7; Equilibrium I/O</text>
-  <text x="190" y="210" text-anchor="middle" class="cm-s">readers, writers, translation, flux regrouping</text>
+  <text x="190" y="208" text-anchor="middle" class="cm-i">OpenMC regular and rectilinear tallies</text>
+  <text x="190" y="228" text-anchor="middle" class="cm-s">readers, writers, translation, flux regrouping</text>
   <rect x="380" y="96" width="300" height="146" rx="10" class="cm-box"/>
   <text x="530" y="122" text-anchor="middle" class="cm-t">Solvers and analysis</text>
   <text x="530" y="144" text-anchor="middle" class="cm-i">Depletion (CRAM) &#xb7; Point kinetics</text>
-  <text x="530" y="160" text-anchor="middle" class="cm-i">Enrichment &#xb7; Spectroscopy &#xb7; UQ sampling</text>
+  <text x="530" y="160" text-anchor="middle" class="cm-i">Spectroscopy &#xb7; Gamma-line activity</text>
   <text x="530" y="176" text-anchor="middle" class="cm-i">Variance reduction &#xb7; Tritium transport</text>
-  <text x="530" y="192" text-anchor="middle" class="cm-i">Fusion sources &#xb7; Spectrum unfolding</text>
+  <text x="530" y="192" text-anchor="middle" class="cm-i">Fusion sources &#xb7; Unfolding with covariance</text>
   <text x="530" y="208" text-anchor="middle" class="cm-i">Damage metrics (dpa/appm) &#xb7; Clearance screening</text>
-  <text x="530" y="224" text-anchor="middle" class="cm-i">TBR/blanket bookkeeping</text>
-  <text x="530" y="237" text-anchor="middle" class="cm-s">R2S, flux normalization, and photon-source export</text>
+  <text x="530" y="224" text-anchor="middle" class="cm-i">Enrichment &#xb7; TBR/blanket &#xb7; UQ sampling</text>
+  <text x="530" y="237" text-anchor="middle" class="cm-s">Mixed-voxel photon sources</text>
   <line x1="190" y1="268" x2="190" y2="248" class="cm-edge" marker-end="url(#cm-arrow)"/>
   <line x1="530" y1="268" x2="530" y2="248" class="cm-edge" marker-end="url(#cm-arrow)"/>
   <rect x="110" y="272" width="500" height="40" rx="10" class="cm-bar"/>
@@ -90,7 +92,7 @@ status, and license.
 | [Deterministic I/O](tutorials/python/deterministic-io.md) | Read ISOTXS and flux files and write PARTISN decks |
 | [Emit code cards](tutorials/python/emit-cards.md) | Render one material to MCNP, Serpent, FLUKA, ALARA, and PARTISN cards, including ARMI blueprint keys |
 | [Run kinetics](tutorials/python/run-kinetics.md) | Solve prescribed-reactivity point-kinetics transients |
-| [Run spectroscopy](tutorials/python/run-spectroscopy.md) | Smooth spectra, count peaks, calibrate energy/efficiency, evaluate X-ray lines, read `.spe` files |
+| [Run spectroscopy](tutorials/python/run-spectroscopy.md) | Smooth spectra, count peaks, calibrate efficiency, estimate gamma-line activity, and read `.spe` files |
 | [MCPL particle interchange](tutorials/python/mcpl-interchange.md) | Read and write MCPL particle lists; merge, subset, and summarize them; repair interrupted writes |
 | [UQ sampling](tutorials/python/uq-sampling.md) | Draw seeded MVN, log-normal, and LHS samples over caller-supplied covariance blocks and perturb decay and fission-yield data |
 | [VR and MAGIC](tutorials/python/vr-magic.md) | Derive weight-window lower bounds with MAGIC, emit them for OpenMC or Serpent, and sample birth voxels through alias tables |
@@ -99,11 +101,11 @@ status, and license.
 | [Run tritium](tutorials/python/run-tritium.md) | Solve steady-state and transient 1D tritium permeation with traps and recombination boundaries |
 | [Damage metrics](tutorials/python/damage-metrics.md) | Fold multigroup fluxes into dpa and gas production, and propagate uncertainty through the fold |
 | [Fusion sources](tutorials/python/fusion-sources.md) | Build ring, point, and parametric tokamak neutron sources and emit MCNP/Serpent source cards |
-| [Unfold a spectrum](tutorials/python/unfold-spectrum.md) | Recover a neutron spectrum from activation detector measurements with SAND-II, least-squares, or GRAVEL adjustment, including an IRDFF response pack |
+| [Unfold a spectrum](tutorials/python/unfold-spectrum.md) | Recover a neutron spectrum from activation detector measurements, including least-squares adjustment with measurement covariance |
 | [Clearance screening](tutorials/python/clearance-screening.md) | Classify parsed activation inventories against EU or Spanish clearance tables |
 | [Fusion first wall](tutorials/python/fusion-first-wall.md) | Run the end-to-end first-wall workflow from tokamak source to a foil check |
 | [Solve activation with ACTINV](tutorials/python/solve-with-actinv.md) | Map one material, spectrum, and schedule to an `actinv-spec-1` problem, solve with the optional ACTINV solver, and read the photon source back with Nucleide |
-| [Activation to transport](tutorials/python/activation-to-transport.md) | Normalize OpenMC tallies into physical flux, build/validate an explicit photon source, export cooling-time batches, and verify a manifest |
+| [Activation to transport](tutorials/python/activation-to-transport.md) | Normalize OpenMC tallies, assemble photon spectra for mixed voxels, export cooling-time batches, and verify a manifest |
 | [Interactive tutorials](tutorials/interactive/index.mdx) | Run Nucleide in the browser through the WASM build |
 | [Interactive — nuclides](tutorials/interactive/nuclides.mdx) | Nuclide identifiers and nuclear data |
 | [Interactive — materials](tutorials/interactive/materials.mdx) | Formulas, fractions, mixing, and XML export |
@@ -123,7 +125,7 @@ status, and license.
 | [Interactive — clearance screening](tutorials/interactive/clearance.mdx) | Sum-of-fractions classification against EU or Spanish limits, plus the S3–S7 radiological totals |
 | [Interactive — damage metrics](tutorials/interactive/damage.mdx) | Fold a multigroup flux into dpa and gas production, propagate He/dpa ratio uncertainty, plus coil fast-flux and lifetime |
 | [Interactive — spectroscopy](tutorials/interactive/spectroscopy.mdx) | Spectrum smoothing and peak counting |
-| [Interactive — spectrum unfolding](tutorials/interactive/unfold.mdx) | SAND-II, least-squares, and GRAVEL adjustment over detector measurements |
+| [Interactive — spectrum unfolding](tutorials/interactive/unfold.mdx) | SAND-II adjustment and a comparison of independent and correlated least-squares fits |
 | [Interactive — UQ sampling](tutorials/interactive/uq.mdx) | Seeded MVN sampling over caller-supplied covariance blocks (Python API and theory add log-normal + LHS) |
 | [Interactive — point kinetics](tutorials/interactive/kinetics.mdx) | Step-reactivity transients and the prompt jump |
 | [Interactive — tritium permeation](tutorials/interactive/tritium.mdx) | 1D breakthrough curve and time lag |

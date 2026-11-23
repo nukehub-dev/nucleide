@@ -101,3 +101,70 @@ def test_volume_total_retains_many_small_contributions() -> None:
     assert tags["source_strength"][0] == 1.0 / expected_volume
     assert math.isclose(math.fsum(tags["source_strength"]), 1.0, rel_tol=1e-15, abs_tol=0.0)
     assert tags["total"] == math.fsum(tags["source_strength"])
+
+
+def test_mixed_voxel_photon_source_allocates_and_reports_zone_spectra() -> None:
+    edges = [0.0, 1.0e6, 3.0e6]
+    source = r2s.mixed_voxel_photon_source(
+        mesh_shape=[2, 1, 1],
+        lower_left_cm=[0.0, 0.0, 0.0],
+        upper_right_cm=[4.0, 1.0, 1.0],
+        voxel_volumes_cm3=[2.0, 2.0],
+        edges_ev=edges,
+        cooling_s=3600.0,
+        zones=[
+            r2s.MixedVoxelZoneSpectrum(
+                volume_cm3=2.0,
+                edges_ev=edges,
+                cooling_s=3600.0,
+                strengths_photons_per_s=[40.0, 0.0],
+            ),
+            r2s.MixedVoxelZoneSpectrum(
+                volume_cm3=1.0,
+                edges_ev=edges,
+                cooling_s=3600.0,
+                strengths_photons_per_s=[0.0, 60.0],
+            ),
+        ],
+        overlaps=[(0, 0, 0.5), (0, 1, 1.0), (1, 0, 1.5)],
+    )
+    assert source["strengths_photons_per_s"] == [[10.0, 60.0], [30.0, 0.0]]
+    assert source["total_photons_per_s"] == 100.0
+    assert source["group_totals_photons_per_s"] == [40.0, 60.0]
+    assert r2s.source_density(source) == [[5.0, 30.0], [15.0, 0.0]]
+    assert [issue["code"] for issue in r2s.source_report(source)["issues"]] == [
+        "source-assumption-uniform-within-bin",
+        "source-assumption-uniform-within-voxel",
+    ]
+    assert source["allocation"] == {
+        "volume_relative_tolerance": 1e-12,
+        "zone_declared_volumes_cm3": [2.0, 1.0],
+        "zone_mapped_volumes_cm3": [2.0, 1.0],
+        "zone_volume_deltas_cm3": [0.0, 0.0],
+        "voxel_unassigned_volumes_cm3": [0.5, 0.5],
+        "zone_input_strengths_photons_per_s": [[40.0, 0.0], [0.0, 60.0]],
+        "zone_allocated_strengths_photons_per_s": [[40.0, 0.0], [0.0, 60.0]],
+        "input_group_totals_photons_per_s": [40.0, 60.0],
+        "allocated_group_totals_photons_per_s": [40.0, 60.0],
+    }
+
+
+def test_mixed_voxel_photon_source_rejects_incomplete_zone_coverage() -> None:
+    with pytest.raises(ValueError, match=r"zone 0 coverage"):
+        r2s.mixed_voxel_photon_source(
+            [1, 1, 1],
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+            [1.0],
+            [0.0, 1.0e6],
+            0.0,
+            [
+                r2s.MixedVoxelZoneSpectrum(
+                    volume_cm3=1.0,
+                    edges_ev=[0.0, 1.0e6],
+                    cooling_s=0.0,
+                    strengths_photons_per_s=[10.0],
+                )
+            ],
+            [(0, 0, 0.5)],
+        )

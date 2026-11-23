@@ -86,7 +86,10 @@ reference tally (`magic_tally.txt`), and the committed results document.
   handoff contract: exact-version gate, source-inspected tally normalization,
   C-order/Fortran-order mesh mapping, histogram density semantics, XML
   roundtrip, seeded joint-source sampling, and a vacuum track-length tally at
-  two source strengths that pins the integrated/rate-scaled convention. It may
+  two source strengths that pins the integrated/rate-scaled convention.
+  The rectilinear vacuum statepoint leg requires the current Nucleide
+  build and checks both filter orders, OpenMC bin queries, CSV roundtrip
+  and explicit geometric-volume normalization. The probe may
   create a placeholder `cross_sections.xml` under its temp directory solely to
   initialize OpenMC; it must not read evaluated data or run interacting
   transport. Record the probe's JSON output and never turn source sampling or

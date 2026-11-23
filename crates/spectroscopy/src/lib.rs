@@ -7,7 +7,7 @@
 //! evaluation (E7) plus the E7-fit log-space coefficient fit, caller-constant
 //! X-ray algebra (E8), the two text `.spe` readers (dollar and plain formats),
 //! caller-line SDEF decay-source cards (E9), and the runtime decay-lines TSV
-//! interchange feeding E9.
+//! interchange feeding E9. Estimate activity from a known gamma line (E10).
 //!
 //! No tabulated data lives here: atomic constants, calibration fits, decay
 //! lines, and efficiency-fit points/weights are all caller inputs (fitted
@@ -17,10 +17,11 @@
 //!
 //! # Equation labels
 //!
-//! `E1`–`E9` are pinned in `docs/theory/spectroscopy.mdx` (the
+//! `E1`–`E10` are pinned in `docs/theory/spectroscopy.mdx` (the
 //! coefficient fit is the `E7-fit` extension, not a new equation number);
 //! code comments cite those labels.
 
+pub mod activity;
 pub mod calib;
 pub mod counts;
 pub mod error;
@@ -31,6 +32,7 @@ pub mod spe;
 pub mod spectrum;
 pub mod xray;
 
+pub use activity::{gamma_line_activity, GammaLineActivity};
 pub use calib::{detector_efficiency, energy_bins, fit_efficiency};
 pub use counts::{calc_bg, gross_count, net_counts};
 pub use error::{Error, Result};

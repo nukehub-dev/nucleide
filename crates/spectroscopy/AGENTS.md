@@ -3,13 +3,13 @@
 ## Purpose
 
 Gamma-ray spectroscopy and measurement: smoothing, peak counting,
-energy/efficiency calibration, X-ray line algebra, caller-line SDEF
+energy/efficiency calibration, known-line activity estimation, X-ray line algebra, caller-line SDEF
 decay-source cards, and the two text `.spe` readers. Pure algorithms over
 caller vectors; no tabulated data, no I/O beyond `&str` parsing.
 
 ## Ownership
 
-Owns `crates/spectroscopy/src/` (`spectrum.rs`, `smooth.rs`, `counts.rs`,
+Owns `crates/spectroscopy/src/` (`spectrum.rs`, `smooth.rs`, `counts.rs`, `activity.rs`,
 `calib.rs` including the E7-fit coefficient fit, `spe.rs`, `xray.rs`,
 `sdef.rs`, `lines.rs`, `error.rs`), the Python surface
 (`nucleide.spectroscopy` including `fit_efficiency`, `spectroscopy_*` in
@@ -19,12 +19,11 @@ synthetic oracles (including `efficiency_fit.json`), and the
 
 ## Local Contracts
 
-- Equation set (E1–E9) is pinned: rectangular/five-point smoothing,
+- Equation set (E1–E10) is pinned: rectangular/five-point smoothing,
   `m == 1` background, half-open gross counts, net counts, quadratic
   energy bins, two log-polynomial efficiency evaluations plus the E7-fit
-  log-space coefficient fit (an E7 extension, not E10 unless the equation
-  set is amended), caller-constant X-ray algebra, caller-line SDEF
-  decay-source cards, dollar/plain `.spe` grammars. Derivations live in
+  log-space coefficient fit, caller-constant X-ray algebra, caller-line SDEF
+  decay-source cards, and single-line activity. Derivations live in
   `docs/theory/spectroscopy.mdx`; code comments cite equation labels, never
   external paths.
 - Pin the upstream quirks, never "fix" them: dollar duplicate-tag
@@ -53,10 +52,16 @@ synthetic oracles (including `efficiency_fit.json`), and the
   recorded provenance; never laboratory or evaluated-library data. New
   oracles extend `fixtures/spectroscopy/` and the fixture tests in the
   same change.
-- Out of scope (do not expand here): peak search/fit, activities, plotting.
+- E10 estimates signed activity and peak-area standard uncertainty in Bq
+  for a caller-identified gamma line. Inputs are net area, its standard
+  uncertainty, live time, absolute peak efficiency and emission probability.
+  Keep counting uncertainty separate from exposure-factor uncertainty and
+  leave corrections, detection limits, and multiline estimates caller-side.
+- Peak search, peak fitting and plotting stay outside this crate.
 - WASM/tutorial surface (owned): `spectroscopySmooth` in `bindings/wasm`
   (E1 rectangular / E2 five-point smoothing plus E3–E5 gross/background/net
-  counting; thin facade, positional channels), the `SpectroscopyDemo` demo
+  counting; thin facade, positional channels) and
+  `spectroscopyGammaLineActivity` for E10, the `SpectroscopyDemo` demo
   in `website/src/components/interactive/SpectroscopyDemo.tsx`, and the
   `docs/tutorials/interactive/spectroscopy.mdx` page. Demo defaults stay
   synthetic (`fixtures/spectroscopy/` values or hand-picked small numbers).

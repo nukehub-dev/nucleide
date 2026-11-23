@@ -1,6 +1,6 @@
 ---
 title: Gamma-ray spectroscopy
-description: Smooth a spectrum and count gross, background, and net peak counts.
+description: Smooth a spectrum, count peaks, and estimate activity from a known gamma line.
 sidebar:
   order: 18
 ---
@@ -42,12 +42,27 @@ non-negative.
 
 <InteractiveDemo kind="spectroscopy" />
 
+## Gamma-line activity
+
+Enter the signed net counts for a known full-energy peak, the standard
+uncertainty in those counts, and the acquisition live time. The absolute
+peak efficiency corresponds to your measurement geometry. Enter both the
+efficiency and emission probability as fractions.
+
+Press **Estimate activity** to run the Rust calculation in the browser.
+The defaults use 120 net counts with a standard uncertainty of 12 counts,
+a live time of 60 s, an efficiency of 0.10, and an emission probability of
+0.50. The estimate is **40 ± 4 Bq**. A negative net count gives a signed
+estimate with the same nonnegative uncertainty. The displayed uncertainty
+comes from the supplied counts uncertainty alone.
+
 ## TSV, calibration, and SPE readers
 
-The same demo also hosts the scalar bundle: the runtime decay-line TSV
-interchange (`parseLinesTsv`), E6 energy bins plus E7 efficiency
-(`energyBins`, `detectorEfficiency`), and the dollar/plain `.spe` readers
-(`parseDollarSpe`, `parsePlainSpe` capped summaries).
+The sample tools below the activity form use built-in data. **Parse TSV**
+shows the decay-line energies and relative intensities. **Calibrate** shows the
+calibrated energy for each sample channel and the detector efficiency at 1 MeV.
+The SPE buttons show the spectrum name, detector ID, channel count, live time,
+and real time for the chosen format.
 
 ## See also
 

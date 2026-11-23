@@ -260,10 +260,10 @@ NUCLIDE PU239 94239 2
     extraSteps: [
       { button: "Synthetic peak" },
       { button: "Smooth spectrum", output: "text=Net counts" },
-      { button: "Parse TSV", output: "text=TSV rows:" },
-      { button: "Calibrate", output: "text=eff(1 MeV)" },
-      { button: "Parse dollar SPE", output: "text=SYNTH" },
-      { button: "Parse plain SPE", output: "text=SYNTH-PLAIN" },
+      { button: "Parse TSV", output: "text=0.662" },
+      { button: "Calibrate", output: "text=5.969%" },
+      { button: "Parse dollar SPE", output: "text=Dollar SPE summary" },
+      { button: "Parse plain SPE", output: "text=90.25 s" },
     ],
   },
   {
@@ -353,6 +353,55 @@ test("transport source demo handles narrow layout and invalid input", async ({ p
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
   );
   expect(overflow).toBe(false);
+});
+
+test("mixed-voxel source combines zone spectra and checks volume coverage", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("tutorials/interactive/transport-source");
+  await waitForWasmReady(page);
+  const allocate = page.getByRole("button", { name: "Allocate mixed source", exact: true });
+  await allocate.click();
+  await expect(page.getByText("Group totals: 40, 60 photons/s")).toBeVisible();
+  await page.getByLabel("Voxel 0 overlap with zone A").fill("1.5");
+  await allocate.click();
+  await expect(page.getByRole("alert").filter({ hasText: "voxel 0 overlaps fill" })).toBeVisible();
+  await expect(page.getByText("Group totals: 40, 60 photons/s")).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    ),
+  ).toBe(false);
+});
+
+test("gamma-line activity reports signed estimates and rejects invalid efficiency", async ({
+  page,
+}) => {
+  await page.goto("tutorials/interactive/spectroscopy");
+  await waitForWasmReady(page);
+  const activity = page.getByRole("form", { name: "Gamma-line activity", exact: true });
+  const estimate = activity.getByRole("button", { name: "Estimate activity", exact: true });
+  await estimate.click();
+  await expect(activity.getByText("40 ± 4 Bq", { exact: true })).toBeVisible();
+  await activity.getByLabel("Net peak counts").fill("-12");
+  await estimate.click();
+  await expect(activity.getByText("-4 ± 4 Bq", { exact: true })).toBeVisible();
+  await activity.getByLabel("Peak efficiency").fill("0");
+  await estimate.click();
+  await expect(activity.getByRole("alert").filter({ hasText: "peak_efficiency" })).toBeVisible();
+});
+
+test("correlated unfolding compares fits and checks covariance", async ({ page }) => {
+  await page.goto("tutorials/interactive/unfold");
+  await waitForWasmReady(page);
+  const fit = page.getByRole("button", { name: "Fit spectrum", exact: true });
+  await fit.click();
+  const spectrum = page.getByRole("table", { name: "Adjusted spectrum", exact: true });
+  await expect(spectrum.getByRole("cell", { name: "2.0000", exact: true })).toBeVisible();
+  await expect(spectrum.getByRole("cell", { name: "1.9333", exact: true })).toBeVisible();
+  await page.getByLabel("Correlation coefficient").fill("1");
+  await fit.click();
+  await expect(page.getByRole("alert").filter({ hasText: "positive definite" })).toBeVisible();
+  await expect(spectrum).toHaveCount(0);
 });
 
 for (const { path, button, output, cell, chart, paste, extraSteps } of INTERACTIVE_PAGES) {

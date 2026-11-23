@@ -266,7 +266,7 @@ impl PhotonSource {
         cooling_s: f64,
         strengths_photons_per_s: Vec<Vec<f64>>,
     ) -> Result<Self> {
-        let draft = PhotonSourceDraft::new(
+        let source = Self {
             mesh_shape,
             lower_left_cm,
             upper_right_cm,
@@ -274,8 +274,9 @@ impl PhotonSource {
             edges_ev,
             cooling_s,
             strengths_photons_per_s,
-        );
-        Self::from_draft(&draft)
+        };
+        source.checked_totals()?;
+        Ok(source)
     }
 
     /// Build a dense photon source from an unvalidated draft.
@@ -515,8 +516,11 @@ impl PhotonSource {
         )
     }
 
-    fn checked_totals(&self) -> Result<SourceTotals> {
-        let report = inspect_source(
+    /// Inspect the current source fields and compute their structured report.
+    ///
+    /// This reuses the draft checks and totals without copying source data.
+    pub fn validation_report(&self) -> SourceReport {
+        inspect_source(
             self.mesh_shape,
             self.lower_left_cm,
             self.upper_right_cm,
@@ -524,7 +528,11 @@ impl PhotonSource {
             &self.edges_ev,
             self.cooling_s,
             &self.strengths_photons_per_s,
-        );
+        )
+    }
+
+    fn checked_totals(&self) -> Result<SourceTotals> {
+        let report = self.validation_report();
         if !report.is_valid() {
             return Err(validation_error(&report));
         }
@@ -713,21 +721,23 @@ pub fn select_cooling_indices(available_s: &[f64], requested_s: &[f64]) -> Resul
     Ok(selected)
 }
 
-/// Validate one draft and build its report.
-///
-/// This is the single interpretation shared by [`SourceReport::from_draft`]
-/// and every [`PhotonSource`] accessor.
-fn inspect_source(
+struct SourceAxes {
+    mesh_ok: bool,
+    geometry_ok: bool,
+    edges_ok: bool,
+    product: Option<usize>,
+    group_count: Option<usize>,
+}
+
+fn inspect_source_axes(
     mesh_shape: [usize; 3],
     lower_left_cm: [f64; 3],
     upper_right_cm: [f64; 3],
     voxel_volumes_cm3: &[f64],
     edges_ev: &[f64],
     cooling_s: f64,
-    strengths_photons_per_s: &[Vec<f64>],
-) -> SourceReport {
-    let mut issues = IssueBuilder::default();
-
+    issues: &mut IssueBuilder,
+) -> SourceAxes {
     let mut mesh_ok = true;
     for (axis, &dimension) in mesh_shape.iter().enumerate() {
         if dimension == 0 {
@@ -898,8 +908,69 @@ fn inspect_source(
         );
     }
 
+    SourceAxes {
+        mesh_ok,
+        geometry_ok: mesh_ok && bounds_ok && volumes_ok,
+        edges_ok,
+        product,
+        group_count: edges_ev.len().checked_sub(1).filter(|&count| count > 0),
+    }
+}
+
+// Validate the common geometry and time/energy axes before allocating a dense source.
+pub(crate) fn validate_source_axes(
+    mesh_shape: [usize; 3],
+    lower_left_cm: [f64; 3],
+    upper_right_cm: [f64; 3],
+    voxel_volumes_cm3: &[f64],
+    edges_ev: &[f64],
+    cooling_s: f64,
+) -> Result<()> {
+    let mut issues = IssueBuilder::default();
+    inspect_source_axes(
+        mesh_shape,
+        lower_left_cm,
+        upper_right_cm,
+        voxel_volumes_cm3,
+        edges_ev,
+        cooling_s,
+        &mut issues,
+    );
+    let report = issues.finish(None);
+    if report.is_valid() {
+        Ok(())
+    } else {
+        Err(validation_error(&report))
+    }
+}
+
+/// Validate one draft and build its report.
+///
+/// This is the single interpretation shared by [`SourceReport::from_draft`]
+/// and every [`PhotonSource`] accessor.
+fn inspect_source(
+    mesh_shape: [usize; 3],
+    lower_left_cm: [f64; 3],
+    upper_right_cm: [f64; 3],
+    voxel_volumes_cm3: &[f64],
+    edges_ev: &[f64],
+    cooling_s: f64,
+    strengths_photons_per_s: &[Vec<f64>],
+) -> SourceReport {
+    let mut issues = IssueBuilder::default();
+
+    let axes = inspect_source_axes(
+        mesh_shape,
+        lower_left_cm,
+        upper_right_cm,
+        voxel_volumes_cm3,
+        edges_ev,
+        cooling_s,
+        &mut issues,
+    );
+
     let mut rows_ok = false;
-    if let Some(product) = product {
+    if let Some(product) = axes.product {
         if strengths_photons_per_s.len() == product {
             rows_ok = true;
         } else {
@@ -915,11 +986,7 @@ fn inspect_source(
         }
     }
 
-    let group_count = if edges_len_ok {
-        Some(edges_ev.len() - 1)
-    } else {
-        None
-    };
+    let group_count = axes.group_count;
     let mut widths_ok = group_count.is_some();
     if let Some(group_count) = group_count {
         for (voxel, row) in strengths_photons_per_s.iter().enumerate() {
@@ -963,7 +1030,7 @@ fn inspect_source(
     }
 
     let mut totals = None;
-    if mesh_ok && rows_ok && widths_ok && values_finite {
+    if axes.mesh_ok && rows_ok && widths_ok && values_finite {
         if let Some(group_count) = group_count {
             let mut voxel_totals = Vec::with_capacity(strengths_photons_per_s.len());
             let mut group_sums = vec![CompensatedSum::default(); group_count];
@@ -1009,8 +1076,7 @@ fn inspect_source(
         }
     }
 
-    let geometry_ok = mesh_ok && bounds_ok && volume_count_ok && volumes_ok;
-    if geometry_ok && edges_ok {
+    if axes.geometry_ok && axes.edges_ok {
         issues.assumption(
             "source-assumption-uniform-within-bin",
             "edges_ev",
@@ -1030,13 +1096,13 @@ fn inspect_source(
 
 /// Neumaier-compensated accumulator.
 #[derive(Clone, Copy, Default)]
-struct CompensatedSum {
+pub(crate) struct CompensatedSum {
     sum: f64,
     correction: f64,
 }
 
 impl CompensatedSum {
-    fn add(&mut self, value: f64) {
+    pub(crate) fn add(&mut self, value: f64) {
         let next = self.sum + value;
         self.correction += if self.sum.abs() >= value.abs() {
             (self.sum - next) + value
@@ -1046,7 +1112,7 @@ impl CompensatedSum {
         self.sum = next;
     }
 
-    fn total(&self) -> f64 {
+    pub(crate) fn total(&self) -> f64 {
         self.sum + self.correction
     }
 }

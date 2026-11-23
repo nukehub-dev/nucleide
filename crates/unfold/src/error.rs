@@ -35,6 +35,12 @@ pub enum Error {
     /// A solver option is invalid: `{0}`.
     #[error("unfold: invalid solver option: {0}")]
     BadOption(&'static str),
+    /// Measurement covariance failed validation or whitening.
+    #[error("unfold: invalid measurement {0}")]
+    BadCovariance(#[from] nucleide_linalg::CovarianceError),
+    /// Correlated adjustment arithmetic was non-finite or numerically stalled.
+    #[error("unfold: correlated adjustment failed: {0}")]
+    CorrelatedNumerical(&'static str),
     /// No strictly positive spectrum can fold to the measured rates: detector
     /// `{detector}` either carries a zero response row against a nonzero
     /// measurement (rejected up front), was left with a zero fold because
@@ -55,8 +61,7 @@ pub enum Error {
     #[error("unfold: least-squares solve failed: {0}")]
     Lstsq(String),
     /// The spectral adjustment exhausted its iteration cap without meeting
-    /// the per-group relative-change tolerance (and, for MAXED, the
-    /// chi-square target). Hard fail — never a silent
+    /// its convergence criteria. Hard fail — never a silent
     /// partial spectrum (the `tritium` face-Newton precedent). Shared by the
     /// SAND-II, STAYSL-class, GRAVEL, and MAXED iterators.
     #[error("unfold: spectral adjustment did not converge within its iteration cap")]

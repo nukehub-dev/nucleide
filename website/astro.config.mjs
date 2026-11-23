@@ -32,6 +32,16 @@ export default defineConfig({
     define: {
       global: "globalThis",
     },
+    optimizeDeps: {
+      // The kit loads these CommonJS entry points only after a chart mounts.
+      include: [
+        "plotly.js/lib/core",
+        "plotly.js/lib/scatter",
+        "plotly.js/lib/bar",
+        "plotly.js/lib/heatmap",
+        "plotly.js/lib/histogram",
+      ],
+    },
     build: {
       sourcemap: true,
     },

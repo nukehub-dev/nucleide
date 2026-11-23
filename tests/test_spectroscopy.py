@@ -1,4 +1,4 @@
-"""Python-side tests for the spectroscopy core (E1-E9 gates + format quirks)."""
+"""Python-side tests for the spectroscopy core and format quirks."""
 
 import json
 from pathlib import Path
@@ -93,6 +93,32 @@ def test_bg_small_c1_matches_python_slices() -> None:
 def test_e6_energy_bins() -> None:
     # Hand-computed fit [1.5, 2.0, 0.5] on [0, 1, 2].
     assert sp.energy_bins([0.0, 1.0, 2.0], [1.5, 2.0, 0.5]) == pytest.approx([1.5, 4.0, 7.5])
+
+
+def test_gamma_line_activity_reports_signed_estimate_and_counting_uncertainty() -> None:
+    for counts, expected in [(120.0, 40.0), (0.0, 0.0), (-12.0, -4.0)]:
+        estimate = sp.gamma_line_activity(counts, 12.0, 60.0, 0.1, 0.5)
+        assert estimate.activity_bq == expected
+        assert estimate.counting_uncertainty_bq == 4.0
+
+
+@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
+    ("field_index", "invalid", "message"),
+    [
+        (0, float("nan"), "net_counts"),
+        (1, -1.0, "net_counts_uncertainty"),
+        (2, 0.0, "live_time_s"),
+        (3, 2.0, "peak_efficiency"),
+        (4, float("inf"), "emission_probability"),
+    ],
+)
+def test_gamma_line_activity_rejects_invalid_inputs(
+    field_index: int, invalid: float, message: str
+) -> None:
+    args = [120.0, 12.0, 60.0, 0.1, 0.5]
+    args[field_index] = invalid
+    with pytest.raises(ValueError, match=message):
+        sp.gamma_line_activity(*args)
 
 
 def test_e7_efficiency_golden() -> None:

@@ -1,8 +1,7 @@
 """Neutron spectrum unfolding cross-check (`nucleide.unfold` vs analytic gates).
 
-Five parts, all always run (no external unfolding oracle exists — PyNE/OpenMC
-ship no SAND-II/STAYSL/GRAVEL counterpart — so no container dependency is added
-and nothing here can SKIP):
+Analytic checks always run. The correlated-fit numerical comparison uses
+SciPy when installed:
 
 1. Analytic gates U1-U4 (SAND-II): forward-fold against a hand matvec,
    exact-guess fixed point, determined-system recovery from a biased guess at
@@ -35,6 +34,9 @@ and nothing here can SKIP):
    dual residual is zero, so MAXED holds SAND-II fixed points and vice
    versa), and the convergence/validation contract including the
    chi-square-target hard fail.
+6. Correlated STAYSL-class gates U24-U27: diagonal equivalence, analytic
+   interior and bounded optima, detector permutation and unit scaling,
+   covariance validation, and comparison with a separate bounded solver.
 
 All response matrices are hand-built synthetics (Gaussian bumps over
 log-spaced groups), never evaluated data.
@@ -829,18 +831,183 @@ def maxed_gates() -> tuple[list[list[str]], list[str]]:
     return rows, notes
 
 
+def correlated_staysl_gates() -> tuple[list[list[str]], list[str]]:
+    """U24-U26 analytic and input-contract checks."""
+    identity = [[1.0, 0.0], [0.0, 1.0]]
+    rates = [3.0, 2.0]
+    guess = [1.0, 1.0]
+    covariance = [[1.0, 0.5], [0.5, 1.0]]
+    fit = unfold.staysl_correlated(identity, rates, covariance, guess, damping=1.0)
+    diagonal = unfold.staysl_correlated(identity, rates, identity, guess, damping=1.0)
+    sigma = unfold.staysl(identity, rates, [1.0, 1.0], guess, damping=1.0)
+    errors = [
+        abs(actual - expected)
+        for actual, expected in zip(fit["spectrum"], [29 / 15, 19 / 15], strict=True)
+    ]
+    errors.extend(
+        abs(actual - expected)
+        for actual, expected in zip(diagonal["spectrum"], sigma["spectrum"], strict=True)
+    )
+    errors.extend(
+        [abs(fit["measurement_chi2"] - 268 / 225), abs(fit["damping_penalty"] - 212 / 225)]
+    )
+    error = max(errors)
+    rows = [
+        [
+            "U24 interior fit and diagonal equivalence",
+            fmt(error),
+            "< 1e-12",
+            _check(error < 1e-12, "U24 interior and diagonal fits"),
+        ]
+    ]
+
+    response = [[0.0, 3.0, 3.0], [0.0, 1.0, 0.0], [3.0, 2.0, 0.0]]
+    rates = [6.0, 4.0, 1.0]
+    guess = [1.0, 1.0, 1.0]
+    covariance = [[1.0, 0.75, 0.0], [0.75, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    fit = unfold.staysl_correlated(response, rates, covariance, guess, damping=1.0)
+    permutation = [2, 0, 1]
+    scale = [1e-60, 1e60, 3.0]
+    permuted = unfold.staysl_correlated(
+        [[scale[i] * value for value in response[i]] for i in permutation],
+        [scale[i] * rates[i] for i in permutation],
+        [[scale[i] * covariance[i][j] * scale[j] for j in permutation] for i in permutation],
+        guess,
+        damping=1.0,
+    )
+    error = max(
+        abs(result - expected)
+        for spectrum in (fit["spectrum"], permuted["spectrum"])
+        for result, expected in zip(spectrum, [0.0, 151 / 141, 11 / 47], strict=True)
+    )
+    ok = error < 1e-12 and all(
+        out["spectrum"][0] == 0.0 and out["optimality"] <= out["tolerance"]
+        for out in (fit, permuted)
+    )
+    rows.append(
+        ["U25 bounded optimum and rescaling", fmt(error), "< 1e-12", _check(ok, "U25 bound")]
+    )
+    failed = []
+    for invalid, match in [
+        ([[1.0, 0.0], [0.0]], "square matrix"),
+        ([[1.0, 0.1], [0.9, 1.0]], "symmetric"),
+        ([[1.0, 1.0], [1.0, 1.0]], "positive definite"),
+        ([[1.0, 1 - 1e-13], [1 - 1e-13, 1.0]], "ill-conditioned"),
+    ]:
+        try:
+            unfold.staysl_correlated(identity, [3.0, 2.0], invalid, [1.0, 1.0])
+        except ValueError as exc:
+            if match in str(exc):
+                continue
+        failed.append(match)
+    try:
+        unfold.staysl_correlated(response, rates, covariance, guess, damping=1.0, max_iterations=1)
+    except ValueError as exc:
+        if "did not converge" not in str(exc):
+            failed.append("iteration cap")
+    else:
+        failed.append("iteration cap")
+    rows.append(
+        [
+            "U26 covariance and iteration errors",
+            ", ".join(failed) or "-",
+            "5 cases",
+            _check(not failed, "U26 inputs and iteration cap"),
+        ]
+    )
+    return rows, [
+        "U24 compares the interior solution and both objective terms to closed forms. "
+        "U25 verifies a bounded optimum under detector permutation and changes of rate units."
+    ]
+
+
+def scipy_bounded_gate() -> tuple[list[list[str]], list[str]]:
+    """U27 independent bounded least-squares reference on synthetic data."""
+    try:
+        import numpy as np
+        import scipy
+        from scipy.linalg import cholesky, solve_triangular
+        from scipy.optimize import lsq_linear
+    except ModuleNotFoundError as exc:
+        if exc.name not in ("numpy", "scipy"):
+            raise
+        message = f"U27 skipped because {exc.name} is unavailable"
+        print(f"SKIP: {message}", file=sys.stderr)
+        return [["U27 SciPy bounded comparison", "-", "-", "SKIP"]], [f"{message}."]
+
+    rng = np.random.default_rng(702)
+    max_spectrum_error = max_objective_error = 0.0
+    interior = bound = 0
+    references_converged = True
+    for _ in range(40):
+        detectors, groups = rng.integers(2, 8, size=2)
+        correlations = rng.normal(size=(detectors, detectors))
+        covariance = correlations @ correlations.T + 0.15 * np.eye(detectors)
+        response = rng.uniform(0.0, 4.0, size=(detectors, groups))
+        rates = rng.uniform(0.0, 6.0, size=detectors)
+        guess = rng.uniform(0.1, 3.0, size=groups)
+        damping = 10.0 ** rng.uniform(-3.0, 1.0)
+        factor = cholesky(covariance, lower=True)
+        design = np.vstack(
+            (solve_triangular(factor, response, lower=True), math.sqrt(damping) * np.eye(groups))
+        )
+        target = np.r_[solve_triangular(factor, rates, lower=True), math.sqrt(damping) * guess]
+        reference = lsq_linear(design, target, bounds=(0.0, np.inf), method="bvls", tol=1e-12)
+        references_converged &= reference.success
+        fit = unfold.staysl_correlated(
+            response.tolist(), rates.tolist(), covariance.tolist(), guess.tolist(), damping=damping
+        )
+        if any(value == 0.0 for value in fit["spectrum"]):
+            bound += 1
+        else:
+            interior += 1
+        spectrum_error = max(abs(np.asarray(fit["spectrum"]) - reference.x))
+        reference_objective = 2.0 * reference.cost
+        objective_error = abs(
+            fit["measurement_chi2"] + fit["damping_penalty"] - reference_objective
+        )
+        max_spectrum_error = max(max_spectrum_error, spectrum_error)
+        max_objective_error = max(
+            max_objective_error, objective_error / max(1.0, reference_objective)
+        )
+    rows = [
+        [
+            "U27 SciPy spectrum max abs error",
+            fmt(max_spectrum_error),
+            "< 1e-8",
+            _check(max_spectrum_error < 1e-8, "U27 spectrum"),
+        ],
+        [
+            "U27 SciPy objective scaled abs error",
+            fmt(max_objective_error),
+            "< 1e-10",
+            _check(max_objective_error < 1e-10, "U27 objective"),
+        ],
+        [
+            "U27 converged references and active-set coverage",
+            f"{interior} interior, {bound} on a bound",
+            "both kinds",
+            _check(references_converged and interior > 0 and bound > 0, "U27 case coverage"),
+        ],
+    ]
+    return rows, [
+        f"U27 uses SciPy {scipy.__version__} BVLS with its own Cholesky factorization "
+        "on 40 seeded synthetic cases."
+    ]
+
+
 def main() -> int:
     report = Report("unfold", "Neutron spectrum unfolding (`unfold_vs_analytic.py`)")
     report.prose(
-        "Five-part oracle for `nucleide.unfold`, all parts always run: analytic "
+        "Validation for `nucleide.unfold`: analytic "
         "gates U1-U4 on synthetic forward folds (fold identity, exact fixed "
         "point, determined and underdetermined round-trips at pinned "
         "tolerances), IRDFF-II analytical benchmark-shape probes U5 "
         "(Trkov et al. 2020, published facts with citation), STAYSL-class "
         "least-squares gates U9-U13, GRAVEL chi-square-weighted gates "
-        "U14-U18, and MAXED maximum-entropy gates U19-U23. No external "
-        "unfolding oracle exists, so no container dependency is added and no "
-        "check can SKIP."
+        "U14-U18, MAXED maximum-entropy gates U19-U23, and correlated "
+        "STAYSL-class gates U24-U26. The U27 numerical comparison runs when "
+        "SciPy is installed."
     )
     rows1, notes1 = analytic_gates()
     for note in notes1:
@@ -866,6 +1033,11 @@ def main() -> int:
     for note in notes6:
         report.prose(note)
     report.table(["Gate", "Value", "Tol", "Status"], rows6)
+    for gates in (correlated_staysl_gates, scipy_bounded_gate):
+        rows, notes = gates()
+        for note in notes:
+            report.prose(note)
+        report.table(["Gate", "Value", "Tol", "Status"], rows)
     report.emit()
 
     if FAILURES:

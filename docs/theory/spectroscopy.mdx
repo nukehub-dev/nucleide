@@ -1,9 +1,15 @@
 ---
 title: Gamma-Ray Spectroscopy
-description: Spectrum smoothing, peak counting, energy/efficiency calibration, X-ray line algebra, SDEF decay-source cards, and the SPE readers behind Nucleide's spectroscopy toolkit.
+description: Spectrum smoothing, peak counting, energy and efficiency calibration, gamma-line activity, X-ray lines, SDEF cards, and SPE readers.
 sidebar:
   order: 6
 references:
+  - id: iaea-tecdoc-1401
+    title: Quantifying uncertainty in nuclear analytical measurements
+    url: https://pub.iaea.org/MTCD/Publications/PDF/te_1401_web.pdf
+    source: IAEA-TECDOC-1401
+    date: "2004"
+    type: techreport
   - id: nucleide-spectroscopy
     title: Nucleide spectroscopy implementation
     url: https://github.com/nukehub-dev/nucleide/tree/main/crates/spectroscopy
@@ -22,7 +28,8 @@ correct for detector efficiency, and account for X-ray lines. Nucleide
 implements exactly the upstream analysis subset (E1–E8) in
 `crates/spectroscopy`, with every caller-side constant kept explicit, plus the
 E9 decay-source composition: caller-supplied decay lines normalized into
-emission probabilities and rendered as an MCNP SDEF card.
+emission probabilities and rendered as an MCNP SDEF card. E10 estimates
+activity from a known gamma line.
 
 ## Mathematical details
 
@@ -195,10 +202,22 @@ Counts `[2, 5, 1, 6, 3, 8, 4]`, peak window `c1 = 2`, `c2 = 5`:
   (distribution flags, defaults, renormalization) are the caller's
   responsibility against the MCNP manual.
 
+## E10 — Activity from a known gamma line
+
+For net peak area `N` with counting standard uncertainty `u_N`, live
+time `t` in seconds, absolute full-energy peak efficiency `eff`, and line
+emission probability `p`, compute `A = N / (t * eff * p)` and
+`u_A = u_N / (t * eff * p)`. Both outputs are in Bq. The live-time
+average is a signed estimate and the exposure factors are held fixed.
+The caller supplies corrected peak areas and efficiency for the measurement
+geometry. The peak-area conversion is the single-line part of the activity
+concentration measurement model in IAEA-TECDOC-1401, section
+1.1.2.4<Citation id="iaea-tecdoc-1401" />.
+
 ## Related work beyond Nucleide
 
-Peak search, peak fitting, activity calculations, and plotting all sit
-outside this toolkit: none exist in the upstream analysis subset, and
+Peak search, peak fitting, and plotting sit outside this toolkit.
+Detection limits and multiline activity estimates remain caller-side, and
 plotting stays user-side (the upstream plot helpers are an isolated GUI
 module). The E7-fit efficiency-coefficient fit is not peak fitting — it fits
 the detector-response curve to caller calibration points. Decay-spectrum

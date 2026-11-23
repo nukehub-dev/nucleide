@@ -620,13 +620,14 @@ Black-box parity probe between the `nucleide.tritium` 1D diffusion-trapping kern
 (Apache-2.0, `festim==2.1`, v2.x API), driven in the probe-only digest-pinned DOLFINx image (docker;
 never the main validation container, never the Rust workspace). Progression F1 trap-free Dirichlet-
 Dirichlet, F2 one McNabb-Foster trap, F3 Sieverts ends, F4 two-layer stack; F5 independently refined
-trap-free recombination outlet. Always-run legs VV Val-1da (analytic permeation) and M1
-(manufactured-solution order) gate the Nucleide side everywhere; every FESTIM leg SKIPs loudly with
-its reason outside the probe image.
+trap-free recombination outlet; F6 one McNabb-Foster trap combined with the same recombination
+outlet, with mobile/trapped inventories and a mobile-plus-trapped mass balance. Always-run legs VV
+Val-1da (analytic permeation) and M1 (manufactured-solution order) gate the Nucleide side
+everywhere; every FESTIM leg SKIPs loudly with its reason outside the probe image.
 
-Loaded Nucleide compiled version 0.17.0; extension `/dolfinx-env/lib/python3.12/site-
+Loaded Nucleide compiled version 0.19.0; extension `/dolfinx-env/lib/python3.12/site-
 packages/nucleide/_internal.abi3.so`; SHA-256
-`6f108cc47492f3eaf89ffa3553f87578647548c4000535f50754cc8370bd7f12`. An installed wheel takes
+`1387ad0d21754810b233552541090c73d83ed6c89bd92cc80df73438b1d950ff`. An installed wheel takes
 precedence over a checkout extension.
 
 | Gate                        | Value        | Expected | Status |
@@ -766,12 +767,17 @@ F5 startup resolution: each solver starts at dt=1e-6 s, grows by at most 1.02 pe
 specified dt cap, and exports the complete actual history. This resolves the Dirichlet initial layer
 for the inlet-flux mass balance; temporal refinement varies the subsequent cap independently. Flux
 quadrature is refined separately by stride 4→2→1 on each computed history. Successful reduced runs
-are cached under validation/.cache/f5-runs with source/extension hashes, model inputs and package
-versions; acceptance verdicts are recomputed from those numbers.
+may be cached under validation/.cache/f5-runs only with actual runner image identity, native-library
+hashes, environment settings, package versions and source/extension/model fingerprints. Unverified
+environments calculate fresh results; acceptance verdicts are always recomputed from the numbers.
 
 F5 required image:
 dolfinx/dolfinx@sha256:2ae4bfbc0d9077268880faf04c72750528bee986c94ab223a2c159969bd56fa8; Python
 3.12.3; festim=2.1, fenics-dolfinx=0.11.0.post0, scifem=0.27.0, io4dolfinx=1.5.0, numpy=2.4.6
+
+F5 actual runner image ID: sha256:2ae4bfbc0d9077268880faf04c72750528bee986c94ab223a2c159969bd56fa8;
+runtime fingerprint SHA-256 d12ae2f899ac0d79f6e6275e34f28064156d791b5151e75261ca25833d7a6d81. The
+environment is held fixed during this probe.
 
 F5 Nucleide balance grid: 40544 exported times, [0, 5000] s, dt range [1e-06, 0.125] s; inventory
 change 8.090169941615e-04 mol/m², net integrated inlet minus outlet 8.090169941798e-04 mol/m²,
@@ -786,6 +792,93 @@ absolute throughput 4.287056342836e-03 mol/m². Requested end 4999.9999999999991
 5000.218060054648 s; endpoint roundoff allowance 7.275958e-12 s. Balance uses the exported initial
 inventory (including the FEM boundary trace) and actual exported time grid, not an assumed zero
 boundary-gradient sample.
+
+| Trapped-recombination gate                           | Value                                      | Gate                                | Status |
+|------------------------------------------------------|--------------------------------------------|-------------------------------------|--------|
+| F6 Nucleide space 50→100 J(t)/mobile inventory       | 3.700800e-03 / 4.241156e-04                | < 1.000e-02 / 6.667e-03             | PASS   |
+| F6 Nucleide space 50→100 trapped inventory/profiles  | 2.756123e-04 / 2.748458e-04 / 1.324429e-04 | < 6.667e-03 / 6.667e-03 / 6.667e-03 | PASS   |
+| F6 Nucleide space 100→200 J(t)/mobile inventory      | 9.256203e-04 / 1.059659e-04                | < 1.000e-02 / 6.667e-03             | PASS   |
+| F6 Nucleide space 100→200 trapped inventory/profiles | 6.887457e-05 / 2.811285e-05 / 3.212792e-05 | < 6.667e-03 / 6.667e-03 / 6.667e-03 | PASS   |
+| F6 Nucleide time .5→.25 J(t)/mobile inventory        | 2.128872e-05 / 1.105046e-06                | < 1.000e-02 / 6.667e-03             | PASS   |
+| F6 Nucleide time .5→.25 trapped inventory/profiles   | 4.350647e-06 / 2.517526e-06 / 5.115661e-06 | < 6.667e-03 / 6.667e-03 / 6.667e-03 | PASS   |
+| F6 Nucleide time .25→.125 J(t)/mobile inventory      | 8.603074e-06 / 5.844992e-07                | < 1.000e-02 / 6.667e-03             | PASS   |
+| F6 Nucleide time .25→.125 trapped inventory/profiles | 2.078925e-06 / 1.422638e-06 / 2.540140e-06 | < 6.667e-03 / 6.667e-03 / 6.667e-03 | PASS   |
+| F6 Nucleide late flux change (0.9 tend→tend)         | 2.831923e-05                               | < 0.00666667                        | PASS   |
+| F6 Nucleide mobile+trapped inventory balance         | 6.299915e-10                               | < 0.001                             | PASS   |
+| F6 Nucleide flux quadrature stride 1→2               | 2.428154e-06                               | < 0.000333333                       | PASS   |
+| F6 Nucleide flux quadrature stride 2→4               | 9.713220e-06                               | < 0.000333333                       | PASS   |
+| F6 FESTIM space 50→100 J(t)/mobile inventory         | 8.530749e-03 / 1.408996e-08                | < 1.000e-02 / 6.667e-03             | PASS   |
+| F6 FESTIM space 50→100 trapped inventory/profiles    | 9.757868e-09 / 7.322196e-05 / 3.934899e-05 | < 6.667e-03 / 6.667e-03 / 6.667e-03 | PASS   |
+| F6 FESTIM space 100→200 J(t)/mobile inventory        | 1.064975e-03 / 8.809562e-10                | < 1.000e-02 / 6.667e-03             | PASS   |
+| F6 FESTIM space 100→200 trapped inventory/profiles   | 6.100765e-10 / 2.012687e-09 / 7.234640e-08 | < 6.667e-03 / 6.667e-03 / 6.667e-03 | PASS   |
+| F6 FESTIM time .5→.25 J(t)/mobile inventory          | 6.988432e-03 / 5.371498e-04                | < 1.000e-02 / 6.667e-03             | PASS   |
+| F6 FESTIM time .5→.25 trapped inventory/profiles     | 6.763543e-04 / 2.663049e-04 / 2.343014e-04 | < 6.667e-03 / 6.667e-03 / 6.667e-03 | PASS   |
+| F6 FESTIM time .25→.125 J(t)/mobile inventory        | 3.796871e-03 / 2.526270e-04                | < 1.000e-02 / 6.667e-03             | PASS   |
+| F6 FESTIM time .25→.125 trapped inventory/profiles   | 3.284335e-04 / 1.318366e-04 / 1.177747e-04 | < 6.667e-03 / 6.667e-03 / 6.667e-03 | PASS   |
+| F6 FESTIM late flux change (0.9 tend→tend)           | 2.835646e-05                               | < 0.00666667                        | PASS   |
+| F6 FESTIM mobile+trapped inventory balance           | 1.397978e-04                               | < 0.001                             | PASS   |
+| F6 FESTIM flux quadrature stride 1→2                 | 2.434893e-06                               | < 0.000333333                       | PASS   |
+| F6 FESTIM flux quadrature stride 2→4                 | 9.649926e-06                               | < 0.000333333                       | PASS   |
+| F6 cross-code J(t), cells=50, dt=0.25                | 9.728762e-03                               | < 0.03                              | PASS   |
+| F6 cross-code J(t), cells=100, dt=0.25               | 5.851837e-03                               | < 0.03                              | PASS   |
+| F6 cross-code J(t), cells=200, dt=0.25               | 7.528264e-03                               | < 0.03                              | PASS   |
+| F6 cross-code J(t), cells=200, dt=0.5                | 1.439497e-02                               | < 0.03                              | PASS   |
+| F6 cross-code J(t), cells=200, dt=0.125              | 3.768548e-03                               | < 0.03                              | PASS   |
+| F6 cross-code mobile inventory history               | 2.766669e-04                               | < 0.02                              | PASS   |
+| F6 cross-code trapped inventory history              | 3.452086e-04                               | < 0.02                              | PASS   |
+| F6 cross-code mobile profile history                 | 1.204760e-04                               | < 0.02                              | PASS   |
+| F6 cross-code trapped profile history                | 1.094741e-04                               | < 0.02                              | PASS   |
+| F6 FESTIM two-reactant reaction law J=Kr c_face²     | 6.256108e-09                               | < 0.02                              | PASS   |
+| F6 FESTIM trap Langmuir equilibrium                  | 4.067388e-09                               | < 0.02                              | PASS   |
+| F6 Nucleide steady scalar flux                       | 8.870244e-15                               | < 0.02                              | PASS   |
+| F6 Nucleide steady mobile profile                    | 9.436896e-15                               | < 0.02                              | PASS   |
+| F6 Nucleide final vs steady mobile profile           | 3.623512e-06                               | < 0.02                              | PASS   |
+| F6 Nucleide final vs steady trapped profile          | 1.269247e-06                               | < 0.02                              | PASS   |
+
+F6 single-layer trapped recombination: L=1e-3 m, D=1e-9 m²/s, C0=1 mol/m³, Kr=1e-6 m⁴/(mol s), one
+trap k0=0.5 m³/(mol s), p0=0.5 s⁻¹, N=2 mol/m³, scalar 500 K, zero Arrhenius energies. Mobile and
+trapped initial loads are zero; outlet law J=Kr c². The Oriani effective lag L²/(6D_eff)=500 s sets
+the output fractions {0.2,0.5,1,2,5,10} (100–5000 s); no closed-form time-lag gate exists for traps
+plus recombination. Independent space levels 50/100/200 cells at dt=0.25 s and time caps
+0.5/0.25/0.125 s at 200 cells; each side self-converges to <1/3 of its parity gate first.
+
+F6 unit conversion: FESTIM receives atomic concentrations/fluxes/inventories (multiply molar values
+by exact SI NA=6.02214076e23 mol⁻¹). The second-order trap constant is divided by NA
+(k0_atom=k0_mol/NA), p0 is unchanged and N_atom=NA\*N_mol, so N\*K and the Langmuir load are
+invariant. The surface reaction uses two identical reactants: FESTIM applies two partial fluxes, so
+k_r0=Kr/(2 NA) gives the molar flux Kr\*c_mol². The exported FESTIM face concentration checks that
+factor of two; the exported trapped profile checks the distinct-reactant Langmuir equilibrium.
+FESTIM uses quadratic elements, atol=NA\*1e-14 and rtol=1e-10; Nucleide uses the landed CN kernel
+with rtol=1e-10/atol=1e-14 and the same hand-derived initial Dirichlet-layer flux as F5.
+
+F6 gates (predeclared from the refinement evidence, not tuned to a desired parity): J(t) 3% with a
+1e-3\*J_ss denominator floor, mobile and trapped inventory histories 2%, mobile and trapped profile
+histories 2% (normalized by C0 and N), FESTIM reaction-law and Langmuir checks 2%, late-flux change
+2%/3, mobile-plus-trapped inventory balance 1e-3 relative with independent stride-2/4 flux
+quadrature below 1e-3/3. All refinement changes must be below one third of the corresponding gate;
+otherwise F6 is INCONCLUSIVE and the script exits nonzero. Requested output times are sampled only
+between exported FESTIM brackets; a missing bracket or a short history fails instead of
+extrapolating.
+
+F6 required image:
+dolfinx/dolfinx@sha256:2ae4bfbc0d9077268880faf04c72750528bee986c94ab223a2c159969bd56fa8; Python
+3.12.3; festim=2.1, fenics-dolfinx=0.11.0.post0, scifem=0.27.0, io4dolfinx=1.5.0, numpy=2.4.6
+
+F6 actual runner image ID: sha256:2ae4bfbc0d9077268880faf04c72750528bee986c94ab223a2c159969bd56fa8;
+runtime fingerprint SHA-256 d12ae2f899ac0d79f6e6275e34f28064156d791b5151e75261ca25833d7a6d81. The
+environment is held fixed during this probe.
+
+F6 Nucleide balance grid: 40544 exported times, [0, 5000] s, dt range [1e-06, 0.125] s;
+mobile+trapped inventory change 1.699304916871e-03 mol/m², net integrated inlet minus outlet
+1.699304919897e-03 mol/m², absolute throughput 4.803585653850e-03 mol/m². Requested end
+4999.9999999999991 s; actual end 4999.9999999999991 s; endpoint roundoff allowance 7.275958e-12 s.
+Balance uses the actual exported initial inventories and time grid.
+
+F6 FESTIM balance grid: 40588 exported times, [0, 5000.23] s, dt range [1e-06, 0.125] s;
+mobile+trapped inventory change 1.698714821999e-03 mol/m², net integrated inlet minus outlet
+1.698043439305e-03 mol/m², absolute throughput 4.802527004166e-03 mol/m². Requested end
+4999.9999999999991 s; actual end 5000.2293259560638 s; endpoint roundoff allowance 7.275958e-12 s.
+Balance uses the actual exported initial inventories and time grid.
 
 ## 10. Equilibrium data (`equilib_vs_desc.py`)
 
@@ -898,12 +991,12 @@ pypact overlap: 7 nuclide-steps, worst rel err 0.000e+00.
 
 ## 12. Neutron spectrum unfolding (`unfold_vs_analytic.py`)
 
-Five-part oracle for `nucleide.unfold`, all parts always run: analytic gates U1-U4 on synthetic
-forward folds (fold identity, exact fixed point, determined and underdetermined round-trips at
-pinned tolerances), IRDFF-II analytical benchmark-shape probes U5 (Trkov et al. 2020, published
-facts with citation), STAYSL-class least-squares gates U9-U13, GRAVEL chi-square-weighted gates
-U14-U18, and MAXED maximum-entropy gates U19-U23. No external unfolding oracle exists, so no
-container dependency is added and no check can SKIP.
+Validation for `nucleide.unfold`: analytic gates U1-U4 on synthetic forward folds (fold identity,
+exact fixed point, determined and underdetermined round-trips at pinned tolerances), IRDFF-II
+analytical benchmark-shape probes U5 (Trkov et al. 2020, published facts with citation), STAYSL-
+class least-squares gates U9-U13, GRAVEL chi-square-weighted gates U14-U18, MAXED maximum-entropy
+gates U19-U23, and correlated STAYSL-class gates U24-U26. The U27 numerical comparison runs when
+SciPy is installed.
 
 U2: an exact guess is a fixed point (one confirming no-op adjustment).
 
@@ -1034,6 +1127,23 @@ targets, and unreachable rates name their cause.
 | U22 SAND-II fp is a MAXED fp   | 0.000000e+00 | < 1e-5       | PASS   |
 | U22 MAXED fp is a SAND-II fp   | 1.789810e-16 | < 1e-5       | PASS   |
 | U23 named contract errors      | -            | 7 cases      | PASS   |
+
+U24 compares the interior solution and both objective terms to closed forms. U25 verifies a bounded
+optimum under detector permutation and changes of rate units.
+
+| Gate                                      | Value        | Tol     | Status |
+|-------------------------------------------|--------------|---------|--------|
+| U24 interior fit and diagonal equivalence | 8.881784e-16 | < 1e-12 | PASS   |
+| U25 bounded optimum and rescaling         | 6.661338e-16 | < 1e-12 | PASS   |
+| U26 covariance and iteration errors       | -            | 5 cases | PASS   |
+
+U27 uses SciPy 1.18.1 BVLS with its own Cholesky factorization on 40 seeded synthetic cases.
+
+| Gate                                             | Value                     | Tol        | Status |
+|--------------------------------------------------|---------------------------|------------|--------|
+| U27 SciPy spectrum max abs error                 | 4.124479e-14              | < 1e-8     | PASS   |
+| U27 SciPy objective scaled abs error             | 2.925456e-15              | < 1e-10    | PASS   |
+| U27 converged references and active-set coverage | 9 interior, 31 on a bound | both kinds | PASS   |
 
 ## 13. Spectroscopy (`spectroscopy_vs_pyne.py`)
 

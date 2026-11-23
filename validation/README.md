@@ -188,14 +188,26 @@ Fortran order (`openmc_sources[i + nx*j + nx*ny*k]` for the bridge's
 source distribution with a fixed seed and a predeclared tolerance. A second
 child runs a vacuum sphere with a centered point source at strengths 1 and 10
 to confirm that the track-length flux tally is volume-integrated and scaled by
-the total source strength, not volume-averaged. The probe writes a placeholder
+the total source strength, not volume-averaged. It also reads a
+rectilinear statepoint with two energy intervals and two filter orders.
+It compares the extracted bins with OpenMC, checks geometric volumes and
+CSV readback, and calls the installed Nucleide normalization path.
+[OpenMC 0.16 rectilinear mesh](https://docs.openmc.org/en/v0.16.0/pythonapi/generated/openmc.RectilinearMesh.html)
+[Energy filter implementation](https://raw.githubusercontent.com/openmc-dev/openmc/v0.16.0/openmc/filter.py)
+[Tally reshaping implementation](https://raw.githubusercontent.com/openmc-dev/openmc/v0.16.0/openmc/tallies.py)
+The probe writes a placeholder
 `cross_sections.xml` only to let OpenMC initialize; it reads no evaluated data
 and runs no interacting transport.
 
+Build a current Nucleide wheel before running the probe.
+
 ```bash
-docker run --rm --cpus=2 --memory=6g --memory-swap=6g \
-    -v "$PWD/validation:/work:ro" -w /work \
-    localhost/nucleide-validation:latest python openmc_handoff_probe.py
+docker run --rm --cpus=2 --memory=6g --memory-swap=6g --pids-limit=128 \
+    -v "$PWD:/work:ro" -w /work/validation \
+    localhost/nucleide-validation:latest bash -ec '
+    pip install --quiet --no-deps /work/target/container-wheels/nucleide-*-manylinux*x86_64.whl
+    python openmc_handoff_probe.py
+'
 ```
 
 It emits one JSON document and exits nonzero if any check fails.
@@ -448,6 +460,8 @@ hashes, package versions, source/extension hashes and all F6 parameters.
 A full F6 report is valid only after the five-level probe runs in that
 pinned image. Running the probe without FESTIM prints a named SKIP and leaves
 the committed `validation/results/tritium_festim.json` untouched.
+The full pinned FESTIM 2.1 run passes all F6 checks. See the generated report
+for the tested artifact, environment, and per-level errors. [FESTIM results](results.md#9-tritium-1d-kernel-vs-festim-21-probe-tritium_vs_festimpy)
 
 ## Parser oracle notes
 

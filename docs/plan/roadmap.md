@@ -14,6 +14,12 @@ clippy, workspace tests, maturin build, pytest, ruff, mypy) run on every PR.
 
 ## Recently landed
 
+- Mixed-voxel photon-source assembly from measured zone overlap volumes,
+  with conservation diagnostics and the existing OpenMC source export.
+- OpenMC rectilinear statepoint tallies with exact Cartesian faces and
+  geometric voxel volumes for physical-flux normalization.
+- Optional measurement covariance for STAYSL-class unfolding and
+  caller-supplied gamma-line activity estimates with counting uncertainty.
 - Activation-to-transport handoff: explicit OpenMC tally normalization with
   declaration-checked raw states and v2 CSV metadata, a regular-mesh photon
   source contract with joint voxel/group probabilities, sparse group

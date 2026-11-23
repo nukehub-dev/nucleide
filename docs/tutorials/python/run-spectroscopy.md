@@ -5,7 +5,8 @@ sidebar:
 ---
 
 Nucleide spectroscopy smooths spectra, counts peaks, calibrates energy and
-efficiency, evaluates X-ray lines, and reads `.spe` files with the
+efficiency, estimates activity from a known gamma line, evaluates X-ray
+lines, and reads `.spe` files with the
 `nucleide-spectroscopy` crate. This tutorial covers the Python API; the
 implementation lives in `crates/spectroscopy`. For the equations and the
 pinned file-format quirks, see the
@@ -49,9 +50,32 @@ eff = detector_efficiency(1.0, [-2.81861504261204, -0.727352820018942], 1)  # E7
 print(ebin, eff)
 ```
 
-Efficiency coefficients are caller-supplied (there is no fitting routine);
-`eff_fit` selects the `ln E` (1) or `1/E` (2) expansion. FWHM coefficients
-are parsed from `.spe` headers but never evaluated.
+Supply efficiency coefficients directly or fit them with `fit_efficiency`.
+The `eff_fit` argument selects the `ln E` (1) or `1/E` (2) expansion.
+The `.spe` readers return the FWHM coefficients stored in the header.
+
+## Estimate activity from a known gamma line
+
+Use the background-subtracted full-energy peak area, its counting standard
+uncertainty, and the recorded live time. Supply the absolute full-energy
+peak efficiency for the same measurement geometry and the probability of
+that line per decay as fractions.
+
+```python
+from math import log
+
+from nucleide.spectroscopy import gamma_line_activity
+
+absolute_efficiency = detector_efficiency(1.0, [log(0.10)], 1)
+estimate = gamma_line_activity(120.0, 12.0, 60.0, absolute_efficiency, 0.50)
+assert abs(estimate.activity_bq - 40.0) < 1e-12
+assert abs(estimate.counting_uncertainty_bq - 4.0) < 1e-12
+```
+
+The calculation retains a negative peak area as a signed estimate.
+The reported uncertainty covers peak counting, with live time,
+efficiency and emission probability held fixed. Apply any required
+measurement corrections to the inputs.
 
 ## Evaluate X-ray lines
 
@@ -113,7 +137,7 @@ to probabilities (E9), and renders the MCNP point-source card (inline
 
 ## See also
 
-- [Gamma-ray spectroscopy theory](../../theory/spectroscopy.mdx) for E1–E9
+- [Gamma-ray spectroscopy theory](../../theory/spectroscopy.mdx) for E1–E10
   and the full quirk list.
 - [Run kinetics](run-kinetics.md) for the companion counting-era toolkit.
 - [Cross-code validation results](https://github.com/nukehub-dev/nucleide/blob/main/validation/results.md)

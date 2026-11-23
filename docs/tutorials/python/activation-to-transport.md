@@ -83,6 +83,36 @@ assert rate_scaled["flux"] == [[2.0, 4.5]]
 A cell tally uses one volume. For a mesh tally, pass one positive volume per
 voxel in the bridge's C-order (x slowest, then y, then z).
 
+### Normalize a rectilinear tally with unequal cell sizes
+
+`read_statepoint` returns the exact Cartesian faces for both regular and
+rectilinear three-dimensional meshes. `mesh_voxel_volumes_cm3` calculates
+the full geometric volume of each cell. Pass independent volumes when a
+different volume convention applies to the raw tally.
+
+```python
+rectilinear = {
+    **raw,
+    "kind": "mesh",
+    "n_voxels": 2,
+    "n_groups": 1,
+    "energy_bounds_mev": [0.0, 1.0],
+    "flux": [[4.0], [12.0]],
+    "rel_err": [[0.05], [0.10]],
+    "mesh_shape": [2, 1, 1],
+    "mesh_bounds": {"x": [0.0, 1.0, 3.0], "y": [0.0, 1.0], "z": [0.0, 1.0]},
+}
+volumes = omc.mesh_voxel_volumes_cm3(rectilinear)
+rectilinear_flux = omc.normalize_flux(
+    rectilinear, 10.0, volumes, input_normalization="per-source-volume-integrated"
+)
+assert volumes == [1.0, 2.0]
+assert rectilinear_flux["flux"] == [[40.0], [60.0]]
+```
+
+CSV v2 retains these exact faces. Replace the synthetic dict with
+`read_statepoint(path, tally_id)` to run the same steps on an OpenMC file.
+
 ## 2. Keep the metadata through a CSV roundtrip
 
 Legacy `nucleide-openmc-tally-v1` files carry no normalization state and read
@@ -134,6 +164,49 @@ from independent spatial and energy marginals:
 probabilities = r2s.source_probabilities(source)
 assert probabilities == [[100.0 / 420.0, 0.0, 20.0 / 420.0], [0.0, 300.0 / 420.0, 0.0]]
 ```
+
+### Assemble spectra when a voxel spans activation zones
+
+Supply each zone's spectrum and total volume at the selected cooling time,
+along with the measured voxel–zone intersection volumes. The source below
+shares zone A across two voxels and combines it with zone B in the first
+voxel. All zones use the same group edges.
+
+```python
+edges = [0.0, 1.0e6, 2.0e6]
+zones: list[r2s.MixedVoxelZoneSpectrum] = [
+    {
+        "volume_cm3": 2.0,
+        "edges_ev": edges,
+        "cooling_s": 3600.0,
+        "strengths_photons_per_s": [40.0, 0.0],
+    },
+    {
+        "volume_cm3": 1.0,
+        "edges_ev": edges,
+        "cooling_s": 3600.0,
+        "strengths_photons_per_s": [0.0, 60.0],
+    },
+]
+mixed = r2s.mixed_voxel_photon_source(
+    mesh_shape=[2, 1, 1],
+    lower_left_cm=[0.0, 0.0, 0.0],
+    upper_right_cm=[4.0, 1.0, 1.0],
+    voxel_volumes_cm3=[2.0, 2.0],
+    edges_ev=edges,
+    cooling_s=3600.0,
+    zones=zones,
+    overlaps=[(0, 0, 0.5), (0, 1, 1.0), (1, 0, 1.5)],
+)
+assert mixed["strengths_photons_per_s"] == [[10.0, 60.0], [30.0, 0.0]]
+assert mixed["group_totals_photons_per_s"] == [40.0, 60.0]
+assert mixed["allocation"]["voxel_unassigned_volumes_cm3"] == [0.5, 0.5]
+```
+
+An overlap row contains the zero-based voxel and zone indices and their
+intersection volume in cm³. The allocation report includes zone coverage and
+group totals. When you pass `mixed` to the same OpenMC source exporter used
+below, it samples position uniformly over each full voxel.
 
 ## 4. Inspect validation and assumptions
 
@@ -258,6 +331,7 @@ tallies by that total strength, so a subsequent flux conversion declares a
 if omc.openmc_version() is not None:
     mesh_source = omc.mesh_source(source)
     assert mesh_source.strength == 420.0
+    assert omc.mesh_source(mixed).strength == 100.0
     with tempfile.TemporaryDirectory() as tmp:
         omc.write_mesh_source_xml(source, Path(tmp) / "settings.xml")
 ```

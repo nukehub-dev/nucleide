@@ -1,6 +1,6 @@
 """Gamma-ray spectroscopy and measurement (backed by the `nucleide-spectroscopy` crate)."""
 
-from typing import Any
+from typing import Any, NamedTuple
 
 from nucleide._internal import (
     spectroscopy_calc_bg,
@@ -8,6 +8,7 @@ from nucleide._internal import (
     spectroscopy_energy_bins,
     spectroscopy_fit_efficiency,
     spectroscopy_five_point_smooth,
+    spectroscopy_gamma_line_activity,
     spectroscopy_gross_count,
     spectroscopy_net_counts,
     spectroscopy_parse_dollar_spe,
@@ -30,6 +31,8 @@ __all__ = [
     "energy_bins",
     "detector_efficiency",
     "fit_efficiency",
+    "gamma_line_activity",
+    "GammaLineActivity",
     "xray_lines",
     "sdef_decay_source",
     "parse_dollar_spe",
@@ -91,6 +94,33 @@ def fit_efficiency(
     kernel. Returns ``order + 1`` coefficients for :func:`detector_efficiency`.
     """
     return spectroscopy_fit_efficiency(energies, effs, weights, order, eff_fit)
+
+
+class GammaLineActivity(NamedTuple):
+    """Signed activity estimate and its counting standard uncertainty in Bq."""
+
+    activity_bq: float
+    counting_uncertainty_bq: float
+
+
+def gamma_line_activity(
+    net_counts: float,
+    net_counts_uncertainty: float,
+    live_time_s: float,
+    peak_efficiency: float,
+    emission_probability: float,
+) -> GammaLineActivity:
+    """Estimate activity from a known, background-subtracted gamma peak.
+
+    Supply peak area and its standard uncertainty in counts, live time in
+    seconds, and absolute efficiency and emission probability as fractions.
+    The estimate can be negative. Its uncertainty covers the peak area only.
+    """
+    return GammaLineActivity(
+        *spectroscopy_gamma_line_activity(
+            net_counts, net_counts_uncertainty, live_time_s, peak_efficiency, emission_probability
+        )
+    )
 
 
 def xray_lines(

@@ -20,8 +20,8 @@ Python surface (`nucleide.unfold`, `unfold_*` in `_internal`),
 - Equation sets are pinned: SAND-II (S1–S3: forward fold, detector
   rate-share weights, multiplicative weighted-geometric-mean adjustment),
   STAYSL-class (T1–T4: fold, anchored-damped objective, increment form,
-  clip + active-set pin), GRAVEL (G1–G3: fold, chi-square weights,
-  adjustment), MAXED (M1–M6: fold, relative entropy, chi-square, exponential
+  clip + active-set pin, plus T5 for correlated weighting), GRAVEL (G1–G3:
+  fold, chi-square weights, adjustment), MAXED (M1–M6: fold, relative entropy, chi-square, exponential
   family, dual curvature, equilibrated damped dual step with trust-region
   cap). Derivations live in the crate-level rustdoc (one module doc
   per method); code comments cite equation labels, never external paths.
@@ -33,7 +33,7 @@ Python surface (`nucleide.unfold`, `unfold_*` in `_internal`),
   never touched), each in its own module with the same iterator +
   diagnostics shape; do not add a second method to any method module, and
   no fifth method is scoped after MAXED (the recorded order closes here).
-- Convergence contract: per-group relative change `|Δφ|/φ` strictly below
+- Iterator convergence: per-group relative change `|Δφ|/φ` strictly below
   an explicit tolerance, with an explicit iteration cap. Exhausting the
   cap is `Error::NotConverged` — a hard fail, never a silent partial
   spectrum (the `tritium` face-Newton precedent). MAXED additionally takes
@@ -57,18 +57,16 @@ Python surface (`nucleide.unfold`, `unfold_*` in `_internal`),
   the 1e-30 positivity floor, and a pinned-to-zero recovered group reads a
   spurious relative error of exactly 1.0 against that floor. Solve-free
   multiplicative methods (SAND-II, GRAVEL) probe the full range.
-- Convergence contract: per-group relative change `|Δφ|/φ` strictly below
-  an explicit tolerance, with an explicit iteration cap. Exhausting the
-  cap is `Error::NotConverged` — a hard fail, never a silent partial
-  spectrum (the `tritium` face-Newton precedent).
-- Degenerate-input policy (all named): zero response row against a nonzero
-  rate, or a rate whose support was pinned to zero mid-iteration, is
-  `Error::RatesUnreachable`; detectors folding to zero contribute no
-  weight; unconstrained groups keep the guess exactly (factor 1). Pinned
-  divergences: SAND-II zero measurements pin their groups to zero and only
-  the guess must be strictly positive (the update is multiplicative);
-  GRAVEL zero measurements carry zero weight and are not fitted; STAYSL-class
-  clips non-positive groups to zero and pins them (active set).
+- Correlated STAYSL-class weighting is an opt-in path for the same anchored
+  adjustment. It takes covariance in detector order and minimizes the
+  damped objective under nonnegativity. Whiten through `nucleide-linalg` with
+  a Cholesky factor of the unit-diagonal correlation matrix. Check symmetry
+  within `64 f64::EPSILON` on that scale and require a minimum-to-maximum
+  correlation eigenvalue ratio above `1e-12`. Bound groups can reenter the
+  free set. Convergence requires the scaled first-order optimality check
+  within tolerance, and cap exhaustion is `Error::NotConverged`. Zero
+  measurements and zero response rows enter the residual. Unseen groups
+  keep the guess exactly. Existing sigma-path semantics remain pinned.
 - Caller constants only: response matrix, measured rates, guess spectrum,
   and energy-group bounds are inputs. IRDFF and other IAEA-copyright
   libraries are never vendored; the IRDFF-II v1 pack ships as a runtime
@@ -93,17 +91,15 @@ Python surface (`nucleide.unfold`, `unfold_*` in `_internal`),
   (bindings thin, no logic).
 - Keep the layering: this crate depends on `nucleide-linalg` only among
   workspace crates; bindings depend on it, never the reverse.
-- No external unfolding oracle exists (PyNE/OpenMC ship no SAND-II/STAYSL/
-  GRAVEL counterpart), so the validation oracle is analytic-only: synthetic
-  round-trips plus IRDFF-II analytical shapes, always run, nothing can
-  SKIP.
+- Analytic gates always run on synthetic round-trips and IRDFF-II analytical
+  shapes. The correlated fit also compares against version-recorded SciPy
+  BVLS when installed and records a named SKIP when unavailable.
 
 ## Verification
 
 - `cargo test -p nucleide-unfold` (forward-fold identity, fixed point,
   determined/underdetermined round-trips, IRDFF-II shape recovery,
-  contract gates — U1-U23 in `validation/unfold_vs_analytic.py` mirror the
-  Rust gates).
+  and covariance contract gates mirrored in `validation/unfold_vs_analytic.py`).
 - `pytest tests/test_unfold.py` after `maturin develop`.
 - `validation/unfold_vs_analytic.py` runs inside `run_all.sh`
   (auto-discovered; report name `unfold` is registered in

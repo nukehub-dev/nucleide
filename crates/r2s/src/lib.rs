@@ -8,6 +8,7 @@
 //! links zones to spectra, and assembles photon sources.
 
 pub mod error;
+pub mod mixed_source;
 pub mod photon;
 pub mod snapshot;
 pub mod source;
@@ -16,6 +17,10 @@ pub mod tags;
 pub mod workflow;
 
 pub use error::{Error, Result};
+pub use mixed_source::{
+    mixed_voxel_photon_source, MixedVoxelAllocation, MixedVoxelPhotonSource,
+    MixedVoxelZoneSpectrum, MIXED_VOXEL_VOLUME_RELATIVE_TOLERANCE,
+};
 pub use photon::ZonePhotonSource;
 pub use snapshot::{
     deck_from_snapshot, snapshot_inventory, snapshot_workflow, SnapshotFluxDef, SnapshotInput,

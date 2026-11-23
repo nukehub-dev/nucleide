@@ -4326,21 +4326,16 @@ fn r2s_source_report_to_py(
     Ok(out.into_any().unbind())
 }
 
-fn r2s_photon_source_to_py(
-    py: Python<'_>,
+fn r2s_photon_source_to_py<'py>(
+    py: Python<'py>,
     source: &nucleide_r2s::PhotonSource,
-) -> PyResult<Py<PyAny>> {
+) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
     use pyo3::types::PyDict;
-    let draft = nucleide_r2s::PhotonSourceDraft::new(
-        source.mesh_shape,
-        source.lower_left_cm,
-        source.upper_right_cm,
-        source.voxel_volumes_cm3.clone(),
-        source.edges_ev.clone(),
-        source.cooling_s,
-        source.strengths_photons_per_s.clone(),
-    );
-    let report = nucleide_r2s::SourceReport::from_draft(&draft);
+    let report = source.validation_report();
+    let totals = report
+        .totals
+        .as_ref()
+        .ok_or_else(|| PyValueError::new_err("photon source totals are not computable"))?;
     let out = PyDict::new(py);
     out.set_item("mesh_shape", source.mesh_shape.to_vec())?;
     out.set_item("lower_left_cm", source.lower_left_cm.to_vec())?;
@@ -4351,26 +4346,17 @@ fn r2s_photon_source_to_py(
     out.set_item("strengths_photons_per_s", &source.strengths_photons_per_s)?;
     out.set_item("n_voxels", source.n_voxels())?;
     out.set_item("n_groups", source.n_groups())?;
-    out.set_item(
-        "total_photons_per_s",
-        source
-            .checked_total_photons_per_s()
-            .map_err(|e| PyValueError::new_err(e.to_string()))?,
-    )?;
+    out.set_item("total_photons_per_s", totals.total_photons_per_s)?;
     out.set_item(
         "voxel_totals_photons_per_s",
-        source
-            .voxel_totals()
-            .map_err(|e| PyValueError::new_err(e.to_string()))?,
+        &totals.voxel_totals_photons_per_s,
     )?;
     out.set_item(
         "group_totals_photons_per_s",
-        source
-            .group_totals()
-            .map_err(|e| PyValueError::new_err(e.to_string()))?,
+        &totals.group_totals_photons_per_s,
     )?;
     out.set_item("validation", r2s_source_report_to_py(py, &report)?)?;
-    Ok(out.into_any().unbind())
+    Ok(out)
 }
 
 /// Convert a raw tally into physical group flux (shared Rust kernel).
@@ -4435,7 +4421,87 @@ fn r2s_photon_source(
         strengths_photons_per_s,
     )
     .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    r2s_photon_source_to_py(py, &source)
+    Ok(r2s_photon_source_to_py(py, &source)?.into_any().unbind())
+}
+
+type R2sZoneSpectrum = (f64, Vec<f64>, f64, Vec<f64>);
+
+/// Assemble a regular-mesh photon source from zone spectra and intersection volumes.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn r2s_mixed_voxel_photon_source(
+    py: Python<'_>,
+    mesh_shape: Vec<usize>,
+    lower_left_cm: Vec<f64>,
+    upper_right_cm: Vec<f64>,
+    voxel_volumes_cm3: Vec<f64>,
+    edges_ev: Vec<f64>,
+    cooling_s: f64,
+    zones: Vec<R2sZoneSpectrum>,
+    overlaps: Vec<(usize, usize, f64)>,
+) -> PyResult<Py<PyAny>> {
+    let zones: Vec<_> = zones
+        .iter()
+        .map(
+            |(volume_cm3, edges_ev, cooling_s, strengths_photons_per_s)| {
+                nucleide_r2s::MixedVoxelZoneSpectrum {
+                    volume_cm3: *volume_cm3,
+                    edges_ev,
+                    cooling_s: *cooling_s,
+                    strengths_photons_per_s,
+                }
+            },
+        )
+        .collect();
+    let result = nucleide_r2s::mixed_voxel_photon_source(
+        r2s_fixed3_usize(mesh_shape, "mesh_shape")?,
+        r2s_fixed3_f64(lower_left_cm, "lower_left_cm")?,
+        r2s_fixed3_f64(upper_right_cm, "upper_right_cm")?,
+        voxel_volumes_cm3,
+        edges_ev,
+        cooling_s,
+        &zones,
+        &overlaps,
+    )
+    .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let out = r2s_photon_source_to_py(py, &result.source)?;
+    let allocation = result.allocation;
+    let report = pyo3::types::PyDict::new(py);
+    report.set_item(
+        "volume_relative_tolerance",
+        allocation.volume_relative_tolerance,
+    )?;
+    report.set_item(
+        "zone_declared_volumes_cm3",
+        allocation.zone_declared_volumes_cm3,
+    )?;
+    report.set_item(
+        "zone_mapped_volumes_cm3",
+        allocation.zone_mapped_volumes_cm3,
+    )?;
+    report.set_item("zone_volume_deltas_cm3", allocation.zone_volume_deltas_cm3)?;
+    report.set_item(
+        "voxel_unassigned_volumes_cm3",
+        allocation.voxel_unassigned_volumes_cm3,
+    )?;
+    report.set_item(
+        "input_group_totals_photons_per_s",
+        allocation.input_group_totals_photons_per_s,
+    )?;
+    report.set_item(
+        "allocated_group_totals_photons_per_s",
+        allocation.allocated_group_totals_photons_per_s,
+    )?;
+    report.set_item(
+        "zone_input_strengths_photons_per_s",
+        allocation.zone_input_strengths_photons_per_s,
+    )?;
+    report.set_item(
+        "zone_allocated_strengths_photons_per_s",
+        allocation.zone_allocated_strengths_photons_per_s,
+    )?;
+    out.set_item("allocation", report)?;
+    Ok(out.into_any().unbind())
 }
 
 /// Rebuild a dense source from exported groups plus explicit dense indices.
@@ -4467,7 +4533,7 @@ fn r2s_photon_source_exported(
         &exported_strengths_photons_per_s,
     )
     .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    r2s_photon_source_to_py(py, &source)
+    Ok(r2s_photon_source_to_py(py, &source)?.into_any().unbind())
 }
 
 /// Return the structured, bounded validation report for a source draft.
@@ -7173,6 +7239,41 @@ fn unfold_staysl(
     Ok(out.into_any().unbind())
 }
 
+/// STAYSL-class nonnegative adjustment using caller measurement covariance.
+#[pyfunction]
+#[pyo3(signature = (response, rates, covariance, guess, tolerance=1e-10, max_iterations=200, damping=1e-3))]
+#[allow(clippy::too_many_arguments)]
+fn unfold_staysl_correlated(
+    py: Python<'_>,
+    response: Vec<Vec<f64>>,
+    rates: Vec<f64>,
+    covariance: Vec<Vec<f64>>,
+    guess: Vec<f64>,
+    tolerance: f64,
+    max_iterations: usize,
+    damping: f64,
+) -> PyResult<Py<PyAny>> {
+    let solution = nucleide_unfold::staysl::unfold_correlated(
+        &response,
+        &rates,
+        &covariance,
+        &guess,
+        tolerance,
+        max_iterations,
+        damping,
+    )
+    .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let out = pyo3::types::PyDict::new(py);
+    out.set_item("spectrum", solution.spectrum)?;
+    out.set_item("rates", solution.rates)?;
+    out.set_item("measurement_chi2", solution.measurement_chi2)?;
+    out.set_item("damping_penalty", solution.damping_penalty)?;
+    out.set_item("iterations", solution.iterations)?;
+    out.set_item("tolerance", solution.tolerance)?;
+    out.set_item("optimality", solution.optimality)?;
+    Ok(out.into_any().unbind())
+}
+
 /// GRAVEL chi-square-weighted spectral adjustment (Matzke, PTB-N-19, 1994).
 ///
 /// Thin wrapper over `nucleide_unfold::gravel::unfold`: `response` holds one
@@ -9794,6 +9895,26 @@ fn spectroscopy_fit_efficiency(
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+/// Single-line activity and the supplied counting uncertainty, in Bq.
+#[pyfunction]
+fn spectroscopy_gamma_line_activity(
+    net_counts: f64,
+    net_counts_uncertainty: f64,
+    live_time_s: f64,
+    peak_efficiency: f64,
+    emission_probability: f64,
+) -> PyResult<(f64, f64)> {
+    let result = nucleide_spectroscopy::gamma_line_activity(
+        net_counts,
+        net_counts_uncertainty,
+        live_time_s,
+        peak_efficiency,
+        emission_probability,
+    )
+    .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    Ok((result.activity_bq, result.counting_uncertainty_bq))
+}
+
 /// Fetch one caller-supplied atomic constant or raise a `ValueError`.
 fn atomic_key(atomic: &BTreeMap<String, f64>, key: &str) -> PyResult<f64> {
     atomic
@@ -11530,6 +11651,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(r2s_tag_zone_strength, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_normalize_flux, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_photon_source, m)?)?;
+    m.add_function(wrap_pyfunction!(r2s_mixed_voxel_photon_source, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_photon_source_exported, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_source_report, m)?)?;
     m.add_function(wrap_pyfunction!(r2s_source_probabilities, m)?)?;
@@ -11548,6 +11670,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(kinetics_from_ifp, m)?)?;
     m.add_function(wrap_pyfunction!(unfold_sandii, m)?)?;
     m.add_function(wrap_pyfunction!(unfold_staysl, m)?)?;
+    m.add_function(wrap_pyfunction!(unfold_staysl_correlated, m)?)?;
     m.add_function(wrap_pyfunction!(unfold_gravel, m)?)?;
     m.add_function(wrap_pyfunction!(unfold_maxed, m)?)?;
     m.add_function(wrap_pyfunction!(unfold_forward_fold, m)?)?;
@@ -11612,6 +11735,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(spectroscopy_energy_bins, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_detector_efficiency, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_fit_efficiency, m)?)?;
+    m.add_function(wrap_pyfunction!(spectroscopy_gamma_line_activity, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_xray_lines, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_sdef_decay_source, m)?)?;
     m.add_function(wrap_pyfunction!(spectroscopy_parse_dollar_spe, m)?)?;

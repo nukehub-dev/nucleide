@@ -22,7 +22,9 @@ Transport handoff: :func:`photon_source` builds and validates an explicit
 regular-mesh source at one cooling time (ascending eV edges, integrated
 photons/s per voxel/group, C-order voxels, positive volumes). The returned
 dict carries checked totals and a bounded structured report with stable issue
-codes. :func:`photon_source_exported` restores sparse group exports with
+codes. :func:`mixed_voxel_photon_source` combines spectra from multiple
+activation zones using caller-supplied intersection volumes.
+:func:`photon_source_exported` restores sparse group exports with
 explicit dense indices; :func:`source_probabilities` returns the joint
 voxel/group distribution (never factored marginals),
 :func:`source_energy_probabilities` returns per-voxel spectra and
@@ -34,7 +36,7 @@ matches offsets exactly. OpenMC export and manifests live in
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, TypedDict
 
 from nucleide._internal import (
     r2s_assemble,
@@ -42,6 +44,7 @@ from nucleide._internal import (
     r2s_expand_sweep,
     r2s_from_deck,
     r2s_from_snapshot,
+    r2s_mixed_voxel_photon_source,
     r2s_photon_group_sums,
     r2s_photon_source,
     r2s_photon_source_exported,
@@ -96,6 +99,60 @@ def photon_source(
         list(edges_ev),
         float(cooling_s),
         [list(row) for row in strengths_photons_per_s],
+    )
+
+
+class MixedVoxelZoneSpectrum(TypedDict):
+    """One zone's declared volume, grid, cooling offset and integrated spectrum."""
+
+    volume_cm3: float
+    edges_ev: Sequence[float]
+    cooling_s: float
+    strengths_photons_per_s: Sequence[float]
+
+
+def mixed_voxel_photon_source(
+    mesh_shape: Sequence[int],
+    lower_left_cm: Sequence[float],
+    upper_right_cm: Sequence[float],
+    voxel_volumes_cm3: Sequence[float],
+    edges_ev: Sequence[float],
+    cooling_s: float,
+    zones: Sequence[MixedVoxelZoneSpectrum],
+    overlaps: Sequence[tuple[int, int, float]],
+) -> dict[str, Any]:
+    """Allocate a photon source from the intersection volumes of disjoint zones.
+
+    Each ``(voxel, zone, overlap_cm3)`` row has a unique pair of zero-based
+    indices. Voxels are in flat C-order. Each zone's eV edges and cooling
+    offset must match the selected source exactly. Emitting zones must have
+    mapped volumes within a relative tolerance of 1e-12 of their declared
+    volumes. The full voxel volumes must match the regular mesh geometry
+    within the same tolerance. Reject overfill beyond that tolerance.
+
+    Return the regular-mesh photon-source dict with an additional
+    ``allocation`` section for zone coverage, residual voxel volumes and
+    input and allocated group strengths. Unassigned volume has no source
+    before homogenization. The exported distribution is uniform in position
+    within each whole voxel and uniform per eV within each group.
+    """
+    return r2s_mixed_voxel_photon_source(
+        list(mesh_shape),
+        list(lower_left_cm),
+        list(upper_right_cm),
+        list(voxel_volumes_cm3),
+        list(edges_ev),
+        float(cooling_s),
+        [
+            (
+                float(zone["volume_cm3"]),
+                list(zone["edges_ev"]),
+                float(zone["cooling_s"]),
+                list(zone["strengths_photons_per_s"]),
+            )
+            for zone in zones
+        ],
+        list(overlaps),
     )
 
 
@@ -204,6 +261,8 @@ __all__ = [
     "snapshot_inventory",
     "expand_sweep",
     "photon_source",
+    "MixedVoxelZoneSpectrum",
+    "mixed_voxel_photon_source",
     "photon_source_exported",
     "source_report",
     "source_probabilities",

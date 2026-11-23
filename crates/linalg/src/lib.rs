@@ -16,6 +16,9 @@ use std::sync::Arc;
 /// Backend selected for the implementation (informational).
 pub const BACKEND: &str = "faer-0.20";
 
+/// Strict covariance whitening for deterministic fits.
+pub mod covariance;
+
 /// Seeded multivariate-normal sampling over caller-supplied covariance
 /// blocks (UQ-lite kernel: Cholesky primary, eigen-clipping fallback).
 pub mod sample;
@@ -34,6 +37,7 @@ pub mod lstsq;
 /// no backend call, the elimination is hand-rolled).
 pub mod tridiag;
 
+pub use covariance::CovarianceError;
 pub use decay::DecayError;
 /// Complex scalar used throughout the facade.
 pub use faer::complex_native::c64 as C64;

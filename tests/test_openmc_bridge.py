@@ -2,7 +2,7 @@
 
 OpenMC is never imported here: the fakes below implement the documented
 synthetic-statepoint protocol under the real 0.16.0 class names
-(``EnergyFilter`` / ``MeshFilter`` / ``RegularMesh``), and ``FakeTally``
+(``EnergyFilter`` / ``MeshFilter`` / ``RegularMesh`` / ``RectilinearMesh``), and ``FakeTally``
 asserts the pinned ``get_reshaped_data(value=, expand_dims=True)`` call
 sequence. The validation harness replays the same assertions against real
 OpenMC objects (loud SKIP without OpenMC).
@@ -67,11 +67,11 @@ class FakeTally:
 
 
 class EnergyFilter:
-    """Fake openmc.EnergyFilter: float eV bin edges."""
+    """Fake eV intervals and the legacy flat-edge protocol."""
 
-    def __init__(self, bins: list[float]) -> None:
+    def __init__(self, bins: list[float] | list[tuple[float, float]]) -> None:
         self.bins = list(bins)
-        self.num_bins = len(bins) - 1
+        self.num_bins = len(bins) if bins and isinstance(bins[0], tuple) else len(bins) - 1
 
 
 class RegularMesh:
@@ -88,11 +88,23 @@ class RegularMesh:
         self.upper_right = upper
 
 
+class RectilinearMesh:
+    """Fake openmc.RectilinearMesh with explicitly spaced axis faces."""
+
+    def __init__(self, x: list[float], y: list[float], z: list[float]) -> None:
+        self.dimension = (len(x) - 1, len(y) - 1, len(z) - 1)
+        self.x_grid = x
+        self.y_grid = y
+        self.z_grid = z
+
+
 class MeshFilter:
     """Fake openmc.MeshFilter."""
 
-    def __init__(self, mesh: RegularMesh) -> None:
+    def __init__(self, mesh: RegularMesh | RectilinearMesh) -> None:
         self.mesh = mesh
+        self.translation: tuple[float, ...] | None = None
+        self.rotation: tuple[tuple[float, ...], ...] | tuple[float, ...] | None = None
 
 
 class CellFilter:
@@ -141,8 +153,8 @@ def _mesh_nested(values: list[list[float]], nx: int, ny: int, nz: int) -> list[A
         plane: list[Any] = []
         for j in range(ny):
             column: list[Any] = []
-            for _k in range(nz):
-                column.append([[[v]] for v in values[i * ny + j]])
+            for k in range(nz):
+                column.append([[[v]] for v in values[(i * ny + j) * nz + k]])
             plane.append(column)
         out.append(plane)
     return out
@@ -194,6 +206,159 @@ def test_mesh_tally_c_order_and_units() -> None:
     assert out["energy_bounds_mev"] == [0.0, 1.0, 2.0]
     assert out["mesh_shape"] == [2, 2, 1]
     assert out["mesh_bounds"] == {"x": [-4.0, 0.0, 4.0], "y": [-4.0, 0.0, 4.0], "z": [-4.0, 4.0]}
+
+
+@pytest.mark.parametrize("array_backed", [False, True])  # type: ignore[untyped-decorator]
+def test_rectilinear_ordered_filter_axes_and_csv(tmp_path: Path, array_backed: bool) -> None:
+    mesh = RectilinearMesh([0.0, 1.0, 3.0], [0.0, 2.0, 5.0, 9.0], [0.0, 1.0, 4.0])
+    energy = EnergyFilter([(0.0, 1.0e6), (1.0e6, 3.0e6)])
+    values = [[float(10 * voxel + group + 1) for group in range(2)] for voxel in range(12)]
+    errors = [[(voxel + group + 1) / 32.0 for group in range(2)] for voxel in range(12)]
+    stds = [
+        [flux * error for flux, error in zip(value, err, strict=True)]
+        for value, err in zip(values, errors, strict=True)
+    ]
+
+    def energy_first(rows: list[list[float]]) -> list[Any]:
+        groups = []
+        for group in range(2):
+            voxels = [
+                [[[[rows[(i * 3 + j) * 2 + k][group]]] for k in range(2)] for j in range(3)]
+                for i in range(2)
+            ]
+            groups.append([voxels])
+        return groups
+
+    mesh_filter = MeshFilter(mesh)
+    mesh_filter.translation = (0.0, 0.0, 0.0)
+    mesh_filter.rotation = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+
+    class ArrayTally(FakeTally):
+        def get_reshaped_data(self, value: str = "mean", expand_dims: bool = False) -> Any:
+            np = pytest.importorskip("numpy")
+            return np.asarray(super().get_reshaped_data(value, expand_dims).tolist())
+
+    tally_type = ArrayTally if array_backed else FakeTally
+    tally = tally_type(
+        scores=["flux"],
+        nuclides=["total"],
+        filters=[energy, CellFilter([3]), mesh_filter],
+        mean=energy_first(values),
+        std=energy_first(stds),
+    )
+    out = omc.tally_arrays(FakeStatePoint({4: tally}), 4)
+    assert out["flux"] == values
+    assert out["rel_err"] == errors
+    assert out["mesh_shape"] == [2, 3, 2]
+    assert out["mesh_bounds"] == {"x": mesh.x_grid, "y": mesh.y_grid, "z": mesh.z_grid}
+    assert out["energy_bounds_mev"] == [0.0, 1.0, 3.0]
+    assert omc.mesh_voxel_volumes_cm3(out) == [2, 6, 3, 9, 4, 12, 4, 12, 6, 18, 8, 24]
+    path = tmp_path / "rectilinear.csv"
+    omc.tally_to_csv(out, path)
+    assert omc.tally_from_csv(path) == out
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        .replace("nucleide-openmc-tally-v2", "nucleide-openmc-tally-v1")
+        .replace("mesh_shape = 2,3,2", "mesh_shape = 2.00,3e0,2.0"),
+        encoding="utf-8",
+    )
+    assert omc.tally_from_csv(path) == out
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("2.00,3e0,2.0", "2.0000000000000001,3e0,2.0"),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="mesh dimensions must be positive integers"):
+        omc.tally_from_csv(path)
+
+
+def test_rectilinear_full_voxel_volume_normalization() -> None:
+    mesh = RectilinearMesh([0.0, 1.0, 3.0], [0.0, 1.0], [0.0, 1.0])
+    tally = FakeTally(
+        scores=["flux"],
+        nuclides=["total"],
+        filters=[MeshFilter(mesh), EnergyFilter([(0.0, 1.0e6)])],
+        mean=_mesh_nested([[4.0], [12.0]], 2, 1, 1),
+        std=_mesh_nested([[0.5], [3.0]], 2, 1, 1),
+    )
+    raw = omc.tally_arrays(FakeStatePoint({4: tally}), 4)
+    volumes = omc.mesh_voxel_volumes_cm3(raw)
+    assert volumes == [1.0, 2.0]
+    physical = omc.normalize_flux(
+        raw, 10.0, volumes, input_normalization=omc.NORMALIZATION_VOLUME_INTEGRATED_PER_SOURCE
+    )
+    assert physical["flux"] == [[40.0], [60.0]]
+    assert physical["rel_err"] == raw["rel_err"] == [[0.125], [0.25]]
+    with pytest.raises(ValueError, match="needs a Cartesian mesh tally"):
+        omc.mesh_voxel_volumes_cm3(omc.tally_arrays(_cell_statepoint(), 7))
+
+
+@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
+    "x_faces", [[0.0, 1.0], [0.0, 1.0, 1.0], [0.0, 1.0, float("inf")]]
+)
+def test_rectilinear_rejects_malformed_faces(x_faces: list[float]) -> None:
+    mesh = RectilinearMesh([0.0, 1.0, 2.0], [0.0, 1.0], [0.0, 1.0])
+    mesh.x_grid = x_faces
+    tally = FakeTally(
+        scores=["flux"], nuclides=["total"], filters=[MeshFilter(mesh)], mean=[], std=[]
+    )
+    with pytest.raises(ValueError, match="x axis needs 3 finite, increasing faces"):
+        omc.tally_arrays(FakeStatePoint({4: tally}), 4)
+
+
+@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
+    ("attribute", "transform"),
+    [("translation", (1.0, 0.0, 0.0)), ("rotation", (0.0, 0.0, 90.0))],
+)
+def test_mesh_filter_rejects_transformed_geometry(
+    attribute: str, transform: tuple[float, float, float]
+) -> None:
+    mesh_filter = MeshFilter(RectilinearMesh([0.0, 1.0, 2.0], [0.0, 1.0], [0.0, 1.0]))
+    setattr(mesh_filter, attribute, transform)
+    tally = FakeTally(scores=["flux"], nuclides=["total"], filters=[mesh_filter], mean=[], std=[])
+    with pytest.raises(ValueError, match=f"mesh filter has a {attribute}"):
+        omc.tally_arrays(FakeStatePoint({4: tally}), 4)
+
+
+def test_multiaxis_singleton_must_follow_mesh_filter() -> None:
+    class MultiAxisSingleton:
+        num_bins = 1
+        shape = (1, 1)
+
+    mesh_filter = MeshFilter(RegularMesh((1, 1, 1), (0.0, 0.0, 0.0), (1.0, 1.0, 1.0)))
+    singleton = MultiAxisSingleton()
+    tally = FakeTally(
+        scores=["flux"],
+        nuclides=["total"],
+        filters=[singleton, mesh_filter],
+        mean=[[[[[[[7.0]]]]]]],
+        std=[[[[[[[0.0]]]]]]],
+    )
+    with pytest.raises(
+        ValueError, match="move the mesh filter before any filter with multiple axes"
+    ):
+        omc.tally_arrays(FakeStatePoint({4: tally}), 4)
+    tally.filters = [mesh_filter, singleton]
+    assert omc.tally_arrays(FakeStatePoint({4: tally}), 4)["flux"] == [[7.0]]
+
+
+@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
+    ("bins", "message"),
+    [
+        ([], "strictly increasing"),
+        ([(0.0, 1.0), (2.0, 3.0)], "contiguous"),
+        ([(0.0, 2.0), (1.0, 3.0)], "contiguous"),
+        ([(-1.0, 1.0)], "nonnegative"),
+        ([(0.0, float("nan"))], "finite"),
+    ],
+)
+def test_malformed_energy_intervals_are_rejected(
+    bins: list[tuple[float, float]], message: str
+) -> None:
+    tally = FakeTally(
+        scores=["flux"], nuclides=["total"], filters=[EnergyFilter(bins)], mean=[], std=[]
+    )
+    with pytest.raises(ValueError, match=message):
+        omc.tally_arrays(FakeStatePoint({4: tally}), 4)
 
 
 def test_unbinned_tally_is_single_total_group() -> None:

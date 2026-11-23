@@ -641,6 +641,29 @@ export interface PhotonSourceInputJson {
   strengthsPhotonsPerS: number[][];
 }
 
+export interface MixedVoxelSourceInput {
+  meshShape: number[];
+  lowerLeftCm: number[];
+  upperRightCm: number[];
+  voxelVolumesCm3: number[];
+  edgesEv: number[];
+  coolingS: number;
+  zones: {
+    volumeCm3: number;
+    edgesEv: number[];
+    coolingS: number;
+    strengthsPhotonsPerS: number[];
+  }[];
+  overlaps: [number, number, number][];
+}
+
+export interface MixedVoxelSourceResult {
+  strengthsPhotonsPerS: number[][];
+  unassignedVolumesCm3: number[];
+  zoneMappedVolumesCm3: number[];
+  groupTotalsPhotonsPerS: number[];
+}
+
 export interface PhotonSourceIssueJson {
   code: string;
   severity: "error" | "warning" | "assumption";
@@ -1070,6 +1093,16 @@ export interface SandiiSolutionJson {
   maxRelChange: number;
 }
 
+export interface CorrelatedSolutionJson {
+  spectrum: number[];
+  rates: number[];
+  measurementChi2: number;
+  dampingPenalty: number;
+  iterations: number;
+  tolerance: number;
+  optimality: number;
+}
+
 export interface ClearanceTableEntry {
   nuclide: string;
   limitBqG: number;
@@ -1195,6 +1228,7 @@ export interface WasmApi {
   voxelTagsFromTotals(input: VoxelTagsInputJson): VoxelTagsSummary;
   voxelPhotonSums(input: VoxelPhotonInputJson): VoxelPhotonSummary;
   photonSourceEvaluate(input: PhotonSourceInputJson): PhotonSourceEvaluateResult;
+  mixedVoxelPhotonSource(input: MixedVoxelSourceInput): MixedVoxelSourceResult;
   photonSourceSelectCooling(availableS: number[], requestedS: number[]): number[];
   parseIsotxs(text: string): IsotxsSummary;
   partisnRender(deck: PartisnDeck): string;
@@ -1251,6 +1285,13 @@ export interface WasmApi {
     c1: number,
     c2: number,
   ): SpectroscopySmoothResult;
+  spectroscopyGammaLineActivity(
+    netCounts: number,
+    netCountsUncertainty: number,
+    liveTimeS: number,
+    peakEfficiency: number,
+    emissionProbability: number,
+  ): { activityBq: number; countingUncertaintyBq: number };
   parseLinesTsv(text: string): [number, number][];
   energyBins(channels: number[], fit: number[]): number[];
   detectorEfficiency(energyMev: number, coeff: number[], effFit: number): number;
@@ -1352,6 +1393,13 @@ export interface WasmApi {
     tolerance?: number,
     maxIterations?: number,
   ): SandiiSolutionJson;
+  unfoldStayslCorrelated(
+    response: number[][],
+    rates: number[],
+    covariance: number[][],
+    guess: number[],
+    damping: number,
+  ): CorrelatedSolutionJson;
   euClearanceTable(): ClearanceTableJson;
   clearanceIndex(inventory: Record<string, number>): number;
   clearanceSumOfFractions(inventory: Record<string, number>): SumOfFractionsJson;
