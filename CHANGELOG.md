@@ -13,6 +13,8 @@ workspace crates from tags.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-23
+
 ### Added
 
 - Assemble regular-mesh R2S photon sources from caller-supplied zone spectra
